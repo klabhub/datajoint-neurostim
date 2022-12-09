@@ -1,4 +1,4 @@
-# DataJoint schmema and tools for Neurostim data files
+# DataJoint schema and tools for Neurostim data files
 This folder contains scripts to start a Datajoint schema and database analysis pipeline.
 To read more about DataJoint see https://tutorials.datajoint.io/setting-up/datajoint-matlab.html
 
