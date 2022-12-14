@@ -30,7 +30,7 @@ classdef Experiment  < dj.Manual
             % the Matlab buitlin load()
             % By passing a 'fun', (a function that takes a filename and
             % returns an object) the data can be read differently, or
-            % preprocessed.             
+            % preprocessed.
             p=inputParser;
             p.addParameter('fun',@(x)(ns.Experiment.load(x)))
             p.addParameter('mapRoot',{},@iscellstr);
@@ -39,14 +39,14 @@ classdef Experiment  < dj.Manual
             obj=[];
             if p.Results.perFile
                 % Load each file separately and return a vector of objects
-            for key=tbl.fetch('file')'
-                if ~isempty(p.Results.mapRoot)
-                    thisFile = replace(key.file,p.Results.mapRoot{:});
-                else
-                    thisFile = key.file;
+                for key=tbl.fetch('file')'
+                    if ~isempty(p.Results.mapRoot)
+                        thisFile = replace(key.file,p.Results.mapRoot{:});
+                    else
+                        thisFile = key.file;
+                    end
+                    obj = [obj; p.Results.fun(thisFile)]; %#ok<AGROW>
                 end
-                obj = [obj; p.Results.fun(thisFile)]; %#ok<AGROW> 
-            end
             else
                 % Load all files at once (only works if the 'fun' passed
                 % here can handle that).
@@ -60,19 +60,24 @@ classdef Experiment  < dj.Manual
                 obj = p.Results.fun(thisFile);
             end
         end
-        function [out,filename] = get(tbl,plg)
-            % function [out,filename] = get(o,plg)
+        function [out,filename] = get(tbl,varargin)
+            % function [out,filename] = get(o,varargin)
             % Retrieve all information on a specific plugin in an experiment
             %
             % INPUT
             % o - A ns.Experiment table with at least 1 row (i.e. one
             %           experiment)
-            % plg - The name of the plugin
+            % plg - A cell array with names of plugins. The {} cell array
+            % will retrieve parameters for all plugins. Note that the .cic 
+            % plugin parameters are always included, whether requested or
+            % not.
             % OUTPUT
-            % out -  A struct with all global constants (i.e. those that do
+            % out -  A struct with fields named after the plugins, and each 
+            % field is another struct that continas all parameter info. 
+            % All global constants (i.e. those that do
             % not change within an experiment), parameters (a single value per
             % trial that does not change within a trial), and events (which can
-            % happen at any time).
+            % happen at any time). 
             % filename - The file that originally provided these values to the
             % database.
             %
@@ -81,75 +86,73 @@ classdef Experiment  < dj.Manual
                 filename = '';
                 return;
             end
-            if nargin<2
-                plg = {};
-            elseif ischar(plg)
-                plg = {plg};
+            p = inputParser;
+            p.addRequired('tbl')
+            p.addOptional('plg',{},@(x) (isstring(x) | ischar(x) | iscell(x)))
+            p.addParameter('prm',"",@(x) (isstring(x) | ischar(x)))            
+            p.addParameter('atTrialTime',[],@isnumeric);
+            p.parse(tbl,varargin{:});
+
+            if ischar(p.Results.plg)
+                plg = {p.Results.plg};
+            else
+               plg = p.Results.plg;
             end
+           
 
             ix =1:count(tbl);
             out = cell(numel(ix),1);
             filename = cell(numel(ix),1);
             cntr =0;
-            for key=tbl.fetch()'
+            for exptKey=tbl.fetch()'
                 cntr = cntr + 1;
-                filename{cntr} = fetch1(tbl &key,'file');
+                filename{cntr} = fetch1(tbl &exptKey,'file');
                 if nargin <2 || isempty(plg)
                     % Get info from all plugins
-                    plg  = fetchn( (tbl & key) * ns.Plugin,'plugin_name');
-                end
-                v= [];
-                for p = 1:numel(plg)
-                    plgName = plg{p};
+                    plg  = fetchn( (tbl & exptKey) * ns.Plugin,'plugin_name');
+                end          
+                % Always get cic
+                v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;                    
+                plg = setdiff(plg,{'cic'});
+                for pIx = 1:numel(plg)
+                    plgName = plg{pIx};
                     % Get the properties for this plugin
-                    props = (tbl & key) * ns.Plugin * ns.PluginParameter & ['plugin_name=''' plgName ''''] ;
-                    if ~exists(props)
+                    if isempty(p.Results.prm)
+                        % All prms
+                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;                    
+                    else
+                        % One prm
+                        parms =  (ns.PluginParameter & ['property_name=''' p.Results.prm '''']) & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;                    
+                    end                  
+                    if ~exists(parms)
                         continue;
                     end
-                    % Global consts.
-                    [vals,names] = fetchn(props & 'property_type=''Global''' ,'property_value','property_name');
-                    tmp = cell(1,2*numel(names));
-                    [tmp{1:2:end}] =deal(names{:});
-                    [tmp{2:2:end}] = deal(vals{:});
-                    v.(plgName) = struct(tmp{:});
-                    % Parameters - they do not change within a trial. The
-                    % output struct will have a vector/cell with one value for
-                    % each trial
-
-                    % Events - these can happen at any time. The struct
-                    % contains both the values and the times at which they
-                    % occurred (e.g. v.X and v.XTime)
-
-                    %Bytestream - can contain objects, coded as bytes.
-                    % Decode here.
-
-                    [vals,names,times,trials,types] = fetchn(props - 'property_type =''Global''' ,'property_value','property_name','property_time','property_trial','property_type');
-                    for j=1:numel(names)
-                        if strcmpi(types(j),'ByteStream')
-                            v.(plgName).(names{j}) =getArrayFromByteStream(vals{j});
-                        else
-                            v.(plgName).(names{j}) =vals{j};
-                        end
-                        v.(plgName).([names{j} 'Time']) = times{j};
-                        v.(plgName).([names{j} 'Trial']) = trials{j};
-
-                    end
-
-
+                    v.(plgName) = get(parms);
+                    % Post-process non-CIC plugins if requested
+                    if ~isempty(p.Results.atTrialTime)
+                        out{cntr} = ns.attrialtime(v.(plgName),p.Results.prm,p.Results.atTrialTime,v.cic);
+                    end                   
                 end
-                if isempty(v)
-                    fprintf('No data found for %s \n',filename{cntr});
+                if ~isempty(p.Results.prm) && ~isempty(p.Results.atTrialTime)
+                    % Return only the values, not the time/trial; they are
+                    % stored in the out cell array already
                 else
-                    out{cntr} = v;
+                    % Return struct with all info
+                    out{cntr}=v;
                 end
             end
-
+            
+            
+            
+            
             % Convenience; remove the wrappping cell if it only a single
             % experiment was queried.
             if numel(ix)==1
                 out = out{1};
                 filename=filename{1};
             end
+            
+
         end
 
 

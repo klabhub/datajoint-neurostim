@@ -18,7 +18,7 @@ function djScan(varargin)
 %               values [false]
 %           With this set to false, this creates a quick overview of files
 %           in the data root folder. File content can later be added using
-%           the ns.Experiment.updateWithFileContents
+%           the updateWithFileContents(ns.Experiment)
 %
 % ignore  - File extensions to ignore {'.ini','.cache'}
 % safemode   = [true] -Ask confirmation before dropping tables in the

@@ -19,7 +19,7 @@ classdef Plugin < dj.Manual
                 thisPrm = plg.prms.(prms{i});              
                 make(ns.PluginParameter,key,thisPrm);   
             end
-        end
+        end   
     end
 end
 
