@@ -200,8 +200,9 @@ for i=1:nrDataFiles
     % Remove folders
     linkedFiles([linkedFiles.isdir]) =[];
     % Remove common junk files
-    [~,~,ext] = fileparts({linkedFiles.name});
-    if ischar(ext);ext = {ext};end
+    match = regexp({linkedFiles.name},'.*\.(?<ext>.*$)','names');
+    match = [match{:}];
+    ext = strcat('.',{match.ext});
     out = ismember(ext,p.Results.ignore);
     linkedFiles(out) =[];
     ext(out) = [];

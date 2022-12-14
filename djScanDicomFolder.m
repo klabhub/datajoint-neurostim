@@ -11,7 +11,7 @@ function nsDataFiles = djScanDicomFolder(folderFullName)
 % .date
 % .paradigm
 % .folder = true
-% .type 
+% .type
 % Dec 2022
 folderExtension = '.dicoms'; % This function will search for folders with XXX.dicoms format where xxx is the subject iD
 nsDataFiles =struct([]);
@@ -30,18 +30,20 @@ for i=1:numel(dataFolders)
     for j=1:numel(subs)
         thisStruct = dataFolders(i);
         allFiles= dir(fullfile(subs(j).folder,subs(j).name,'*.dcm'));
-        % Read the first one to extract start time
-        info=dicominfo(fullfile(subs(j).folder,subs(j).name,allFiles(1).name));
-        % SeriesTime is used to identify startTime of the experiment. It is
-        % possible that two scans start within 0.5 s of each other (e.g. a
-        % field map), then this will generate identical starttimes, which
-        % will be detected as non unique PK below. When that happens, need
-        % to think of a way to make this unique
-        thisStruct.startTime = num2str(round(str2double(info.SeriesTime)));
-        thisStruct.paradigm = subs(j).name;
-        thisStruct.folder = true;
-        thisStruct.type = '.dicoms';
-        nsDataFiles= cat(2,nsDataFiles,thisStruct);
+        if ~isempty(allFiles)
+            % Read the first one to extract start time
+            info=dicominfo(fullfile(subs(j).folder,subs(j).name,allFiles(1).name));
+            % SeriesTime is used to identify startTime of the experiment. It is
+            % possible that two scans start within 0.5 s of each other (e.g. a
+            % field map), then this will generate identical starttimes, which
+            % will be detected as non unique PK below. When that happens, need
+            % to think of a way to make this unique
+            thisStruct.startTime = num2str(round(str2double(info.SeriesTime)));
+            thisStruct.paradigm = subs(j).name;
+            thisStruct.folder = true;
+            thisStruct.type = '.dicoms';
+            nsDataFiles= cat(2,nsDataFiles,thisStruct);
+        end
     end
 end
 
