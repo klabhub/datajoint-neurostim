@@ -1,0 +1,7 @@
+{
+	"Fields":{
+"analyze":{"Description":"Analyze or not (0/1)"},
+"comments":{"Description":"Free form comments"}
+	},
+	"Locked":1
+} 
