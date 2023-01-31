@@ -20,8 +20,15 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 
 classdef Experiment  < dj.Manual
     methods (Access = public)
-        function v = file(tbl)
-            v = string(fetchn(tbl ,'file'));
+        function v = file(tbl,root)
+            % Return the full filename for the experiments in this table
+            data = fetch(tbl*ns.Session,'session_date','file');
+            dates = cellfun(@(x) datestr((x),'YYYY/mm/DD'),{data.session_date},'UniformOutput',false); %#ok<DATST>
+            v = string(fullfile(dates',{data.file}'));
+            if nargin <2
+                root =get(ns.Global,'root');
+            end
+            v= fullfile(root,v);
         end
         function obj = open(tbl,varargin)
             % Read the experiment files and return an array of Neurostim CIC objects.
@@ -68,16 +75,16 @@ classdef Experiment  < dj.Manual
             % o - A ns.Experiment table with at least 1 row (i.e. one
             %           experiment)
             % plg - A cell array with names of plugins. The {} cell array
-            % will retrieve parameters for all plugins. Note that the .cic 
+            % will retrieve parameters for all plugins. Note that the .cic
             % plugin parameters are always included, whether requested or
             % not.
             % OUTPUT
-            % out -  A struct with fields named after the plugins, and each 
-            % field is another struct that continas all parameter info. 
+            % out -  A struct with fields named after the plugins, and each
+            % field is another struct that continas all parameter info.
             % All global constants (i.e. those that do
             % not change within an experiment), parameters (a single value per
             % trial that does not change within a trial), and events (which can
-            % happen at any time). 
+            % happen at any time).
             % filename - The file that originally provided these values to the
             % database.
             %
@@ -89,16 +96,16 @@ classdef Experiment  < dj.Manual
             p = inputParser;
             p.addRequired('tbl')
             p.addOptional('plg',{},@(x) (isstring(x) | ischar(x) | iscell(x)))
-            p.addParameter('prm',"",@(x) (isstring(x) | ischar(x)))            
+            p.addParameter('prm',"",@(x) (isstring(x) | ischar(x)))
             p.addParameter('atTrialTime',[],@isnumeric);
             p.parse(tbl,varargin{:});
 
             if ischar(p.Results.plg)
                 plg = {p.Results.plg};
             else
-               plg = p.Results.plg;
+                plg = p.Results.plg;
             end
-           
+
 
             ix =1:count(tbl);
             out = cell(numel(ix),1);
@@ -110,20 +117,20 @@ classdef Experiment  < dj.Manual
                 if nargin <2 || isempty(plg)
                     % Get info from all plugins
                     plg  = fetchn( (tbl & exptKey) * ns.Plugin,'plugin_name');
-                end          
+                end
                 % Always get cic
-                v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;                    
+                v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;
                 plg = setdiff(plg,{'cic'});
                 for pIx = 1:numel(plg)
                     plgName = plg{pIx};
                     % Get the properties for this plugin
                     if isempty(p.Results.prm)
                         % All prms
-                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;                    
+                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
                     else
                         % One prm
-                        parms =  (ns.PluginParameter & ['property_name=''' p.Results.prm '''']) & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;                    
-                    end                  
+                        parms =  (ns.PluginParameter & ['property_name=''' p.Results.prm '''']) & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
+                    end
                     if ~exists(parms)
                         continue;
                     end
@@ -131,7 +138,7 @@ classdef Experiment  < dj.Manual
                     % Post-process non-CIC plugins if requested
                     if ~isempty(p.Results.atTrialTime)
                         out{cntr} = ns.attrialtime(v.(plgName),p.Results.prm,p.Results.atTrialTime,v.cic);
-                    end                   
+                    end
                 end
                 if ~isempty(p.Results.prm) && ~isempty(p.Results.atTrialTime)
                     % Return only the values, not the time/trial; they are
@@ -141,93 +148,127 @@ classdef Experiment  < dj.Manual
                     out{cntr}=v;
                 end
             end
-            
-            
-            
-            
+
             % Convenience; remove the wrappping cell if it only a single
             % experiment was queried.
             if numel(ix)==1
                 out = out{1};
                 filename=filename{1};
             end
-            
+
 
         end
 
 
-        function updateWithFileContents(tbl,oldKey,newOnly)
+        function updateWithFileContents(tbl,varargin)
             % function updateWithFileContents(self,oldKey,newOnly)
             % Read neurostim files to fill the database with the
             % information contained in plugins/stimuli. This can be done
-            % automatically (by ns.scan), or manually to update information
+            % automatically (by nsAddToDatajoint), or manually to update information
             % INPUT
             % tbl - (A subset of) the ns.Experiment table to update.
             % oldKey - The primary key of the experiment to update (if not
             % specified or empty, all experiments in tbl will be updated).
             % newOnly  - Set to true to update only those experiments that
             % have no information in the database currently. [true]
+            p =inputParser;
+            p.addRequired('tbl');
+            p.addParameter('oldKey',struct([]));
+            p.addParameter('newOnly',true,@islogical);
+            p.addParameter('root',get(ns.Global,'root'));
+            p.parse(tbl,varargin{:});
 
-            if nargin <3
-                newOnly = true;
-            end
-            if nargin<2 || isempty(oldKey)
+            if isempty(p.Results.oldKey)
                 % Run all
                 for key=tbl.fetch()'
-                    updateWithFileContents(tbl,key,newOnly);
+                    try
+                        updateWithFileContents(tbl,'oldKey',key,'newOnly',p.Results.newOnly,'root',p.Results.root);
+                    catch me
+                        fprintf(2,'Failed updating contents from %s\n (%s)',key.file,me.message);
+                    end
                 end
                 return;
+            else
+                oldKey = p.Results.oldKey;
             end
+
             % Check if this eperiment already has file data, if newOnly
             % is true, we skip those.
-            if newOnly && exists(tbl & oldKey) && ~isnan(fetchn(tbl & oldKey,'stimuli'))
+            if p.Results.newOnly && exists(tbl & oldKey) && ~isnan(fetchn(tbl & oldKey,'stimuli'))
                 return;
             end
 
             % Read the file to add details
-            if isfield(oldKey,'file')
-                file = oldKey.file;
-            else
-                file = fetch1(tbl & oldKey, 'file');
-            end
+            oldTuple = fetch(tbl & oldKey,'paradigm','file');
+
             lastwarn(''); % Reset
-            c  = ns.Experiment.load(file);
-            if contains(lastwarn,'Cannot load an object of class')
-                fprintf(2,'Please add the path to all Neurostim classes to your path.\n')
-                fprintf(2,'Skipping %s\n',file)
+
+            file = fullfile(p.Results.root,strrep(oldTuple.session_date,'-','/'),oldTuple.file);
+            % Now add file contents information
+            % If the file cannot be read fully (for instance because some
+            % classes are not on the current Matlab path) the cic object
+            % will be incomplete and some of the code below will fail.
+            try
+                c  = ns.Experiment.load(file);
+            catch
+                % Make sure that the experiment key is in the table
+                fprintf(2,'Failed to load %s \n',file)
+                return;
+            end
+
+            if isfield(c,'ptbVersion')
+                ptbVersion = c.ptbVersion.version;
             else
-                actualNrTrialsStarted = max([c.prms.trial.log{:}]);
-                if actualNrTrialsStarted <1
-                    % Cannot read some information in a file without trials..
-                    % Just putting zeros.
-                    fprintf('Skipping %s - no completed trials\n',file);
-                    tuple = {'stimuli',0,'blocks',0,...
-                        'conditions',0,'trials',actualNrTrialsStarted,...
-                        'matlab',c.matlabVersion,'ptb',c.ptbVersion.version,...
-                        'ns','somehash','run',0,'seq',0};
+                ptbVersion = 'unknown'; % Early versions did not store this
+            end
+            actualNrTrialsStarted = max([c.prms.trial.log{:}]);
+            if actualNrTrialsStarted <1
+                % Cannot read some information in a file without trials..
+                % Just putting zeros.
+                fprintf('Skipping %s - no completed trials\n',file);
+                tuple = struct('stimuli',0,'blocks',0,...
+                    'conditions',0,'trials',actualNrTrialsStarted,...
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,...
+                    'ns','#','run',0,'seq',0);
+            else
+                % Pull the top level information to put in the tbl
+                if isempty(c.runNr)
+                    runNr = NaN;
                 else
-                    % Pull the top level information to put in the tbl
-                    tuple = {'stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
-                        'conditions',c.nrConditions,'trials',actualNrTrialsStarted,...
-                        'matlab',c.matlabVersion,'ptb',c.ptbVersion.version,...
-                        'ns','somehash','run',c.runNr,'seq',c.seqNr};
+                    runNr = c.runNr;
                 end
-                if ~exists(tbl & oldKey)
-                    insert(tbl,oldKey)
+                if isempty(c.seqNr)
+                    seqNr = NaN;
+                else
+                    seqNr = c.seqNr;
                 end
-                % Then update
-                for i=1:2:numel(tuple)
-                    update(tbl & oldKey,tuple{i:i+1}); %Updated version
-                end
-                % Remove the current plugin info.
-                if exists(ns.Plugin & oldKey)
-                    del(ns.Plugin & oldKey)
-                end
-                if actualNrTrialsStarted>1
-                    % re-add each plugin (pluginOrder includes stimuli)
-                    for plg = [c.pluginOrder c]
+
+                tuple =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
+                    'conditions',c.nrConditions,'trials',actualNrTrialsStarted,...
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr);
+            end
+
+            % Remove current tuple
+            if exists(tbl & oldKey)
+                del(tbl & oldKey)
+            end
+
+            newTuple = mergestruct(oldTuple,tuple);
+            insert(tbl,newTuple);
+
+            % Remove the current plugin info and store currently read
+            % information.
+            if exists(ns.Plugin & oldKey)
+                del(ns.Plugin & oldKey)
+            end
+            if actualNrTrialsStarted>1
+                % re-add each plugin (pluginOrder includes stimuli)
+                for plg = [c.pluginOrder c]
+                    try
                         plgKey = struct('starttime',oldKey.starttime,'session_date',oldKey.session_date,'subject',oldKey.subject);
                         make(ns.Plugin,plgKey,plg);
+                    catch
+                        fprintf('Failed to add plugin %s information\n',plg.name);
                     end
                 end
             end

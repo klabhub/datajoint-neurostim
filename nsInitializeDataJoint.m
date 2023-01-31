@@ -1,14 +1,14 @@
-function djActivate(code,schemaName,dataRoot,packageName)
-% Setup a new datajoint pipeline for a project. 
+function nsInitializeDataJoint(code,schemaName,dataRoot,packageName)
+% Setup a new datajoint pipeline for a Neurostim project. 
 % For instance, if Alice's data are all under the root folder x:\data\
 % and she wants to start a new project called 'alice_memory' with Matlab code
 % for the pipelin stored in u:\projects\memory\code, she uses:
 % 
-%  djActivate('u:\projects\memory\code','alice_memory','x:\data\')
+%  nsInitializeDataJoint('u:\projects\memory\code','alice_memory','x:\data\')
 %  And then she runs 
-%  djScan('date','01-May-2022','schedule','m','readFileContents',true)
+%  nsScan('date','01-May-2022','schedule','m','readFileContents',true)
 % to scan files collected in May '22 and add them to the pipeline.
-% The datajoint code in the neurostim repository handles file scanning and 
+% The code in the datajoint-neurostim repository handles file scanning and 
 % stores all Neurostim data (i.e. all neurostim parameters) in the
 % database.
 % To retrieve the data for a single Neurostim experiment (i.e. file), you
@@ -22,7 +22,7 @@ function djActivate(code,schemaName,dataRoot,packageName)
 % 
 % If Alice also wants to analyze Calcium imaging data, she can add the Ca
 % package by calling
-% djActivate('u:\projects\memory\code','alice_memory','','ca')
+% nsInitializeDataJoint('u:\projects\memory\code','alice_memory','','ca')
 % This will create the lookup tables from CA Element in the alice_memory
 % database/schema, and create a +ca folder in the /code folder where Alice
 % can add her own additions to the analysis pipeline.
@@ -70,7 +70,7 @@ switch (packageName)
     case 'ns'
         %% Setup the global table with an entry for the preferred data root.
         insert(ns.Global,struct('id',0,'name','root','value',dataRoot));
-        fprintf('The datajoint pipeline for %s has been setup. Run djScan to add files.\n',schemaName);
+        fprintf('The datajoint pipeline for %s has been setup. Run nsScan to add files.\n',schemaName);
     case 'ca'
         ca.activate
     otherwise

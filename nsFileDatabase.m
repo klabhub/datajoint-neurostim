@@ -1,7 +1,11 @@
-classdef djFileDatabase <handle
+classdef nsFileDatabase <handle
     % A class to create and interact with a file-system based database
     % by exporting the rows of all MySql Datajoint tables to a local folder.
-
+    % The goal of this class was to create a "copy" of the DataJoint SQL database
+    % as files on disk to make sharing easier. But because this "file
+    % database" no longer has the querying capabilities of DJ, it is of
+    % limited use in its current state. 
+    % 
     properties
         root char = '../data/';
         schema;
@@ -9,7 +13,7 @@ classdef djFileDatabase <handle
     end
 
     methods (Access=public)
-        function o = djFileDatabase(varargin)
+        function o = nsFileDatabase(varargin)
             o.pk2File = containers.Map('KeyType','char','ValueType','any');
         end
 

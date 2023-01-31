@@ -1,6 +1,9 @@
-function djExport(targetDataRoot,varargin)
+function nsExport(targetDataRoot,varargin)
 % Export files (ns.File) corresponding to one or more paradigms from the
-% Root folder to a project folder.
+% Root folder to a project folder. You might to do this to create a copy of
+% the data files on a workstation for faster access. 
+% Note that this only uses the DataJoint database to determine which files should
+% be copied. 
 %
 % INPUT
 % targetDataRoot = Path to the folder where data will be stored (e.g.
@@ -12,7 +15,7 @@ function djExport(targetDataRoot,varargin)
 % 'paradigm' - Cell array of paradigms to include
 % 'extension' - Selection of file extensions to include (e.g. '.mat' to
 % copy only .mat files). Only one extension can be handled at a time (until
-% the or-restriction on tables works in datajoint).
+% the or-restriction on tables works in DataJoint).
 % 'include' - Copy only files that contain this string (or multiple strings
 % specified as a cellstr. {'temp','notanalyze'};
 % 'exclude' - Don't copy files that contain this string (or multiple
@@ -47,19 +50,19 @@ function djExport(targetDataRoot,varargin)
 % user = 'bart';
 % keyfile = 'bart_hpc_rsa';
 % ssh = ssh2_config_publickey(host,user,keyfile,' ');
-%  djExport('/scratch/bart/posner/data','useDayFolders',false,'extension','.mat',...
+%  nsExport('/scratch/bart/posner/data','useDayFolders',false,'extension','.mat',...
 %           'dryrun',false,'paradigm','posner','ssh',ssh)
 %
 % Or to run a script called  export (that returns a table ) on each file and save
 % the table as a CSV in a local data folder:
-%   djExport('data','useDayFolders',false,'extension','.mat',...
+%  nsExport('data','useDayFolders',false,'extension','.mat',...
 %           'dryrun',false,'paradigm','posner','fun',@export,'format','.CSV')
 %
 % Or, if you need to use datajoint queries to select a more specific subset
 % of files (selecting on session_date is not built-in to this function)
 % f = ns.File * ns.Experiment & 'session_date=''2015-03-30''' & 'extension=''.spk'''
 % Then:
-% djExport('../data','table',f,'useDayFolders',true,'exclude',{'.lfp','.cls'},'dryrun',false)
+% nsExport('../data','table',f,'useDayFolders',true,'exclude',{'.lfp','.cls'},'dryrun',false)
 % Note that include/exclude/extension/paradigm parameters are still allowed, even when
 % passing a specific table to djExport. 
 %
@@ -136,8 +139,7 @@ else
     cntr =0;
     for row=rows'
         cntr =cntr+1;
-        if cntr > p.Results.maxNrFiles;break;end
-        
+        if cntr > p.Results.maxNrFiles;break;end        
         dayFolder = datestr(files(row).session_date,'YYYY/mm/DD');
         [subFolder,filename,ext]= fileparts(files(row).filename);
         srcFullFile = fullfile(srcRoot,dayFolder,subFolder,[filename ext]);

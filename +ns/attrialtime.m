@@ -21,8 +21,16 @@ function vals = attrialtime(props,propName,time,c)
 
 nrTrials  = max(c.trial);
 allEventValues = props.(propName);
+if isfield(props,[propName 'Trial'])
 allEventTrials = props.([propName 'Trial']);
-allEventTimes  = props.([propName 'Time']);
+else
+    allEventTrials =1;
+end
+if isfield(props,[propName 'Time'])
+    allEventTimes  = props.([propName 'Time']);
+else
+    allEventTimes = -inf;
+end
 
 % Initialize with nan
 vals = cell(nrTrials,1);
@@ -40,7 +48,11 @@ for e=1:numel(allEventTrials)
     % Next trial or same trial, update until atTrialTime reached.
     currentTrial = allEventTrials(e);
     currentTime = allEventTimes(e);
-    currentValue = allEventValues{e};
+    if iscell(allEventValues)
+        currentValue = allEventValues{e};
+    else
+        currentValue = allEventValues(e);
+    end
     if currentTime <= time
         vals{currentTrial} = currentValue;
     end    
