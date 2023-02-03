@@ -3,5 +3,8 @@ function T = fetchtable(varargin)
 % instead of a struct array.
 
 tuples= fetch(varargin{:});
+try
 T = struct2table(tuples);
+catch
+    T=tuples;
 end

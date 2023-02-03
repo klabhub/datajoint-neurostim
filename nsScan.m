@@ -105,7 +105,7 @@ fullName = fullfile({dirInfo.folder}',{dirInfo.name}');
 if strcmpi(filesep','\')
     fs = '\\';
 else
-    fs = filesp;
+    fs = filesep;
 end
 if ispc
     root = strrep(p.Results.root,'/','\');
@@ -124,7 +124,7 @@ if isempty(fullName)
 end
 
 %% Massage the meta data so that they match the formats stored in the DataJoint database
-[~,file,ext] = fileparts(fullName);  % Store only the filename. Path can be reconstructed from date and root. 
+[~,file,ext] = cellfun(@fileparts,fullName,'UniformOutput',false);  % Store only the filename. Path can be reconstructed from date and root. 
 file = strcat(file,ext);
 [meta.file] = deal(file{:});
 [meta.isFolder] = deal(false); % Mark as true NS files, not folders with other files.
@@ -177,7 +177,7 @@ if nrExperiments ==0
     fprintf('No files found in %s\n',p.Results.root);
     return;
 else
-    fprintf('Foound %d matching Neurostim files \n',nrExperiments)
+    fprintf('Found %d matching Neurostim files \n',nrExperiments)
 end
 
 if p.Results.readJson
