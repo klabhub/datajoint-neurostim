@@ -23,8 +23,9 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %
 % INPUT
 % 'root' - Top level folder (e.g. Z:\). Folders below this root folder should
-%           correspond to the years. This defaults to the value in the
-%           ns.Global table
+%           correspond to the years. This defaults to the value in
+%           getenv('NS_ROOT')
+%           
 % date - Date to scan.  [today]
 % schedule - 'y' - Scan the year in which the date falls.
 %          - 'm' - Scan the month
@@ -63,7 +64,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 % BK - Jan 2023
 
 p = inputParser;
-p.addParameter('root', get(ns.Global,'root'));
+p.addParameter('root', getenv('NS_ROOT'));
 p.addParameter('date',datetime('now'));
 p.addParameter('schedule','d');
 p.addParameter('readJson',true);
@@ -78,6 +79,7 @@ p.parse(varargin{:});
 tExperiment = [];
 tSession = [];
 tSubject = [];
+
 
 
 %% A. Find relevant files
@@ -100,6 +102,11 @@ fprintf('Scanning %s ...\n',srcFolder)
 % Find the files matching the wildcard
 dirInfo= dir(fullfile(srcFolder,'*.mat'));
 
+if isempty(dirInfo)
+    fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder.p.Results.root);
+    return;
+end
+
 % Select files matching Neurostim format filename
 fullName = fullfile({dirInfo.folder}',{dirInfo.name}');
 if strcmpi(filesep','\')
@@ -120,6 +127,7 @@ meta =[ meta{~out}];
 dirInfo(out) =[];
 fullName(out) = [];
 if isempty(fullName)
+    fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder.p.Results.root);
     return;
 end
 
@@ -174,7 +182,7 @@ end
 meta = meta(stay);
 nrExperiments = numel(meta);
 if nrExperiments ==0
-    fprintf('No files found in %s\n',p.Results.root);
+    fprintf('No Neurostim files with matching paradigm and subject found in %s\n',srcFolder);
     return;
 else
     fprintf('Foound %d matching Neurostim files \n',nrExperiments)

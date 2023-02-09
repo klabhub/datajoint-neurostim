@@ -3,8 +3,7 @@ function v = filename(o,root,filetype)
 % name (including the root if specified).
 % INPUT
 % o = The output of a call to .Experiment
-% root = The top level folder to use. Will default to the value of 'root'
-% in ns.Global.
+% root = The top level folder to use. Will default to getenv('NS_ROOT')
 %
 % OUTPUT
 % v = the filename of the corresponding Neurostim output file, or a cell
@@ -13,13 +12,7 @@ function v = filename(o,root,filetype)
 if nargin < 3
     filetype = '.mat';
     if nargin <2
-        root = '';
-    end
-end
-if isempty(root)
-    rt = fetchn(ns.Global & 'name=''root''' ,'value','ORDER BY id DESC LIMIT 1');
-    if ~isempty(rt)
-        root =rt{1};
+        root = getenv('NS_ROOT');
     end
 end
 if isa(o,'ns.Experiment')

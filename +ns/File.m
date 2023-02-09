@@ -15,7 +15,7 @@ classdef File < dj.Computed
         function makeTuples(tbl,key)
             % TODO handle p.Results.folderFun
             
-            root = get(ns.Global,'root');
+            root = getenv('NS_ROOT');
             % Search for files with matching prefix (subject.paradigm.startTime.*) in
             % the same folder and all files in the folder with this name.
             exptTpl = fetch(ns.Experiment &key,'*');

@@ -26,7 +26,7 @@ classdef Experiment  < dj.Manual
             dates = cellfun(@(x) datestr((x),'YYYY/mm/DD'),{data.session_date},'UniformOutput',false); %#ok<DATST>
             v = string(fullfile(dates',{data.file}'));
             if nargin <2
-                root =get(ns.Global,'root');
+                root =getenv('NS_ROOT');
             end
             v= fullfile(root,v);
         end
@@ -175,7 +175,7 @@ classdef Experiment  < dj.Manual
             p.addRequired('tbl');
             p.addParameter('oldKey',struct([]));
             p.addParameter('newOnly',true,@islogical);
-            p.addParameter('root',get(ns.Global,'root'));
+            p.addParameter('root',getenv('NS_ROOT'));
             p.parse(tbl,varargin{:});
 
             if isempty(p.Results.oldKey)

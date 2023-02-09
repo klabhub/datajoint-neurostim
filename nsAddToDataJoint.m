@@ -16,7 +16,7 @@ function nsAddToDataJoint(tSubject,tSession ,tExperiment,varargin)
 p=inputParser;
 p.addParameter('readFileContents',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
-p.addParameter('root',get(ns.Global,'root'));
+p.addParameter('root',getenv('NS_ROOT'));
 p.parse(varargin{:});
 
 currentSafeMode= dj.config('safemode');

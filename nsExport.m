@@ -9,7 +9,7 @@ function nsExport(targetDataRoot,varargin)
 % targetDataRoot = Path to the folder where data will be stored (e.g.
 % '../data')
 % srcDataRoot = Path tot thefolder where data will be retrieved. Defaults
-%   to '', in which case the root is read from the ns.Global table.
+%   to '', in which case the root is read from getenv('NS_ROOT').
 % 'useDayFolders' - Structure the files using year/month/day hiearchy
 % 'skipExisting'  - Copy only new files.
 % 'paradigm' - Cell array of paradigms to include
@@ -106,7 +106,7 @@ else
     files = fetch(p.Results.table & keepExtension & keepParadigm,'*');
 end
 if isempty(p.Results.srcDataRoot)
-    srcRoot = fetch1(ns.Global & 'name=''root''' ,'value','ORDER BY id DESC LIMIT 1');
+    srcRoot = getenv('NS_ROOT');
 else
     srcRoot = p.Results.srcDataRoot;
 end

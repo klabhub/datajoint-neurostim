@@ -68,8 +68,8 @@ fclose(fid);
 
 switch (packageName)
     case 'ns'
-        %% Setup the global table with an entry for the preferred data root.
-        insert(ns.Global,struct('id',0,'name','root','value',dataRoot));
+        %% Define the ROOT as an environment variable
+        setenv('NS_ROOT',dataRoot);
         fprintf('The datajoint pipeline for %s has been setup. Run nsScan to add files.\n',schemaName);
     case 'ca'
         ca.activate
