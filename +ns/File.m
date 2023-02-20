@@ -14,7 +14,7 @@ classdef File < dj.Computed
 
         function makeTuples(tbl,key)
             % TODO handle p.Results.folderFun
-            
+
             root = getenv('NS_ROOT');
             % Search for files with matching prefix (subject.paradigm.startTime.*) in
             % the same folder and all files in the folder with this name.
@@ -29,22 +29,24 @@ classdef File < dj.Computed
 
             % Remove folders
             linkedFiles([linkedFiles.isdir]) =[];
-            % Extract extension 
-            match = regexp({linkedFiles.name},'.*\.(?<ext>.*$)','names');
-            match = [match{:}];
-            ext = strcat('.',{match.ext});
-            
-            % Add each one
-            for f=1:numel(linkedFiles)                
-                % Remove the part of the path that points to the folder
-                % with the neurostim file, but keep subfolders deeper than
-                % that (for most files relFolder will be '').
-                relFolder = strrep(linkedFiles(f).folder,pth,'');
-                qry = mergestruct(key,struct('filename',fullfile(relFolder,linkedFiles(f).name)));
-                thisFile = ns.File & qry;
-                if ~thisFile.exists
-                    qry.extension = ext{f};
-                    insert(tbl,qry);
+            if ~isempty(linkedFiles)
+                % Extract extension
+                match = regexp({linkedFiles.name},'.*\.(?<ext>.*$)','names');
+                match = [match{:}];
+                ext = strcat('.',{match.ext});
+
+                % Add each one
+                for f=1:numel(linkedFiles)
+                    % Remove the part of the path that points to the folder
+                    % with the neurostim file, but keep subfolders deeper than
+                    % that (for most files relFolder will be '').
+                    relFolder = strrep(linkedFiles(f).folder,pth,'');
+                    qry = mergestruct(key,struct('filename',fullfile(relFolder,linkedFiles(f).name)));
+                    thisFile = ns.File & qry;
+                    if ~thisFile.exists
+                        qry.extension = ext{f};
+                        insert(tbl,qry);
+                    end
                 end
             end
         end

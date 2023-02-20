@@ -3,5 +3,5 @@ function T = fetchtable(varargin)
 % instead of a struct array.
 
 tuples= fetch(varargin{:});
-T = struct2table(tuples);
+T = struct2table(tuples,'AsArray',true);
 end

@@ -103,7 +103,7 @@ fprintf('Scanning %s ...\n',srcFolder)
 dirInfo= dir(fullfile(srcFolder,'*.mat'));
 
 if isempty(dirInfo)
-    fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder.p.Results.root);
+    fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
     return;
 end
 
