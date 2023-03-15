@@ -20,6 +20,13 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 
 classdef Experiment  < dj.Manual
     methods (Access = public)
+        function v = folder(tbl,root)
+            % Return the full path to the experiments in this table
+            if nargin <2
+                root =getenv('NS_ROOT');
+            end
+            v = fileparts(file(tbl,root));
+        end
         function v = file(tbl,root)
             % Return the full filename for the experiments in this table
             data = fetch(tbl*ns.Session,'session_date','file');
@@ -47,10 +54,11 @@ classdef Experiment  < dj.Manual
             if p.Results.perFile
                 % Load each file separately and return a vector of objects
                 for key=tbl.fetch('file')'
+                    ff = file(ns.Experiment & key);
                     if ~isempty(p.Results.mapRoot)
-                        thisFile = replace(key.file,p.Results.mapRoot{:});
+                        thisFile = replace(ff,p.Results.mapRoot{:});
                     else
-                        thisFile = key.file;
+                        thisFile = ff;
                     end
                     obj = [obj; p.Results.fun(thisFile)]; %#ok<AGROW>
                 end
@@ -118,7 +126,7 @@ classdef Experiment  < dj.Manual
                     % Get info from all plugins
                     plg  = fetchn( (tbl & exptKey) * ns.Plugin,'plugin_name');
                 end
-                % Always get cic
+                % Always get all prms from cic
                 v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;
                 plg = setdiff(plg,{'cic'});
                 for pIx = 1:numel(plg)
@@ -135,8 +143,8 @@ classdef Experiment  < dj.Manual
                         continue;
                     end
                     v.(plgName) = get(parms);
-                    % Post-process non-CIC plugins if requested
-                    if ~isempty(p.Results.atTrialTime)
+                    % Post-process non-CIC plugins if requested                    
+                    if ~strcmpi(plgName,'cic') && ~isempty(p.Results.atTrialTime)
                         out{cntr} = ns.attrialtime(v.(plgName),p.Results.prm,p.Results.atTrialTime,v.cic);
                     end
                 end

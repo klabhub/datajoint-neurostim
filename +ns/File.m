@@ -1,7 +1,7 @@
 %{
 # A table with the names of the data files for each experiment
--> ns.Experiment         # The experiment to which this belongs (FK)
 filename: varchar(255)   # The relative filename
+-> ns.Experiment         # The experiment to which this belongs (FK)
 ---
 extension : varchar(10)  # File extension for easy filtering.
 %}

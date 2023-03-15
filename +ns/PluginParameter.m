@@ -4,7 +4,8 @@
 property_name : varchar(25)     # The name of the neurostim.parameter
 ---
 property_value = NULL : longblob    # The value(s) of the constant/trial parameter/event 
-property_time = NULL : longblob     # Time at which the event occured
+property_time = NULL : longblob     # Trial time at which the event occured
+property_nstime = NULL : longblob     # Neurostim experiment time at which the event occured
 property_trial = NULL : longblob     # Trial in which the event occured
 property_type : enum('Global','Parameter','Event','ByteStream') # Type of parameter
 %}
@@ -30,6 +31,7 @@ classdef PluginParameter < dj.Part
 
             time =[];
             trial =[];
+            nsTime = [];
             if prm.cntr==1
                 % Single value: global property
                 % Easy: store only this value
@@ -40,13 +42,13 @@ classdef PluginParameter < dj.Part
                 % Store all values, plus the time at which the event
                 % occurred.
                 type = 'Event';
-                [value,trial,time] =get(prm,'matrixIfPossible',true);
+                [value,trial,time,nsTime] =get(prm,'matrixIfPossible',true);
             else
                 % One value per trial : parameter
                 % Some could be single key presses. So filling in across trials is not always right.
                 % So pull all values,just like events.
                 type = 'Parameter';
-                [value,trial,time] = get(prm,'matrixIfPossible',true);
+                [value,trial,time,nsTime] = get(prm,'matrixIfPossible',true);
             end
 
 
@@ -67,11 +69,13 @@ classdef PluginParameter < dj.Part
                         uValue= uValue{1}; % Get rid of cell
                     end
                 elseif ismatrix(value)
-                    uValue=  unique(value,'rows');
-                    if isnumeric(value) && all(isnan(value(:)))
+                  uValue =unique(value);
+                    % Dont do this: some events have nan values and only store the 
+                   % time
+                   % if isnumeric(value) && all(isnan(value(:)))
                         % A vector with all nans
-                        uValue =NaN;
-                    end
+                    %    uValue =NaN;
+                    %end
                 else % it is something >2D
                     uValue = nan(2,1); % Just a flag to skip the next part
                 end
@@ -80,6 +84,7 @@ classdef PluginParameter < dj.Part
                     value = uValue;
                     type = 'Global';
                     time = [];
+                    nsTime = [];
                 end
             end
 
@@ -94,6 +99,7 @@ classdef PluginParameter < dj.Part
             key.property_type = type;
             key.property_time = time;
             key.property_trial = trial;
+            key.property_nstime = nsTime;
             try
                 self.insert(key);
             catch me
@@ -142,7 +148,7 @@ classdef PluginParameter < dj.Part
 
             %Bytestream - can contain objects, coded as bytes.
             % Decode here.
-            [vals,names,times,trials,types] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_trial','property_type');
+            [vals,names,times,nsTimes,trials,types] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
             for j=1:numel(names)
                 if strcmpi(types(j),'ByteStream')
                     v.(names{j}) =getArrayFromByteStream(vals{j});
@@ -150,6 +156,7 @@ classdef PluginParameter < dj.Part
                     v.(names{j}) =vals{j};
                 end
                 v.([names{j} 'Time']) = times{j};
+                v.([names{j} 'NsTime']) = nsTimes{j};
                 v.([names{j} 'Trial']) = trials{j};
             end
 
