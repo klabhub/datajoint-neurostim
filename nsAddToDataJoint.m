@@ -10,13 +10,15 @@ function nsAddToDataJoint(tSubject,tSession ,tExperiment,varargin)
 %                       from its content). [false]
 % safeMode  -   Set to false to remove tuples from the Datajoint database
 %               without asking for confirmation (i.e., when updating information).
-% root      - Root folder of files, 
+% root      - Root folder of files, defaults to getenv('NS_ROOT')
+% populateFile - Run populate(ns.File) to add dependent files.
 % BK -Jan 2023
 
 p=inputParser;
 p.addParameter('readFileContents',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('root',getenv('NS_ROOT'));
+p.addParameter('populateFile',true,@islogical)
 p.parse(varargin{:});
 
 currentSafeMode= dj.config('safemode');
@@ -44,9 +46,14 @@ if p.Results.readFileContents
     updateWithFileContents(ns.Experiment & newExpts,'root',tExperiment.Properties.CustomProperties.root);
 end
 
+
+
+if p.Results.populateFile
+    populate(ns.File, newExpts)
+end
+
 % Restore setting
 dj.config('safemode',currentSafeMode);
-
 
 
 end

@@ -6,7 +6,7 @@ info : longblob # The complete info struct
 nrframes : int # Number of frames in the scan
 %}
 
-classdef Scan < dj.Computed
+classdef ExperimentSbx < dj.Imported
     properties (Dependent)
         keySource
     end
