@@ -25,7 +25,7 @@ currentSafeMode= dj.config('safemode');
 dj.config('safemode',p.Results.safeMode);
 
 
-%% Add Subjects 
+%% Add Subjects
 % Replace emppty dates with 0 date
 if ismember('dob',tSubject.Properties.VariableNames)
     tSubject{tSubject.dob=="",'dob'} = "0000-00-00";
@@ -47,7 +47,6 @@ if p.Results.readFileContents
 end
 
 
-
 if p.Results.populateFile
     populate(ns.File, newExpts)
 end
@@ -62,11 +61,11 @@ function [tpl,metaTpl] = insertNewTuples(tbl,djTbl)
 % databse, determin which tuples are new and the meta data associated with
 % those new tuples and insert those in the Datajoint tables.
 %
-% INPUT 
+% INPUT
 % tbl - Table with information that nsScan creates from filenames plus json files
-%               This is a Matlab table. 
+%               This is a Matlab table.
 % djTbl - dj.Relvar with the information already in the database.
-% 
+%
 % OUTPUT
 % tpl  - Tuples with new information
 % metaTpl - Tuples with new meta information.
@@ -79,12 +78,12 @@ inDatabase = fetchtable(djTbl);
 % Determine which rows to keep
 if ~isempty(inDatabase)
     [~,ix] = setdiff(inFiles,inDatabase);
-else % All 
+else % All
     ix = 1:height(inFiles);
 end
 if isempty(ix)
     fprintf('No new tuples for %s \n',djTbl.className)
-    
+
     return;
 end
 % Determine which columns to keep
@@ -92,25 +91,31 @@ hdr = djTbl.header;
 [overlapFields,ixKeep]  = intersect(tbl.Properties.VariableNames,hdr.names);
 %convertvars(tbl(ix,overlapFields),tbl.Properties.VariableNames(ixKeep),'char')
 tpl = table2struct(tbl(ix,overlapFields)); % Only the fields that are defined in the SQL database
+fprintf('Adding new tuples to %s \n',djTbl.className)
+insert(djTbl,tpl)
+fprintf('\t Done. %d new tuples\n',numel(tpl))
 
+%% Add meta data
 % The cols that are not defined in SQL can be added to a linked meta data table
 isMeta = setdiff(tbl.Properties.VariableNames,hdr.names);
 metaTbl = table;
 for i=ix(:)'
     for j= i:numel(isMeta)
-        metaTbl = [metaTbl; [tbl(i,pkey) table(isMeta(j), tbl{i,isMeta{j}},'VariableNames',{'meta_name','meta_value'})]]; %#ok<AGROW> 
+        metaTbl = [metaTbl; [tbl(i,pkey) table(isMeta(j), tbl{i,isMeta{j}},'VariableNames',{'meta_name','meta_value'})]]; %#ok<AGROW>
     end
 end
-%convertvars(metaTbl,metaTbl.Properties.VariableNames,'char')
-metaTpl = table2struct(metaTbl);
-fprintf('Adding new tuples to %s \n',djTbl.className)
-insert(djTbl,tpl)
-fprintf('\t Done. %d new tuples\n',numel(tpl),djTbl.className)
-if ~isempty(metaTpl)
-    % Hack, find the associated meta.SubejctMeta, ExperimentMeta,etc.
-    metaTblName  = [djTbl.className 'Meta'];
-    metaTable = feval(metaTblName);
-    insert(metaTable,metaTpl);
-    fprintf('Adding %d new tuples to %s \n',numel(metaTpl),metaTblName);
+if ~isempty(metaTbl)
+    state= warning('query');
+    warning('off','MATLAB:table:convertvars:ConvertCharWarning')
+    metaTbl = convertvars(metaTbl,@isstring,'char');
+    warning(state);
+    metaTpl = table2struct(metaTbl);
+    if ~isempty(metaTpl)
+        % Hack, find the associated meta.SubejctMeta, ExperimentMeta,etc.
+        metaTblName  = [djTbl.className 'Meta'];
+        metaTable = feval(metaTblName);
+        insert(metaTable,metaTpl);
+        fprintf('Adding %d new tuples to %s \n',numel(metaTpl),metaTblName);
+    end
 end
 end

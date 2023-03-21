@@ -17,21 +17,6 @@ aspect   : Decimal(4,1)  # Aspect raio of major/minor axis of a 2D Gaussian fit.
 compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less compact)
 %}
 classdef Roi < dj.Imported
-    properties (Dependent)
-        micronPerPixel
-    end 
-
-    methods
-        function v = get.micronPerPixel(key)
-        %% Get calibration info
-            cal = fetch(ns.ExperimentMeta &key & struct('meta_name','xscale'),'meta_value');
-            ux = unique([cal.meta_value]);
-            cal = fetch(ns.ExperimentMeta &key & struct('meta_name','yscale'),'meta_value');
-            uy = unique([cal.meta_value]);            
-            assert(numel(ux)==1 && numel(uy)==1,"Magniification changed within this session??");
-           v = [ux uy];
-        end
-    end
 
     methods (Access = public)
         function hScatter = plot(roi,pv)
@@ -61,7 +46,7 @@ classdef Roi < dj.Imported
             end
                    
             [x,y,radius,m,sd] = fetchn(roi,'x','y','radius','meanrate','stdrate');
-            micPerPix = roi.micronPerPixel;  % Scaling
+            micPerPix = sbx.micronPerPixel(roi);  % Scaling
             mixPerPixR = sqrt(sum(micPerPix.^2));            
             if isempty(pv.sz)
                 % Use the physical size as the size of the cells
@@ -170,7 +155,7 @@ classdef Roi < dj.Imported
             files= {'iscell','F','Fneu','spks'};
 
             %% Get calibration info
-            micPerPix = sqrt(sum(tbl.micronPerPixel.^2));
+            micPerPix = sqrt(sum(sbx.micronPerPixel(key).^2));
 
             for pl = 1:numel(planes)
                 %% Read npy

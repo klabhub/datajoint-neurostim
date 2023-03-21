@@ -121,7 +121,7 @@ classdef Preprocessed < dj.Imported
                         npyToMat(statFile);
                         fprintf('Completed at %s\n',datetime('now'));
                     else
-                        fprintf('Preprocessing results already exists. Importing %s\n',resultsFile);
+                        fprintf('Preprocessing results already exist. Importing %s\n',resultsFile);
                     end
                     % Load the save ops.npy to extract the mean image
                     ops =py.numpy.load(resultsFile,allow_pickle=true);
