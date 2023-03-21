@@ -18,7 +18,7 @@ function [x,y,a] = eyeTracker(data,pv)
 % BK - 3/9/2023
 arguments
     data
-    pv.nrWorkers = 0
+    pv.nrWorkers = gcp('nocreate').NumWorkers
     pv.map = bone
     pv.movie (1,1) logical = false
     pv.minRadius (1,1) double = 12
@@ -42,10 +42,10 @@ end
 data = squeeze(data); % Squeeze out the 3rd singleton dimension
 [nrY,nrX,nrFrames] =size(data);
 
-
 x = nan(nrFrames,1);
 y = nan(nrFrames,1);
 a = nan(nrFrames,1);
+
 
 xWindow  = round(-pv.searchRadius:pv.searchRadius + nrX/2);
 yWindow  = round(-pv.searchRadius:pv.searchRadius + nrY/2);
@@ -61,7 +61,6 @@ parfor (f=1:nrFrames,pv.nrWorkers)
         a(f) = pi*radius(idx)^2;
     end
 end
-
 
 if pv.movie
     % Show it

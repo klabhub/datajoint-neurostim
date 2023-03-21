@@ -41,15 +41,19 @@ function nsInitializeDataJoint(code,schemaName,dataRoot,packageName)
 %               package names ({'ns','sbx'})
 %  BK - April 2022
 
-
-[here] =fileparts(mfilename('fullpath'));
+arguments
+    code {mustBeText} 
+    schemaName {mustBeText}
+    dataRoot {mustBeText}
+    packageName {mustBeText} = {'ns'}
+end
+% Make sure the schema begins with a lower case letter
+if isempty(regexp(schemaName,'^[a-z]+', 'once'))
+    error('The schemaName (%s) must start with a lower case character\n', schemaName);
+end
 if ~exist(code,'dir')
     mkdir(code);
 end
-if nargin< 4
-    packageName = {'ns'};
-end
-
 if ~iscell(packageName)
     packageName  = {packageName};
 end
@@ -57,9 +61,10 @@ end
 %% Add the schema and utilities (dj*)
 % Move to the code folder and add it to the path
 cd(code)
-addpath(here)
-
+%% Define the ROOT as an environment variable
+setenv('NS_ROOT',dataRoot);
 %% Create the schema on the SQL server
+
 query(dj.conn, sprintf('CREATE DATABASE IF NOT EXISTS `%s`',schemaName))
 
 for i=1:numel(packageName)
@@ -72,16 +77,11 @@ for i=1:numel(packageName)
     fid = fopen(fullfile(code,['+' packageName{i}],'getSchema.m'),"w");
     fprintf(fid,gs,packageName{i},schemaName);
     fclose(fid);
-
     switch (packageName{i})
-        case 'ns'
-            %% Define the ROOT as an environment variable
-            setenv('NS_ROOT',dataRoot);
-            fprintf('The datajoint pipeline for %s has been setup. Run nsScan to add files.\n',schemaName);
-        case 'ca'
-            ca.activate
+        case 'ns'          
+            fprintf('The datajoint pipeline for %s has been setup. Run nsScan to add files.\n',schemaName);     
         case 'sbx'
-            % Nothing to do?
+            % Nothing to do
         otherwise
     end
 end

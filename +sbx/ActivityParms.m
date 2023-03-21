@@ -6,7 +6,8 @@ modality : varchar(20)  # 'spikes', 'fluorescence', 'neuropil'
 start : decimal(10,3)    # Start time in s relative to first frame in the trial 
 stop  : decimal(10,3)    # Stop time in s relative to first frame in the trial 
 step  : decimal(10,3)    # Step time in s. 
-interpolation : enum('nearest','linear','spline','pchip','makima')  # Interpolation method; see timetable/synchronize               
+interpolation : varchar(20) # Interpolation method; see
+timetable/synchronize for allowed values.(e.g., 'linear','nearest','mean')
 %}
 
 classdef ActivityParms <dj.Lookup

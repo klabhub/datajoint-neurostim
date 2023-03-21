@@ -1,16 +1,19 @@
 %{
-# Meta data for a Neurostim experiment. Read from a JSON file.
+# Meta data for a Neurostim experiment. 
 -> ns.Experiment
 meta_name : varchar(255)     # The name of the meta data
 ---
-meta_value : varchar(255)   # The value of the meta data
+meta_value : longblob       # The value of the meta data
 %}
+% Meta data can be read from JSON files with the updateFromJson member
+% function, or they can be inserted manually for specific experiments (see
+% for instance sbx.addSbxInfo) for an example.
 % BK - Jan 2023
 classdef ExperimentMeta < dj.Part
     properties (SetAccess = protected)
         master = ns.Experiment;  % Part  table for the Experiment
     end
-    methods (Access= public)
+    methods (Access= public)        
         function updateFromJson(tbl,experimentKey)     
             if ~isstruct(json)
                 if isempty(json)

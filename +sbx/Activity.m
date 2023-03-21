@@ -1,6 +1,6 @@
 %{
 # The activity of an ROI in one trial of an experiment
--> sbx.ExperimentSbx
+-> ns.Experiment
 -> sbx.Roi
 -> sbx.ActivityParms
 trial :smallint
@@ -20,12 +20,18 @@ activity : longblob   # Activity trace per trial
 classdef Activity < dj.Computed
     
     methods 
-        function [v,t,tr,expt,roi] = get(tbl,act)
+        function [v,time,tr,expt,roi] = get(tbl,act,pv)
             % Convenience function to extract activity (e.g., spikes) and time 
             % per trial.
             % INPUT
             % tbl - sbx.Activity table 
             % act - Name of a row in the sbx.ActivityParms table
+            % Optional P/V pairs
+            % 'time' - A datetime/duration vector with requested time
+            %           points. Defaults to all in the sbx.Activity row.
+            % 'trial' -  A vector of trials. Defaults to all.
+            % 'method' - How to interpolate the data to the newTimes
+            %                   (e.g., 'linear','mean')
             % OUTPUT
             % v - Activity per trial [nrTimePoints nrTrials]
             % t - Time in the trial (relative to the first frame of the
@@ -36,8 +42,16 @@ classdef Activity < dj.Computed
             arguments
                 tbl (1,1) sbx.Activity
                 act {mustBeText}
+                pv.time (1,:) =  []
+                pv.trial (1,:) =[]
+                pv.method {mustBeText} = 'linear';
             end
-             [v,allTr,allRoi,allExpt] = fetchn(tbl & struct('act',act),'activity','trial','roi','starttime');
+            if isempty(pv.trial)
+                key = struct('act',act);
+            else
+                key = struct('act',act,'trial',num2cell(pv.trial(:))');
+            end
+             [v,allTr,allRoi,allExpt] = fetchn(tbl & key,'activity','trial','roi','starttime');
              uTrial = unique(allTr);
              nrTrials = numel(uTrial);
              uRoi= unique(allRoi);
@@ -45,14 +59,24 @@ classdef Activity < dj.Computed
              uExpt = unique(allExpt);
              nrExpts = numel(uExpt);
              % Rearrange by trial, expt, roi, and create ND array.
-             [~,~,ix] =unique([allTr string(allExpt) allRoi ],'rows');
+             [uRows,~,ix] =unique([allTr allRoi string(allExpt)],'rows','stable');
              v = reshape(v(ix),[1 nrTrials nrRois nrExpts]);
 
              v =cell2mat(v); % Only works if the expts had the same number of trials
              % Determine time 
              parms = fetch(sbx.ActivityParms & struct('act',act),'*');
-             t = seconds(parms.start:parms.step:parms.stop)';
+             time = seconds(parms.start:parms.step:parms.stop)';
+            nrTimePoints= numel(time);
              tr = uTrial;
+             if ~isempty(pv.time)
+                 v =reshape(v,nrTimePoints,[]);
+                 v =num2cell(v,1);
+                 T = timetable(time,v{:});
+                 T = retime(T,seconds(pv.time(:)),pv.method);
+                 time = T.time;
+                 nrTimePoints =numel(time);
+                 v = reshape(T{:,:},[nrTimePoints nrTrials nrRois nrExpts]);
+             end
              roi = uRoi;
              expt= uExpt;
 
@@ -66,7 +90,7 @@ classdef Activity < dj.Computed
             parms = rmfield(parms,'act');
             parms = namedargs2cell(parms);
             %%  Extract the relevant timetable from sbx.ROI
-            T = get(sbx.Roi & key,sbx.ExperimentSbx &key,parms{:});
+            T = get(sbx.Roi & key,ns.Experiment &key,parms{:});
 
             %% Create tuples and insert
             [~,nrTrials] =size(T);            

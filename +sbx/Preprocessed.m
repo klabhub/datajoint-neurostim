@@ -12,12 +12,45 @@ nrframesinsession : int     # Total number of frames in the session.
 classdef Preprocessed < dj.Imported
     properties (Dependent)
         keySource
+        ops
+        stat
     end
     methods
         function v = get.keySource(~)
             % Restrict to sessions that have sbx file
-            v =(ns.Session & sbx.ExperimentSbx)*sbx.PrepParms;
+            v =(ns.Session & (ns.File & 'extension=''.sbx'''))*sbx.PrepParms;
         end
+
+        function v =  get.ops(tbl)
+            keyCntr = 0;            
+            for key =fetch(tbl*sbx.PrepParms,'*')
+                  keyCntr = keyCntr+1;
+             sessionPath=unique(folder(ns.Experiment & key));
+             resultsFolder = [key.subject '.' key.toolbox '.' key.prep];
+             resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');            
+              v{keyCntr} =   py.numpy.load(resultsFile,allow_pickle=true); %#ok<AGROW>              
+            end
+            if numel(v)==1
+                v =v{1};
+            end
+                 
+        end
+
+        function v =  get.stat(tbl)
+            keyCntr = 0;
+            for key =fetch(tbl*sbx.PrepParms,'*')
+              keyCntr = keyCntr+1;
+              sessionPath=unique(folder(ns.Experiment & key));
+             resultsFolder = [key.subject '.' key.toolbox '.' key.prep];
+             resultsFile =fullfile(sessionPath,resultsFolder,'plane0','stat.mat');
+              load(resultsFile,'stat');
+              v{keyCntr} =   [stat{:}];            %#ok<PROP> 
+            end
+            if numel(v)==1
+                v =v{1};
+            end
+        end
+
     end
     methods (Access=public)
         function v = getFolder(tbl)
@@ -30,6 +63,8 @@ classdef Preprocessed < dj.Imported
                 fprintf('Folder %s  does not exist. Is NS_ROOT set correctly?\n',v);
             end
         end
+
+        
     end
     methods (Access=protected)
 
@@ -43,7 +78,7 @@ classdef Preprocessed < dj.Imported
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
-            dataFldr = file(ns.Experiment & (sbx.ExperimentSbx & key));
+            dataFldr = file(ns.Experiment & (ns.File & 'extension=''.sbx''' & key));
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
             noDir = cellfun(@(x)exist(x,'dir'),dataFldr)==0;
