@@ -1,0 +1,4 @@
+[submodule "datajoint-matlab"]
+	path = datajoint-matlab
+	url = https://github.com/klabhub/datajoint-matlab.git
+	branch = master

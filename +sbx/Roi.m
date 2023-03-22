@@ -19,38 +19,56 @@ compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less c
 classdef Roi < dj.Imported
 
     methods (Access = public)
-        function hScatter = plot(roi,pv)
+        function [hScatter,ax,axImg] = plot(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.
-            % 
+            %
             % INPUT
-            % roi  = (subset of) sbx.Roi 
+            % roi  = (subset of) sbx.Roi
             % Parameter/Value pairs:
             % sz = Size to use for each ROI. By default, the estimated physical size
             %       of the roi is used. But by passing some other property (e.g. tuning per ROI),
             %       this can be visualized.
+            % szLabel  - Label to use in the datatip.
             % color = Color to use for each ROI. By default, the z-scored
-            %           spiking activity across the session is used. 
-            % 
+            %           spiking activity across the session is used.
+            % colorLabel = Label to use in the datatip. 
+            % clim - Color limits to use
+            % showImg  - Set to true to show the mean Ca image as a
+            %               background [true]
+            % colormap - Colormap to use  [hot]
+            %
             % OUTPUT
             %    hScatter - Handle to the scatter object
+            %   ax - Axes showing the cells
+            %  axImg - Axes showing the backgroun image.
             % EXAMPLE
             %
-            % 
-            % plot(sbx.Roi); % Encode all cell radius (size) and z-scored session activity (color). 
-            % plot(sbx.Roi,sz=fetchn(sbx.Roi,'aspect')*10);  % Encode compactness by the size of the circle
+            %
+            % plot(sbx.Roi); % Encode all cell radius (size) and z-scored session activity (color).
+            % z = computed properties of all rois
+            % plot(sbx.Roi,color =z,clim = [0 5]);  % Encode z by the color, crop colors at 5
             arguments
-                roi (1,1) sbx.Roi 
+                roi (1,1) sbx.Roi
                 pv.sz      = []
-                pv.color   = []              
+                pv.szLabel = ''
+
+                pv.color   = []
+                pv.colorLabel = ''
+
+                pv.clim     =[];
+                pv.showImg = true;
+                pv.colormap = hot;
+                
             end
-                   
+
             [x,y,radius,m,sd] = fetchn(roi,'x','y','radius','meanrate','stdrate');
             micPerPix = sbx.micronPerPixel(roi);  % Scaling
-            mixPerPixR = sqrt(sum(micPerPix.^2));            
+            mixPerPixR = sqrt(sum(micPerPix.^2));
             if isempty(pv.sz)
                 % Use the physical size as the size of the cells
-                pv.sz = pi*((radius+eps)*mixPerPixR).^2;
+                pv.sz = pi*(radius*mixPerPixR).^2;
+                pv.szLabel = 'size (\mum^2)';
             end
 
             zeroSize = pv.sz==0;
@@ -62,22 +80,55 @@ classdef Roi < dj.Imported
             if isempty(pv.color)
                 % Use the z-scored rate as the color of the cells
                 z = m./sd;
-                pv.color = z;            
-                clabel  ='Z';
-            else 
-                clabel = '';
+                pv.color = z;                
+                pv.colorLabel = 'rate (Z)';                
             end
 
-            hScatter = scatter(y*micPerPix(1),x*micPerPix(1),pv.sz, pv.color,'filled'); 
+            colormap(pv.colormap)
+            if pv.showImg
+                % Show mean image as background
+                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');
+                [nrY,nrX] =size(meanImg);
+                xImg = (0:nrX-1)*micPerPix(1);
+                yImg = (0:nrY-1)*micPerPix(2);
+                imagesc(xImg,yImg,meanImg)
+                axImg =gca;
+                axis(axImg,"equal")
+                colormap(axImg,gray)
+                xl = [min(xImg) max(xImg)];
+                yl = [min(yImg) max(yImg)];
+                axImg.XLim =xl;
+                axImg.YLim = yl;
+                ax = axes('position',get(axImg,'position'),'Color','none');
+            else
+                ax =gca;
+            end
+
+            % The data 
+            hScatter = scatter(ax,y*micPerPix(1),x*micPerPix(1),pv.sz, pv.color,'filled');
             xlabel 'Y (\mum)'
             ylabel 'X (\mum)'
             % Match Suite2p layout
-            set(gca,'XDir','normal','YDir','reverse');            
-            axis equal
+            set(ax,'XDir','normal','YDir','reverse');
+            if ~isempty(pv.clim)
+                clim(ax,pv.clim)
+            end
+            axis(ax,"equal")
+            ax.Color = "none";
+            ax.XLim =xl;
+            ax.YLim = yl;
             h = colorbar;
-            ylabel(h,clabel);
-            
-    colormap hot
+            ylabel(h,pv.colorLabel);
+            set(axImg,'position',get(ax,'position'))
+
+            % Data tips
+            if ~isempty(pv.szLabel)
+                hScatter.DataTipTemplate.DataTipRows(3).Label = pv.szLabel;
+            end
+            if ~isempty(pv.colorLabel)
+                hScatter.DataTipTemplate.DataTipRows(4).Label = pv.colorLabel;
+            end
+
         end
         function [varargout] = get(roi,expt,pv)
             % Function to retrieve trial-start aligned activity data per
@@ -125,8 +176,8 @@ classdef Roi < dj.Imported
             V = [sessionActivity.(pv.modality)]; %[nrFramesPerSession nrROIs]
 
             % Define the new time axis (time relative to firstFrame event).
-            newTimes = seconds(pv.start:pv.step:pv.stop);            
-            for f = frames'                
+            newTimes = seconds(pv.start:pv.step:pv.stop);
+            for f = frames'
                 thisT = timetable(seconds(f.trialtime),V(f.frame,:),'VariableNames',"Trial" + string(f.trial));
                 if f.trial ==1
                     T= retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
@@ -180,7 +231,7 @@ classdef Roi < dj.Imported
 
                 radius = cat(1,stat.radius); % Pixels
                 radius = radius.*micPerPix;
-           
+
 
                 fprintf('Done.\n')
                 %% Make tuples and insert
