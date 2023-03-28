@@ -75,7 +75,7 @@ classdef Experiment  < dj.Manual
                 obj = p.Results.fun(thisFile);
             end
         end
-        function [out,filename] = get(tbl,varargin)
+        function [out,filename] = get(tbl,plg,pv)
             % function [out,filename] = get(o,varargin)
             % Retrieve all information on a specific plugin in an experiment
             %
@@ -96,72 +96,81 @@ classdef Experiment  < dj.Manual
             % filename - The file that originally provided these values to the
             % database.
             %
-            if ~exists(tbl)
-                out = struct([]);
-                filename = '';
-                return;
+            arguments
+                tbl (1,1) ns.Experiment {mustHaveRows}
+                plg {mustBeText} =  {''}
+                pv.prm {mustBeText} = ""
+                pv.atTrialTime (1,1) double = NaN
             end
-            p = inputParser;
-            p.addRequired('tbl')
-            p.addOptional('plg',{},@(x) (isstring(x) | ischar(x) | iscell(x)))
-            p.addParameter('prm',"",@(x) (isstring(x) | ischar(x)))
-            p.addParameter('atTrialTime',[],@isnumeric);
-            p.parse(tbl,varargin{:});
-
-            if ischar(p.Results.plg)
-                plg = {p.Results.plg};
-            else
-                plg = p.Results.plg;
+            if ischar(plg)
+                plg = {plg};
             end
 
+            nrPlugins = sum(cellfun(@(x) (strlength(x)>0),plg,'uni',true));
 
             ix =1:count(tbl);
             out = cell(numel(ix),1);
             filename = cell(numel(ix),1);
-            cntr =0;
+            exptCntr =0;
             for exptKey=tbl.fetch()'
-                cntr = cntr + 1;
-                filename{cntr} = fetch1(tbl &exptKey,'file');
-                if nargin <2 || isempty(plg)
+                exptCntr = exptCntr + 1;
+                filename{exptCntr} = fetch1(tbl &exptKey,'file');
+                if nrPlugins==0
                     % Get info from all plugins
                     plg  = fetchn( (tbl & exptKey) * ns.Plugin,'plugin_name');
+                    nrPlugins = numel(plg);
                 end
-                % Always get all prms from cic
+                % Always get ***all*** prms from cic
                 v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;
-                plg = setdiff(plg,{'cic'});
-                for pIx = 1:numel(plg)
+                for pIx = 1:nrPlugins
                     plgName = plg{pIx};
+                    if strcmpi(plgName,'cic');continue;end % skip
                     % Get the properties for this plugin
-                    if isempty(p.Results.prm)
+                    if strlength(pv.prm)==0
                         % All prms
                         parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
                     else
                         % One prm
-                        parms =  (ns.PluginParameter & ['property_name=''' p.Results.prm '''']) & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
+                        parms =  (ns.PluginParameter & "property_name='"+string(pv.prm) + "'") & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
                     end
                     if ~exists(parms)
                         continue;
                     end
                     v.(plgName) = get(parms);
-                    % Post-process non-CIC plugins if requested                    
-                    if ~strcmpi(plgName,'cic') && ~isempty(p.Results.atTrialTime)
-                        out{cntr} = ns.attrialtime(v.(plgName),p.Results.prm,p.Results.atTrialTime,v.cic);
-                    end
                 end
-                if ~isempty(p.Results.prm) && ~isempty(p.Results.atTrialTime)
-                    % Return only the values, not the time/trial; they are
-                    % stored in the out cell array already
+
+                % Post-process all (including cic) if requested                
+                if ~isnan(pv.atTrialTime)
+                        % Single prm from a specified plugin,  at a specific time
+                        out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
+                elseif strlength(pv.prm) ~=0  
+                    % Single plugin, all values.
+                    % Return only the values, not the time/trial; 
+                    out{exptCntr} = v.(plg{1}).(pv.prm);
                 else
+                    % Everything
                     % Return struct with all info
-                    out{cntr}=v;
+                    out{exptCntr}=v;
                 end
             end
 
             % Convenience; remove the wrappping cell if it only a single
             % experiment was queried.
             if numel(ix)==1
-                out = out{1};
+                out = out{1}; % Single column
                 filename=filename{1};
+            end
+
+            if strlength(pv.prm)~=0
+                % Single parm, join values as columns
+                if iscell(out)
+                    out =cat(2,out{:});
+                else
+                    out = out';
+                end
+                if iscell(out)
+                    out = cell2mat(out);
+                end
             end
 
 
@@ -188,7 +197,7 @@ classdef Experiment  < dj.Manual
 
             if isempty(p.Results.oldKey)
                 % Run all
-                for key=tbl.fetch()'
+                for key=tbl.fetch('file')'
                     try
                         updateWithFileContents(tbl,'oldKey',key,'newOnly',p.Results.newOnly,'root',p.Results.root);
                     catch me
@@ -290,6 +299,6 @@ classdef Experiment  < dj.Manual
             s  = load(filename,'c');
             o=s.c;
         end
-        
+
     end
 end

@@ -129,7 +129,7 @@ classdef PluginParameter < dj.Part
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
-            v= struct;
+           
             %% First the Global consts.            
             [vals,names] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name');
             glbl = cell(1,2*numel(names));

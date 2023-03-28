@@ -34,7 +34,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 % readJson - Read the json files containing meta data and add to the tables
 %               [true]
 % paradigm = Cell array or char of paradigms to include. Leave empty to include
-%               all. Paradigms are matchED case-insensitively. [{}]
+%               all. Paradigms are matched case-insensitively. [{}]
 % subject = Cell array or char of subjects to include. Leave empty to include all.
 %               Subjects are matched case insensitivelly. [{}].
 % folderFun -  Function, provided by the user, to handle special folders.
@@ -134,6 +134,7 @@ end
 %% Massage the meta data so that they match the formats stored in the DataJoint database
 [~,file,ext] = fileparts(fullName);  % Store only the filename. Path can be reconstructed from date and root. 
 file = strcat(file,ext);
+if ~iscell(file);file={file};end;
 [meta.file] = deal(file{:});
 [meta.isFolder] = deal(false); % Mark as true NS files, not folders with other files.
 [meta.type] = deal('.mat');
@@ -262,7 +263,13 @@ if p.Results.readJson
 
     % See if there are any Session JSON files and put information in the table
     for i=1:nrSessions
-        sessionJsonFile = fullfile(p.Results.root,tSession.session_date{i},[tSession.subject{i} '.json']);
+        
+        if nrSessions==1
+            sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".json");
+        else
+            sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i} '.json']);
+        end
+
         if exist(sessionJsonFile,'file')
             thisJson = readJson(sessionJsonFile);
         else

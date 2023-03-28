@@ -101,7 +101,11 @@ isMeta = setdiff(tbl.Properties.VariableNames,hdr.names);
 metaTbl = table;
 for i=ix(:)'
     for j= i:numel(isMeta)
-        metaTbl = [metaTbl; [tbl(i,pkey) table(isMeta(j), tbl{i,isMeta{j}},'VariableNames',{'meta_name','meta_value'})]]; %#ok<AGROW>
+        if height(tbl)>1
+            metaTbl = [metaTbl; [tbl(i,pkey) table(isMeta(j), tbl{i,isMeta{j}},'VariableNames',{'meta_name','meta_value'})]]; %#ok<AGROW>
+        else
+            metaTbl = [metaTbl; [tbl(i,pkey) table(isMeta(j), tbl(i,isMeta{j}),'VariableNames',{'meta_name','meta_value'})]]; %#ok<AGROW>
+        end
     end
 end
 if ~isempty(metaTbl)

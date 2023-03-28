@@ -32,7 +32,7 @@ classdef Roi < dj.Imported
             % szLabel  - Label to use in the datatip.
             % color = Color to use for each ROI. By default, the z-scored
             %           spiking activity across the session is used.
-            % colorLabel = Label to use in the datatip. 
+            % colorLabel = Label to use in the datatip.
             % clim - Color limits to use
             % showImg  - Set to true to show the mean Ca image as a
             %               background [true]
@@ -59,7 +59,7 @@ classdef Roi < dj.Imported
                 pv.clim     =[];
                 pv.showImg = true;
                 pv.colormap = hot;
-                
+
             end
 
             [x,y,radius,m,sd] = fetchn(roi,'x','y','radius','meanrate','stdrate');
@@ -80,8 +80,8 @@ classdef Roi < dj.Imported
             if isempty(pv.color)
                 % Use the z-scored rate as the color of the cells
                 z = m./sd;
-                pv.color = z;                
-                pv.colorLabel = 'rate (Z)';                
+                pv.color = z;
+                pv.colorLabel = 'rate (Z)';
             end
 
             colormap(pv.colormap)
@@ -104,7 +104,7 @@ classdef Roi < dj.Imported
                 ax =gca;
             end
 
-            % The data 
+            % The data
             hScatter = scatter(ax,y*micPerPix(1),x*micPerPix(1),pv.sz, pv.color,'filled');
             xlabel 'Y (\mum)'
             ylabel 'X (\mum)'
@@ -175,7 +175,6 @@ classdef Roi < dj.Imported
             sessionActivity= fetch(roi,pv.modality); % Values (e.g., spikes) across session
             V = [sessionActivity.(pv.modality)]; %[nrFramesPerSession nrROIs]
 
-            % Define the new time axis (time relative to firstFrame event).
             newTimes = seconds(pv.start:pv.step:pv.stop);
             for f = frames'
                 thisT = timetable(seconds(f.trialtime),V(f.frame,:),'VariableNames',"Trial" + string(f.trial));

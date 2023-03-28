@@ -61,8 +61,56 @@ classdef Frame < dj.Imported
                     % frame. Guessing it was the last. 
                     laserOnTime(end)=[];
                     fprintf(2,'Removed 1 extraneous LaserOn TTL (last)\n')
+                elseif nrFrames > nrTTL
+                    dt = diff(laserOnTime);
+                    sd  = std(dt);
+                    typicalDt = median(dt);
+                    nrMissing = nrFrames-nrTTL;
+                    framerate = fetch1(sbx.Preprocessed & key,'framerate');
+                    SLACK = 0.05;
+                    if max(seconds(dt)) > (1+SLACK)/framerate
+                        error('No TTL for %d frames, and frames do not appear to be successive (max dt=%s)',(nrFrames-nrTTL),max(dt));
+                    else
+                        fprintf(2,'Trying to fix %d missing TTL by reading eye data\n',nrFrames-nrTTL)
+                        % The frames for which we have recorded TTLs appear to be consecutive
+                        % (within SLACK *framerate), so the missing TTL are likely either at the start 
+                        % or the end. 
+                      
+                        ttlStartTime = thisT.clockTime(1);
+                        ttlStopTime = thisT.clockTime(end);
+                        % The clock on the scanbox computer can be read
+                        % from the _eye file (or _ball, but _eye is
+                        % smaller). I tried speeding this up with partial
+                        % loading using matfile, but that made things even
+                        % slower (probably the .mat is an older style)
+                        mf = load(fullfile(fldr,filename,[filename '__001_eye.mat']));
+                        scanboxStartTime = datetime(mf.abstime(1,1).AbsTime);
+                        scanboxStopTime = datetime(mf.abstime(end,1).AbsTime); % First and last
+                        % Compare the clocks (This assumes that the
+                        % Neurostim and the Scanbox computer have a clock
+                        % that is at least approximately synchronized (e.g., in the OS).
+                        offsetAtStart = abs(scanboxStartTime-ttlStartTime) ;
+                        offsetAtStop  = abs(scanboxStopTime-ttlStopTime);                         
+                        if offsetAtStop < offsetAtStart
+                            % The stop times match best. Prepend.
+                            laserOnEstimated = laserOnTime(1) - flipud(cumsum(1:nrMissing)'*typicalDt);
+                            laserOnTime = [laserOnEstimated;laserOnTime];  %#ok<AGROW> 
+                            fprintf(2,'TTL acquisition probably started too late (%s<%s). Prepending %d estimated laser onset times (Laser SD = %.2f ms)\n',offsetAtStop,offsetAtStart,nrMissing,seconds(sd)*1000)
+                        else 
+                            % The start times match best. Append.
+                            laserOnEstimated = laserOnTime(end) + cumsum(1:nrMissing)'*typicalDt;
+                            laserOnTime = [laserOnTime; laserOnEstimated];  %#ok<AGROW> 
+                            fprintf(2,'TTL acquisition probably  stopped too early (%s<%s). Appending %d estimated laser onset times (Laser SD = %.2f ms)\n',offsetAtStart,offsetAtStop,nrMissing,seconds(sd)*1000)
+                        end   
+                        % Diagnostics
+%                         [grabbing,~,~,sbxGrabTime] = get(c.scanbox.prms.grabbing,'withDataOnly',true);
+%                         grabStartTime= seconds(sbxGrabTime(grabbing)/1000);
+%                         grabStopTime = seconds(sbxGrabTime(~grabbing)/1000);
+%                         nrExpected = round(framerate*seconds(grabStopTime-grabStartTime));
+
+                    end
                 else
-                    error('THe number of TTL pulses recorded by mdaq (%d) does not match the frames stored by ScanBox (%d)',nrFrames,nrTTL);
+                    error('The number of TTL pulses recorded by mdaq (%d) is larger than the number of frames stored by ScanBox (%d)',nrFrames,nrTTL);
                 end
                 % Get the cic parameters for this experiment
                 prms  = get(ns.Experiment & expt,'cic');

@@ -20,6 +20,7 @@ function vals = attrialtime(props,propName,time,c)
 
 
 nrTrials  = max(c.trial);
+
 allEventValues = props.(propName);
 if isfield(props,[propName 'Trial'])
 allEventTrials = props.([propName 'Trial']);

@@ -6,6 +6,7 @@
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
 nrframesinsession : int     # Total number of frames in the session.
+framerate : double          # Acquisition framerate
 %}
 %
 % Sessions with entries in the Populate this table
@@ -88,19 +89,19 @@ classdef Preprocessed < dj.Imported
             end
             switch (prep.toolbox)
                 case 'suite2p'
-                    ops = py.suite2p.default_ops();
-                    ops{'input_format'} = "sbx";
+                    opts = py.suite2p.default_ops();
+                    opts{'input_format'} = "sbx";
                         %replace parameters defined in the prep
                         %settings
                         fn= fieldnames(prep.parms);
                         for  f= 1:numel(fn)
                             try
-                                current= ops{fn{f}};
+                                current= opts{fn{f}};
                                 new = feval(class(current),prep.parms.(fn{f}));
                             catch me
                                 error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
                             end
-                            ops{fn{f}} = new;
+                            opts{fn{f}} = new;
                         end
                     resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
                     if ~exist(resultsFile,'file')
@@ -111,7 +112,7 @@ classdef Preprocessed < dj.Imported
                             'fast_disk',fullfile(sessionPath,resultsFolder)));
                         % Pass to python to process
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-                        py.suite2p.run_s2p(ops =ops,db=db);
+                        py.suite2p.run_s2p(ops =opts,db=db);
                         % Couldn't figure out how to convert stat.npy so
                         % save it as .mat (Not using save_mat to avoid
                         % duplicating all of the fluorescence data in F.mat
@@ -124,10 +125,11 @@ classdef Preprocessed < dj.Imported
                         fprintf('Preprocessing results already exist. Importing %s\n',resultsFile);
                     end
                     % Load the save ops.npy to extract the mean image
-                    ops =py.numpy.load(resultsFile,allow_pickle=true);
-                    img= single(ops.item{'meanImg'}); % Convert to single to store in DJ
-                    N = double(ops.item{'nframes'});
-                    tpl = mergestruct(key,struct('img',img,'folder',fullfile(sessionPath,resultsFolder),'nrframesinsession',N));
+                    opts =py.numpy.load(resultsFile,allow_pickle=true);
+                    img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
+                    N = double(opts.item{'nframes'});
+                    fs = double(opts.item{'fs'});
+                    tpl = mergestruct(key,struct('img',img,'folder',fullfile(sessionPath,resultsFolder),'nrframesinsession',N,'framerate',fs));
                     insert(tbl,tpl);
                 case 'caiman'
                     % TODO
