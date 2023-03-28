@@ -48,14 +48,7 @@ arguments
     pv.binarize (1,1) logical = false
 end
 
-if pv.nrWorkers ==-1
-    if isempty(gcp('nocreate'))
-        pv.nrWorkers = 0;
-    else
-        pv.nrWorkers  = gcp('nocreate').NumWorkers;
-    end
-end
-
+%% Get the frames
 switch class(in)
     case 'ns.Experiment'
         % A key representing an experiment
@@ -73,6 +66,22 @@ switch class(in)
         error('sbx.eyeTracker cannot handle %s inputs',class(in));
 end
 
+%% Start parpool if requested
+if pv.nrWorkers ==-1
+    if isempty(gcp('nocreate'))
+        pv.nrWorkers = 0;
+    else
+        pv.nrWorkers  = gcp('nocreate').NumWorkers;
+    end
+end
+
+%% Open a figure if requested
+if pv.manualRoi || pv.movie
+    hFig= findobj(0,'type','figure','name','movieTracker');
+    if isempty(hFig)
+        hFig =  figure('name','movieTracker');
+    end
+end
 
 
 frames = squeeze(movie.data); % Squeeze out the 3rd singleton dimension
@@ -81,63 +90,60 @@ frames = squeeze(movie.data); % Squeeze out the 3rd singleton dimension
 frames = single(frames);
 frames = (frames-min(frames,[],"all"))./(max(frames,[],"all")-min(frames,[],"all"));
 
-quality=nan(nrFrames,1);
-  x = nan(nrFrames,1);
-            y = nan(nrFrames,1);
-            a = nan(nrFrames,1);
-  velocity = nan(nrFrames,1);
-            quality  = nan(nrFrames,1);
-                    
+%% Select an ROI manually or based on the search radius
+if pv.manualRoi
+    figure(hFig)
+    colormap("gray")
+    imagesc(mean(frames,3,"omitnan"));
+        [xLim,yLim] = ginput(2);
+        center = [xLim(1) yLim(1)];
+        searchRadius = ceil(sqrt(diff(xLim).^2+diff(yLim).^2));
+        pv.maxRadius = min(pv.maxRadius,searchRadius);
+    range = (-searchRadius:searchRadius);
+    xWindow = round(center(1)+range);
+    yWindow = round(center(2)+range);
+else
+    xWindow  = round((-pv.searchRadius:pv.searchRadius) + nrX/2);
+    yWindow  = round((-pv.searchRadius:pv.searchRadius) + nrY/2);
+end
+
+xWindow(xWindow< 1 | xWindow>nrX) =[];
+yWindow(yWindow< 1 | yWindow>nrY) =[];
+zoomed = frames(yWindow,xWindow,:);
+
+
+%% Initialize output vars
+quality = nan(nrFrames,1);
+x       = nan(nrFrames,1);
+y       = nan(nrFrames,1);
+a       = nan(nrFrames,1);
+velocity = nan(nrFrames,1);
+quality  = nan(nrFrames,1);
+
+
+if pv.binarize
+    % Binarize the images based on a threshold estimated from
+    % a random sample of 100 frames.
+    % Does not seem to help.
+    iCntr=0;
+    level = nan(100,1);
+    for i=randperm(nrFrames,100)
+        iCntr = iCntr+1;
+        level(iCntr) = graythresh(zoomed(:,:,i));
+    end
+    zoomed= imbinarize(zoomed,median(level));
+end
+
+%% Run the tracking algorithm
 if pv.track
     switch pv.type
         case 'eye'
-          
-            if pv.manualRoi
-                hPreview= figure;
-                colormap(hsv)
-                imagesc(frames(:,:,1));
-
-
-                [xLim,yLim] = ginput(4);
-                xWindow = round(min(xLim):max(xLim));
-                yWindow = round(min(yLim):max(yLim));
-                maxRadius = round(max(yWindow)/2);
-
-
-                %                 [xLow,yLow] = ginput(5);
-                %                 ixLow = sub2ind([nrY nrX],round(yLow),round(xLow));
-                %
-                %                 [xHi,yHi] = ginput(5);
-                %                 ixHi = sub2ind([nrY nrX],round(yHi),round(xHi));
-                %                 high = mean(frames(ixHi))
-                %                 frames(frames>high) = 0;
-                %
-
-                close(hPreview)
-            else
-                xWindow  = round((-pv.searchRadius:pv.searchRadius) + nrX/2);
-                yWindow  = round((-pv.searchRadius:pv.searchRadius) + nrY/2);
-                maxRadius= pv.maxRadius;
-            end
-            xWindow(xWindow< 1 | xWindow>nrX) =[];
-            yWindow(yWindow< 1 | yWindow>nrY) =[];
-
-            zoomed = frames(yWindow,xWindow,:);
-            %  iCntr=0;
-            %             level = nan(100,1);
-            %             for i=randperm(nrFrames,100)
-            %                 iCntr = iCntr+1;
-            %                 level(iCntr) = graythresh(zoomed(:,:,i));
-            %             end
-            %             %zoomed= imbinarize(zoomed,median(level));
-
             fprintf('Eye tracking analysis on %d workers\n',pv.nrWorkers)
             %parfor (f=1:nrFrames,pv.nrWorkers)
             for f=1:nrFrames  % debug
-
-                [center,radius,quality(f)] = imfindcircles(zoomed(:,:,f),[pv.minRadius maxRadius],'Method',pv.method,'Sensitivity',pv.sensitivity,'EdgeThreshold',pv.edgeThreshold); %#ok<PFBNS>
+                [center,radius,thisQuality] = imfindcircles(zoomed(:,:,f),[pv.minRadius searchRadius],'Method',pv.method,'Sensitivity',pv.sensitivity,'EdgeThreshold',pv.edgeThreshold); %#ok<PFBNS>
                 if ~isempty(center)
-                    [~,idx] = max(quality(f)); % pick the circle with best score
+                    [~,idx] = max(thisQuality); % pick the circle with best score
                     x(f) = xWindow(1) + center(idx,1);
                     y(f) = yWindow(1) + center(idx,2);
                     a(f) = pi*radius(idx)^2;
@@ -146,25 +152,14 @@ if pv.track
         case 'ball'
             % Determine successive image shifts by maximizing the
             % cross correlation.
-            if pv.binarize
-                % Binarize the images based on a threshold estimated from 
-                % a random sample of 100 frames. 
-                % Does not seem to help.
-                iCntr=0;
-                level = nan(100,1);
-                for i=randperm(nrFrames,100)
-                    iCntr = iCntr+1;
-                    level(iCntr) = graythresh(frames(:,:,i));
-                end
-                frames= imbinarize(frames,median(level));
-            end
-              % Although this could use a parfor, that does not provide much
+
+            % Although this could use a parfor, that does not provide much
             % of an advantage (if any). Probably because xcorr already uses
-            % multithreading. I also tried imregtform and normxcorr2 but 
-            % saw worse performance.             
+            % multithreading. I also tried imregtform and normxcorr2 but
+            % saw worse performance.
             for f=2:nrFrames
-                z1 = frames(:,:,f);
-                z2 = frames(:,:,f-1);
+                z1 = zoomed(:,:,f);
+                z2 = zoomed(:,:,f-1);
                 z1 = z1 -mean(z1,"all");
                 z2 = z2 -mean(z2,"all");
                 xc =xcorr2(z1,z2);
@@ -173,43 +168,45 @@ if pv.track
                 [dy,dx]= ind2sub(size(xc),ix);
                 dy = dy-size(z2,1);
                 dx = dx-size(z2,2);
-                velocity(f) = dx  + 1i.*dy;                
+                velocity(f) = dx  + 1i.*dy;
             end
     end
 end
 
-%% Show a movie 
+%% Show a movie
 if pv.movie
     % Show it
-    hFig = figure(1);
-    set(hFig,'Units','Pixels','Position',[100 100 2*nrX 2*nrY])
+    figure(hFig);
     ax = axes('Position',[0 0 1 1]);
     colormap(ax,pv.map)
     axis(ax,'off')
-                            
+
     if pv.track
         switch (pv.type)
             case 'eye'
-                hPupil = plot(ax,0,0,'ro','MarkerSize',1);
             case 'ball'
                 % Show the tracked velocity in the lower left corner
                 pos = get(ax,'Position');
                 axTrack = polaraxes('Position',[0 0 pos(3:4)/5]);
                 % Outliers will point out of the circle.
-                axTrack.RLim = [0 prctile(abs(velocity),95)];                
-                
+                axTrack.RLim = [0 prctile(abs(velocity),95)];
         end
 
         for f=1:nrFrames
-            imagesc(ax,movie.data(:,:,f));
-
+            imagesc(ax,1:nrX,1:nrY,frames(:,:,f));
+            hold on
+            imagesc(ax,xWindow,yWindow,zoomed(:,:,f));
+            
+            % Show the zoomed search limits
+            line([min(xWindow) min(xWindow) max(xWindow) max(xWindow) min(xWindow) ]',[min(yWindow) max(yWindow) max(yWindow) min(yWindow) min(yWindow)])
             if  pv.track
                 switch (pv.type)
                     case 'eye'
                         if ~isnan(x(f))
-                            hPupil.XData = x(f);
-                            hPupil.YData = y(f);
-                            hPupil.MarkerSize = sqrt(a(f));
+                            % Show the pupil estimate
+                            areaScale=(hFig.Position(3)/nrX).^2;
+                            scatter(ax,x(f),y(f),areaScale*a(f),'r');
+                            hold off
                         end
                     case 'ball'
                         if ~isnan(velocity(f))
@@ -219,32 +216,34 @@ if pv.movie
                             nrF =numel(fToKeep);
                             h = polarplot(axTrack,[complex(zeros(1,nrF)) ;velocity(fToKeep)']);
                             % Use shading such that the most recent frame
-                            % is black and earlier ones fade to white.                            
+                            % is black and earlier ones fade to white.
                             ix = round(linspace(255,1,nrF));
-                            colors = gray; 
+                            colors = gray;
                             colors = num2cell(colors(ix,:),2)';
-                            [h.Color] =deal(colors{:});                                                        
+                            [h.Color] =deal(colors{:});
                         end
                         if ~isnan(quality(f))
                             hold on
                             polarplot(0,0,'.','MarkerSize',10,'Color',[max(0,1-quality(f)) min(1,quality(f)) 0])
                             hold off
                         end
-                        % polarplot puts ticks back every time. 
-                        axTrack.RTickLabel = [];                            
-                        axTrack.ThetaTickLabel  = [];  
-                        axTrack.RTick = [];                            
-                        axTrack.ThetaTick  = [];  
+                        % polarplot puts ticks back every time.
+                        axTrack.RTickLabel = [];
+                        axTrack.ThetaTickLabel  = [];
+                        axTrack.RTick = [];
+                        axTrack.ThetaTick  = [];
                 end
             end
             drawnow
         end
-    else
-           for f=1:nrFrames
-            imagesc(ax,movie.data(:,:,f));
-            colormap(ax,pv.map)
+    else % Not tracking just viewing the movie
+        for f=1:nrFrames
+            imagesc(ax,frames(:,:,f));
+            hold on
+            % Show the zoomed search limits
+            line([min(xWindow) min(xWindow) max(xWindow) max(xWindow) min(xWindow) ]',[min(yWindow) max(yWindow) max(yWindow) min(yWindow) min(yWindow)])
             drawnow
-           end
+        end
     end
 end
 
