@@ -134,10 +134,8 @@ end
 %% Massage the meta data so that they match the formats stored in the DataJoint database
 [~,file,ext] = fileparts(fullName);  % Store only the filename. Path can be reconstructed from date and root. 
 file = strcat(file,ext);
-if ~iscell(file);file={file};end;
+if ~iscell(file);file={file};end
 [meta.file] = deal(file{:});
-[meta.isFolder] = deal(false); % Mark as true NS files, not folders with other files.
-[meta.type] = deal('.mat');
 [meta.bytes] = deal(dirInfo.bytes);
 [meta.provenance] =deal("");
 session_dates = deal(strrep({meta.session_date},filesep,'-'));  % Match ISO format of DJ
@@ -209,7 +207,7 @@ if p.Results.readJson
 
     % Read associated JSON files (if they exist)
     for i=1:nrExperiments
-        jsonFile= regexprep(meta(i).file,['(\.mat$)'],'.json'); % Swap extension
+        jsonFile= regexprep(fullName{i},'(\.mat$)','.json'); % Swap extension
         if exist(jsonFile,'file')
             thisJson = readJson(jsonFile);
         else
@@ -262,8 +260,7 @@ if p.Results.readJson
     end
 
     % See if there are any Session JSON files and put information in the table
-    for i=1:nrSessions
-        
+    for i=1:nrSessions        
         if nrSessions==1
             sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".json");
         else

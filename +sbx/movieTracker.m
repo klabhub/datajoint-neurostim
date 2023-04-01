@@ -107,13 +107,14 @@ nrFrames= size(frames,3);
 [nrY,nrX,nrFrames] =size(frames(:,:,max(1,pv.startFrame):min(nrFrames,pv.stopFrame)));
 % Scale
 frames = single(frames);
-frames = (frames-min(frames,[],"all"))./(max(frames,[],"all")-min(frames,[],"all"));
+%frames = (frames-min(frames,[],"all"))./(max(frames,[],"all")-min(frames,[],"all"));
 
 %% Select an ROI manually or based on the search radius
 if pv.manualRoi && ~isstruct(pv.track)
     figure(hFig)
     colormap("gray")
-    imagesc(mean(frames,3,"omitnan"));
+    %imagesc(mean(frames,3,"omitnan"));
+    imagesc(frames(:,:,1));
     [xLim,yLim] = ginput(2);
     center = [xLim(1) yLim(1)];
     searchRadius = ceil(sqrt(diff(xLim).^2+diff(yLim).^2));

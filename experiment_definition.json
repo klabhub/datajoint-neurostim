@@ -1,7 +1,8 @@
 {
 	"Fields":{
 "analyze":{"Description":"Analyze or not (0/1)"},
-"comments":{"Description":"Free form comments"}
+"comments":{"Description":"Free form comments"},
+"provenance":{"Description":"File provenance."}
 	},
 	"Locked":1
 } 

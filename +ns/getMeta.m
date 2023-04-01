@@ -9,7 +9,7 @@ function T = getMeta(tbl,meta)
 % T  -  A Matlab Table with columns for the primary keys of the table, plus columns
 %       for each of the requested meta parameters. 
 arguments
-    tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subejct','ns.Session'})}
+    tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subject','ns.Session'})}
     meta {mustBeText}
 end
 if ischar(meta)
@@ -17,12 +17,14 @@ if ischar(meta)
 end
 % Consider only files that don't have the info meta data 
 metaTable = feval([class(tbl) 'Meta']);
-T = fetchtable(tbl & metaTable & struct('meta_name',meta));
+T = fetchtable(tbl);
 
 for i=1:numel(meta)
     thisMetaT= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
     thisMetaT = addvars(thisMetaT,thisMetaT.meta_value,'NewVariableNames',meta{i});
     thisMetaT =removevars(thisMetaT,["meta_name","meta_value"]);
-    T = innerjoin(T,thisMetaT);
+    if ~isempty(thisMetaT)
+        T = innerjoin(T,thisMetaT);
+    end
 end
 

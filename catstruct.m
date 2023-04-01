@@ -28,6 +28,7 @@ hasMissingIx = find(~cellfun(@isempty,missingFields));
 allMissingFields = unique(cat(1,missingFields{hasMissingIx}));
 
 if ~isempty(hasMissingIx)
+    % Fill in the missing fields
     % Find the class of each missing field
     noneMissing = setdiff(1:nrStructs,hasMissingIx);
     if any(noneMissing)
@@ -76,7 +77,6 @@ if ~isempty(hasMissingIx)
             end
         end
     end
-
-
-    v = cat(dim,varargin{:});
 end
+
+ v = cat(dim,varargin{:});
