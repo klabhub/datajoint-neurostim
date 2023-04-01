@@ -1,6 +1,5 @@
 {
 	"Fields": {
-"subject":{"Description":"Unique identifier for a subject."},
 "sex":{"Description":"Subject sex"},
 "dob":{"Description":"Date of Birth in ISO 8601 format"},
 "species":{"Description":"Subject species"},

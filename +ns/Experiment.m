@@ -188,18 +188,20 @@ classdef Experiment  < dj.Manual
             % specified or empty, all experiments in tbl will be updated).
             % newOnly  - Set to true to update only those experiments that
             % have no information in the database currently. [true]
+            % cicOnly -  Set to true to ignore plugins other than CIC.
             p =inputParser;
             p.addRequired('tbl');
             p.addParameter('oldKey',struct([]));
             p.addParameter('newOnly',true,@islogical);
             p.addParameter('root',getenv('NS_ROOT'));
+            p.addParameter('cicOnly',false,@islogical);
             p.parse(tbl,varargin{:});
 
             if isempty(p.Results.oldKey)
                 % Run all
                 for key=tbl.fetch('file')'
                     try
-                        updateWithFileContents(tbl,'oldKey',key,'newOnly',p.Results.newOnly,'root',p.Results.root);
+                        updateWithFileContents(tbl,'oldKey',key,'newOnly',p.Results.newOnly,'root',p.Results.root,'cicOnly',p.Results.cicOnly);
                     catch me
                         fprintf(2,'Failed updating contents from %s\n (%s)',key.file,me.message);
                     end
@@ -225,6 +227,12 @@ classdef Experiment  < dj.Manual
             % If the file cannot be read fully (for instance because some
             % classes are not on the current Matlab path) the cic object
             % will be incomplete and some of the code below will fail.
+            if p.Results.cicOnly
+                % Turn off this warning as it is more or less expected that
+                % some will fail, but we're ignoring them anyway
+                warning('off','MATLAB:load:classNotFound');
+                 warning('off','MATLAB:class:DefaultObjectSubstitution');
+            end
             try
                 c  = ns.Experiment.load(file);
             catch
@@ -232,7 +240,10 @@ classdef Experiment  < dj.Manual
                 fprintf(2,'Failed to load %s \n',file)
                 return;
             end
-
+            if p.Results.cicOnly
+                warning('on','MATLAB:load:classNotFound');
+                warning('on','MATLAB:class:DefaultObjectSubstitution');
+            end
             if isfield(c,'ptbVersion')
                 ptbVersion = c.ptbVersion.version;
             else
@@ -280,7 +291,13 @@ classdef Experiment  < dj.Manual
             end
             if actualNrTrialsStarted>1
                 % re-add each plugin (pluginOrder includes stimuli)
-                for plg = [c.pluginOrder c]
+                if p.Results.cicOnly
+                    plgsToAdd = c;
+                else
+                    plgsToAdd= [c.pluginOrder c];
+                end
+
+                for plg = plgsToAdd
                     try
                         plgKey = struct('starttime',oldKey.starttime,'session_date',oldKey.session_date,'subject',oldKey.subject);
                         make(ns.Plugin,plgKey,plg);

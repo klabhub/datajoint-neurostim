@@ -12,6 +12,8 @@ function nsAddToDataJoint(tSubject,tSession ,tExperiment,varargin)
 %               without asking for confirmation (i.e., when updating information).
 % root      - Root folder of files, defaults to getenv('NS_ROOT')
 % populateFile - Run populate(ns.File) to add dependent files.
+% cicOnly   - Set tot true to only add CIC information (and not other
+%               plugins)
 % dryrun      - Set to true to simulate what would happen without making
 %               changes to the database.
 % BK -Jan 2023
@@ -22,6 +24,7 @@ p.addParameter('safeMode',true,@islogical);
 p.addParameter('root',getenv('NS_ROOT'));
 p.addParameter('populateFile',true,@islogical)
 p.addParameter('dryrun',false,@islogical)
+p.addParameter('cicOnly',false,@islogical)
 p.parse(varargin{:});
 
 currentSafeMode= dj.config('safemode');
@@ -47,7 +50,7 @@ tExperiment = removevars(tExperiment,'id');
 if  ~p.Results.dryrun && ~isempty(newExpts)
     if p.Results.readFileContents
         % Will read each (new) file and add its contents to DataJoint
-        updateWithFileContents(ns.Experiment & newExpts,'root',tExperiment.Properties.CustomProperties.root);
+        updateWithFileContents(ns.Experiment & newExpts,'root',tExperiment.Properties.CustomProperties.root,'cicOnly',p.Results.cicOnly);
     end
 
     if p.Results.populateFile
@@ -102,7 +105,7 @@ for row=1:height(tbl)
     dbTpl = fetch(djTbl & thisPrimaryTpl);
     thisTblTpl =table2struct(tbl(row,tblFields));% Only the fields that are defined in the SQL database.
     for m=1:nrMeta
-        thisMetaTpl(m,1) = mergestruct(thisPrimaryTpl,struct('meta_name',metaFields{m},'meta_value',tbl{row,metaFields{m}})); %#ok<AGROW>
+        thisMetaTpl(m,1) = mergestruct(thisPrimaryTpl,struct('meta_name',metaFields{m},'meta_value',char(tbl{row,metaFields{m}}))); %#ok<AGROW>
     end
     if isempty(dbTpl)
         % No match with the primary key
@@ -142,6 +145,7 @@ if dryrun
 else
     % Would be nice to wrap in a transactiomn, but cannot insert before
     % commiting the del.
+
     fprintf('Updating DataJoint for %s ...\n',djTblName)
     if ~isempty(newTpls)
         fprintf('Adding new tuples to %s \n',djTblName)

@@ -51,6 +51,8 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %                   database. [false]
 % readFileContents - Set to true to read file contents when adding to the
 %                   DataJoint database [false]
+% cicOnly   - Set tot true to only add CIC information (and not other
+%               plugins)
 % safeMode  -   Set to false to remove tuples from the Datajoint database
 %               without asking for confirmation (i.e., when updating information).
 % OUTPUT
@@ -73,6 +75,7 @@ p.addParameter('subject',{});
 p.addParameter('folderFun','');
 p.addParameter('addToDataJoint',false,@islogical)
 p.addParameter('readFileContents',false,@islogical)
+p.addParameter('cicOnly',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.parse(varargin{:});
 
@@ -337,5 +340,5 @@ tSubject = movevars(tSubject,{'subject'},'after',1);
 
 
 if p.Results.addToDataJoint
-    nsAddToDataJoint(tSubject,tSession,tExperiment,'readFileContents',p.Results.readFileContents,'safeMode',p.Results.safeMode,'root',p.Results.root);
+    nsAddToDataJoint(tSubject,tSession,tExperiment,'readFileContents',p.Results.readFileContents,'safeMode',p.Results.safeMode,'root',p.Results.root,'cicOnly',p.Results.cicOnly);
 end
