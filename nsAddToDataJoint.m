@@ -49,7 +49,10 @@ tExperiment = removevars(tExperiment,'id');
 [newExpts] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
 if  ~p.Results.dryrun && ~isempty(newExpts)
     if p.Results.readFileContents
-        % Will read each (new) file and add its contents to DataJoint
+        % Read each (new) file and add its contents to DataJoint
+        % In this process the Experiment tpl is first deleted then re-added
+        % with the information from the file. (No code yet to avoid this
+        % add/delete/add)
         updateWithFileContents(ns.Experiment & newExpts,'root',tExperiment.Properties.CustomProperties.root,'cicOnly',p.Results.cicOnly);
     end
 
