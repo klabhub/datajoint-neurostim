@@ -145,8 +145,10 @@ for row=1:height(tbl)
     end
 end
 % Remove empty meta data( only for new; updates can be empty to remove)
-stay = ~cellfun(@isempty,{newMetaTpls.meta_value},'uni',true);
-newMetaTpls = newMetaTpls(stay); 
+if ~isempty(newMetaTpls)
+    stay = ~cellfun(@isempty,{newMetaTpls.meta_value},'uni',true);
+    newMetaTpls = newMetaTpls(stay); 
+end
 
 if dryrun
     fprintf('[DRYRUN] %s: %d new , %d updated \n %s: %d new meta, %d meta updated\n',djTblName,numel(newTpls),numel(updateTpls),djMetaTblName,numel(newMetaTpls),numel(updateMetaTpls))

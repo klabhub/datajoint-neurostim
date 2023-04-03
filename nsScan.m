@@ -89,13 +89,13 @@ tSubject = [];
 switch (p.Results.schedule)
     case 'y'
         % Allow more than one folder below year
-        srcFolder = fullfile(p.Results.root,datestr(p.Results.date,'yyyy'),'**');
+        srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy')),'**');
     case 'm'
         % Exactly one folder below month
-        srcFolder = fullfile(p.Results.root,datestr(p.Results.date,'yyyy/mm'),'**');
+        srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy/MM')),'**');
     case 'd'
         % Inside the day folder
-        srcFolder = fullfile(p.Results.root,datestr(p.Results.date,'yyyy/mm/dd'));
+        srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy/MM/dd')));
     otherwise
         error('Unknown schedule %s',p.Results.schedule)
 end
@@ -122,7 +122,7 @@ if ispc
 else 
     root = p.Results.root;
 end
-pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\.']);
+pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\.mat$']);
 meta = regexp(fullName,pattern,'names');
 % Prune those file that did not match
 out = cellfun(@isempty,meta);
@@ -130,7 +130,7 @@ meta =[ meta{~out}];
 dirInfo(out) =[];
 fullName(out) = [];
 if isempty(fullName)
-    fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder.p.Results.root);
+    fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
     return;
 end
 
