@@ -10,21 +10,22 @@ function T = getMeta(tbl,meta)
 %       for each of the requested meta parameters. 
 arguments
     tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subject','ns.Session'})}
-    meta {mustBeText}
+    meta {mustBeText} = ""
 end
-if ischar(meta)
+% Get the meta table
+metaTable = feval([class(tbl) 'Meta']);
+
+if strlength(meta)==0
+    % get all meta fields for this tbl
+    meta = unique({fetch(metaTable & tbl,'meta_name').meta_name});
+elseif ischar(meta)
+    % Make cellstring for loop
     meta = {meta};
 end
-% Consider only files that don't have the info meta data 
-metaTable = feval([class(tbl) 'Meta']);
-T = fetchtable(tbl);
-
+% Loop over meta fields to add
 for i=1:numel(meta)
-    thisMetaT= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
-    thisMetaT = addvars(thisMetaT,thisMetaT.meta_value,'NewVariableNames',meta{i});
-    thisMetaT =removevars(thisMetaT,["meta_name","meta_value"]);
-    if ~isempty(thisMetaT)
-        T = innerjoin(T,thisMetaT);
-    end
+    T= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
+    T = addvars(T,T.meta_value,'NewVariableNames',meta{i});
+    T =removevars(T,["meta_name","meta_value"]);  
 end
 

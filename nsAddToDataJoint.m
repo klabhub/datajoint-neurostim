@@ -29,7 +29,8 @@ p.parse(varargin{:});
 
 currentSafeMode= dj.config('safemode');
 dj.config('safemode',p.Results.safeMode);
-
+warnstate =warning('query');
+warning('off', 'DataJoint:longCondition');
 
 %% Add Subjects
 % Replace emppty dates with 0 date
@@ -63,6 +64,7 @@ end
 
 % Restore setting
 dj.config('safemode',currentSafeMode);
+warning(warnstate);
 
 
 end
@@ -142,13 +144,16 @@ for row=1:height(tbl)
         end
     end
 end
+% Remove empty meta data( only for new; updates can be empty to remove)
+stay = ~cellfun(@isempty,{newMetaTpls.meta_value},'uni',true);
+newMetaTpls = newMetaTpls(stay); 
 
 if dryrun
     fprintf('[DRYRUN] %s: %d new , %d updated \n %s: %d new meta, %d meta updated\n',djTblName,numel(newTpls),numel(updateTpls),djMetaTblName,numel(newMetaTpls),numel(updateMetaTpls))
 else
     % Would be nice to wrap in a transactiomn, but cannot insert before
     % commiting the del.
-
+try
     fprintf('Updating DataJoint for %s ...\n',djTblName)
     if ~isempty(newTpls)
         fprintf('Adding new tuples to %s \n',djTblName)
@@ -174,6 +179,11 @@ else
         insert(djMetaTbl,updateMetaTpls); % Insert
         fprintf('\t Done. %d updated tuples\n',numel(updateMetaTpls))
     end
+catch me
+    fprintf(2,'Failed to insert:')
+    tbl
+    me.message
+end
 end
 newTpls = cat(1,newTpls,updateTpls); % Both are considered new as they may need postprocessing(e.g. for Experiment table; read the file or populate ns.File).
 newMetaTpls= cat(1,newMetaTpls,updateMetaTpls);

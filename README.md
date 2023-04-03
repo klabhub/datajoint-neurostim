@@ -108,6 +108,7 @@ Once you make changes to any of the meta data, the Update button will turn green
 To test what would be done without making any changes, you select dryrun and read was is shown on the command line. If that looks good, deselect dryrun and press Update again.
 
 ### Interaction with DataJoint
+
 By default, nsMeta only writes the changes to the json files in the data tree. In principle you could then run nsScan to update the DataJoint database, but it may be easier to select the DataJoint check box to do this at the same time.
 
 For this to work, the connection parameters under File | DataJoint should be set correctly. The Safemode parameter in that menu determines whether deletes from the DataJoint database require manual confirmation. Set it to 0 to sidestep this.

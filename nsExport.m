@@ -27,7 +27,7 @@ function nsExport(targetDataRoot,varargin)
 %          genrated by ssh2_config in the matlab-ssh2 package by David
 %          Friedman. It is available on github.
 %
-% 'fun' - The default export simply copies the raw data files, but youc an
+% 'fun' - The default export simply copies the raw data files, but you can
 %        also provide a function_handle to process these files. This
 %        function should take the file name as its input and return a sigle
 %        output. If this output is a table, you can export it as a CSV file
@@ -71,7 +71,7 @@ function nsExport(targetDataRoot,varargin)
 p=inputParser;
 p.addRequired('targetDataRoot',@mustBeTextScalar)
 p.addParameter('srcDataRoot','',@mustBeTextScalar);
-p.addParameter('useDayFolders',false,@islogical);
+p.addParameter('useDayFolders',true,@islogical);
 p.addParameter('skipExisting',true,@islogical);
 p.addParameter('paradigm','',@mustBeText);
 p.addParameter('extension','',@mustBeText);
