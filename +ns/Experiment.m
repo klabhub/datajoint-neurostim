@@ -193,13 +193,15 @@ classdef Experiment  < dj.Manual
             % have no information in the database currently. [true]
             arguments
                 tbl ns.Experiment
-                cic (1,:) neurostim.cic =[]
+                cic (1,:) = []
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
             end
 
             % Run all
             keyCntr = 0;
+            pkey = tbl.primaryKey;
+
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
                 if isempty(cic)
@@ -211,7 +213,7 @@ classdef Experiment  < dj.Manual
                         continue;
                     end
 
-                    [thisTpl,thisC] = readCicContents(key);
+                    [thisTpl,thisC] = ns.Experiment.readCicContents(key);
 
                 else
                     % Cic was passed check that it matches, then add
@@ -223,17 +225,25 @@ classdef Experiment  < dj.Manual
 
                 % Remove current tuple
                 if pv.pedantic
-                    del(tbl & key)
+                    if exists(tbl&key)
+                        del(tbl & key);
+                    end
                     insert(tbl,thisTpl);
                 else
                     %Update each field. Potential for referential integrity
                     %loss.
+                     fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
+                     for fld = fieldsToUpdate
+                        update(tbl&key,fld{1},thisTpl.(fld{1}))
+                    end
                 end
 
 
                 % Remove the current plugin info and store currently read
                 % information.
-                del(ns.Plugin & key)
+                if exists(ns.Plugin & key)
+                    del(ns.Plugin & key);
+                end
                 if max([thisC.prms.trial.log{:}])>1
                     % re-add each plugin (pluginOrder includes stimuli)
                     plgsToAdd= [thisC.pluginOrder thisC];
@@ -283,7 +293,7 @@ classdef Experiment  < dj.Manual
                 c  = ns.Experiment.load(file);
             catch
                 % Make sure that the experiment key is in the table
-                fprintf(2,'Failed to load %s \n',file)
+                fprintf(2,'Failed to load %s . Is NS_ROOT (%s) correct? \n',file,getenv('NS_ROOT'))
                 return;
             end
             warning(warnstate)
