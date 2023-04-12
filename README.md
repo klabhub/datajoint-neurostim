@@ -71,6 +71,7 @@ ori = get(ns.Experiment ,'gabor','prm','orientation','atTrialTime',0)
 
 ## nsMeta
 The `nsMeta` Matlab app provides a graphical interface to the metadata of a Neurostim data tree. This information is partially represented in the file and folder names (e.g., subject identifiers and paradigm names are in the Neurostim output file), but can be complemented with additional meta information stored in JSON files. 
+Note that, even though nsMeta can update a DataJoint database, it retrieves information from the data tree (i.e., the files) and not from DataJoint. 
 
 ### Meta data definitions
 Meta data for an experiment are stored in a JSON file with the same name as the Neurostim output file, but with the .json extension.  
@@ -114,6 +115,7 @@ By default, nsMeta only writes the changes to the json files in the data tree. I
 For this to work, the connection parameters under File | DataJoint should be set correctly. The Safemode parameter in that menu determines whether deletes from the DataJoint database require manual confirmation. Set it to 0 to sidestep this.
 
 In addition, the target database on the server is determined by your working folder in Matlab. After you select the DataJoint checkbox, the currently selected database will be shown to the left of it. Before Updating with DataJoint selected, make sure you are writing to the correct database!
+nsMeta will ask for confirmation the first time you write to a database.
 
 Also, you may want to use the Paradigm or Subject selectors at the top of the interface to only add specific experiments to your database (and ignore the other experiments that may have happened on the same day).
 

@@ -139,13 +139,13 @@ classdef Experiment  < dj.Manual
                     v.(plgName) = get(parms);
                 end
 
-                % Post-process all (including cic) if requested                
+                % Post-process all (including cic) if requested
                 if ~isnan(pv.atTrialTime)
-                        % Single prm from a specified plugin,  at a specific time
-                        out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
-                elseif strlength(pv.prm) ~=0  
+                    % Single prm from a specified plugin,  at a specific time
+                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
+                elseif strlength(pv.prm) ~=0
                     % Single plugin, all values.
-                    % Return only the values, not the time/trial; 
+                    % Return only the values, not the time/trial;
                     out{exptCntr} = v.(plg{1}).(pv.prm);
                 else
                     % Everything
@@ -177,62 +177,108 @@ classdef Experiment  < dj.Manual
         end
 
 
-        function updateWithFileContents(tbl,varargin)
-            % function updateWithFileContents(self,oldKey,newOnly)
+        function updateWithFileContents(tbl,cic,pv)
+            % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
             % information contained in plugins/stimuli. This can be done
-            % automatically (by nsAddToDatajoint), or manually to update information
+            % automatically (by nsScan/nsAddToDataJoint), or manually
+            % to update information for experiments that were initially
+            % added without reading file contents.
+            %
             % INPUT
             % tbl - (A subset of) the ns.Experiment table to update.
-            % oldKey - The primary key of the experiment to update (if not
-            % specified or empty, all experiments in tbl will be updated).
+            % cic - A vector of cic objects already loaded (by nsScan) and
+            %           corresponding to the rows of the tbl.
             % newOnly  - Set to true to update only those experiments that
             % have no information in the database currently. [true]
-            % cicOnly -  Set to true to ignore plugins other than CIC.
-            p =inputParser;
-            p.addRequired('tbl');
-            p.addParameter('oldKey',struct([]));
-            p.addParameter('newOnly',true,@islogical);
-            p.addParameter('root',getenv('NS_ROOT'));
-            p.addParameter('cicOnly',false,@islogical);
-            p.parse(tbl,varargin{:});
+            arguments
+                tbl ns.Experiment
+                cic (1,:) neurostim.cic =[]
+                pv.newOnly (1,1) logical = true
+                pv.pedantic (1,1) logical = false
+            end
 
-            if isempty(p.Results.oldKey)
-                % Run all
-                for key=tbl.fetch('file')'
-                    try
-                        updateWithFileContents(tbl,'oldKey',key,'newOnly',p.Results.newOnly,'root',p.Results.root,'cicOnly',p.Results.cicOnly);
-                    catch me
-                        fprintf(2,'Failed updating contents from %s\n (%s)',key.file,me.message);
+            % Run all
+            keyCntr = 0;
+            for key=tbl.fetch('file')'
+                keyCntr=keyCntr+1;
+                if isempty(cic)
+                    % Read from files
+
+                    % Check if this eperiment already has file data, if newOnly
+                    % is true, we skip those.
+                    if pv.newOnly && ~isnan(fetchn(tbl & key,'stimuli'))
+                        continue;
+                    end
+
+                    [thisTpl,thisC] = readCicContents(key);
+
+                else
+                    % Cic was passed check that it matches, then add
+                    % contents
+                    thisC = cic(keyCntr);
+                    thisTpl = ns.Experiment.tplFromCic(thisC);
+                    thisTpl =mergestruct(key,thisTpl); % Errors if thisC does not belong to this key.
+                end
+
+                % Remove current tuple
+                if pv.pedantic
+                    del(tbl & key)
+                    insert(tbl,thisTpl);
+                else
+                    %Update each field. Potential for referential integrity
+                    %loss.
+                end
+
+
+                % Remove the current plugin info and store currently read
+                % information.
+                del(ns.Plugin & key)
+                if max([thisC.prms.trial.log{:}])>1
+                    % re-add each plugin (pluginOrder includes stimuli)
+                    plgsToAdd= [thisC.pluginOrder thisC];
+                    plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
+                    for plg = plgsToAdd
+                        try
+                            make(ns.Plugin,plgKey,plg);
+                        catch
+                            fprintf('Failed to add plugin %s information\n',plg.name);
+                        end
                     end
                 end
-                return;
-            else
-                oldKey = p.Results.oldKey;
+
+            end
+        end
+    end
+
+    methods (Static)
+        function o = load(filename)
+            % Default method to open a Neurostim data file (a .mat file
+            % containing a CIC class object in the variable 'c'
+            s  = load(filename,'c');
+            o=s.c;
+        end
+
+        function [tpl,c] = readCicContents(tpl,pv)
+            % This is called by nsScan to read the contents of a neurostim
+            % output file and extract some meta data to store in DataJoint
+            % or show in nsMeta. This is a static so that it can be used
+            % with nsMeta without datajoint access.
+            arguments
+                tpl
+                pv.root {mustBeText} = getenv('NS_ROOT');
             end
 
-            % Check if this eperiment already has file data, if newOnly
-            % is true, we skip those.
-            if p.Results.newOnly && exists(tbl & oldKey) && ~isnan(fetchn(tbl & oldKey,'stimuli'))
-                return;
-            end
-
-            % Read the file to add details
-            oldTuple = fetch(tbl & oldKey,'paradigm','file');
-
-            lastwarn(''); % Reset
-
-            file = fullfile(p.Results.root,strrep(oldTuple.session_date,'-','/'),oldTuple.file);
-            % Now add file contents information
+            file = fullfile(pv.root,strrep(tpl.session_date,'-','/'),tpl.file);
             % If the file cannot be read fully (for instance because some
             % classes are not on the current Matlab path) the cic object
             % will be incomplete and some of the code below will fail.
-            if p.Results.cicOnly
-                % Turn off this warning as it is more or less expected that
-                % some will fail, but we're ignoring them anyway
-                warning('off','MATLAB:load:classNotFound');
-                 warning('off','MATLAB:class:DefaultObjectSubstitution');
-            end
+
+            % Turn off this warning as it is more or less expected that
+            % some will fail, but we're ignoring them anyway
+            warnstate= warning('query');
+            warning('off','MATLAB:load:classNotFound');
+            warning('off','MATLAB:class:DefaultObjectSubstitution');
             try
                 c  = ns.Experiment.load(file);
             catch
@@ -240,10 +286,17 @@ classdef Experiment  < dj.Manual
                 fprintf(2,'Failed to load %s \n',file)
                 return;
             end
-            if p.Results.cicOnly
-                warning('on','MATLAB:load:classNotFound');
-                warning('on','MATLAB:class:DefaultObjectSubstitution');
+            warning(warnstate)
+
+            tpl = ns.Experiment.tplFromCic(c);
+        end
+
+        function tpl = tplFromCic(c)
+            % Construct a tpl from a CIC object
+            arguments
+                c (1,1) neurostim.cic
             end
+
             if isfield(c,'ptbVersion')
                 ptbVersion = c.ptbVersion.version;
             else
@@ -254,10 +307,10 @@ classdef Experiment  < dj.Manual
                 % Cannot read some information in a file without trials..
                 % Just putting zeros.
                 fprintf('Skipping %s - no completed trials\n',file);
-                tuple = struct('stimuli',0,'blocks',0,...
+                tpl = struct('stimuli',0,'blocks',0,...
                     'conditions',0,'trials',actualNrTrialsStarted,...
                     'matlab',c.matlabVersion,'ptb',ptbVersion,...
-                    'ns','#','run',0,'seq',0);
+                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',[c.file '.mat']);
             else
                 % Pull the top level information to put in the tbl
                 if isempty(c.runNr)
@@ -271,50 +324,12 @@ classdef Experiment  < dj.Manual
                     seqNr = c.seqNr;
                 end
 
-                tuple =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
+                tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
                     'conditions',c.nrConditions,'trials',actualNrTrialsStarted,...
-                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr);
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',[c.file '.mat']);
             end
-
-            % Remove current tuple
-            if exists(tbl & oldKey)
-                del(tbl & oldKey)
-            end
-
-            newTuple = mergestruct(oldTuple,tuple);
-            insert(tbl,newTuple);
-
-            % Remove the current plugin info and store currently read
-            % information.
-            if exists(ns.Plugin & oldKey)
-                del(ns.Plugin & oldKey)
-            end
-            if actualNrTrialsStarted>1
-                % re-add each plugin (pluginOrder includes stimuli)
-                if p.Results.cicOnly
-                    plgsToAdd = c;
-                else
-                    plgsToAdd= [c.pluginOrder c];
-                end
-
-                for plg = plgsToAdd
-                    try
-                        plgKey = struct('starttime',oldKey.starttime,'session_date',oldKey.session_date,'subject',oldKey.subject);
-                        make(ns.Plugin,plgKey,plg);
-                    catch
-                        fprintf('Failed to add plugin %s information\n',plg.name);
-                    end
-                end
-            end
-        end
-
-    end
-    methods (Static)
-        function o = load(filename)
-            % Default method to open a Neurostim data file (a .mat file
-            % containing a CIC class object in the variable 'c'
-            s  = load(filename,'c');
-            o=s.c;
+            key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
+            tpl  =mergestruct(key,tpl);
         end
 
     end

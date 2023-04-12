@@ -1,30 +1,30 @@
 function nsAddToDataJoint(tSubject,tSession ,tExperiment,varargin)
 % Takes the output of nsScan and adds new information to the DJ server.
+% Depending on how nsScan was called this can add meta-data about the experiments
+% only, include meta data from cic, or include all data from all plugins.
+% This function is not meant to be called directly; use nsScan instead.
 % INPUT
 % tSubject - Output table of nsScan
 % tSession - Output table of nsScan
 % tExperiment - Output table of nsScan
 % Parm/Value pairs
-% 'readFileContents' - Set to true to read each experiment file when adding
-%                       it to the database (To add information obtained
-%                       from its content). [false]
+% cic - A vector of cic objects corresponding to the rows in the
+% tExperiment table.
 % safeMode  -   Set to false to remove tuples from the Datajoint database
 %               without asking for confirmation (i.e., when updating information).
 % root      - Root folder of files, defaults to getenv('NS_ROOT')
 % populateFile - Run populate(ns.File) to add dependent files.
-% cicOnly   - Set tot true to only add CIC information (and not other
-%               plugins)
 % dryrun      - Set to true to simulate what would happen without making
 %               changes to the database.
+%
 % BK -Jan 2023
 
 p=inputParser;
-p.addParameter('readFileContents',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('root',getenv('NS_ROOT'));
 p.addParameter('populateFile',true,@islogical)
 p.addParameter('dryrun',false,@islogical)
-p.addParameter('cicOnly',false,@islogical)
+p.addParameter('cic',[]); % A vector of cic objects. One per row of the experiment table.
 p.parse(varargin{:});
 
 currentSafeMode= dj.config('safemode');
@@ -48,18 +48,11 @@ insertNewTuples(tSession,ns.Session,p.Results.dryrun);
 %% Add Experiments
 tExperiment = removevars(tExperiment,'id');
 [newExpts] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
-if  ~p.Results.dryrun && ~isempty(newExpts)
-    if p.Results.readFileContents
-        % Read each (new) file and add its contents to DataJoint
-        % In this process the Experiment tpl is first deleted then re-added
-        % with the information from the file. (No code yet to avoid this
-        % add/delete/add)
-        updateWithFileContents(ns.Experiment & newExpts,'root',tExperiment.Properties.CustomProperties.root,'cicOnly',p.Results.cicOnly);
-    end
-
-    if p.Results.populateFile
-        populate(ns.File, newExpts)
-    end
+if  ~p.Results.dryrun && ~isempty(newExpts)  && p.Results.populateFile
+    if ~isempty(p.Results.cic)
+        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic)
+    end 
+    populate(ns.File, newExpts)
 end
 
 % Restore setting
@@ -92,12 +85,18 @@ pkey = djTbl.primaryKey;
 hdr  = djTbl.header;
 djTblName = djTbl.className;
 state= warning('query');
-warning('off','MATLAB:table:convertvars:ConvertCharWarning')
-tbl = convertvars(tbl,1:width(tbl),'string');
-warning(state);
-
 tblFields= intersect(tbl.Properties.VariableNames,hdr.names); % Columns in the DJ table
 metaFields = setdiff(tbl.Properties.VariableNames,hdr.names); % Columns not in the DJ table
+% Convert all meta and dj variables that are defined string to string in
+% the tbl.
+warning('off','MATLAB:table:convertvars:ConvertCharWarning')
+tblFieldAttributes = [hdr.attributes];
+tblFieldAttributes = tblFieldAttributes(ismember({tblFieldAttributes.name},tblFields));
+tblFieldName = {tblFieldAttributes.name};
+stringFields = cat(2,metaFields, tblFieldName([tblFieldAttributes.isString]));
+tbl = convertvars(tbl,stringFields,'string');
+warning(state);
+
 nrMeta = numel(metaFields);
 % Hack, find the associated meta.SubejctMeta, ExperimentMeta,etc.
 djMetaTblName  = [djTbl.className 'Meta'];
@@ -128,10 +127,10 @@ for row=1:height(tbl)
             if isempty(fromDbase)
                 % Everything is new
                 newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
-            elseif  ~isequal(fromDbase.Properties.VariableNames,cat(2,pkey,metaFields))
+            elseif  ~isempty(setdiff(cat(2,pkey,metaFields),fromDbase.Properties.VariableNames))
                 % Some newly defined meta fields. Update all
                 updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl);
-            else 
+            else
                 % Same meta fields, potentially different values
                 [~,ix] = setdiff(tbl(row,cat(2,pkey,metaFields)),fromDbase);
                 updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl(ix));
@@ -144,48 +143,68 @@ for row=1:height(tbl)
         end
     end
 end
-% Remove empty meta data( only for new; updates can be empty to remove)
+% Remove empty meta data to avoid filling the database with empty entries.
+% This removal is only done for new meta tuples; updates can be empty to
+% remove the old information.
 if ~isempty(newMetaTpls)
     stay = ~cellfun(@isempty,{newMetaTpls.meta_value},'uni',true);
-    newMetaTpls = newMetaTpls(stay); 
+    newMetaTpls = newMetaTpls(stay);
 end
+
 
 if dryrun
     fprintf('[DRYRUN] %s: %d new , %d updated \n %s: %d new meta, %d meta updated\n',djTblName,numel(newTpls),numel(updateTpls),djMetaTblName,numel(newMetaTpls),numel(updateMetaTpls))
 else
     % Would be nice to wrap in a transactiomn, but cannot insert before
     % commiting the del.
-try
-    fprintf('Updating DataJoint for %s ...\n',djTblName)
-    if ~isempty(newTpls)
-        fprintf('Adding new tuples to %s \n',djTblName)
-        insert(djTbl,newTpls)
-        fprintf('\t Done. %d new tuples \n',numel(newTpls))
-    end
+    try
+        fprintf('Updating DataJoint for %s ...\n',djTblName)
+        if ~isempty(newTpls)
+            fprintf('Adding new tuples to %s \n',djTblName)
+            insert(djTbl,newTpls)
+            fprintf('\t Done. %d new tuples \n',numel(newTpls))
+        end
 
-    if ~isempty(updateTpls)
-        fprintf('Updating tuples in %s \n',djTblName)
-        del(djTbl & ns.stripToPrimary(djTbl,updateTpls)); % Deletes tpl and associated meta
-        insert(djTbl,updateTpls)
-        fprintf('\t Done. %d updated tuples\n',numel(updateTpls))
-    end
+        if ~isempty(updateTpls)
+            fprintf('Updating tuples in %s \n',djTblName)
+            if true
+                % Update one tpl and one field at a time.
+                % In theory this could affect referential integrity, but the
+                % delete/replace approach is too cumbersome (e.g., renaming one
+                % subject would delete all data associated with that subject)
+                fieldsToUpdate = setdiff(fieldnames(updateTpls),pkey)';
+                for tpl =updateTpls
+                    thisDj= djTbl & ns.stripToPrimary(djTbl,tpl);
+                    for fld = fieldsToUpdate
+                        update(thisDj,fld{1},tpl.(fld{1}))
+                    end
+                end
+            else
+                del(djTbl & ns.stripToPrimary(djTbl,updateTpls)); % Deletes tpl and associated meta
+                insert(djTbl,updateTpls)
+            end
+            fprintf('\t Done. %d updated tuples\n',numel(updateTpls))
+        end
 
-    if ~isempty(newMetaTpls)
-        fprintf('Adding new Meta tuples in %s \n',djMetaTblName)
-        insert(djMetaTbl,newMetaTpls)
-        fprintf('\t Done. %d new tuples\n',numel(newMetaTpls))
+        if ~isempty(newMetaTpls)
+            fprintf('Adding new Meta tuples in %s \n',djMetaTblName)
+            insert(djMetaTbl,newMetaTpls)
+            fprintf('\t Done. %d new tuples\n',numel(newMetaTpls))
+        end
+        if ~isempty(updateMetaTpls)
+            fprintf('Updating Meta tuples in %s \n',djMetaTblName)
+            % Because the collection of meta data could have changed, we delete
+            % all, then replace to get the current set of meta fields and
+            % values.
+            del(djMetaTbl & ns.stripToPrimary(djMetaTbl,updateMetaTpls)); % Delete meta
+            insert(djMetaTbl,updateMetaTpls); % Insert
+            fprintf('\t Done. %d updated tuples\n',numel(updateMetaTpls))
+        end
+    catch me
+        fprintf(2,'Failed to insert:')
+        tbl
+        me.message
     end
-    if ~isempty(updateMetaTpls)
-        fprintf('Updating Meta tuples in %s \n',djMetaTblName)
-        del(djMetaTbl & ns.stripToPrimary(djMetaTbl,updateMetaTpls)); % Delete meta
-        insert(djMetaTbl,updateMetaTpls); % Insert
-        fprintf('\t Done. %d updated tuples\n',numel(updateMetaTpls))
-    end
-catch me
-    fprintf(2,'Failed to insert:')
-    tbl
-    me.message
-end
 end
 newTpls = cat(1,newTpls,updateTpls); % Both are considered new as they may need postprocessing(e.g. for Experiment table; read the file or populate ns.File).
 newMetaTpls= cat(1,newMetaTpls,updateMetaTpls);

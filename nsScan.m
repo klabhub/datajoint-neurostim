@@ -134,13 +134,14 @@ if isempty(fullName)
     return;
 end
 
-%% Massage the meta data so that they match the formats stored in the DataJoint database
+%% Extract meta data from the file name
+% and match the formats stored in the DataJoint database
 [~,file,ext] = fileparts(fullName);  % Store only the filename. Path can be reconstructed from date and root. 
 file = strcat(file,ext);
 if ~iscell(file);file={file};end
 [meta.file] = deal(file{:});
 [meta.bytes] = deal(dirInfo.bytes);
-[meta.provenance] =deal("");
+[meta.provenance] =deal(struct([]));
 session_dates = deal(strrep({meta.session_date},filesep,'-'));  % Match ISO format of DJ
 [meta.session_date] = deal(session_dates{:});
 starttimes = cellfun(@(x)([x(1:2) ':' x(3:4) ':' x(5:6)]),{meta.starttime},'uni',false);
@@ -190,6 +191,19 @@ else
     fprintf('Foound %d matching Neurostim files \n',nrExperiments)
 end
 
+if  p.Results.readFileContents
+     % Read meta data from the content of the Neurostim files 
+     % tmp has the meta data, c the CIC objects which are passed to
+     % nsAddToDataJoint below
+    for i=1:nrExperiments
+        [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>         
+        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.   
+    end
+    meta  =tmpMeta; 
+else    
+    c= [];
+end
+
 if p.Results.readJson
     %% Read Meta information definitions and data from JSON files.
     % Read the current meta definition for experiments
@@ -223,21 +237,26 @@ if p.Results.readJson
     end
 end
 
-% Store folder root and date in the properties so that we
-% can easily reconstruct filenames later
-tExperiment = struct2table(meta);
+
+% Convert char and cellstr to string
+tExperiment = struct2table(meta,'AsArray',true);
 for i=1:numel(tExperiment.Properties.VariableNames)
-    if iscellstr(tExperiment.(tExperiment.Properties.VariableNames{i})) %#ok<ISCLSTR>
+    if iscellstr(tExperiment.(tExperiment.Properties.VariableNames{i})) || ischar(tExperiment.(tExperiment.Properties.VariableNames{i})) %#ok<ISCLSTR>
         tExperiment.(tExperiment.Properties.VariableNames{i}) = string(tExperiment.(tExperiment.Properties.VariableNames{i}));
     end
 end
+% Store folder root and date in the properties so that we
+% can easily reconstruct filenames later
 tExperiment =addprop(tExperiment,{'root'},{'table'}) ;
 tExperiment.Properties.CustomProperties.root = p.Results.root;
+if p.Results.readFileContents
+    tExperiment = addvars(tExperiment,c','NewVariableNames','cic'); 
+end
 % Sort to get a consistent order
-tExperiment= sortrows(tExperiment,{'starttime','subject','paradigm'},'ascend');
+tExperiment =  sortrows(tExperiment,{'starttime','subject','paradigm'},'ascend');
 % Assign a unique ID to each row, so that we can match up with the original values after the user resorts.
 tExperiment = addvars(tExperiment,strcat('#',string((1:nrExperiments)')),'NewVariableNames','id','before',1);
-tExperiment = movevars(tExperiment,{'bytes','starttime','subject','paradigm'},'After',1);
+tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','subject','paradigm'},'After',1);
 
 %% B. Session Meta Data
 % Retrieve definition and initialize table
@@ -338,7 +357,6 @@ tSubject= sortrows(tSubject,{'subject'},'ascend');
 tSubject = addvars(tSubject,strcat('#',string((1:nrSubjects)')),'NewVariableNames','id','before',1);
 tSubject = movevars(tSubject,{'subject'},'after',1);
 
-
 if p.Results.addToDataJoint
-    nsAddToDataJoint(tSubject,tSession,tExperiment,'readFileContents',p.Results.readFileContents,'safeMode',p.Results.safeMode,'root',p.Results.root,'cicOnly',p.Results.cicOnly);
+    nsAddToDataJoint(tSubject,tSession,tExperiment,'safeMode',p.Results.safeMode,'root',p.Results.root);
 end

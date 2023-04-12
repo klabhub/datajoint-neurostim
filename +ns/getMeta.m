@@ -23,9 +23,11 @@ elseif ischar(meta)
     meta = {meta};
 end
 % Loop over meta fields to add
+T = fetchtable(tbl);
 for i=1:numel(meta)
-    T= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
-    T = addvars(T,T.meta_value,'NewVariableNames',meta{i});
-    T =removevars(T,["meta_name","meta_value"]);  
+    thisMetaT= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
+    if ~isempty(thisMetaT)
+        T = addvars(T,thisMetaT.meta_value,'NewVariableNames',meta{i});   
+    end
 end
 
