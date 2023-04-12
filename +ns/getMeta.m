@@ -26,8 +26,7 @@ end
 T = fetchtable(tbl);
 for i=1:numel(meta)
     thisMetaT= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
-    if ~isempty(thisMetaT)
-        T = addvars(T,thisMetaT.meta_value,'NewVariableNames',meta{i});   
-    end
+    thisMetaT = addvars(thisMetaT,thisMetaT.meta_value,'NewVariableNames',meta{i});    
+    T = outerjoin(T,thisMetaT,'MergeKeys',true,'RightVariables',setdiff(thisMetaT.Properties.VariableNames,{'meta_name','meta_value'}));    
 end
 
