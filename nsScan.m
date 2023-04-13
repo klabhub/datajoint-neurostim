@@ -358,5 +358,11 @@ tSubject = addvars(tSubject,strcat('#',string((1:nrSubjects)')),'NewVariableName
 tSubject = movevars(tSubject,{'subject'},'after',1);
 
 if p.Results.addToDataJoint
-    nsAddToDataJoint(tSubject,tSession,tExperiment,'safeMode',p.Results.safeMode,'root',p.Results.root);
+    if p.Results.readFileContents
+        cic = tExperiment.cic;
+        tExperiment = removevars(tExperiment,'cic');
+    else
+        cic =[];
+    end
+    nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode,'root',p.Results.root);
 end
