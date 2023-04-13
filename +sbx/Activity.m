@@ -20,7 +20,7 @@ activity : longblob   # Activity trace per trial
 classdef Activity < dj.Computed
 
     methods
-        function m = tuning(tbl,expts, conditions, neurons, pv)
+        function m = tuning(tbl,expts, conditions,neurons,pv)
             % Compute tuning curve and show the results.
             
             arguments
@@ -91,36 +91,58 @@ classdef Activity < dj.Computed
         end
 
 
-        function plotTimeCourse(tbl,conditions,neurons,fun)
+        function plotTimeCourse(tbl,neurons,conditions,fun,pv)
             arguments
                 tbl (1,1) sbx.Activity
-                conditions
-                neurons
-                fun (1,1) = @(x)(deal(mean(x,2),std(x,0,2)./sqrt(size(x,2))));
+                neurons 
+                conditions = []                
+                fun (1,1) = @(x)(deal(mean(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
+                pv.trials  = {};
+                pv.yTickLabel = []
+                pv.time = [-inf inf]
             end
             if isa(neurons,'sbx.Roi')
                 neurons = fetch(neurons);
             end
 
             if isa(conditions,'ns.Condition')
-                conditions = fetch(conditions);
+                conditions = fetch(conditions);                                
+                useConditionTable = true;
             end
+
+            if isempty(conditions)
+                if iscell(pv.trials)
+                    conditions = pv.trials;
+                else
+                    conditions = {pv.trials()};
+                end
+                useConditionTable = false;
+            end
+
+
 
             for neuron =neurons(:)'
                 nexttile;
-                cCntr= 0;
+                
                 thisTbl = tbl & neuron;
                 T= timetable;
-                for condition = conditions(:)'
-                    cCntr = cCntr+1;
+                nrConditions = numel(conditions);
+                for c= 1:nrConditions
                     % Get the spikes Activity data for this roi
-                    [y,time] = get(thisTbl & (ns.ConditionTrial & condition),'spikes');
-                    nrTime = numel(time);
+                    if useConditionTable
+                        [y,time] = get(thisTbl & (ns.ConditionTrial & conditions(c)),'spikes');
+                    else
+                        [y,time] = get(thisTbl & struct('trial',num2cell(conditions{c})'),'spikes');
+                    end
+                    
                     if isempty(y);continue;end
+                    out = time < pv.time(1) | time>pv.time(2);
+                    y(out,:) = [];
+                    time(out) =[];
                     y = reshape(squeeze(y),size(y,1),[]);
+                    nrTime = numel(time);
 
-
-                    [m(:,cCntr),se(:,cCntr)] = fun(y);
+                    [m(:,c),se(:,c)] = fun(y);
 
                     if true
 
@@ -137,13 +159,16 @@ classdef Activity < dj.Computed
                 grandMax = max(m,[],"all","omitnan",ComparisonMethod="abs");
                 m = m./grandMax;
                 se = se./grandMax;
-                m = m + repmat(1:cCntr,[nrTime 1]);
+                m = m + repmat(1:nrConditions,[nrTime 1]);
                 h = ploterr(time,m,se,'linewidth',2,'ShadingAlpha',0.5);
                 hold on
-                hh = plot(time,repmat(1:cCntr,[nrTime 1]),'LineWidth',0.5);
+                hh = plot(time,repmat(1:nrConditions,[nrTime 1]),'LineWidth',0.5);
                 [hh.Color] =deal(h.Color);
-                ylim([0 cCntr+1])
-                set(gca,'yTick',1:cCntr)
+                ylim([0 nrConditions+1])
+                set(gca,'yTick',1:nrConditions)
+                if ~isempty(pv.yTickLabel)
+                    set(gca,'yTickLabel',pv.yTickLabel)
+                end
                 %stackedplot(T)
 
                 %                 if false

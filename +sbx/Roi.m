@@ -130,6 +130,56 @@ classdef Roi < dj.Imported
             end
 
         end
+      
+        function plotResponse(roi,expt,pv)
+             arguments
+                roi (1,1) sbx.Roi
+                expt (1,1) ns.Experiment
+                pv.modality = 'fluorescence'
+                pv.trial = []
+                pv.baseline = [2 3]                 
+                pv.window = [0 3]
+                pv.response = [0.5 1.5]
+                pv.maxdFF= 1;
+                pv.fetchOptions = ''
+                pv.percentile = 8;
+            end
+            
+            % Extract fluorescence and subtract neuropil
+            frame = 1./unique([fetch(sbx.Preprocessed & roi,'framerate').framerate]);
+            tF  = get(roi,expt,fetchOptions= pv.fetchOptions, modality='fluorescence',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
+            tFNeu = get(roi,expt,fetchOptions= pv.fetchOptions, modality='neuropil',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
+            
+            [dFF,shotNoise] =  sbx.dFOverF(tF,tFNeu,pv.baseline,percentile = pv.percentile);
+        
+            [~,nrRoi] = size(dFF);
+             inResponse = tWindow.Time >= seconds(pv.response(1)) & tWindow.Time < seconds(pv.response(2)); 
+             mResponse = mean(dFF(inResponse,:),1,"omitnan");
+             out = mResponse <0 | mResponse > 200;
+             dFF(:,out) =[];
+             nrRoi = nrRoi-sum(out);
+
+            dFF = min(pv.maxdFF, dFF,'includenan','ComparisonMethod','abs');
+            
+           
+            %
+            clf
+            subplot(1,2,1)           
+            imagesc(seconds(tF.Time),1:nrRoi,dFF')
+            xlabel 'Time (s)'
+            ylabel (char('ROI',pv.fetchOptions))
+            colorbar
+            colormap hot
+            set(gca,'Clim',[0 pv.maxdFF])
+            title (sprintf('ShotNoise %.2f +/- %.2f',mean(shotNoise),std(shotNoise)))
+            subplot(1,2,2);
+            m = mean(dFF,2,"omitnan");
+            se = std(dFF,0,2,"omitnan")./sqrt(sum(~isnan(dFF),2,"omitnan"));
+            ploterr(tF.Time,m,se)
+            xlabel 'Time (s)'
+            ylabel 'dF/F (%)'
+
+        end
         function [varargout] = get(roi,expt,pv)
             % Function to retrieve trial-start aligned activity data per
             % ROI and Experiment.
@@ -154,6 +204,7 @@ classdef Roi < dj.Imported
             arguments
                 roi (1,1) sbx.Roi
                 expt (1,1) ns.Experiment
+                pv.fetchOptions = ''
                 pv.modality = 'spikes'
                 pv.trial = []
                 pv.start =-0.5
@@ -172,17 +223,18 @@ classdef Roi < dj.Imported
             frames= fetch(frame,'*');
 
             % Retrieve the activity in the entire session
-            sessionActivity= fetch(roi,pv.modality); % Values (e.g., spikes) across session
+            sessionActivity= fetch(roi,pv.modality,pv.fetchOptions); % Values (e.g., spikes) across session
             V = [sessionActivity.(pv.modality)]; %[nrFramesPerSession nrROIs]
 
             newTimes = seconds(pv.start:pv.step:pv.stop);
-            for f = frames'
-                thisT = timetable(seconds(f.trialtime),V(f.frame,:),'VariableNames',"Trial" + string(f.trial));
-                if f.trial ==1
-                    T= retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
-                else
-                    T = synchronize(T,thisT, newTimes, pv.interpolation, 'EndValues',NaN);
-                end
+            nrTimes  = numel(newTimes);
+            nrTrials = numel(frames);
+            varNames = "Trial" + string([frames.trial]);
+            T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes','VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
+            for tr = 1:nrTrials
+                thisT = timetable(seconds(frames(tr).trialtime),V(frames(tr).frame,:));                
+                thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
+                T.(varNames(tr)) = table2array(thisT);                
             end
             % Return as doubles or as timetable.
             if nargout ==2

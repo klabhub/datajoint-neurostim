@@ -48,21 +48,21 @@ classdef Condition < dj.Manual
                 val = [];
                 for i=1:nrPlg
                     if isnan(pv.left)
-                        prefix = string(plg)+"_" +string(prm)+"_";
+                        prefix = string(plg{i})+"_" +string(prm{i})+"_";
                     else
                         % Reduce prefix
-                        prefix = string(plg(1:pv.left)) +"_" +string(prm(1:pv.left)) +"_";
+                        prefix = string(plg{i}(1:pv.left)) +"_" +string(prm{i}(1:pv.left)) +"_";
                     end
-                    prmValues = get(expt,plg{i},'prm',prm{i},'atTrialTime',0)';
+                    prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',0)';
                     val= [val prefix+string(prmValues)]; %#ok<AGROW> 
                 end
                 [uVal,~,ix] = unique(val,"rows"); % Sort ascending.
-                nrConditions = numel(uVal);
+                nrConditions = size(uVal,1);
 
                 %% Create and insert Condition tuples
                 tpl = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions
-                    tpl(c).name = uVal(c);
+                    tpl(c).name = strjoin(uVal(c,:),'-');
                     tpl(c).condition= c;                    
                 end
                 insert(tbl,tpl);
