@@ -1,8 +1,7 @@
 %{
-# Map triggers in a session to trials in Experiments and time.
+# Map triggers in a preprocessed data set to trials in Experiments and time.
 ->sbx.Preprocessed   # Which preprocessed data set does this apply to
-->ns.Session         # Which session does this trigger belong to
-->ns.Experiment      # Which experiment does this trigger belong to
+->ns.Experiment
 trial  : int
 --- 
 frame       :  blob   # Frames from this Preprocessed set that correspond to this trial
@@ -15,26 +14,19 @@ trialtime   : blob    # Time in seconds relatve to the first frame in the trial.
 % (In other words the ITI is included at the end of each trial).
 % 
 % Because different sbx.Preprocessed data sets for the same ns.Session could have different
-% numbers of frames, this is computed per Preprocessed set. (Although no
-% functionality currently exists to preprocess only a subset of
-% experiments, except by deleting the experiment files).
-% 
+% numbers of frames, this is computed per Preprocessed set. 
+%
 % This table is used by sbx.Roi to extract activity per trial, aligned to
 % first frame. 
+% 
 % BK - March 2023
-classdef Frame < dj.Imported
-     properties (Dependent)
-         keySource
-     end
- 
-     methods
-         function v= get.keySource(tbl)
-             v =   ns.Session * sbx.Preprocessed; 
-         end
-     end
+classdef PreprocessedTrialmap < dj.Part
+    properties (SetAccess = protected)
+        master = sbx.Preprocessed
+    end 
 
-    methods (Access=protected)
-        function makeTuples(tbl,key)            
+    methods (Access=public)
+        function make(tbl,key)            
             expts = ns.Experiment & key;
             previousScanFrames =0;            
             for expt= expts.fetch()'
@@ -43,6 +35,7 @@ classdef Frame < dj.Imported
                 thisFrames = previousScanFrames+ (1:nrframes);
                 nrFrames= numel(thisFrames);
                 previousScanFrames = thisFrames(end);
+
                 % Read the binary file that stores TTL pulses from the
                 % laser to determine laser onset time on the neurostim
                 % clock.
@@ -57,17 +50,34 @@ classdef Frame < dj.Imported
                 if nrFrames==nrTTL
                     % OK
                 elseif nrFrames== nrTTL-1
-                    % Happened in the first test set; 1 trigger without a
+                    % 1 trigger without a
                     % frame. Guessing it was the last. 
-                    laserOnTime(end)=[];
+                    laserOnTime(1)=[];
                     fprintf(2,'Removed 1 extraneous LaserOn TTL (last)\n')
                 elseif nrFrames > nrTTL
                     dt = diff(laserOnTime);
-                    sd  = std(dt);
+                    framerate = fetch1(sbx.Preprocessed & key,'framerate');
+                    SLACK = 0.05;                    
                     typicalDt = median(dt);
                     nrMissing = nrFrames-nrTTL;
-                    framerate = fetch1(sbx.Preprocessed & key,'framerate');
-                    SLACK = 0.05;
+
+                   if max(seconds(dt)) > (1+SLACK)/framerate
+                        error('No TTL for %d frames, and frames do not appear to be successive (max dt=%s)',(nrFrames-nrTTL),max(dt));
+                   else
+                        % Looking at the responses of session ''2023-03-23'', the missing TTL must have been at the start
+                        % Prepending laserOnTimes. 
+                        laserOnEstimated = laserOnTime(1) - flipud((1:nrMissing)'*typicalDt);
+                        laserOnTime = [laserOnEstimated;laserOnTime];  %#ok<AGROW> 
+                        fprintf('Prepending %d\n',nrMissing);
+                   end
+
+                    %{
+                        An attempt at inferring which TTL were missing (at
+                        the start or the end)
+                        This gave the wrong answer for ''2023-03-23''
+
+                   sd  = std(dt);
+
                     if max(seconds(dt)) > (1+SLACK)/framerate
                         error('No TTL for %d frames, and frames do not appear to be successive (max dt=%s)',(nrFrames-nrTTL),max(dt));
                     else
@@ -109,15 +119,18 @@ classdef Frame < dj.Imported
 %                         nrExpected = round(framerate*seconds(grabStopTime-grabStartTime));
 
                     end
+                    %}
                 else
                     error('The number of TTL pulses recorded by mdaq (%d) is larger than the number of frames stored by ScanBox (%d)',nrFrames,nrTTL);
                 end
+
+                
                 % Get the cic parameters for this experiment
                 prms  = get(ns.Experiment & expt,'cic');
                 % Split into trials
                 nrTrials = fetch1(ns.Experiment &expt,'trials');
                 % Because events are aligned to firstFrame, we do the same
-                % for the spiking data.
+                % for the imaging data.
                 trialStartTime = seconds(prms.cic.firstFrameNsTime/1000);
                 stay = cell(1,nrTrials);               
                 for tr=1:nrTrials
@@ -139,6 +152,8 @@ classdef Frame < dj.Imported
                     'nstime',nsTimes,...
                     'trialtime',trialTimes);
                 insert(tbl,tpl)
+
+
             end
         end
     end

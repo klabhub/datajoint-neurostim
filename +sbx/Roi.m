@@ -28,7 +28,7 @@ classdef Roi < dj.Imported
             % Parameter/Value pairs:
             % sz = Size to use for each ROI. By default, the estimated physical size
             %       of the roi is used. But by passing some other property (e.g. tuning per ROI),
-            %       this can be visualized.
+            %       this can be visualized. Maximum size is 500 points (surface area).
             % szLabel  - Label to use in the datatip.
             % color = Color to use for each ROI. By default, the z-scored
             %           spiking activity across the session is used.
@@ -52,74 +52,66 @@ classdef Roi < dj.Imported
                 roi (1,1) sbx.Roi
                 pv.sz      = []
                 pv.szLabel = ''
-
                 pv.color   = []
                 pv.colorLabel = ''
-
                 pv.clim     =[];
                 pv.showImg = true;
                 pv.colormap = hot;
-
             end
-
+            MAXPOINTS = 500; % S
             [x,y,radius,m,sd] = fetchn(roi,'x','y','radius','meanrate','stdrate');
             micPerPix = sbx.micronPerPixel(roi);  % Scaling
             mixPerPixR = sqrt(sum(micPerPix.^2));
+            % Setup size
             if isempty(pv.sz)
                 % Use the physical size as the size of the cells
-                pv.sz = pi*(radius*mixPerPixR).^2;
+                pv.sz =min(pi*(radius*mixPerPixR).^2,MAXPOINTS);
                 pv.szLabel = 'size (\mum^2)';
             end
-
             zeroSize = pv.sz==0;
             if any(zeroSize)
                 pv.sz(zeroSize) = eps;
             end
-
-
+            % Setup color
             if isempty(pv.color)
                 % Use the z-scored rate as the color of the cells
                 z = m./sd;
                 pv.color = z;
                 pv.colorLabel = 'rate (Z)';
             end
-
             colormap(pv.colormap)
             if pv.showImg
                 % Show mean image as background
-                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');
-                [nrY,nrX] =size(meanImg);
-                xImg = (0:nrX-1)*micPerPix(1);
-                yImg = (0:nrY-1)*micPerPix(2);
-                imagesc(xImg,yImg,meanImg)
+                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');                               
+                cl = [min(meanImg,[],"all") max(meanImg,[],"all")];                
+                RI = imref2d(size(meanImg),micPerPix(1),micPerPix(2));
+                imshow(meanImg,RI,'DisplayRange',cl,'colormap',gray);              
                 axImg =gca;
-                axis(axImg,"equal")
-                colormap(axImg,gray)
-                xl = [min(xImg) max(xImg)];
-                yl = [min(yImg) max(yImg)];
-                axImg.XLim =xl;
-                axImg.YLim = yl;
-                ax = axes('position',get(axImg,'position'),'Color','none');
+                % Another set of axes for the scatter (uses a different
+                % colormap)
+                ax = axes('position',get(axImg,'position'),'Color','none');                
             else
                 ax =gca;
             end
 
             % The data
-            hScatter = scatter(ax,y*micPerPix(1),x*micPerPix(1),pv.sz, pv.color,'filled');
+            hScatter = scatter(ax,y*micPerPix(2),x*micPerPix(1),pv.sz(:), pv.color(:),'filled');
             xlabel 'Y (\mum)'
             ylabel 'X (\mum)'
             % Match Suite2p layout
             set(ax,'XDir','normal','YDir','reverse');
             if ~isempty(pv.clim)
                 clim(ax,pv.clim)
-            end
-            axis(ax,"equal")
-            ax.Color = "none";
-            ax.XLim =xl;
-            ax.YLim = yl;
+            end                     
+            ax.Color = "none";          
             h = colorbar;
             ylabel(h,pv.colorLabel);
-            set(axImg,'position',get(ax,'position'))
+            if exist('axImg','var')
+                set(axImg,'position',get(ax,'position'));
+                ax.XLim = axImg.XLim;
+                ax.YLim = axImg.YLim;    
+                ax.Visible ='off';
+            end
 
             % Data tips
             if ~isempty(pv.szLabel)
@@ -131,54 +123,104 @@ classdef Roi < dj.Imported
 
         end
       
-        function plotResponse(roi,expt,pv)
+        function plotDFF(roi,expt,pv)
+            % Plot a summary view of dF/F for a set of ROIs in an
+            % experiment
+            % 
+            % roi - A sbx.Roi table
+            % expt - The ns.Experiment
+            % Parm/Value Pairs:            
+            % baseline - The time window in seconds relative to firstFrame 
+            %               that defines the  baseline [2 3]
+            % respons  - The time window where a response is expected 
+            %               [0.5 1.5]
+            % window    - The time window for which to show dF/F. [ 0 3]
+            % maxDFF    - Clamp dF/F values (in %) higher than this [100] 
+            % fetchOptions - Passed to fetch(sbx.Roi), so for instance
+            %                   'LIMIT 100' or 'ORDER BY radius'
+            % percentile  - Definition of F is this percentile of the
+            % neuropil corrected fluorescence in the baseline window. [8]
+            % OUTPUT
+            %    A figure showing the dF/F for all ROIs, the average dF/F
+            %    over time, and a map of the shotnoise
+            % 
              arguments
                 roi (1,1) sbx.Roi
-                expt (1,1) ns.Experiment
-                pv.modality = 'fluorescence'
-                pv.trial = []
+                expt (1,1) ns.Experiment   
+                pv.trial   =[]                           
                 pv.baseline = [2 3]                 
                 pv.window = [0 3]
                 pv.response = [0.5 1.5]
-                pv.maxdFF= 1;
+                pv.maxdFF= Inf;
+                pv.maxResponse = Inf
                 pv.fetchOptions = ''
                 pv.percentile = 8;
+                pv.neuropilFactor = 0.7;
+                pv.shotNoise =false;
+                pv.spikes =false
             end
             
-            % Extract fluorescence and subtract neuropil
+            % Extract fluorescence and neuropil
             frame = 1./unique([fetch(sbx.Preprocessed & roi,'framerate').framerate]);
-            tF  = get(roi,expt,fetchOptions= pv.fetchOptions, modality='fluorescence',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
-            tFNeu = get(roi,expt,fetchOptions= pv.fetchOptions, modality='neuropil',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
-            
-            [dFF,shotNoise] =  sbx.dFOverF(tF,tFNeu,pv.baseline,percentile = pv.percentile);
-        
+            if pv.spikes
+                tF  = get(roi,expt,trial = pv.trial, fetchOptions= pv.fetchOptions, modality='spikes',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
+                tFNeu =[];
+                pv.shotNoise =false;
+            else
+                tF  = get(roi,expt,trial = pv.trial, fetchOptions= pv.fetchOptions, modality='fluorescence',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
+                tFNeu = get(roi,expt,trial = pv.trial,fetchOptions= pv.fetchOptions, modality='neuropil',start = pv.window(1) ,stop=pv.window(2), step = frame,interpolation='nearest');
+            end
+            % Compute df/f
+            if pv.shotNoise
+                [dFF,shotNoise] =  sbx.dFOverF(tF,tFNeu,pv.baseline,percentile = pv.percentile,neuropilFactor=pv.neuropilFactor);
+            else
+                dFF  =  sbx.dFOverF(tF,tFNeu,pv.baseline,percentile = pv.percentile,neuropilFactor=pv.neuropilFactor);
+            end
             [~,nrRoi] = size(dFF);
-             inResponse = tWindow.Time >= seconds(pv.response(1)) & tWindow.Time < seconds(pv.response(2)); 
+            % Remove outliers based on expected response                       
+            if ~isinf(pv.maxResponse)
+             inResponse = tF.Time >= seconds(pv.response(1)) & tF.Time < seconds(pv.response(2)); 
              mResponse = mean(dFF(inResponse,:),1,"omitnan");
-             out = mResponse <0 | mResponse > 200;
+             out = mResponse > pv.maxResponse;
              dFF(:,out) =[];
              nrRoi = nrRoi-sum(out);
-
-            dFF = min(pv.maxdFF, dFF,'includenan','ComparisonMethod','abs');
+             fprintf('Removed %d rois based on their response\n',sum(out));
+            end
             
-           
-            %
-            clf
-            subplot(1,2,1)           
+            % Clamp
+            dFF(dFF < -abs(pv.maxdFF)) =-abs(pv.maxdFF);
+            dFF(dFF > abs(pv.maxdFF)) =abs(pv.maxdFF);
+
+            %% Graphical output
+            subplot(2,2,[1 3])           
             imagesc(seconds(tF.Time),1:nrRoi,dFF')
             xlabel 'Time (s)'
             ylabel (char('ROI',pv.fetchOptions))
             colorbar
             colormap hot
-            set(gca,'Clim',[0 pv.maxdFF])
-            title (sprintf('ShotNoise %.2f +/- %.2f',mean(shotNoise),std(shotNoise)))
-            subplot(1,2,2);
-            m = mean(dFF,2,"omitnan");
-            se = std(dFF,0,2,"omitnan")./sqrt(sum(~isnan(dFF),2,"omitnan"));
-            ploterr(tF.Time,m,se)
+            if pv.shotNoise
+                title (sprintf('ShotNoise %.2f +/- %.2f',mean(shotNoise,2,"omitnan"),std(shotNoise,0,2,"omitnan")))
+            end
+            subplot(2,2,2);
+            m = median(dFF,2,"omitnan");
+            %e = std(dFF,0,2,"omitnan")./sqrt(sum(~isnan(dFF),2,"omitnan"));
+            e = iqr(dFF,2);
+            ploterr(tF.Time,m,e)
+            hold on
+            patch(seconds([pv.baseline(1) pv.baseline(1) pv.baseline(2) pv.baseline(2)]), [ylim fliplr(ylim)],0.8*ones(1,3),'FaceAlpha',0.1);
             xlabel 'Time (s)'
             ylabel 'dF/F (%)'
-
+            if pv.shotNoise
+            subplot(2,2,4)
+            if isempty(pv.fetchOptions)
+                roiUsed = roi;
+            else
+                roiUsed = roi  & fetch(roi,pv.fetchOptions);
+            end
+            plot(roiUsed,color=shotNoise);
+            end
+            info = fetch(expt,'paradigm');
+            sgtitle(sprintf('%s (%s) - %s',info.session_date,info.starttime,info.paradigm))
         end
         function [varargout] = get(roi,expt,pv)
             % Function to retrieve trial-start aligned activity data per
@@ -212,29 +254,47 @@ classdef Roi < dj.Imported
                 pv.interpolation {mustBeText} = 'linear'%, mustBeMember(pv.interpolation,{'linear','nearest','spline','pchip','makima'})}= 'linear';
                 pv.step = 0.1;
             end
-
+            if count(expt)~=1
+                error("sbx.Roi.get requires a single experiment as its input.\n")                
+            end
             %% Get the mapping from Frames to trials.
             % Specific or this ROI (i.e. this Preprocessed set) in this
             % Expt
-            frame = sbx.Frame & expt;
-            if ~isempty(pv.trial)
-                frame = frame & struct('trial',num2cell(pv.trial)');
+            trialMap = sbx.PreprocessedTrialmap & expt;           
+            trialMap = fetch(trialMap ,'*');
+            if isempty(pv.trial)
+                trials = [trialMap.trial]; % All trials
+            else
+                trials = pv.trial;
             end
-            frames= fetch(frame,'*');
-
             % Retrieve the activity in the entire session
-            sessionActivity= fetch(roi,pv.modality,pv.fetchOptions); % Values (e.g., spikes) across session
+            if ~isempty(pv.fetchOptions)
+                sessionActivity= fetch(roi,pv.modality,pv.fetchOptions); % Values (e.g., spikes) across session
+            else
+                sessionActivity= fetch(roi,pv.modality); % Values (e.g., spikes) across session
+            end
             V = [sessionActivity.(pv.modality)]; %[nrFramesPerSession nrROIs]
 
             newTimes = seconds(pv.start:pv.step:pv.stop);
             nrTimes  = numel(newTimes);
-            nrTrials = numel(frames);
-            varNames = "Trial" + string([frames.trial]);
+
+
+            nrTrials = numel(trials);
+            varNames = "Trial" + string([trialMap(trials).trial]);
             T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes','VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
-            for tr = 1:nrTrials
-                thisT = timetable(seconds(frames(tr).trialtime),V(frames(tr).frame,:));                
+            trCntr=0;
+            for tr = trials
+                trCntr= trCntr+1;
+                thisT = timetable(seconds(trialMap(tr).trialtime),V(trialMap(tr).frame,:));                
+                if pv.start <0 && trialMap(tr).trial>1
+                    previousTrial = trialMap(tr).trial-1;
+                    preTime = seconds(trialMap(previousTrial).trialtime);
+                    preTime = preTime-preTime(end)-mean(diff(preTime));
+                    preT = timetable(preTime,V(trialMap(previousTrial).frame,:));
+                    thisT = [preT;thisT]; %#ok<AGROW> 
+                end
                 thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
-                T.(varNames(tr)) = table2array(thisT);                
+                T.(varNames(trCntr)) = table2array(thisT);                
             end
             % Return as doubles or as timetable.
             if nargout ==2

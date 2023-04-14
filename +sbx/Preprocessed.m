@@ -131,6 +131,9 @@ classdef Preprocessed < dj.Imported
                     fs = double(opts.item{'fs'});
                     tpl = mergestruct(key,struct('img',img,'folder',fullfile(sessionPath,resultsFolder),'nrframesinsession',N,'framerate',fs));
                     insert(tbl,tpl);
+                    % And make the part table that maps trials to frames
+                    % for this preprocessed set.
+                    make(sbx.PreprocessedTrialmap,ns.stripToPrimary(tbl,tpl))
                 case 'caiman'
                     % TODO
                 otherwise

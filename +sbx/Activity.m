@@ -62,8 +62,10 @@ classdef Activity < dj.Computed
             for c=1:nrX
                 stay = x==uX(c);
                 trialsPerCondition = sum(stay);
-                m(c,:) = mean(meanResponseInWindow(stay,:),1,"omitnan");
-                se(c,:) = std(meanResponseInWindow(stay,:),0,1,"omitnan")/sqrt(trialsPerCondition);
+                if trialsPerCondition>0
+                    m(c,:) = mean(meanResponseInWindow(stay,:),1,"omitnan");
+                    se(c,:) = std(meanResponseInWindow(stay,:),0,1,"omitnan")/sqrt(trialsPerCondition);
+                end
             end
             m = m ./max(m,[],1);
 
