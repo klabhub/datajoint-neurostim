@@ -82,14 +82,14 @@ classdef Roi < dj.Imported
             colormap(pv.colormap)
             if pv.showImg
                 % Show mean image as background
-                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');                               
-                cl = [min(meanImg,[],"all") max(meanImg,[],"all")];                
+                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');
+                cl = [min(meanImg,[],"all") max(meanImg,[],"all")];
                 RI = imref2d(size(meanImg),micPerPix(1),micPerPix(2));
-                imshow(meanImg,RI,'DisplayRange',cl,'colormap',gray);              
+                imshow(meanImg,RI,'DisplayRange',cl,'colormap',gray);
                 axImg =gca;
                 % Another set of axes for the scatter (uses a different
                 % colormap)
-                ax = axes('position',get(axImg,'position'),'Color','none');                
+                ax = axes('position',get(axImg,'position'),'Color','none');
             else
                 ax =gca;
             end
@@ -102,14 +102,14 @@ classdef Roi < dj.Imported
             set(ax,'XDir','normal','YDir','reverse');
             if ~isempty(pv.clim)
                 clim(ax,pv.clim)
-            end                     
-            ax.Color = "none";          
+            end
+            ax.Color = "none";
             h = colorbar;
             ylabel(h,pv.colorLabel);
             if exist('axImg','var')
                 set(axImg,'position',get(ax,'position'));
                 ax.XLim = axImg.XLim;
-                ax.YLim = axImg.YLim;    
+                ax.YLim = axImg.YLim;
                 ax.Visible ='off';
             end
 
@@ -122,20 +122,20 @@ classdef Roi < dj.Imported
             end
 
         end
-      
+
         function plotDFF(roi,expt,pv)
             % Plot a summary view of dF/F for a set of ROIs in an
             % experiment
-            % 
+            %
             % roi - A sbx.Roi table
             % expt - The ns.Experiment
-            % Parm/Value Pairs:            
-            % baseline - The time window in seconds relative to firstFrame 
+            % Parm/Value Pairs:
+            % baseline - The time window in seconds relative to firstFrame
             %               that defines the  baseline [2 3]
-            % respons  - The time window where a response is expected 
+            % respons  - The time window where a response is expected
             %               [0.5 1.5]
             % window    - The time window for which to show dF/F. [ 0 3]
-            % maxDFF    - Clamp dF/F values (in %) higher than this [100] 
+            % maxDFF    - Clamp dF/F values (in %) higher than this [100]
             % fetchOptions - Passed to fetch(sbx.Roi), so for instance
             %                   'LIMIT 100' or 'ORDER BY radius'
             % percentile  - Definition of F is this percentile of the
@@ -143,12 +143,12 @@ classdef Roi < dj.Imported
             % OUTPUT
             %    A figure showing the dF/F for all ROIs, the average dF/F
             %    over time, and a map of the shotnoise
-            % 
-             arguments
+            %
+            arguments
                 roi (1,1) sbx.Roi
-                expt (1,1) ns.Experiment   
-                pv.trial   =[]                           
-                pv.baseline = [2 3]                 
+                expt (1,1) ns.Experiment
+                pv.trial   =[]
+                pv.baseline = [2 3]
                 pv.window = [0 3]
                 pv.response = [0.5 1.5]
                 pv.maxdFF= Inf;
@@ -159,7 +159,7 @@ classdef Roi < dj.Imported
                 pv.shotNoise =false;
                 pv.spikes =false
             end
-            
+
             % Extract fluorescence and neuropil
             frame = 1./unique([fetch(sbx.Preprocessed & roi,'framerate').framerate]);
             if pv.spikes
@@ -177,22 +177,22 @@ classdef Roi < dj.Imported
                 dFF  =  sbx.dFOverF(tF,tFNeu,pv.baseline,percentile = pv.percentile,neuropilFactor=pv.neuropilFactor);
             end
             [~,nrRoi] = size(dFF);
-            % Remove outliers based on expected response                       
+            % Remove outliers based on expected response
             if ~isinf(pv.maxResponse)
-             inResponse = tF.Time >= seconds(pv.response(1)) & tF.Time < seconds(pv.response(2)); 
-             mResponse = mean(dFF(inResponse,:),1,"omitnan");
-             out = mResponse > pv.maxResponse;
-             dFF(:,out) =[];
-             nrRoi = nrRoi-sum(out);
-             fprintf('Removed %d rois based on their response\n',sum(out));
+                inResponse = tF.Time >= seconds(pv.response(1)) & tF.Time < seconds(pv.response(2));
+                mResponse = mean(dFF(inResponse,:),1,"omitnan");
+                out = mResponse > pv.maxResponse;
+                dFF(:,out) =[];
+                nrRoi = nrRoi-sum(out);
+                fprintf('Removed %d rois based on their response\n',sum(out));
             end
-            
+
             % Clamp
             dFF(dFF < -abs(pv.maxdFF)) =-abs(pv.maxdFF);
             dFF(dFF > abs(pv.maxdFF)) =abs(pv.maxdFF);
 
             %% Graphical output
-            subplot(2,2,[1 3])           
+            subplot(2,2,[1 3])
             imagesc(seconds(tF.Time),1:nrRoi,dFF')
             xlabel 'Time (s)'
             ylabel (char('ROI',pv.fetchOptions))
@@ -211,17 +211,189 @@ classdef Roi < dj.Imported
             xlabel 'Time (s)'
             ylabel 'dF/F (%)'
             if pv.shotNoise
-            subplot(2,2,4)
-            if isempty(pv.fetchOptions)
-                roiUsed = roi;
-            else
-                roiUsed = roi  & fetch(roi,pv.fetchOptions);
-            end
-            plot(roiUsed,color=shotNoise);
+                subplot(2,2,4)
+                if isempty(pv.fetchOptions)
+                    roiUsed = roi;
+                else
+                    roiUsed = roi  & fetch(roi,pv.fetchOptions);
+                end
+                plot(roiUsed,color=shotNoise);
             end
             info = fetch(expt,'paradigm');
             sgtitle(sprintf('%s (%s) - %s',info.session_date,info.starttime,info.paradigm))
         end
+
+        function plotTimeCourse(roi,expt, condition,pv)
+            % Plot time courses. Each roi in the table will be shown as a
+            % separate tile, each condition a line in the plot.  Time
+            % courses are scaled to the 99th percentile across all
+            % responses and de-meaned per condition. Hence, the mean
+            % response is lost, but the relative response modulation in
+            % each condition is maintained.
+            %
+            % roi - sbx.Roi table
+            % expt - A single ns.Experiment (tuple or table)
+            % conditions - Specify how trials should be grouped into conditions:
+            %               []  - Pool over all trials
+            %               A ns.Condition table - pool per condition
+            %               A vector of trials - Pool over only these trials
+            %               A cell array with vectors of trials. Pool over
+            %               each set of trials
+            %
+            % 'fun' - By default this function visualizes the mean across trials
+            %       together with shading reflecting the standard error. To use something else,
+            %       pass a function that, when passed a matrix with [nrTimePoints nrTrials] , returns one
+            %       value and an error bar for each row.
+            %
+            % 'name'  Name of the conditions
+            % 'start' - Start time in seconds
+            % 'step'  - Step time in seconds
+            % 'stop' - Stop time in seconds
+            % 'interpolation' - Interpolation method ['linear']
+            %
+            % 'mode'  ["TIMECOURSE"], TUNING, SPECTRUM
+            % Spectrum Options
+            % 'evoked' Set  to true to show evoked power instead of total
+            % power.
+            % Tuning options
+            %   pv.x    - The independent variable for each condition
+            %  pv.polar . Set to true to indicate that pv.x is in degrees.
+
+            arguments
+                roi (1,1) sbx.Roi
+                expt (1,1) ns.Experiment
+                condition = []
+                pv.fun (1,1) = @(x)(deal(mean(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
+                pv.name= {}
+                pv.start = 0
+                pv.stop =  3
+                pv.step = 0.1
+                pv.interpolation = 'linear';
+                pv.modality = 'spikes';
+
+                pv.mode (1,1) {mustBeTextScalar,mustBeMember(pv.mode,["TIMECOURSE","SPECTRUM", "TUNING"])} = "TIMECOURSE"
+
+                % Spectrum options
+                pv.evoked (1,1) logical = false;
+                % Tuning options
+                pv.x (1,:) {mustBeNumeric} =[]
+                pv.polar (1,1) logical = false;
+            end
+
+            %% Determine trial->condition mapping
+            if isempty(condition)
+                trialsPerCondition = {[]};% All trials
+            elseif isa(condition,'ns.Condition')
+                % Collect trials from ns.Condition table
+                trialsPerCondition = cell(1,count(condition));
+                cCntr = 0;
+                for c=fetch(condition)'
+                    cCntr = cCntr+1;
+                    trialsPerCondition{cCntr} = [fetch(ns.ConditionTrial & c,'trial').trial];
+                    pv.name{cCntr} = c.name;
+                end
+            elseif isnumeric(condition)
+                trialsPerCondition = {condition};
+            elseif iscell(condition)
+                trialsPerCondition = condition;
+            else
+                error('Condition must be empty, an ns.Condition table, a list of trials, or a cell array with lists of trials. Not a %s',class(condition))
+            end
+            nrConditions = numel(trialsPerCondition);
+            if isempty(pv.name)
+                pv.name= "Condition " + string(1:nrConditions);
+            end
+
+            %% Loop over roi, one tile per roi
+            for thisRoi =fetch(roi)'
+                nexttile;
+                for c= 1:nrConditions
+                    % Loop over conditions
+                    [time,y] = get(roi & thisRoi,expt,trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=pv.stop,step=pv.step,interpolation =pv.interpolation);
+                    if isempty(y);continue;end
+                    y = reshape(squeeze(y),size(y,1),[]);
+                    switch upper(pv.mode)
+                        case "SPECTRUM"
+                            y = y-mean(y,1,"omitnan");
+                            if pv.evoked
+                                y = mean(y,2,"omitnan");
+                            end
+                            y(isnan(y)) =0;
+                            [pwr(:,:,c),freq] = pspectrum(y,time,'power'); %#ok<AGROW>
+                        case "TUNING"
+                            window = isbetween(seconds(time),seconds(pv.start),seconds(pv.stop));
+                            meanResponseInWindow = squeeze(mean(y(window,:),1,"omitnan")); % Average over window
+                            [m(c,:),e(c,:)] = pv.fun(meanResponseInWindow); %#ok<AGROW>
+
+                        case "TIMECOURSE"
+                            % Average over trials  in the condition
+                            [m(:,c),e(:,c)] = pv.fun(y); %#ok<AGROW>
+                    end
+                end
+
+                %% Visualize
+                switch upper(pv.mode)
+                    case "SPECTRUM"
+                        [m,e] = pv.fun(pwr);
+                        maxM = max(m);
+                        m = m./maxM;
+                        e = e./maxM;
+                        h = ploterr(freq,squeeze(m),squeeze(e),'linewidth',2,'ShadingAlpha',0.5);
+                        xlabel 'Frequency (Hz)'
+                        ylabel 'Power'
+                        h =legend(h,pv.name);
+                        h.Interpreter  = 'None';
+                    case "TUNING"
+                        if isempty(pv.x)
+                            pv.x = (1:nrConditions)';
+                        end
+                        [pv.x,ix] =sort(pv.x);
+                        m = m(ix,:);
+                        e = e(ix,:);
+                        pv.name = pv.name(ix);
+                        if pv.polar
+                            %Assume uX is degrees. Show in polar coordinates,
+                            %connect lines around the circle.
+                            x= deg2rad(pv.x)';
+                            x= [x;x(1)];
+                            y = [m;m(1,:)];
+                            e = [e;e(1,:)];
+                            polarplot(x,y);
+                            hold on
+                            polarplot(x,y-e,'k:');
+                            polarplot(x,y+e,'k:');
+                        else
+                            ploterr(pv.x,m,e)
+                            set(gca,'xTick',pv.x,'xTickLabel',pv.name)
+                        end
+
+                    case "TIMECOURSE"
+                        %% TimeCourse
+
+                        nrTime = numel(time);
+                        % Remove mean per condition
+                        m = m - mean(m,1,"omitnan");
+                        % Scale each condition to the grandMax
+                        grandMax = prctile(abs(m(:)),99);
+                        m = m./grandMax;
+                        e = e./grandMax;
+                        % Add the conditionNr so that each m column has a mean of
+                        % conditionNr and can be plotted on the same axis, with
+                        % conditions discplaced vertically from each other.
+                        m = m + repmat(1:nrConditions,[nrTime 1]);
+                        h = ploterr(time,m,e,'linewidth',2,'ShadingAlpha',0.5);
+                        hold on
+                        % Show mean line
+                        hh = plot(time,repmat(1:nrConditions,[nrTime 1]),'LineWidth',0.5);
+                        [hh.Color] =deal(h.Color);
+                        ylim([0 nrConditions+1])
+                        set(gca,'yTick',1:nrConditions,'yTickLabel',pv.name)
+                        
+                end
+            end
+        end
+
+
         function [varargout] = get(roi,expt,pv)
             % Function to retrieve trial-start aligned activity data per
             % ROI and Experiment.
@@ -255,12 +427,12 @@ classdef Roi < dj.Imported
                 pv.step = 0.1;
             end
             if count(expt)~=1
-                error("sbx.Roi.get requires a single experiment as its input.\n")                
+                error("sbx.Roi.get requires a single experiment as its input.\n")
             end
             %% Get the mapping from Frames to trials.
             % Specific or this ROI (i.e. this Preprocessed set) in this
             % Expt
-            trialMap = sbx.PreprocessedTrialmap & expt;           
+            trialMap = sbx.PreprocessedTrialmap & expt;
             trialMap = fetch(trialMap ,'*');
             if isempty(pv.trial)
                 trials = [trialMap.trial]; % All trials
@@ -285,16 +457,16 @@ classdef Roi < dj.Imported
             trCntr=0;
             for tr = trials
                 trCntr= trCntr+1;
-                thisT = timetable(seconds(trialMap(tr).trialtime),V(trialMap(tr).frame,:));                
+                thisT = timetable(seconds(trialMap(tr).trialtime),V(trialMap(tr).frame,:));
                 if pv.start <0 && trialMap(tr).trial>1
                     previousTrial = trialMap(tr).trial-1;
                     preTime = seconds(trialMap(previousTrial).trialtime);
                     preTime = preTime-preTime(end)-mean(diff(preTime));
                     preT = timetable(preTime,V(trialMap(previousTrial).frame,:));
-                    thisT = [preT;thisT]; %#ok<AGROW> 
+                    thisT = [preT;thisT]; %#ok<AGROW>
                 end
                 thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
-                T.(varNames(trCntr)) = table2array(thisT);                
+                T.(varNames(trCntr)) = table2array(thisT);
             end
             % Return as doubles or as timetable.
             if nargout ==2

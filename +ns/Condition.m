@@ -37,6 +37,8 @@ classdef Condition < dj.Manual
             end
             if ischar(plg);plg={plg};end
             if ischar(prm);prm={prm};end
+            SEPARATOR1 = "-"; % Between parm and value
+            SEPARATOR2 = "+"; % Between one parm and the next. 
 
             nrPlg = numel(plg);
             nrPrm = numel(prm);
@@ -48,10 +50,10 @@ classdef Condition < dj.Manual
                 val = [];
                 for i=1:nrPlg
                     if isnan(pv.left)
-                        prefix = string(plg{i})+"_" +string(prm{i})+"_";
+                        prefix = string(plg{i})+SEPARATOR1 +string(prm{i})+SEPARATOR1;
                     else
                         % Reduce prefix
-                        prefix = string(plg{i}(1:pv.left)) +"_" +string(prm{i}(1:pv.left)) +"_";
+                        prefix = string(plg{i}(1:pv.left)) +SEPARATOR1 +string(prm{i}(1:pv.left)) +SEPARATOR1;
                     end
                     prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',0)';
                     val= [val prefix+string(prmValues)]; %#ok<AGROW> 
@@ -62,7 +64,7 @@ classdef Condition < dj.Manual
                 %% Create and insert Condition tuples
                 tpl = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions
-                    tpl(c).name = strjoin(uVal(c,:),'-');
+                    tpl(c).name = strjoin(uVal(c,:),SEPARATOR2);
                     tpl(c).condition= c;                    
                 end
                 insert(tbl,tpl);
