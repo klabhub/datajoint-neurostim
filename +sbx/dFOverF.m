@@ -37,11 +37,19 @@ end
 [nrTimePoints, nrTrials] = size(tCorrected);
 nrRoi = numel(tCorrected{1,1});
 
-F0 = baseline(tCorrected,baselineWindow,pv.percentile);
-F0 = repmat(F0,[nrTimePoints 1 nrTrials]);
 dF  = table2array(tCorrected);
 dF  = reshape(dF,[nrTimePoints nrRoi nrTrials]);
-dFF = mean(100*(dF-F0)./F0,3,"omitnan");
+
+
+
+if isempty(baselineWindow)
+    dFF=mean(dF,3,"omitnan");  % No baseline correction
+else
+    F0 = baseline(tCorrected,baselineWindow,pv.percentile);
+    F0 = repmat(F0,[nrTimePoints 1 nrTrials]);
+    dFF = mean(100*(dF-F0)./F0,3,"omitnan");
+    
+end
 
 
 %% Shot noise
@@ -71,11 +79,8 @@ F = reshape(F,[nrTimePointsBaseline nrRoi nrTrials]);
 if percentile ==0
     % Used the mean over time points and trials
    F = mean(F,[1 3],"omitnan");   
-else
-    % Determine mean over trials, and then the percentile over the time
-    % points
-    %F = prctile(mean(F,3,"omitnan"),percentile);  
-    F = prctile(F,percentile,[1 3]);   % Percentile over time and trial
-
+else    
+    % Percentile over time and trial
+    F = prctile(F,percentile,[1 3]);   
 end
 end
