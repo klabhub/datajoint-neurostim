@@ -6,7 +6,8 @@ plane : smallint #  plane
 ---
 pcell = 0 : float # Probability that the ROI is a neuron
 fluorescence   : longblob     # Fluorescence trace
-neuropil: longblob   # Neuropil Fluorescence trace (scatter)            
+neuropil: longblob   # Neuropil Fluorescence trace (scatter)          
+stdfluorescence : float # Standard deviation of the neuropil corrected fluorescence.
 spikes: longblob   # Deconvolved spiking activity
 meanrate : float  # Mean number of spikes/second across the session
 stdrate  :  float  # Stdev of the spikes/second across the session
@@ -277,7 +278,7 @@ classdef Roi < dj.Imported
                 pv.interpolation {mustBeText} = 'linear';
                 pv.modality {mustBeText} = 'spikes';
                 pv.averageRoi (1,1)  logical = false;
-                pv.mode (1,1) {mustBeTextScalar,mustBeMember(pv.mode,["RASTER", "TIMECOURSE","EVOKED","TOTAL", "TUNING"])} = "TIMECOURSE"
+                pv.mode (1,1) {mustBeTextScalar,mustBeMember(pv.mode,["COHERENCE", "RASTER", "TIMECOURSE","EVOKED","TOTAL", "TUNING"])} = "TIMECOURSE"
                 pv.crossTrial (1,1) logical = false;
                 pv.fetchOptions {mustBeText} = ''
                 pv.perTrial (1,1) logical = false;
@@ -292,25 +293,11 @@ classdef Roi < dj.Imported
                 pv.polar (1,1) logical = false;
             end
 
-            %% Determine trial->condition mapping
-            if isempty(condition)
-                trialsPerCondition = {[]};% All trials
-            elseif isa(condition,'ns.Condition')
-                % Collect trials from ns.Condition table
-                trialsPerCondition = cell(1,count(condition));
-                cCntr = 0;
-                for c=fetch(condition)'
-                    cCntr = cCntr+1;
-                    trialsPerCondition{cCntr} = [fetch(ns.ConditionTrial & c,'trial').trial];
-                    pv.name{cCntr} = c.name;
-                end
-            elseif isnumeric(condition)
-                trialsPerCondition = {condition};
-            elseif iscell(condition)
-                trialsPerCondition = condition;
-            else
-                error('Condition must be empty, an ns.Condition table, a list of trials, or a cell array with lists of trials. Not a %s',class(condition))
+            [trialsPerCondition,names] = sbx.trialsPerCondition(condition);
+            if isempty(pv.name)
+                pv.name = names;
             end
+            
             nrConditions = numel(trialsPerCondition);
             if isempty(pv.name)
                 pv.name= "Condition " + string(1:nrConditions);
@@ -322,10 +309,9 @@ classdef Roi < dj.Imported
                 roiTpls = fetch(roi,pv.fetchOptions);
             end
              nrRois = numel(roiTpls);
-            if pv.averageRoi
+            if pv.averageRoi || pv.mode=="COHERENCE"
                 nrRois =1;
             end
-            
             layout = tiledlayout('flow');
             if pv.compact
                 layout.Padding ="tight";
@@ -342,18 +328,20 @@ classdef Roi < dj.Imported
                     if c==1
                         nexttile;
                     end
-                    if pv.averageRoi
-                        % Average rois
-                        [time,y] = get(roi ,expt,fetchOptions = pv.fetchOptions,crossTrial =pv.crossTrial, trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
-                        y = mean(y,2,"omitnan"); % Average over rois
+                    if pv.averageRoi || pv.mode=="COHERENCE"
+                        % Get all rois
+                        [time,y] = get(roi ,expt,fetchOptions = pv.fetchOptions,crossTrial =pv.crossTrial, trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);                        
+                        if pv.averageRoi 
+                            % Average
+                            y = mean(y,2,"omitnan"); % Average over rois
+                        end
                     else
                         %% Loop over roi, one tile per roi
                         [time,y] = get(roi &roiTpls(roiCntr) ,expt,crossTrial =pv.crossTrial,trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
                     end
 
                     if isempty(y);continue;end
-                    y = reshape(squeeze(y),size(y,1),[]);
-                    
+                     
                     perTrial{c} = y;
                     switch upper(pv.mode)
                         case {"TOTAL","EVOKED"}
@@ -370,7 +358,14 @@ classdef Roi < dj.Imported
                             [thisM,thisE] = pv.fun(meanResponseInWindow);
                         case {"TIMECOURSE", "RASTER"}
                             % Average over trials  in the condition
-                            [thisM,thisE] = pv.fun(y);                                                       
+                            [thisM,thisE] = pv.fun(y);       
+                        case "COHERENCE"
+                            y = y- mean(y,1,"omitnan"); % Remove mean
+                            y(isnan(y)) = 0; % Remove nans
+                            for tr =  1:size(y,2)
+                                [thisC(:,:,:,tr),phi,S12,freq] = cohmatrixc(squeeze(y(:,tr,:)),struct('tapers',[3 5],'pad',0,'Fs',1./pv.step));
+                            end
+                            thisM = mean(thisC,4);
                     end
                     m = catpad(m,thisM);  % Cat as next column allow different rows (padded with NaN at the end)
                     e  =catpad(e,thisE);
@@ -515,7 +510,7 @@ classdef Roi < dj.Imported
             %
             % OUTPUT
             %  [t,v]  = t: time in seconds since first frame event,
-            %           v: Matrix with [nrTimePoints nrRois nrTrials]
+            %           v: Matrix with [nrTimePoints nrTrials nrRois]
             % Alternatively, when only a single output is requested:
             % T     = timetable with each column a trial. Time is in seconds
             %           relative to the first frame of the trial.
@@ -608,7 +603,7 @@ classdef Roi < dj.Imported
                 varargout{1} = seconds(T.Time);
                 [nrTimePoints, nrTrials] = size(T);
                 nrRoi = numel(T{1,1});
-                varargout{2} = double(reshape(T.Variables,[nrTimePoints nrRoi nrTrials]));
+                varargout{2} = permute(double(reshape(T.Variables,[nrTimePoints nrRoi nrTrials])),[1 3 2]);
             else
                 varargout{1} =T;
             end
@@ -648,10 +643,10 @@ classdef Roi < dj.Imported
                 med= cat(1,stat.med); %[x y] pixels per ROI.
                 compact = cat(1,stat.compact);
                 aspect = cat(1,stat.aspect_ratio);
-
+        
                 radius = cat(1,stat.radius); % Pixels
                 radius = radius.*micPerPix;
-
+                stdfluorescence = cat(1,stat.std);
 
                 fprintf('Done.\n')
                 %% Make tuples and insert
@@ -676,7 +671,8 @@ classdef Roi < dj.Imported
                     'y',num2cell(med(:,2)), ...
                     'radius',num2cell(radius',1)', ...
                     'compact',num2cell(compact',1)', ...
-                    'aspect',num2cell(aspect',1)' );
+                    'aspect',num2cell(aspect',1)' , ...
+                    'stdfluorescence',num2cell(stdfluorescence',1)');
                 fprintf('Adding %d ROIs to the database in chunks of %d\n',nrROIs,CHUNK);
                 tic;
                 for i=1:CHUNK:numel(tpl)
