@@ -115,7 +115,7 @@ fullName = fullfile({dirInfo.folder}',{dirInfo.name}');
 if strcmpi(filesep','\')
     fs = '\\';
 else
-    fs = filesp;
+    fs = filesep;
 end
 if ispc
     root = strrep(p.Results.root,'/','\');
