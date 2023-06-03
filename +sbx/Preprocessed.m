@@ -106,7 +106,7 @@ classdef Preprocessed < dj.Imported
                             opts{fn{f}} = new;
                         end
                     resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
-                    if true %~exist(resultsFile,'file')
+                    if ~exist(resultsFile,'file')
                         % Create a dict with the relevant information
                         db= py.dict(pyargs('save_path0',sessionPath, ...
                             'save_folder',resultsFolder, ...
@@ -146,7 +146,7 @@ classdef Preprocessed < dj.Imported
                             dbFile = tempname;
                             nssbx.save_dict_to_file(db,dbFile)
                             % The python file that will read these 
-                            pyWrapper= sprintf('%s\\nssbx_suite2p.py',toolsPath);
+                            pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
                             % Construct a batch/bash command.
                             if ispc
                                 % The batch command activates conda, then
@@ -154,10 +154,10 @@ classdef Preprocessed < dj.Imported
                                 % and then call suite2p.run_s2p
                                 cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
                             else
-                                cmd = sprintf('bash "%s\\nssbx_suite2p.sh" "%s" %s %s ',toolsPath,pyWrapper,optsFile,dbFile);
+                                cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
                             end
                             
-                            system([cmd   '&'])
+                            system(cmd ,'-echo')
                         
                         end
 

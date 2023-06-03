@@ -21,9 +21,10 @@ def load_dict_from_file(filename):
     return dictionary
 
 if __name__ == '__main__':
+    print('Hello world, reading ops and db, then starting suite2p')
     ops=load_dict_from_file(argv[1])
     db =load_dict_from_file(argv[2])
     print(ops)
     print(db)
-    run_s2p.py(ops, db);
+    run_s2p(ops, db);
 
