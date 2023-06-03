@@ -106,15 +106,63 @@ classdef Preprocessed < dj.Imported
                             opts{fn{f}} = new;
                         end
                     resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
-                    if ~exist(resultsFile,'file')
+                    if true %~exist(resultsFile,'file')
                         % Create a dict with the relevant information
                         db= py.dict(pyargs('save_path0',sessionPath, ...
                             'save_folder',resultsFolder, ...
                             'data_path',py.list(dataFldr), ...
                             'fast_disk',fullfile(sessionPath,resultsFolder)));
-                        % Pass to python to process
+                            
+                        usePyEnv = false;
+                       
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-                        py.suite2p.run_s2p(ops =opts,db=db);
+                       
+                        if usePyEnv
+                            % Pass to InProcess python to process
+                            py.suite2p.run_s2p(ops =opts,db=db);                        %#ok<UNRCH> 
+                        else
+                            % Calling python in-process can lead to problems
+                            % with library conflicts (not so much with simple dict calls).
+                            % Using a system call may be more robust to
+                            % different installs. To pass the ops and db dicst we save them
+                            % to a temporary file.
+                            
+                            cfd = fileparts(mfilename('fullpath'));
+                            conda = getenv('NS_CONDA');
+                            if isempty(conda)
+                                error('Conda not found. Please specify the install folder of your miniconda using setenv(''NS_CONDA'',xxxx)');
+                            end
+                            % The python tools are in the tools folder.
+                            % Temporarily go there to import  (full path
+                            % did not seem to work).
+                            toolsPath = fullfile(fileparts(cfd),'tools');
+                            here =pwd;
+                            cd(toolsPath); 
+                            nssbx = py.importlib.import_module('nssbx_suite2p');
+                            cd (here)
+                            % Save the dicts to tempfiles
+                            optsFile= tempname;                            
+                            nssbx.save_dict_to_file(opts,optsFile)
+                            dbFile = tempname;
+                            nssbx.save_dict_to_file(db,dbFile)
+                            % The python file that will read these 
+                            pyWrapper= sprintf('%s\\nssbx_suite2p.py',toolsPath);
+                            % Construct a batch/bash command.
+                            if ispc
+                                % The batch command activates conda, then
+                                % calls nssbx_suite2p.py to read the dicst
+                                % and then call suite2p.run_s2p
+                                cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
+                            else
+                                cmd = sprintf('bash "%s\\nssbx_suite2p.sh" "%s" %s %s ',toolsPath,pyWrapper,optsFile,dbFile);
+                            end
+                            
+                            system([cmd   '&'])
+                        
+                        end
+
+
+
                         % Couldn't figure out how to convert stat.npy so
                         % save it as .mat (Not using save_mat to avoid
                         % duplicating all of the fluorescence data in F.mat
