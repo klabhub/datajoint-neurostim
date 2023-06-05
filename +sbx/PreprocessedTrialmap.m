@@ -40,7 +40,7 @@ classdef PreprocessedTrialmap < dj.Part
                 % laser to determine laser onset time on the neurostim
                 % clock.
                 c = open(ns.Experiment &expt);
-                [~,filename,ext] =fileparts(c.mdaq.outputFile);
+                [~,filename,ext] =fileparts(strrep(c.mdaq.outputFile,'\','/'));% Make fileparts os insensitive
                 fldr = folder(ns.Experiment &expt);
                 thisT = c.mdaq.readBin(fullfile(fldr,[filename ext]));
                 laserOnIx = find(diff(thisT.laserOnDig)>0.5); % Transition from 0-1

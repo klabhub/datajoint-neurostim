@@ -46,8 +46,7 @@ classdef Tuning <dj.Computed
                 nrWorkers = 0;
             else
                 nrWorkers = gcp('nocreate').NumWorkers;
-            end
-            nrWorkers = 0;
+            end            
             % Get the data and the directions
             [~,spk] = get(roi,expt,modality = 'spikes',start=0.5,stop=1.5,step=stepSize,interpolation ='nearest');
             direction = get(expt ,'gbr','prm','orientation','atTrialTime',0);
