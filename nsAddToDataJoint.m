@@ -78,8 +78,8 @@ function [newTpls,newMetaTpls] = insertNewTuples(tbl,djTbl,dryrun)
 %% Determine whether there are entries that are not yet in the database
 newTpls = [];
 updateTpls = [];
-newMetaTpls = [];
-updateMetaTpls = [];
+newMetaTpls = [];  %
+updateMetaTpls = []; % With an empty metaTpl defined we don't have to check for nr>0 below
 
 pkey = djTbl.primaryKey;
 hdr  = djTbl.header;
@@ -115,31 +115,35 @@ for row=1:height(tbl)
         % No match with the primary key
         % Add to the newTpls array
         newTpls = cat(1,newTpls,thisTblTpl);
-        newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
+        if nrMeta>0
+            newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);       
+        end
     else
         % Existing tuple.
         % Check whether the new one is different from the
         % existing one
-        if exists(djTbl & table2struct(tbl(row,tblFields)))
+        if exists(djTbl & table2struct(tbl(row,tblFields))) && nrMeta>0
             % Tpls are the same, check if the meta information is different.
             fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);
             fromDbase = convertvars(fromDbase,1:width(fromDbase),"string"); % Match the "" format of the tbl
-            if isempty(fromDbase)
+            if isempty(fromDbase) 
                 % Everything is new
                 newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
-            elseif  ~isempty(setdiff(cat(2,pkey,metaFields),fromDbase.Properties.VariableNames))
+            elseif  ~isempty(setdiff(cat(2,pkey,metaFields),fromDbase.Properties.VariableNames)) 
                 % Some newly defined meta fields. Update all
                 updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl);
             else
-                % Same meta fields, potentially different values
+                % Same meta fields, potentially different values                
                 [~,ix] = setdiff(tbl(row,cat(2,pkey,metaFields)),fromDbase);
-                updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl(ix));
+                updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl(ix));                
             end
         else
             %Add to the updateTpls array
             updateTpls = cat(1,updateTpls, thisTblTpl);
             % The update will remove meta data, so add those as new as well
-            newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
+            if nrMeta>0
+                newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
+            end
         end
     end
 end
