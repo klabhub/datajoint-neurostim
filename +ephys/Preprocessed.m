@@ -12,13 +12,13 @@ info = NULL : longblob # Any additional information on this preprocessed channel
 % electrophysiological recordings. For a specific signal the user provides
 % the name of a function that reads data, preprocesses them and the returns
 % values that are stored in the preprocessed table. Specifically, this
-% preprocessing funciton has the following prototype: 
+% preprocessing funciton has the following prototype:
 % [signal,channel,time,info] = myprep(key, parms)
 % INPUT
 % key   -  The tuple that defines the source data (i.e. a row in the join of ns.Experiment
 %               and ephys.PrepParm). The user function uses this key
 %               to laod the appropriate file  (e.g. from ns.File & key),
-%                             
+%
 % parms  - A struct with parameters (from (ephys.PrepParm &key)). The user
 %           function uses this to determine what kind of preprocessing to do.
 % OUTPUT
@@ -26,17 +26,17 @@ info = NULL : longblob # Any additional information on this preprocessed channel
 %           columns.  These are all samples obtained during the experiment.
 % channel  - A row vector with the channel number corresponding to each
 %               column in signal.
-% time -  The time at which each sample was obtained. This is a [nrSamples 1] 
+% time -  The time at which each sample was obtained. This is a [nrSamples 1]
 %               column vector. Note that the clock for these times must
 %               match the neurostim clock. The user function likely
 %               includes some code to matchup the clock of the data
-%               acquisition device with some event in Neurostim. 
+%               acquisition device with some event in Neurostim.
 % info - This is an optional cell array of size [1 nrChannels] each cell
 %           provides some additional information on the channel that is stored in the
 %           info field of the Preprocessed table. For example, this coudl contain the
 %           hardware filtering parameters of the channel as read from the raw data
-%           file. 
-% 
+%           file.
+%
 % EXAMPLE:
 % The ephys.ripple.prep functon shows a complete implementation of a
 % preprocessing function that handles MUAE, LFP, and EEG recordings with
@@ -60,23 +60,24 @@ classdef Preprocessed < dj.Imported
             % The (user-provided) prep funciton has to return the signal
             % as [nrSamples, nrChannels]  and the channels [nrChannels 1]
             [signal,channel,time,info] = feval(parms.fun,key,parms.parms);
-channel =1;
+            [nrSamples,nrChannels] = size(signal);
+            channel =1;
+            assert(nrSamples==numel(time),'The number of rows in the preprocessed signal does not match the number of time points ')
+            assert(nrChannels==numel(channel),'The number of columns in the preprocessed signal does not match the number of channels')
+            assert(isempty(info) || (iscell(info )&& numel(info)==nrChannels),'The info rerturned by preprocessing deos not match the number of channels')
+
             tpl = mergestruct(key,...
                 struct('signal',num2cell(signal,1),...
                 'channel',num2cell(channel(:))));
             if ~isempty(info)
-                if iscell(info) &&  numel(info)==numel(channel)
-                    % Add it
-                    [tpl.channel] = deal(info{:});
-                else
-                    error('The channel info returned by the preprocessing function %s does not match the number of channels.',parms.fun)
-                end
+                % Add it
+                [tpl.channel] = deal(info{:});
             end
 
             insert(tbl,tpl)
 
             %% Map samples to trials
-            
+
             nrTrials = fetch1(ns.Experiment &key,'trials');
             % Events in neurostim are aligned to firstFrame; we do the same
             % for the analog data
