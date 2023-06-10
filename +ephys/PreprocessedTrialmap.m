@@ -1,11 +1,12 @@
 %{
-# Map samples in a preprocessed data set to trials in Experiments and time.
-->ephys.Preprocessed   # Which preprocessed data set does this apply to
+# Mapping samples to trials for preprocessed signals 
+-> ns.Experiment
+-> ephys.PrepParm
 trial  : int
 --- 
-sample :  blob   # Samples from this Preprocessed set that correspond to this trial
-nstime   : blob  # Time in seconds on the Neurostim experiment clock
-trialtime   : blob    # Time in seconds relatve to the first sample in the trial.
+sample :  longblob   # Samples from this Preprocessed set that correspond to this trial
+nstime   : longblob  # Time in seconds on the Neurostim experiment clock
+trialtime   : longblob    # Time in seconds relatve to the first sample in the trial.
 %}
 % This determines how each sample in a session maps to a trial and a time in
 % a Neurostim experiment. A sample is assigned to a trial if it occurs after
@@ -17,10 +18,15 @@ trialtime   : blob    # Time in seconds relatve to the first sample in the trial
 %
 % This table is used to extract activity per trial, aligned to first frame. 
 % 
-% BK - June 2023
-classdef PreprocessedTrialmap < dj.Part
-    properties (SetAccess = protected)
-        master = ephys.Preprocessed
-    end 
-    
+
+classdef PreprocessedTrialmap < dj.Part % Manual because it is automatically created by Preprocessed
+ properties (SetAccess = protected)
+        master = ephys.Preprocessed;  % Part  table for the plugin
+    end
+    methods  (Access = protected)
+        function makeTuples(~,~)
+             %Handled by the parent class ephys.Preprocessed
+        end
+
+    end
 end
