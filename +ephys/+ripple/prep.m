@@ -95,7 +95,7 @@ switch upper(parms.type)
         % Preprocess LFP
     case 'SPIKES'
 end
-ns_CloseFile(hFile);
+
 
 %% Determine trial start events to  fill the trial mapper and convert nip time to NS time.
 % The Neurostim ripple plugin sets the digital out of the NIP and generates a trialStart event
@@ -119,6 +119,8 @@ clockParms = matchRiplleNeurostim(trialBitTime(:),trialBitValue(:),trialStartTim
 % Use this to translate the time of the preprocessed samples (timeRipple)
 % to time on the neurostim clock.
 timeNeurostim =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime
+
+ns_CloseFile(hFile);
 
 end
 
