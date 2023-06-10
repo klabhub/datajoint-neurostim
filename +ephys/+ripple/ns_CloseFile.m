@@ -57,7 +57,9 @@ ns_RESULT = 'ns_OK';
 fids     = [hFile.FileInfo.FileID];
 errCount = 0;
 for i=1:length(fids)
-    errCount = errCount + fclose(fids(i));
+    if ismember(fids(i),fopen('all'))        
+     errCount = errCount + fclose(fids(i));
+    end
 end
 
 if errCount

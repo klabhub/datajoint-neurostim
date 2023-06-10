@@ -1,10 +1,10 @@
 function [ns_RESULT, TimeStamp, Data, SampleCount, UnitID] = ...
-    ns_GetSegmentData(hFile, EntityID, Index)
+    ns_GetSegmentData(hFile, EntityID, Index,NoWaveForms)
 % ns_GetSegmentData - Retrieves segment data by index
 % Usage:
 % 
 % [ns_RESULT, TimeStamp, Data, SampleCount, UnitID] = ...
-%             ns_GetSegmentData(hFile, EntityID, Index)
+%             ns_GetSegmentData(hFile, EntityID, Index, NoWaveForms)
 % Description:
 % 
 % Returns the Segment data values in entry Index of the entity EntityID 
@@ -21,6 +21,8 @@ function [ns_RESULT, TimeStamp, Data, SampleCount, UnitID] = ...
 % 
 % Index               Index number of the requested Segment data item.
 %       
+% NoWaveForms        Boolean to set whether to read actual waveforms or
+%                    time /id only.
 % Remarks:
 % 
 % A zero unit ID is unclassified, then follow unit 1, 2, 3, etc.
@@ -64,6 +66,9 @@ function [ns_RESULT, TimeStamp, Data, SampleCount, UnitID] = ...
 %     <http://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+if nargin <4
+    NoWaveForms = false;
+end
 TimeStamp    = [];
 Data         = [];
 SampleCount  = [];
@@ -86,26 +91,50 @@ if ~(isnumeric(EntityID))||...
 end
 
 %check Index
-if Index<1||Index>hFile.Entity(EntityID).Count
+if any(Index<1| Index>hFile.Entity(EntityID).Count)
     ns_RESULT = 'ns_BADINDEX';
     return
 end
 
 ns_RESULT = 'ns_OK';
+nrIndex = numel(Index);
 
 %create fileInfo Structure
 fileInfo = hFile.FileInfo(hFile.Entity(EntityID).FileType);
 SampleCount = (fileInfo.BytesDataPacket - 8)/2;
-PacketIndex = find(fileInfo.MemoryMap.Data.PacketID == ...
-    hFile.Entity(EntityID).ElectrodeID, Index);
-TimeStamp = double(fileInfo.MemoryMap.Data.TimeStamp(PacketIndex(end)))/30000;
-UnitID = fileInfo.MemoryMap.Data.Class(PacketIndex(end));
-offset = double(fileInfo.BytesHeaders) + 8 + ...
-    double(fileInfo.BytesDataPacket) * double(PacketIndex(end)-1);
-            
-% skip to event wave data
-fseek(fileInfo.FileID, offset, -1);
-Data = fread(fileInfo.FileID, SampleCount, 'int16=>double');
+PacketIndex = find(fileInfo.MemoryMap.Data.PacketID==...
+    hFile.Entity(EntityID).ElectrodeID);
 
-% scale the data
-Data = Data*hFile.Entity(EntityID).Scale;
+PacketIndex =PacketIndex(Index);
+TimeStamp =...
+    double(fileInfo.MemoryMap.Data.TimeStamp(PacketIndex))/30000;
+UnitID = fileInfo.MemoryMap.Data.Class(PacketIndex);
+
+% skip to event wave data. But only read if requested
+ if NoWaveForms
+    Data = [];
+ else     
+     Data=nan(nrIndex,SampleCount,'int16');
+
+     % Read wave form data 
+    % These consecutive reads with a fixed skipping of 8 bytes shoulwd work
+    % but dont... left for later BK 
+%     if nrIndex==1 || all(diff(Index)==1)
+%         % Consecutive file reads. Read them at once
+%     offset = double(fileInfo.BytesHeaders) + 8 +...
+%             fileInfo.BytesDataPacket*(PacketIndex(1)-1);    
+%          fseek(fileInfo.FileID, offset, -1);    
+%     Data = fread(fileInfo.FileID, nrIndex*SampleCount, '52*int16=>int16',8); 
+%     Data = reshape(Data,SampleCount,nrIndex)';
+%     else % Non consecutive reads. Have to loop (could chunk over consecutive bits...)          
+       
+        for i=1:nrIndex
+            offset = double(fileInfo.BytesHeaders) + 8 + ...
+                double(fileInfo.BytesDataPacket) * double(PacketIndex(i)-1);    
+            fseek(fileInfo.FileID, offset, -1);    
+            Data(i,:)= fread(fileInfo.FileID, SampleCount*1, 'int16=>double');  
+        end
+%     end        
+    % scale the data
+    Data = Data*hFile.Entity(EntityID).Scale;
+end

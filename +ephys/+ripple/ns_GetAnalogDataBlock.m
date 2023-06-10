@@ -9,7 +9,7 @@ function [ns_RESULT, Data] = ...
 % for multiple electrodes in a single file read.  If data for multiple
 % electrodes is desired this will result in much faster reading than the
 % corresponding function NS_GETANALOGDATA.  If extracting data from only
-% one electrode NS_GETANALOGDATABLOCK is comparable with NS_GETANALOGDATA.
+% one electrode NS_GETANALOGDATABLOCK is comparable with NS_GETANALOGBLOCK.
 %
 % Parameters:
 % hFile                            A handle that contains information for 

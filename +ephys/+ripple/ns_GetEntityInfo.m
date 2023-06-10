@@ -95,14 +95,18 @@ EntityTypes = {'Event', 'Analog', 'Segment', 'Neural'};
 ns_RESULT = 'ns_OK';
 
 % start with empty label
-nsEntityInfo.EntityLabel = [];
+nsEntityInfo.EntityLabel = '';
 
 % if the Label field on the hFile Entity exists then copy it into the label on the nsEntityInfo 
 if isfield(hFile.Entity(EntityID), 'Label')
-    nsEntityInfo.EntityLabel = hFile.Entity(EntityID).Label;
+    if iscell(hFile.Entity(EntityID).Label)
+        nsEntityInfo.EntityLabel = hFile.Entity(EntityID).Label{1};
+    else
+        nsEntityInfo.EntityLabel = hFile.Entity(EntityID).Label;
+    end
     % IJM Added if logic below. 
     if size(nsEntityInfo.EntityLabel, 2) == 1
-        nsEntityInfo.EntityLabel = [];
+        nsEntityInfo.EntityLabel = '';
     end
 end
 

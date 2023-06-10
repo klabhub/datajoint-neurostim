@@ -75,12 +75,13 @@ if ~(isnumeric(EntityID))||...
 end
 
 % check Index
-if Index<1||Index>hFile.Entity(EntityID).Count
+if any(Index<1 | Index>hFile.Entity(EntityID).Count)
     ns_RESULT = 'ns_BADINDEX';
     return
 end
 
 ns_RESULT = 'ns_OK';
+nrIndex = numel(Index);
 DataSize = 2;
 % construct the fileInfo structure for the specifies entityID
 fileInfo = hFile.FileInfo(hFile.Entity(EntityID).FileType);
@@ -110,26 +111,27 @@ end
 % has an up bit in position idx.
 posEvent = ...
     find(bitget(fileInfo.MemoryMap.Data.Class, idx) == 1 & ...
-        fileInfo.MemoryMap.Data.PacketID==0, Index);
-% The because we ask only for Index values, the end of the above array
-% is our desired entity
+    fileInfo.MemoryMap.Data.PacketID==0);
 
 % Get the timestamp for this event.  Use a constant 30kHz sampling rate 
 % which should be consitent for all nev files
-TimeStamp = double(fileInfo.MemoryMap.Data.TimeStamp(posEvent(end)))/30000;
+TimeStamp = double(fileInfo.MemoryMap.Data.TimeStamp(posEvent))/30000;
 
 % calculate the offset in bytes to the data that we are interested in 
 % from the start of the nev file
 offset = double(fileInfo.BytesHeaders) +...
     double(fileInfo.BytesDataPacket) *...
-    double(posEvent(end)-1) +...
+    double(posEvent-1) +...
     8 + (idx-1)*2;
 % skip to the calculated offset
-fseek(fileInfo.FileID, offset, -1);
-% if the wanted data is the digital parrelle port only 
-% unsigned ints are supported, otherwise expect signed ints
-if idx == 1
-    Data = fread(fileInfo.FileID, 1, '*uint16');
-else
-    Data = fread(fileInfo.FileID, 1, '*int16');
+Data = nan(1,nrIndex);
+for i=1:numel(offset)
+    fseek(fileInfo.FileID, offset(i), -1);
+    % if the wanted data is the digital parrelle port only
+    % unsigned ints are supported, otherwise expect signed ints
+    if idx == 1
+        Data(i) = fread(fileInfo.FileID, 1, 'uint16=>double');
+    else
+        Data(i) = fread(fileInfo.FileID, 1, 'int16=>double');
+    end
 end
