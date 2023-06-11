@@ -1,5 +1,5 @@
-function [signal,channels,timeNeurostim,info] = prep(key,parms)
-% Read data from Ripple data files, preprocess them according to the parameters
+function [signal,timeNeurostim,info] = preprocess(key,channels,parms)
+% Read from Ripple data files, preprocess them according to the parameters
 % passed in the parms struct.  This handles MUAE, LFP, SPIKES, and EEG
 % data and relies on the Ripple neuroshare tools to read the nev, nsx etc
 % files.
@@ -8,10 +8,10 @@ function [signal,channels,timeNeurostim,info] = prep(key,parms)
 %
 arguments
     key % The keysource of the Preprocessed table (Experiment and PrepParm tuple)
+    channels (1,:) double % The list of channels to preprocess.
     parms (1,1) struct % The preprocessing parameters
 end
 import ephys.ripple.*
-
 % Determine  which label to use
 switch upper(parms.type)
     case {'MUAE','RAW'}
@@ -19,6 +19,7 @@ switch upper(parms.type)
     case {'LFP'}
         label = 'lfp';
     case {'EEG'}
+        label = 'hi-res';
     case {'BREAKOUT'}
 end
 
@@ -46,54 +47,69 @@ fprintf('Done in %d seconds.\n ',round(toc))
 entities = [hFile.Entity];
 
 %% Find relevant channels
-channelIx = find(ismember({entities.EntityType},'Analog'));
-expression = ['\<' label '\s* (?<channel>\d+)'];
-entityIx = find(~cellfun(@isempty,regexp({entities(channelIx).Label},expression,'match')));
-
-entityIx = entityIx(1);
-
-nrSamples = unique([entities(channelIx(entityIx)).Count]);
-assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samples",label);
+entityIx = [];
+for i=1:numel(entities)
+    if strcmpi(entities(i).EntityType,'Analog') 
+        thisChannel = extractAfter(entities(i).Label,label);
+        if ~isempty(thisChannel) && ismember(str2double(thisChannel),channels)
+            entityIx = [entityIx i]; %#ok<AGROW> 
+        end
+    end
+end
 nrChannels = numel(entityIx);
+fprintf('%d channels from this Array in this file\n',nrChannels)
+if nrChannels ==0
+    signal = []; timeNeurostim = [];info=[];
+    return;
+end
+assert(nrChannels==numel(channels),'Multiple channel matches?')
+nrSamples = unique([entities(entityIx).Count]);
+assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samples",label);
 
 
 %% Preprocess
 switch upper(parms.type)
     case 'MUAE'
-        samplingRate = 30e3;% Allways
+        for i=1:nrChannels
+            [errCode, info(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
+            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
+        end
+        samplingRate = info(1).SampleRate;% All are  the same for sure.
         rawTime = ((0:nrSamples-1)'/samplingRate);
         nrSamplesInMuae = numel(downsample(rawTime,samplingRate/parms.targetHz));
         signal = nan(nrSamplesInMuae,nrChannels);
-        memoryAvailable = parms.maxMemory;
+        % Read at least one channel at a time, but if maxMemory allows,
+        % read more (potentially to speed up processing).
+        memoryAvailable = parms.maxMemory; 
         channelChunk = floor(memoryAvailable/(nrSamples*8/1e9))+1;
-
         for i=1:channelChunk:nrChannels
             tic
             thisChunk = i:min(nrChannels,i+channelChunk-1);
-            fprintf('Reading RAW #%d to #%d: channel %d to %d from file ...',min(thisChunk),max(thisChunk),entities(channelIx(entityIx(min(thisChunk)))).ElectrodeID,entities(channelIx(entityIx(max(thisChunk)))).ElectrodeID)
-            [errCode, raw] = ns_GetAnalogDataBlock(hFile, channelIx(entityIx(thisChunk)), 1, nrSamples,'scale');
+            fprintf('Reading RAW #%d to #%d: channel %d to %d from file ...',min(thisChunk),max(thisChunk),entities(entityIx(min(thisChunk))).ElectrodeID,entities(entityIx(max(thisChunk))).ElectrodeID)
+            [errCode, raw] = ns_GetAnalogDataBlock(hFile, entityIx(thisChunk), 1, nrSamples,'scale');
             if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
             fprintf('Converting to MUAE ...')
             [signal(:,thisChunk),timeRipple] = ephys.multiUnitActivityEnvelope(raw,rawTime,"parms",parms);
             fprintf('Done in %d seconds.\n.',round(toc))
-        end
-        channels = [entities(channelIx(entityIx)).ElectrodeID];
-        info = struct([]);
+        end        
     case {'EEG','LFP'}
         for i=1:nrChannels
-            [errCode, info(i)] = ns_GetAnalogInfo(hFile, entities(channelIx(entityIx(i)))); %#ok<AGROW>
+            [errCode, info(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
             if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
         end
         samplingRate = info(1).SampleRate;% All are  the same for sure.
-        timeRipple = seconds((0:nrSamples-1)/samplingRate);
-
+        timeRipple = (0:nrSamples-1)/samplingRate;
+        
+        tic
         fprintf('Reading from file...')
-        [errCode, signal] = ns_GetAnalogDataBlock(hFile,  channelIx(entityIx), 1, nrSamples,'scale');
+        [errCode, signal] = ns_GetAnalogDataBlock(hFile,  entityIx, 1, nrSamples,'scale');
         if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
-        fprintf('Done.\n')
-
+        fprintf('Done in %d seconds.\n.',round(toc))
         % Preprocess LFP
     case 'SPIKES'
+        error('Ripple preprocessing for %s has not been implemented yet.',parms.type)
+    otherwise 
+        error('Unknown Ripple preprocessing type %s.',parms.type)
 end
 
 

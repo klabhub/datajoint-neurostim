@@ -1,15 +1,21 @@
 function v= mergestruct(varargin)
-% Create a scalar struct by combining the fields in all input structs.
+% Create a struct by combining the fields in all input structs.
+% If one of the input structs is a singleton and the other(s) an array, the
+% scalar struct will be repmatted (i.e. used in the entire array).
 %
 % INPUT
 % varargin = Comma separated list of structs.
 % OUTPUT
-% v = A struct
+% v = The merged struct
 %
 % BK - Dec 2022
 
 nrStructs = numel(varargin);
-
+arraySize= cellfun(@numel,varargin);
+singleton = arraySize==1;
+expandTo  = unique(arraySize(~singleton));
+assert(numel(expandTo)==1,'mergestruct can only merge singletons with one struct array size');
+[varargin(singleton)] =cellfun(@(x) repmat(x,[expandTo 1]),varargin(singleton),'uni',false);
 
 % Extract fieldnames and values from each input struct
 fn = {};
@@ -41,12 +47,6 @@ for i=1:nrStructs
 end
 
 
-% Create a single cell with parameter value pairs.
-
-
-pvPairs = cell(1,numel(fn)*2);
-[pvPairs{1:2:end}] =deal(fn{:});
-[pvPairs{2:2:end}] =deal(vals{:});
-% Create the merged struct
-v =struct(pvPairs{:});
+% Create the merged struct.
+v= cell2struct(vals,fn);
 end
