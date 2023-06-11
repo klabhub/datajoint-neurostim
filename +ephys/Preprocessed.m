@@ -24,7 +24,7 @@
 % OUTPUT
 % signal -  A matrix with samples along the rows and channels along
 %           columns. These columns must match the channels input to the function,
-%           This containsall samples obtained during the experiment (ie., all trials).
+%           This contains all samples obtained during the experiment (ie., all trials).
 % time -  The time at which each sample was obtained. This is a [nrSamples 1]
 %               column vector. Note that the clock for these times must
 %               match the neurostim clock. The user function likely
@@ -40,6 +40,12 @@
 % The ephys.ripple.preprocess functon shows a complete implementation of a
 % preprocessing function that handles MUAE, LFP, and EEG recordings with
 % the Ripple Grapevine system.
+% 
+% Once preprocessing is complete, use the get() function of this class to
+% retrieve (subsets of ) preprocessed data:
+%  For instance, to retrieve the first second in each trial from channels
+%  1:10 after preprocessing with the LFP PrepParm:
+% [t,v] = get(ephys.Preprocessed & 'prep=''lfp''','channel',1:10,start =0,stop=1)
 %
 % BK - June 2023
 
@@ -70,7 +76,7 @@ classdef Preprocessed < dj.Imported
             %               returned.
             %           
             % OUTPUT
-            %  [t,v]  = t: time in seconds since first frame event,
+            %  [v,t]  = t: time in seconds since first frame event,
             %           v: Matrix with [nrTimePoints nrTrials nrChannels]
             % Alternatively, when only a single output is requested:
             % T     = timetable with each column a trial. Time is in seconds
@@ -158,10 +164,7 @@ classdef Preprocessed < dj.Imported
             end
             % Return as doubles or as timetable.
             if nargout ==2
-                varargout{1} = seconds(T.Time);
-                [nrTimePoints, nrTrials] = size(T);
-                nrChannels = numel(T{1,1});
-                varargout{2} = permute(double(reshape(T.Variables,[nrTimePoints nrChannels nrTrials])),[1 3 2]);
+                [varargout{1},varargout{2}] = timetableToDouble(T);
             else
                 varargout{1} =T;
             end

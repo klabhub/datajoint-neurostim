@@ -4,7 +4,15 @@ function [signal,timeNeurostim,info] = preprocess(key,channels,parms)
 % data and relies on the Ripple neuroshare tools to read the nev, nsx etc
 % files.
 %
-% MUAE Notes
+% MUAE:
+% see multiUnitAvtivityEnvelope for settings, but there is probably little 
+%           reason to change those.
+% LFP
+% This code will use the parms.filter passed to it to filter the LFP/EEG
+% data. Specificially, it will call filtfilt(parms.filter{:},signal). This
+% means that you could set parms.filter = {a,b} where b,a are the output of
+% the butter function, or parms.filter = {f} with f the output of fdesign
+% (in the sigproc toolbox)
 %
 arguments
     key % The keysource of the Preprocessed table (Experiment and PrepParm tuple)
@@ -98,14 +106,16 @@ switch upper(parms.type)
             if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
         end
         samplingRate = info(1).SampleRate;% All are  the same for sure.
-        timeRipple = (0:nrSamples-1)/samplingRate;
-        
+        timeRipple = (0:nrSamples-1)/samplingRate;        
         tic
         fprintf('Reading from file...')
         [errCode, signal] = ns_GetAnalogDataBlock(hFile,  entityIx, 1, nrSamples,'scale');
         if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
         fprintf('Done in %d seconds.\n.',round(toc))
-        % Preprocess LFP
+        
+        if isfield(parms,'notch')
+            
+
     case 'SPIKES'
         error('Ripple preprocessing for %s has not been implemented yet.',parms.type)
     otherwise 
