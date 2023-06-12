@@ -86,13 +86,32 @@ classdef Experiment  < dj.Manual
             % will retrieve parameters for all plugins. Note that the .cic
             % plugin parameters are always included, whether requested or
             % not.
+            % 'prm' -  Specify a single parameter to retrieve
+            % 'what' - What is it about the single parameter you want to
+            % retrieve?
+            %       'data' : the value 
+            %       'trialtime' : the trial time at which the parameter was
+            %       set (0= firstFrame in the trial)
+            %       'clocktime' : the time on the neurostim clock when the
+            %       parameter was set
+            %       'trial' : the trial in which the parameter was set.
+            % 'atTrialTime' : Retrieve the value (data) of a parameter at a
+            % certain time in each trial. Use this for parameters that
+            % define a conditio (e.g., orientation) to get the values at
+            % the start of the trial.  (atTrialTime overrules the 'what'
+            % parameter and always returns the data).
+            %
+            %
             % OUTPUT
             % out -  A struct with fields named after the plugins, and each
-            % field is another struct that continas all parameter info.
-            % All global constants (i.e. those that do
+            % field is another struct that contains all parameter info.
+            % This includes all global constants (i.e. those that do
             % not change within an experiment), parameters (a single value per
             % trial that does not change within a trial), and events (which can
             % happen at any time).
+            %
+            % When 'prm' is used, the output is a vector of values.
+            %
             % filename - The file that originally provided these values to the
             % database.
             %
@@ -100,6 +119,7 @@ classdef Experiment  < dj.Manual
                 tbl (1,1) ns.Experiment {mustHaveRows}
                 plg {mustBeText} =  {''}
                 pv.prm {mustBeText} = ""
+                pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
                 pv.atTrialTime (1,1) double = NaN
             end
             if ischar(plg)
@@ -140,13 +160,23 @@ classdef Experiment  < dj.Manual
                 end
 
                 % Post-process all (including cic) if requested
-                if ~isnan(pv.atTrialTime)
-                    % Single prm from a specified plugin,  at a specific time
-                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
-                elseif strlength(pv.prm) ~=0
-                    % Single plugin, all values.
-                    % Return only the values, not the time/trial;
-                    out{exptCntr} = v.(plg{1}).(pv.prm);
+                if strlength(pv.prm) ~=0  %prm was specified
+                    if ~isnan(pv.atTrialTime)
+                        % Single prm from a specified plugin,  at a specific time
+                        out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
+                    else
+                    switch pv.what
+                        case 'data'
+                            % Return only the values, not the time/trial;
+                            out{exptCntr} = v.(plg{1}).(pv.prm);
+                        case 'trialtime'
+                            out{exptCntr} = v.(plg{1}).([pv.prm 'Time']);
+                        case 'clocktime'
+                            out{exptCntr} = v.(plg{1}).([pv.prm 'NsTime']);
+                        case 'trial'
+                            out{exptCntr} = v.(plg{1}).([pv.prm 'Trial']);
+                    end
+                    end
                 else
                     % Everything
                     % Return struct with all info

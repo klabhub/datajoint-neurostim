@@ -9,8 +9,8 @@ trialstart: longblob   # Start of the trial on the neurostim clock
 sampleduration: float  # Duration of a sample
 %}
 
-% This is a generic table that (together with its dj.Part tables
-% PreprocessedChannel and PreprocessedTrialmap stores preprocessed
+% This is a generic table that (together with its dj.Part table
+% PreprocessedChannel) stores preprocessed
 % data for electrophysiological recordings. The user provides
 % the name of a function that reads data, preprocesses them and returns
 % values that are stored in the preprocessed table. Specifically, this
@@ -36,7 +36,7 @@ sampleduration: float  # Duration of a sample
 %               includes some code to matchup the clock of the data
 %               acquisition device with some event in Neurostim.
 % info - This is an optional struct array with nrChannels elements. Each cell
-%           provides some additional information on the channel that is stored in the
+%           provides some additional information on the channel to be stored in the
 %           info field of the Preprocessed table. For example, this could contain the
 %           hardware filtering parameters of the channel as read from the raw data
 %           file.
@@ -45,7 +45,7 @@ sampleduration: float  # Duration of a sample
 % The ephys.ripple.preprocess functon shows a complete implementation of a
 % preprocessing function that handles MUAE, LFP, and EEG recordings with
 % the Ripple Grapevine system.
-% 
+%
 % Once preprocessing is complete, use the get() function of this class to
 % retrieve (subsets of ) preprocessed data:
 %  For instance, to retrieve the first second in each trial from channels
@@ -53,11 +53,8 @@ sampleduration: float  # Duration of a sample
 % [t,v] = get(ephys.Preprocessed & 'prep=''lfp''','channel',1:10,start =0,stop=1)
 %
 % A sample is assigned to a trial if it occurs after
-% the first monitor frame in the trial and before the first monitor frame of the next trial. 
+% the first monitor frame in the trial and before the first monitor frame of the next trial.
 % (In other words the ITI is included at the *end* of each trial).
-% 
-% Because different .Preprocessed data sets for the same ns.Experiment could have different
-% numbers of samples, this is computed per Preprocessed set. 
 %
 % BK - June 2023
 
@@ -86,15 +83,15 @@ classdef Preprocessed < dj.Imported
             %               only times/samples between the firstFrame event in the trial and
             %               the firstFrame event of the next trial will be
             %               returned.
-            %           
+            %
             % OUTPUT
             %  [v,t]  = t: time in seconds since first frame event,
             %           v: Matrix with [nrTimePoints nrTrials nrChannels]
             % Alternatively, when only a single output is requested:
             % T     = timetable with each column a trial. Time is in seconds
             %           relative to the first frame of the trial.
-            %          Channels are along the columns of the rows of the 
-            %           elements of the table.           
+            %          Channels are along the columns of the rows of the
+            %           elements of the table.
             arguments
                 tbl  (1,1) ephys.Preprocessed {mustHaveRows}
                 pv.fetchOptions {mustBeText} = ''
@@ -105,6 +102,7 @@ classdef Preprocessed < dj.Imported
                 pv.step (1,1) double  = 1/1000;
                 pv.interpolation {mustBeText} = 'linear'
                 pv.crossTrial (1,1) logical = false;
+                pv.align (1,:) double = []
             end
 
             %% Get the trial mapping
@@ -113,6 +111,11 @@ classdef Preprocessed < dj.Imported
                 trials = 1:numel(trialMap.trialstart); % All trials
             else
                 trials = pv.trial;
+            end
+            if isempty(pv.align)
+                pv.align = zeros(size(trials)); % Align to first frame
+            else
+                assert(numel(pv.align)==numel(trials),'Each trial should have an align time ')
             end
             % Retrieve the signal in the entire experiment
             % [nrSamples nrTrials]
@@ -127,53 +130,55 @@ classdef Preprocessed < dj.Imported
             else
                 channelTpl = fetch(tblChannel,'signal');
             end
-            signal =double([channelTpl.signal]);            
-            [nrSamples,nrChannels] = size(signal); 
+            signal =double([channelTpl.signal]);
+            [nrSamples,nrChannels] = size(signal);
             if nrSamples==0||nrChannels==0
-                return;
-            end
-            % Setup the new time axis for the results
-            newTimes = seconds(pv.start:pv.step:pv.stop)';
-            nrTimes  = numel(newTimes);
+                T= timetable; % Empty
+            else
+                % Setup the new time axis for the results
+                newTimes = seconds(pv.start:pv.step:pv.stop)';
+                nrTimes  = numel(newTimes);
 
-            % Create a timetable with the activity per trial
-            nrTrials = numel(trials);
-            varNames = "Trial" + string(trials);
-            T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
-            trCntr=0;
-            % Loop over trials to collect the relevant samples
-            for tr = trials
-                trCntr= trCntr+1;
-                samplesThisTrial = (trialMap.startsample(tr):trialMap.stopsample(tr))';
-                nrSamplesThisTrial= numel(samplesThisTrial);
-                trialTime = (0:nrSamplesThisTrial-1)'*trialMap.sampleduration; %Time in the trial
-                thisT = timetable(seconds(trialTime),signal(samplesThisTrial,:)); % The table for this trial, at the original sampling rate.
-                if pv.crossTrial &&  pv.start <0 && trials(tr) >1
-                    % Extract from previous trial (i.e. the time requested was before
-                    % firstframe)
-                    nrSamplesBefore = ceil(pv.start/trialMap.sampleduration);
-                    keepSamples = trialMap.startsample(tr)+(nrSamplesBefore:-1);
-                    out = keepSamples <1; % Before the experiment started; remove
-                    keepSamples(out) = [];
-                    preTime = seconds((-numel(keepSamples):-1)*trialMap.sampleduration); %Time points before current trial start
-                    preT = timetable(preTime',signal(keepSamples',:)); % Additional time table with samples before the current trial. (At the original sampling rate)
-                    thisT = [preT;thisT]; %#ok<AGROW>
+                % Create a timetable with the activity per trial
+                nrTrials = numel(trials);
+                varNames = "Trial" + string(trials);
+                T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
+                trCntr=0;
+                % Loop over trials to collect the relevant samples
+                for tr = trials
+                    trCntr= trCntr+1;
+                    samplesThisTrial = (trialMap.startsample(tr):trialMap.stopsample(tr))';
+                    nrSamplesThisTrial= numel(samplesThisTrial);
+                    trialTime = (0:nrSamplesThisTrial-1)'*trialMap.sampleduration - pv.align(trCntr); %Time in the trial
+
+                    thisT = timetable(seconds(trialTime),signal(samplesThisTrial,:)); % The table for this trial, at the original sampling rate.
+                    if pv.crossTrial &&  pv.start <0 && trials(tr) >1
+                        % Extract from previous trial (i.e. the time requested was before
+                        % firstframe)
+                        nrSamplesBefore = ceil(pv.start/trialMap.sampleduration);
+                        keepSamples = trialMap.startsample(tr)+(nrSamplesBefore:-1);
+                        out = keepSamples <1; % Before the experiment started; remove
+                        keepSamples(out) = [];
+                        preTime = seconds((-numel(keepSamples):-1)*trialMap.sampleduration); %Time points before current trial start
+                        preT = timetable(preTime',signal(keepSamples',:)); % Additional time table with samples before the current trial. (At the original sampling rate)
+                        thisT = [preT;thisT]; %#ok<AGROW>
+                    end
+                    if  pv.crossTrial &&  pv.stop > trialTime(end) && trials(tr) < nrTrials
+                        % Extract from next trial (time requested was after
+                        % current trial end).
+                        nrSamplesAfter = ceil((pv.stop-trialTime(end))/trialMap.sampleduration);
+                        keepSamples = trialMap.stopsample(tr)+(1:nrSamplesAfter);
+                        out = keepSamples > nrSamples; %After the end of the experiment
+                        keepSamples(out) = [];
+                        postTime = seconds(trialTime(end) + (1:numel(keepSamples))*trialMap.sampleduration);% Time points after current trial ends
+                        postT = timetable(postTime',signal(keepSamples',:)); % Additional time table with samples after the current trial. (At the original sampling rate)
+                        thisT = [thisT;postT]; %#ok<AGROW>
+                    end
+                    % Now retime the table to the new time axis. No
+                    % extrapolation
+                    thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
+                    T.(varNames(trCntr)) = table2array(thisT);
                 end
-                if  pv.crossTrial &&  pv.stop > trialTime(end) && trials(tr) < nrTrials
-                    % Extract from next trial (time requested was after
-                    % current trial end).
-                    nrSamplesAfter = ceil((pv.stop-trialTime(end))/trialMap.sampleduration);
-                    keepSamples = trialMap.stopsample(tr)+(1:nrSamplesAfter);
-                    out = keepSamples > nrSamples; %After the end of the experiment
-                    keepSamples(out) = [];
-                    postTime = seconds(trialTime(end) + (1:numel(keepSamples))*trialMap.sampleduration);% Time points after current trial ends
-                    postT = timetable(postTime',signal(keepSamples',:)); % Additional time table with samples after the current trial. (At the original sampling rate)
-                    thisT = [thisT;postT]; %#ok<AGROW>
-                end
-                % Now retime the table to the new time axis. No
-                % extrapolation
-                thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
-                T.(varNames(trCntr)) = table2array(thisT);
             end
             % Return as doubles or as timetable.
             if nargout ==2
@@ -188,7 +193,7 @@ classdef Preprocessed < dj.Imported
     methods (Access=protected)
         function makeTuples(tbl,key)
 
-           
+
             %% Evaluate the user-specified prep function for the specified parms
             % and channels and insert in the table.
             preParms = fetch(ephys.PrepParm & key,'*');
@@ -227,10 +232,7 @@ classdef Preprocessed < dj.Imported
                 'stopsample',stopSample,...
                 'trialstart',trialStartTime', ...
                 'sampleduration',sampleduration));
-
             insert(tbl,tpl)
-
-
 
             % Create tpls for the PreprocessedChannel part table and insert
             channelsTpl = mergestruct(key,...
@@ -245,15 +247,15 @@ classdef Preprocessed < dj.Imported
             % Chunking the inserts to avoid overloading the server
             chunkSize = 1; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
             tic;
-            fprintf('Uploading to server')     
+            fprintf('Uploading to server')
             for i=1:chunkSize:nrChannels
-                fprintf('.')     
+                fprintf('.')
                 thisChunk = i:min(nrChannels,i+chunkSize-1);
                 insert(ephys.PreprocessedChannel,channelsTpl(thisChunk));
             end
             fprintf('Done in %d seconds.\n.',round(toc))
-      
-      
+
+
 
         end
     end

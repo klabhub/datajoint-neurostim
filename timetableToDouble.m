@@ -6,6 +6,11 @@ arguments
 end
 
 [nrTimePoints, nrTrials] = size(T);
-nrChannels = numel(T{1,1});
-v = permute(double(reshape(T.Variables,[nrTimePoints nrChannels nrTrials])),[1 3 2]);
-t = T.Time;
+if nrTimePoints>0
+    nrChannels = numel(T{1,1});
+    v = permute(double(reshape(T.Variables,[nrTimePoints nrChannels nrTrials])),[1 3 2]);
+    t = T.Time;
+else
+    v=[];
+    t=[];
+end

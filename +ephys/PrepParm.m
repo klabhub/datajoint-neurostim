@@ -1,6 +1,6 @@
 %{
 #  Preprocessing parameter sets used for ephys data
-->ephys.Array    
+-> ephys.Array    
 prep:  varchar(128)
 ---
 fun : varchar(255)    # The function that reads the data and deso the preprocessing. See ephys.Preprocessed

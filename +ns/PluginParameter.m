@@ -42,7 +42,7 @@ classdef PluginParameter < dj.Part
                 % Store all values, plus the time at which the event
                 % occurred.
                 type = 'Event';
-                [value,trial,time,nsTime] =get(prm,'matrixIfPossible',true);
+                [value,trial,time,nsTime] =get(prm,'matrixIfPossible',true); %neurostim.parameter.get
             else
                 % One value per trial : parameter
                 % Some could be single key presses. So filling in across trials is not always right.
