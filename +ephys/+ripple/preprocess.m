@@ -8,11 +8,8 @@ function [signal,timeNeurostim,info] = preprocess(key,channels,parms)
 % see multiUnitAvtivityEnvelope for settings, but there is probably little 
 %           reason to change those.
 % LFP
-% This code will use the parms.filter passed to it to filter the LFP/EEG
-% data. Specificially, it will call filtfilt(parms.filter{:},signal). This
-% means that you could set parms.filter = {a,b} where b,a are the output of
-% the butter function, or parms.filter = {f} with f the output of fdesign
-% (in the sigproc toolbox)
+% parms.designfilt ; these parameters are passed to designfilt and then used to
+% filter the signal with filtfilt.
 %
 arguments
     key % The keysource of the Preprocessed table (Experiment and PrepParm tuple)
@@ -111,9 +108,16 @@ switch upper(parms.type)
         fprintf('Reading from file...')
         [errCode, signal] = ns_GetAnalogDataBlock(hFile,  entityIx, 1, nrSamples,'scale');
         if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
-        fprintf('Done in %d seconds.\n.',round(toc))
+        fprintf('Done in %d seconds.\n.',round(toc))    
+        %% Filtering
+        if isfield(parms,'designfilt') && ~isempty(parms.designfilt)
+            tic
+            fprintf('Applying filter (designfilt)... ')       
+            d = designfilt(parms.designfilt{:});
+            signal = filtfilt(d,signal);
+            fprintf('Done in %d seconds.\n.',round(toc))
+        end
         
-        if isfield(parms,'notch')
             
 
     case 'SPIKES'

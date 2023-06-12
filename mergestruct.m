@@ -14,9 +14,10 @@ nrStructs = numel(varargin);
 arraySize= cellfun(@numel,varargin);
 singleton = arraySize==1;
 expandTo  = unique(arraySize(~singleton));
-assert(numel(expandTo)==1,'mergestruct can only merge singletons with one struct array size');
-[varargin(singleton)] =cellfun(@(x) repmat(x,[expandTo 1]),varargin(singleton),'uni',false);
-
+assert(numel(expandTo)<=1,'mergestruct can only merge singletons with one struct array size');
+if any(~singleton)
+    [varargin(singleton)] =cellfun(@(x) repmat(x,[expandTo 1]),varargin(singleton),'uni',false);
+end
 % Extract fieldnames and values from each input struct
 fn = {};
 vals ={};

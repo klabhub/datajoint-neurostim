@@ -163,12 +163,12 @@ classdef Experiment  < dj.Manual
 
             if strlength(pv.prm)~=0
                 % Single parm, join values as columns
-                if iscell(out)
+               if iscellstr(out)
+                   out = out(:)';
+               elseif iscell(out)
                     out =cat(2,out{:});
-                else
-                    out = out';
-                end
-                if iscell(out)
+               end
+                if iscell(out) && ~iscellstr(out)
                     out = cell2mat(out);
                 end
             end

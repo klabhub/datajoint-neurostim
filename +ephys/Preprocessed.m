@@ -3,7 +3,12 @@
 -> ns.Experiment
 -> ephys.PrepParm
 --- 
+startsample: longblob  # Vector of the first sample in each trial 
+stopsample: longblob   # Vector with the last sample in each trial
+trialstart: longblob   # Start of the trial on the neurostim clock
+sampleduration: float  # Duration of a sample
 %}
+
 % This is a generic table that (together with its dj.Part tables
 % PreprocessedChannel and PreprocessedTrialmap stores preprocessed
 % data for electrophysiological recordings. The user provides
@@ -46,6 +51,13 @@
 %  For instance, to retrieve the first second in each trial from channels
 %  1:10 after preprocessing with the LFP PrepParm:
 % [t,v] = get(ephys.Preprocessed & 'prep=''lfp''','channel',1:10,start =0,stop=1)
+%
+% A sample is assigned to a trial if it occurs after
+% the first monitor frame in the trial and before the first monitor frame of the next trial. 
+% (In other words the ITI is included at the *end* of each trial).
+% 
+% Because different .Preprocessed data sets for the same ns.Experiment could have different
+% numbers of samples, this is computed per Preprocessed set. 
 %
 % BK - June 2023
 
@@ -96,10 +108,9 @@ classdef Preprocessed < dj.Imported
             end
 
             %% Get the trial mapping
-            trialMap = ephys.PreprocessedTrialmap & tbl;
-            trialMap = fetch(trialMap ,'*');
+            trialMap = fetch(tbl ,'*');
             if isempty(pv.trial)
-                trials = [trialMap.trial]; % All trials
+                trials = 1:numel(trialMap.trialstart); % All trials
             else
                 trials = pv.trial;
             end
@@ -116,44 +127,46 @@ classdef Preprocessed < dj.Imported
             else
                 channelTpl = fetch(tblChannel,'signal');
             end
-            signal =[channelTpl.signal];
-            [nrSamples,nrChannels] = size(signal); %#ok<ASGLU>
+            signal =double([channelTpl.signal]);            
+            [nrSamples,nrChannels] = size(signal); 
+            if nrSamples==0||nrChannels==0
+                return;
+            end
             % Setup the new time axis for the results
             newTimes = seconds(pv.start:pv.step:pv.stop)';
             nrTimes  = numel(newTimes);
 
             % Create a timetable with the activity per trial
-            sampleDuration = unique([trialMap.sampleduration]);
             nrTrials = numel(trials);
-            varNames = "Trial" + string([trialMap(trials).trial]);
+            varNames = "Trial" + string(trials);
             T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
             trCntr=0;
             % Loop over trials to collect the relevant samples
             for tr = trials
                 trCntr= trCntr+1;
-                samplesThisTrial = (trialMap(tr).startsample:trialMap(tr).stopsample)';
+                samplesThisTrial = (trialMap.startsample(tr):trialMap.stopsample(tr))';
                 nrSamplesThisTrial= numel(samplesThisTrial);
-                trialTime = (0:nrSamplesThisTrial-1)'*sampleDuration; %Time in the trial
+                trialTime = (0:nrSamplesThisTrial-1)'*trialMap.sampleduration; %Time in the trial
                 thisT = timetable(seconds(trialTime),signal(samplesThisTrial,:)); % The table for this trial, at the original sampling rate.
-                if pv.crossTrial &&  pv.start <0 && trialMap(tr).trial>1
+                if pv.crossTrial &&  pv.start <0 && trials(tr) >1
                     % Extract from previous trial (i.e. the time requested was before
                     % firstframe)
-                    nrSamplesBefore = ceil(pv.start/sampleDuration);
-                    keepSamples = trialMap(tr).startsample+(nrSamplesBefore:-1);
+                    nrSamplesBefore = ceil(pv.start/trialMap.sampleduration);
+                    keepSamples = trialMap.startsample(tr)+(nrSamplesBefore:-1);
                     out = keepSamples <1; % Before the experiment started; remove
                     keepSamples(out) = [];
-                    preTime = seconds((-numel(keepSamples):-1)*sampleDuration); %Time points before current trial start
+                    preTime = seconds((-numel(keepSamples):-1)*trialMap.sampleduration); %Time points before current trial start
                     preT = timetable(preTime',signal(keepSamples',:)); % Additional time table with samples before the current trial. (At the original sampling rate)
                     thisT = [preT;thisT]; %#ok<AGROW>
                 end
-                if  pv.crossTrial &&  pv.stop > trialTime(end) && trialMap(tr).trial < numel(trialMap)
+                if  pv.crossTrial &&  pv.stop > trialTime(end) && trials(tr) < nrTrials
                     % Extract from next trial (time requested was after
                     % current trial end).
-                    nrSamplesAfter = ceil((pv.stop-trialTime(end))/sampleDuration);
-                    keepSamples = trialMap(tr).stopsample+(1:nrSamplesAfter);
+                    nrSamplesAfter = ceil((pv.stop-trialTime(end))/trialMap.sampleduration);
+                    keepSamples = trialMap.stopsample(tr)+(1:nrSamplesAfter);
                     out = keepSamples > nrSamples; %After the end of the experiment
                     keepSamples(out) = [];
-                    postTime = seconds(trialTime(end) + (1:numel(keepSamples))*sampleDuration);% Time points after current trial ends
+                    postTime = seconds(trialTime(end) + (1:numel(keepSamples))*trialMap.sampleduration);% Time points after current trial ends
                     postT = timetable(postTime',signal(keepSamples',:)); % Additional time table with samples after the current trial. (At the original sampling rate)
                     thisT = [thisT;postT]; %#ok<AGROW>
                 end
@@ -175,10 +188,7 @@ classdef Preprocessed < dj.Imported
     methods (Access=protected)
         function makeTuples(tbl,key)
 
-            %% Inser the  key in the Preprocessed table. This is just a
-            % placeholder.
-            insert(tbl,key)
-
+           
             %% Evaluate the user-specified prep function for the specified parms
             % and channels and insert in the table.
             preParms = fetch(ephys.PrepParm & key,'*');
@@ -191,19 +201,8 @@ classdef Preprocessed < dj.Imported
             assert(nrChannels==numel(channels),'The number of columns in the preprocessed signal does not match the number of channels')
             assert(isempty(info) || (numel(info)==nrChannels),'The info rerturned by preprocessing deos not match the number of channels')
 
-            % Create tpls for the PreprocessedChannel part table and insert
-            channelsTpl = mergestruct(key,...
-                struct('signal',num2cell(signal,1)',...
-                'channel',num2cell(channels(:))));
-            if ~isempty(info)
-                for i=1:numel(info)
-                    channelsTpl(i).info = info(i);
-                end
-            end
-            insert(ephys.PreprocessedChannel,channelsTpl);
 
-
-            %% Setup a table to map samples to trials (Used in ephys.Preprocessed.get)
+            %% Store the information to map samples to trials (Used in ephys.Preprocessed.get)
             % This is used in the get function to retriev signals per trial
             nrTrials = fetch1(ns.Experiment &key,'trials');
             % Events in neurostim are aligned to firstFrame; we do the same
@@ -212,7 +211,7 @@ classdef Preprocessed < dj.Imported
             trialStartTime = (prms.cic.firstFrameNsTime/1000);
             startSample = nan(1,nrTrials);
             stopSample =nan(1,nrTrials);
-            sampleDuration = diff(time(1:2));
+            sampleduration = diff(time(1:2));
             for tr=1:nrTrials
                 stay = time >=trialStartTime(tr);
                 if tr <nrTrials
@@ -222,14 +221,39 @@ classdef Preprocessed < dj.Imported
                 stopSample(tr) = find(stay,1,'last');
             end
             % Create tuples and insert.
-            tpl = mergestruct(key,...
-                struct('trial',num2cell(1:nrTrials)',...
-                'startsample',num2cell(startSample)', ...
-                'stopsample',num2cell(stopSample)',...
-                'trialstart',num2cell(trialStartTime), ...
-                'sampleduration',repmat({sampleDuration},[nrTrials 1])));
 
-            insert(ephys.PreprocessedTrialmap,tpl);
+            tpl = mergestruct(key,...
+                struct('startsample',startSample, ...
+                'stopsample',stopSample,...
+                'trialstart',trialStartTime', ...
+                'sampleduration',sampleduration));
+
+            insert(tbl,tpl)
+
+
+
+            % Create tpls for the PreprocessedChannel part table and insert
+            channelsTpl = mergestruct(key,...
+                struct('signal',num2cell(single(signal),1)',...
+                'channel',num2cell(channels(:))));
+            if ~isempty(info)
+                for i=1:numel(info)
+                    channelsTpl(i).info = info(i);
+                end
+            end
+
+            % Chunking the inserts to avoid overloading the server
+            chunkSize = 1; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
+            tic;
+            fprintf('Uploading to server')     
+            for i=1:chunkSize:nrChannels
+                fprintf('.')     
+                thisChunk = i:min(nrChannels,i+chunkSize-1);
+                insert(ephys.PreprocessedChannel,channelsTpl(thisChunk));
+            end
+            fprintf('Done in %d seconds.\n.',round(toc))
+      
+      
 
         end
     end
