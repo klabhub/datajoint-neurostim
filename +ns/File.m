@@ -23,10 +23,10 @@ classdef File < dj.Imported
             prefix  = fullfile(pth,regexprep(exptTpl.file,'(\.mat$)','*')); % Swap extension
             inFolder = dir(prefix);
             % Search for a folder with matching prefix; add its content
-            prefix = fullfile(prefix,'*');
-            inSubFolder = dir(prefix);
+            % (inluding content in all sub/sub folders).
+            subFolder = inFolder([inFolder.isdir]);
+            inSubFolder = dir(fullfile(subFolder.folder,subFolder.name,'**','*'));
             linkedFiles = cat(1,inFolder,inSubFolder);
-
             % Remove folders
             linkedFiles([linkedFiles.isdir]) =[];
             if ~isempty(linkedFiles)
