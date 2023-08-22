@@ -41,10 +41,21 @@ for e = fetch(expts)'
         error('File %s not found',strrep(ff,'\','/'))
     end
     N= sbx.nrFrames(fldr + fname,info);
-
-    cal = info.calibration(info.config.magnification);
-    xscale = 1./cal.x; 
-    yscale = 1./cal.y;
+    switch info.scanbox_version
+        case 3
+            xscale = info.dxcal;
+            yscale = info.dycal;
+            % Calibration contains curvefit objects, which mym does not like. 
+            info.calibration.formulaX = formula(info.calibration.fx);
+            info.calibration.formulaY = formula(info.calibration.fy);
+            info.calibration.fx = [info.calibration.fx.a info.calibration.fx.b info.calibration.fx.c info.calibration.fx.d];            
+            info.calibration.fy = [info.calibration.fy.a info.calibration.fy.b info.calibration.fy.c info.calibration.fy.d];
+            
+        otherwise
+            cal = info.calibration(info.config.magnification);
+            xscale = 1./cal.x; 
+            yscale = 1./cal.y;
+    end
     % Insert in the table
     tpl = struct('subject',e.subject, ...
                     'session_date',e.session_date,...
