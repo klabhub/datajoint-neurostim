@@ -2,7 +2,7 @@
 # A condition refers to a set of trials in an Experiment with matching parameters.
 -> ns.Experiment 
 condition : smallint unsigned  # Condition number 1:nrConditions
-name      : varchar(1024)      # Condition name (plg_prm_value)
+name      : varchar(255)      # Condition name (plg_prm_value)
 %}
 % As the definition of what constitutes a condition (i.e. the set of
 % stimulus parameters) varies per paradigm, this table has to be populated 
