@@ -117,16 +117,29 @@ classdef Preprocessed < dj.Imported
                     resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
                     if ~exist(resultsFile,'file')
                         % Create a dict with the folder information
-                        if isempty(cell(opts{'fast_disk'}))  && opts{'delete_bin'}
+                        if isempty(cell(opts{'fast_disk'}))  
+                            if opts{'delete_bin'}
                             % No fast disk specified, and not keeping the
                             % bin file save to tempname for speed.
                             % In the db, fast_disk has to be a string, not
                             % a list.
                             fastDisk = tempname;
+                            else
+                                %do nothing. python will default to
+                                %save_path0
+                            end
                         else
-                            % Use the specified fast_disk (if empty it
-                            % will default to the save_path0 in python code.)
-                            fastDisk = char(opts{'fast_disk'});
+                            if ~opts{'delete_bin'}
+                                % Keeping the file, so assume that the user
+                                % had a reason to specify a specific
+                                % folder)
+                                fastDisk = string(opts{'fast_disk'});
+                            else
+                                % Not keeping the bin file. Use a temp
+                                % subfolder in the specified fast_disk to
+                                % allow mutliple concurrent runs of suite2p
+                                fastDisk = tempname(string(opts{'fast_disk'}));
+                            end
                         end
                         db= py.dict(pyargs('save_path0',sessionPath, ...
                             'save_folder',resultsFolder, ...
