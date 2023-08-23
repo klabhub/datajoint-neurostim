@@ -98,20 +98,40 @@ classdef Preprocessed < dj.Imported
                         fn= fieldnames(prep.parms);
                         for  f= 1:numel(fn)
                             try
-                                current= opts{fn{f}};
-                                new = feval(class(current),prep.parms.(fn{f}));
+                                default= opts{fn{f}};
+                                pyClass =class(default);
+                                prepValue =prep.parms.(fn{f});                                
+                                if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
+                                    % Some options have to specified as a
+                                    % length 1 list of strings. If the user
+                                    % put a string/char in the prepParms
+                                    % this codes wraps it in a py.list                                   
+                                    prepValue = {prepValue};
+                                end
+                                overruled = feval(pyClass,prepValue);
                             catch me
                                 error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
                             end
-                            opts{fn{f}} = new;
+                            opts{fn{f}} = overruled;
                         end
                     resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
                     if ~exist(resultsFile,'file')
-                        % Create a dict with the relevant information
+                        % Create a dict with the folder information
+                        if isempty(cell(opts{'fast_disk'}))  && opts{'delete_bin'}
+                            % No fast disk specified, and not keeping the
+                            % bin file save to tempname for speed.
+                            % In the db, fast_disk has to be a string, not
+                            % a list.
+                            fastDisk = tempname;
+                        else
+                            % Use the specified fast_disk (if empty it
+                            % will default to the save_path0 in python code.)
+                            fastDisk = char(opts{'fast_disk'});
+                        end
                         db= py.dict(pyargs('save_path0',sessionPath, ...
                             'save_folder',resultsFolder, ...
                             'data_path',py.list(dataFldr), ...
-                            'fast_disk',fullfile(sessionPath,resultsFolder)));
+                            'fast_disk',fastDisk));
                             
                         usePyEnv = false;
                        
