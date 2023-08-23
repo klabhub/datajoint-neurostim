@@ -31,6 +31,9 @@ classdef PreprocessedTrialmap < dj.Part
             previousScanFrames =0;            
             for expt= expts.fetch()'
                 meta = fetch(ns.ExperimentMeta & expt & struct('meta_name','nrframes'),'*');
+                if isempty(meta)
+                    error('No nrFrames meta information found. Please sbx.addExperimentMeta.')
+                end
                 nrframes = meta.meta_value;                
                 thisFrames = previousScanFrames+ (1:nrframes);
                 nrFrames= numel(thisFrames);
