@@ -27,7 +27,10 @@ The `+sbx` package sets up additional tables for two-photon imaging data collect
 
 1. Install miniconda
 1. Follow the instructions from the suite2p readme to install suite2p in its own conda environment named 'suite2p'
-1. Tell Matlab where to find Python. For instanc, I did this:
+
+There are two ways in which Matlab can call the Python code. The first ('InProcess') is by letting Matlab know where to find the python you just installed.
+
+For instance, I did this:
 
 ```matlab
 pyenv('ExecutionMode','InProcess','Version','c:\Users\bartk\miniconda3\envs\suite2p\python.exe');
@@ -40,6 +43,14 @@ py.suite2p.default_ops()
 ```
 
 If your pyenv is setup correctly in Matlab, the sbx pipeline will call the suite2p pacakge automatically .
+
+This 'InProcess' version seems to work fine on my Windows desktop, but I had trouble getting this to work on our HPC cluster. The problem appears to be that some of the libraries that Matlab uses conflict with those in the Python install. To get around this, the current code defaults to calling Python outside of Matlab (using the system() command.) This has the advantage that there are no library conflicts. For this version, you have to set the NS_CONDA environment variable. For instance, on a unix installation: 
+
+```matlab
+setenv('NS_CONDA','/home/bart/miniconda3')
+```
+
+(By not setting this environment variable, or setting it to empty, the InProcess variant is used).
 
 ## Usage
 
@@ -70,10 +81,12 @@ ori = get(ns.Experiment ,'gabor','prm','orientation','atTrialTime',0)
 ```
 
 ## nsMeta
+
 The `nsMeta` Matlab app provides a graphical interface to the metadata of a Neurostim data tree. This information is partially represented in the file and folder names (e.g., subject identifiers and paradigm names are in the Neurostim output file), but can be complemented with additional meta information stored in JSON files. 
 Note that, even though nsMeta can update a DataJoint database, it retrieves information from the data tree (i.e., the files) and not from DataJoint. 
 
 ### Meta data definitions
+
 Meta data for an experiment are stored in a JSON file with the same name as the Neurostim output file, but with the .json extension.  
 Meta data for a session (i.e., the unique combination of a date and a subject) is stored in a filed called `subject.json`, stored in the day of the session.
 Meta data for all subjects are stored at the root of the data tree in a file called `subject.json`.
