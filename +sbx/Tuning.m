@@ -17,7 +17,11 @@ scale       : float  # Number by which the spike rate was scaled.
 alpha       : float # Alpha level for CI
 %}
 classdef Tuning <dj.Computed
+    methods (Access=public)
+        function plot(tbl)
 
+        end
+    end
     methods (Access=protected)
         function makeTuples(tbl,key)
             if isempty(which('poissyFit'))
@@ -41,7 +45,7 @@ classdef Tuning <dj.Computed
             
             % Hardcoded, but stored in table.
             stepSize = 1/15.5;  % Always using the full sampling rate.
-            nrBoot = 100;                                           
+            nrBoot = 20;                                           
             show = false; % For debugging, set to true
             alpha = 0.05;
 
