@@ -9,7 +9,17 @@ nrframesinsession : int     # Total number of frames in the session.
 framerate : double          # Acquisition framerate
 %}
 %
-% Sessions with entries in the Populate this table
+% If the environment variable NS_CONDA is set to point to a conda
+% installation, then the preprocessing runs OutOfProcess (i.e. using a
+% system call to start Python outside Matlab). Otherwise, the Python calls
+% are done InProcess, using the PythonEnvironment that is linked to Matlab.
+% (This latter option is faster to startup, but runs the risk of
+% conflicting libraries).
+%
+% With suite2p preprocessing, the fast_disk option can be set in PrepParms,
+% but if it is not set (i.e. empty) and delete_bin is true (i.e. the
+% temporary bin file is not kept), then a tempdir (presumably on a fast
+% local disk) will be used. 
 classdef Preprocessed < dj.Imported
     properties (Dependent)
         keySource
@@ -150,7 +160,7 @@ classdef Preprocessed < dj.Imported
                         conda = getenv('NS_CONDA');
                         if isempty(conda)
                             % Pass to InProcess python to process
-                            py.suite2p.run_s2p(ops =opts,db=db);                        %#ok<UNRCH>
+                            py.suite2p.run_s2p(ops =opts,db=db);                        
                         else
                             % Calling python in-process can lead to problems
                             % with library conflicts (not so much with simple dict calls).

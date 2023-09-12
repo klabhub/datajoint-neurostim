@@ -602,8 +602,13 @@ classdef Roi < dj.Imported
             if nargout ==2
                 varargout{1} = seconds(T.Time);
                 [nrTimePoints, nrTrials] = size(T);
-                nrRoi = numel(T{1,1});
-                varargout{2} = permute(double(reshape(T.Variables,[nrTimePoints nrRoi nrTrials])),[1 3 2]);
+                if isempty(T)
+                    nrRoi =0;
+                    varargout{2} =[];
+                else
+                    nrRoi = numel(T{1,1});
+                    varargout{2} = permute(double(reshape(T.Variables,[nrTimePoints nrRoi nrTrials])),[1 3 2]);
+                end
             else
                 varargout{1} =T;
             end

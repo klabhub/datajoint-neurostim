@@ -27,7 +27,11 @@ classdef Tuning <dj.Computed
             %% Setup and retrieve ROI data.
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
-
+        
+            if count(ns.Plugin & expt & 'plugin_name=''gbr''')==0
+                fprintf('This experiment does not have a gbr  plugin (%d trials)\n. No tuning computed.',fetch1(expt,'trials'))
+                return
+            end
             persistent cntr
             if isempty(cntr)
                 cntr= 1;
@@ -61,7 +65,7 @@ classdef Tuning <dj.Computed
             % downscaled to match the maximum in the poissyFit class (100 spk/s).
             o = poissyFit(direction,spk,stepSize,@poissyFit.logTwoVonMises, ...
                             "fPerSpike",1, ...
-                            "tau",0, ...
+                            "tau",eps, ...
                             "hasDerivatives",1, ...
                             "scaleToMax",true);
             o.spikeCountDistribution = 'POISSON';
