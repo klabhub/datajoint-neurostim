@@ -47,9 +47,12 @@ classdef Tuning <dj.Computed
             end
             cntr =0;
             
+            
+            
             if pv.showRaw
              roi  = sbx.Roi & tbl;
              expt = ns.Experiment & tbl;
+            
             end
             % Loop over the table
             for tpl = tbl.fetch('*')'
@@ -62,7 +65,10 @@ classdef Tuning <dj.Computed
                 nexttile;
                 % Fetch parameters used to estmate the tuning curve
                 parms = fetch1(sbx.TuningParms & tpl,'parms');
-                
+                cond = fetch(ns.Condition*ns.ConditionTrial & tpl,'*');
+                conditionName = unique({cond.name});
+                conditionName= conditionName{1};
+
                 % Generate estimated tuning curve
                 tuningFunction = @poissyFit.logTwoVonMises;
                 uStimulus = (0:1:360);
@@ -84,9 +90,13 @@ classdef Tuning <dj.Computed
 
                 % Show non parametric tuning cuvrev (mean/ste)
                 if pv.showRaw
-                     [~,spk] = get(roi &tpl,expt&tpl,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
-                     spk = mean(spk,1,"omitnan");
-                     direction = get(expt &tpl,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
+                       % Get the data and the directions
+                       trials = [cond.trial];
+                      [~,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
+                      spk = mean(spk,1,"omitnan");
+                      direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
+                     direction = direction(trials);                     
+                     
                      [uDirection,~,ix] = unique(direction);
                      ix =repmat(ix',[size(spk,1) 1]);
                      tc = accumarray(ix(:),spk(:),[],@(x) mean(x,'all','omitnan'));
@@ -94,7 +104,9 @@ classdef Tuning <dj.Computed
                      ploterr(uDirection, tc/parms.fPerSpike,tcErr/parms.fPerSpike,'ShadingAlpha',0.5,'LineWidth',2);
                 end
                 % Show parameters in the title
-                 txt=  sprintf('Roi#%d - PD:%.0f [+/- %.0f], kappa: %.1f  [%.0f %.0f]\n Amp: %.2f [%.2f %.2f] AntiAmp: %.2f [%.2f %.2f], Offset %.2f  [%.2f %.2f] \n (p : %.3g)', ...
+                 txt=  sprintf('%s (%d trials) \n Roi#%d - PD:%.0f [+/- %.0f], kappa: %.1f  [%.0f %.0f]\n Amp: %.2f [%.2f %.2f] AntiAmp: %.2f [%.2f %.2f], Offset %.2f  [%.2f %.2f] \n (p : %.3g)', ...
+                        conditionName, ...
+                        numel(trials),...
                         tpl.roi,...                      
                          tpl.estimate(1),tpl.error(1),...
                          tpl.estimate(4),tpl.ci(4,1),tpl.ci(4,2),...
