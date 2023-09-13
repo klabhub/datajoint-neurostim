@@ -60,7 +60,7 @@ classdef Tuning <dj.Computed
                 end
                 nexttile;
                 % Fetch parameters used to estmate the tuning curve
-                parms = fetch1(sbx.PrepParms & tpl,'parms');
+                parms = fetch1(sbx.TuningParms & tpl,'parms');
 
                 % Generate estimated tuning curve
                 tuningFunction = @poissyFit.logTwoVonMises;
