@@ -3,6 +3,7 @@
 -> sbx.Roi
 -> ns.Experiment
 -> sbx.TuningParms
+-> ns.Condition
 ---
 estimate   : blob # Tuning parameters [Preferred Peak AntiPeak Kappa Offset]
 ci          : blob # Tuning parameters confidence intervals 
@@ -61,7 +62,7 @@ classdef Tuning <dj.Computed
                 nexttile;
                 % Fetch parameters used to estmate the tuning curve
                 parms = fetch1(sbx.TuningParms & tpl,'parms');
-
+                
                 % Generate estimated tuning curve
                 tuningFunction = @poissyFit.logTwoVonMises;
                 uStimulus = (0:1:360);
@@ -83,7 +84,7 @@ classdef Tuning <dj.Computed
 
                 % Show non parametric tuning cuvrev (mean/ste)
                 if pv.showRaw
-                     [~,spk] = get(roi &tpl,expt&tpl,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
+                     [~,spk] = get(roi &tpl,expt&tpl,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
                      spk = mean(spk,1,"omitnan");
                      direction = get(expt &tpl,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
                      [uDirection,~,ix] = unique(direction);
@@ -118,6 +119,8 @@ classdef Tuning <dj.Computed
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
             parms = fetch1(sbx.TuningParms &key,'parms');
+            trials = [fetch(ns.Condition*ns.ConditionTrial & key,'trial').trial];
+              
                         
             if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
                 fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
@@ -127,8 +130,9 @@ classdef Tuning <dj.Computed
             
             
             % Get the data and the directions
-            [~,spk] = get(roi,expt,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
+            [~,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
             direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
+            direction = direction(trials);
             % Remove trials with NaN
             out = any(isnan(spk),1);
             spk(:,out)= [];

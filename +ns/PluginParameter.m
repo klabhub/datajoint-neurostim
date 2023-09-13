@@ -150,16 +150,28 @@ classdef PluginParameter < dj.Part
             % Decode here.
             [vals,names,times,nsTimes,trials,types] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
             for j=1:numel(names)
-                if strcmpi(types(j),'ByteStream')
-                    v.(names{j}) =getArrayFromByteStream(vals{j});
+                if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
+                    oldName = names{j};
+                    name = [names{j} '2'];
+                    warning([oldName ':renamed'],'%s already defined; renamed to %s',oldName,name);
+                    warning('off',[oldName ':renamed']);
+                    
+                    
+                    % This happes because block and
+                    % blockTrial are both cic properties. Unlikely to
+                    % happen anywhere else.
                 else
-                    v.(names{j}) =vals{j};
+                    name = names{j};
                 end
-                v.([names{j} 'Time']) = times{j};
-                v.([names{j} 'NsTime']) = nsTimes{j};
-                v.([names{j} 'Trial']) = trials{j};
+                if strcmpi(types(j),'ByteStream')
+                    v.(name) =getArrayFromByteStream(vals{j});
+                else
+                    v.(name) =vals{j};
+                end
+                v.([name 'Time']) = times{j};
+                v.([name 'NsTime']) = nsTimes{j};
+                v.([name 'Trial']) = trials{j};                                
             end
-
         end
     end
 

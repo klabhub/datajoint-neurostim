@@ -1,8 +1,8 @@
 %{
 # A condition refers to a set of trials in an Experiment with matching parameters.
 -> ns.Experiment 
-condition : smallint unsigned  # Condition number 1:nrConditions
-name      : varchar(255)      # Condition name (plg_prm_value)
+conditionnr : smallint unsigned  # Condition number 1:nrConditions
+name        : varchar(255)      # Condition name (plg_prm_value)
 %}
 % As the definition of what constitutes a condition (i.e. the set of
 % stimulus parameters) varies per paradigm, this table has to be populated 
@@ -58,6 +58,7 @@ classdef Condition < dj.Manual
                     prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',0)';
                     val= [val prefix+string(prmValues)]; %#ok<AGROW> 
                 end
+                val = fillmissing(val,"constant","unknown");
                 [uVal,~,ix] = unique(val,"rows"); % Sort ascending.
                 nrConditions = size(uVal,1);
 
@@ -65,7 +66,7 @@ classdef Condition < dj.Manual
                 tpl = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions
                     tpl(c).name = strjoin(uVal(c,:),SEPARATOR2);
-                    tpl(c).condition= c;                    
+                    tpl(c).conditionnr= c;                    
                 end
                 insert(tbl,tpl);
                 %% Create and insert ConditionTrial tuples

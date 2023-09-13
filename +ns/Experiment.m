@@ -100,7 +100,7 @@ classdef Experiment  < dj.Manual
                 tbl (1,1) ns.Experiment {mustHaveRows}
                 plg {mustBeText} =  {''}
                 pv.prm {mustBeText} = ""
-                pv.atTrialTime (1,1) double = NaN
+                pv.atTrialTime (1,1) double = NaN               
             end
             if ischar(plg)
                 plg = {plg};
