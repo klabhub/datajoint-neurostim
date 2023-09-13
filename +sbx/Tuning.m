@@ -2,7 +2,7 @@
 # An ROI's direction tuning, fit with the sum of two von Mises functions.
 -> sbx.Roi
 -> ns.Experiment
--> ns.Parms
+-> sbx.TuningParms
 ---
 estimate   : blob # Tuning parameters [Preferred Peak AntiPeak Kappa Offset]
 ci          : blob # Tuning parameters confidence intervals 
@@ -17,7 +17,7 @@ bootparms   : blob  # Boostrap estimates of the parameters
 %}
 %
 % This table depends on sbx.Roi and sbx.Experiments, and the parameter
-% settings for the Tuning table in the sbx.Parms table. 
+% settings for the Tuning table in the sbx.TuningParms table. 
 % For instance:
 %
 % tuningParms  =struct('stimulus','gbr', ...            % Use the stimulus named gbr
@@ -28,24 +28,14 @@ bootparms   : blob  # Boostrap estimates of the parameters
 %                         'alpha',0.05, ...                          % Alpha level for CI
 %                         'fPerSpike',500);                          % Scaling parameter "fluorescence per spike".
 % Create a tuple, and tag this parameter set 'default' 
-% tuningTpl = struct('target','Tuning','tag','default','description','Fit to spikes fom 0.5 to 1.5 with two von Mises','parms',tuningParms);
-% Insert into the sbx.Parms table
-%    insert(sbx.Parms,tuningTpl)
+% tuningTpl = struct('tag','default','description','Fit to spikes fom 0.5 to 1.5 with two von Mises','parms',tuningParms);
+% Insert into the sbx.TuningParms table
+%    insert(sbx.TuningParms,tuningTpl)
 % Then call 
 % populate(sbx.Tuning)
 %
 % BK - Sept 2023
 classdef Tuning <dj.Computed
-    properties (Dependent)
-        keySource
-    end
-
-    methods
-        function v = get.keySource(~)
-            % Restrict to rows in the ns.Parms table targeting this Tuning table. 
-            v =sbx.Roi*(ns.Experiment*(ns.Parms & 'target =''Tuning'''));
-        end
-    end
     methods (Access=public)
         function plot(tbl,pv)
             arguments 
@@ -70,7 +60,7 @@ classdef Tuning <dj.Computed
                 end
                 nexttile;
                 % Fetch parameters used to estmate the tuning curve
-                parms = fetch1(sbx.Parms & tpl,'parms');
+                parms = fetch1(sbx.PrepParms & tpl,'parms');
 
                 % Generate estimated tuning curve
                 tuningFunction = @poissyFit.logTwoVonMises;
@@ -127,7 +117,7 @@ classdef Tuning <dj.Computed
             %% Retrive sources
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
-            parms = fetch1(sbx.Parms &key,'parms');
+            parms = fetch1(sbx.TuningParms &key,'parms');
                         
             if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
                 fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
