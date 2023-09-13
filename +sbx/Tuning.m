@@ -2,24 +2,120 @@
 # An ROI's direction tuning, fit with the sum of two von Mises functions.
 -> sbx.Roi
 -> ns.Experiment
+-> ns.Parms
 ---
-parms       : blob # Tuning parameters [Preferred Peak AntiPeak Kappa Offset]
+estimate   : blob # Tuning parameters [Preferred Peak AntiPeak Kappa Offset]
 ci          : blob # Tuning parameters confidence intervals 
-error       : blob # IQR of the parameters
+error       : blob # Error estimate
 splithalves : float # Quality of the fit based on split-halves cross validation
 r           : float # Correlation between fit and non-parametric estimate
 residualz   : float # Z-score of mean residuals (0=good)
 residualnoise:float # Ratio of stdev of residuals to the measurement noise (1 =good)
-stepsize    : float # Binwidth used
 p           : float # Tuning p-value 
-bootstrap   : integer # Number of bootstrap sets used
 scale       : float  # Number by which the spike rate was scaled.
-alpha       : float # Alpha level for CI
+bootparms   : blob  # Boostrap estimates of the parameters
 %}
+%
+% This table depends on sbx.Roi and sbx.Experiments, and the parameter
+% settings for the Tuning table in the sbx.Parms table. 
+% For instance:
+%
+% tuningParms  =struct('stimulus','gbr', ...            % Use the stimulus named gbr
+%                        'independentVariable','orientation', ... % gbr.orientation has the directions/orientations
+%                        'start',0.5,'stop',1.5,'step',1/15.5, 'interpolation','nearest', ...  % Time and bins within each trial to use
+%                         'nrBoot',100, ...                              % Bootstrap resampling estimates
+%                         'nrSplitHalves',20, ...                        % Splithalves validation (see poissyFit/splitHalves)
+%                         'alpha',0.05, ...                          % Alpha level for CI
+%                         'fPerSpike',500);                          % Scaling parameter "fluorescence per spike".
+% Create a tuple, and tag this parameter set 'default' 
+% tuningTpl = struct('target','Tuning','tag','default','description','Fit to spikes fom 0.5 to 1.5 with two von Mises','parms',tuningParms);
+% Insert into the sbx.Parms table
+%    insert(sbx.Parms,tuningTpl)
+% Then call 
+% populate(sbx.Tuning)
+%
+% BK - Sept 2023
 classdef Tuning <dj.Computed
-    methods (Access=public)
-        function plot(tbl)
+    properties (Dependent)
+        keySource
+    end
 
+    methods
+        function v = get.keySource(~)
+            % Restrict to rows in the ns.Parms table targeting this Tuning table. 
+            v =sbx.Roi*(ns.Experiment*(ns.Parms & 'target =''Tuning'''));
+        end
+    end
+    methods (Access=public)
+        function plot(tbl,pv)
+            arguments 
+                tbl (1,1) sbx.Tuning
+                pv.nrPerFigure (1,1) {mustBeNonnegative,mustBeInteger} = 20
+                pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50
+                pv.showRaw (1,1) logical =false
+            end
+            cntr =0;
+            
+            if pv.showRaw
+             roi  = sbx.Roi & tbl;
+             expt = ns.Experiment & tbl;
+            end
+            % Loop over the table
+            for tpl = tbl.fetch('*')'
+                cntr =cntr+1;
+                % 1 figure for every nrPerFigure plots
+                figure(ceil(cntr/pv.nrPerFigure));
+                if mod(cntr-1,pv.nrPerFigure)+1==1
+                    tiledlayout('flow')
+                end
+                nexttile;
+                % Fetch parameters used to estmate the tuning curve
+                parms = fetch1(sbx.Parms & tpl,'parms');
+
+                % Generate estimated tuning curve
+                tuningFunction = @poissyFit.logTwoVonMises;
+                uStimulus = (0:1:360);
+                
+                if pv.nrBootToShow >0
+                % Show Bootstrap estimates 
+                bsParms = poissyFit.convertLogParms(tpl.bootparms,parms.step,"lin2log");                     
+                hold on
+                for i=1:min(pv.nrBootToShow,parms.nrBoot)
+                    errorCurve =  exp(tuningFunction(uStimulus,bsParms(i,:)))'/parms.step;
+                    plot(uStimulus,errorCurve,'LineWidth',0.5,'Color',0.6*ones(1,3),'LineStyle','-');
+                end
+                end
+                
+                % Prediction on top
+                vonMisParms = poissyFit.convertLogParms(tpl.estimate',parms.step,"lin2log");              
+                predictedTuningCurve = exp(tuningFunction(uStimulus,vonMisParms))'/parms.step;                
+                plot(uStimulus,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+
+                % Show non parametric tuning cuvrev (mean/ste)
+                if pv.showRaw
+                     [~,spk] = get(roi &tpl,expt&tpl,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
+                     spk = mean(spk,1,"omitnan");
+                     direction = get(expt &tpl,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
+                     [uDirection,~,ix] = unique(direction);
+                     ix =repmat(ix',[size(spk,1) 1]);
+                     tc = accumarray(ix(:),spk(:),[],@(x) mean(x,'all','omitnan'));
+                     tcErr =accumarray(ix(:),spk(:),[],@(x) std(x,0,'all',"omitnan")./sqrt(sum(~isnan(x(:)))));                        
+                     ploterr(uDirection, tc/parms.fPerSpike,tcErr/parms.fPerSpike,'ShadingAlpha',0.5,'LineWidth',2);
+                end
+                % Show parameters in the title
+                 txt=  sprintf('Roi#%d - PD:%.0f [+/- %.0f], kappa: %.1f  [%.0f %.0f]\n Amp: %.2f [%.2f %.2f] AntiAmp: %.2f [%.2f %.2f], Offset %.2f  [%.2f %.2f] \n (p : %.3g)', ...
+                        tpl.roi,...                      
+                         tpl.estimate(1),tpl.error(1),...
+                         tpl.estimate(4),tpl.ci(4,1),tpl.ci(4,2),...
+                         tpl.estimate(2),tpl.ci(2,1),tpl.ci(2,2),...
+                         tpl.estimate(3),tpl.ci(3,1),tpl.ci(3,2),...
+                         tpl.estimate(5),tpl.ci(5,1),tpl.ci(5,2),...
+                         tpl.p);
+                 title(txt);
+                 ylabel 'Spike Rate (spk/s)' 
+                 drawnow;
+            end
+    
         end
     end
     methods (Access=protected)
@@ -28,37 +124,22 @@ classdef Tuning <dj.Computed
                 error('This function uses the poissyFit class. Please install it first (https://github.com/klabhub/poissyFit)')
             end
 
-            %% Setup and retrieve ROI data.
+            %% Retrive sources
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
-        
-            if count(ns.Plugin & expt & 'plugin_name=''gbr''')==0
-                fprintf('This experiment does not have a gbr  plugin (%d trials)\n. No tuning computed.',fetch1(expt,'trials'))
+            parms = fetch1(sbx.Parms &key,'parms');
+                        
+            if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
+                fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
                 return
             end
-            persistent cntr
-            if isempty(cntr)
-                cntr= 1;
-            else
-                cntr= cntr+1;
-            end
+         
             
-            % Hardcoded, but stored in table.
-            stepSize = 1/15.5;  % Always using the full sampling rate.
-            nrBoot = 20;                                           
-            show = false; % For debugging, set to true
-            alpha = 0.05;
-
-            % If workers have been started, we'll use them
-            if isempty(gcp('nocreate'))
-                nrWorkers = 0;
-            else
-                nrWorkers = gcp('nocreate').NumWorkers;
-            end            
+            
             % Get the data and the directions
-            [~,spk] = get(roi,expt,modality = 'spikes',start=0.5,stop=1.5,step=stepSize,interpolation ='nearest');
-            direction = get(expt ,'gbr','prm','orientation','atTrialTime',0);
-            % Rmeove trials with NaN
+            [~,spk] = get(roi,expt,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
+            direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
+            % Remove trials with NaN
             out = any(isnan(spk),1);
             spk(:,out)= [];
             direction(out) =[];
@@ -67,14 +148,19 @@ classdef Tuning <dj.Computed
             % Setup the poissyFit function for spike rate estimation from
             % the deconvolved spike estimates; the "rate" will be
             % downscaled to match the maximum in the poissyFit class (100 spk/s).
-            o = poissyFit(direction,spk,stepSize,@poissyFit.logTwoVonMises, ...
-                            "fPerSpike",1, ...
+            o = poissyFit(direction,spk,parms.step,@poissyFit.logTwoVonMises, ...
+                            "fPerSpike",parms.fPerSpike, ...
                             "tau",eps, ...
                             "hasDerivatives",1, ...
-                            "scaleToMax",true);
+                            "scaleToMax",false);
             o.spikeCountDistribution = 'POISSON';
             o.measurementNoise =estimateNoise(o);
-            o.nrWorkers = nrWorkers;
+            % If workers have been started, we'll use them
+            if isempty(gcp('nocreate'))
+                o.nrWorkers = 0;
+            else
+                o.nrWorkers = gcp('nocreate').NumWorkers;
+            end                        
             o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
                 'SpecifyObjectiveGradient',true, ...
                 'display','none', ...
@@ -82,58 +168,24 @@ classdef Tuning <dj.Computed
                 'diagnostics','off');
 
             % Bootstrap the MLE of the tuning parms
-            solve(o,nrBoot);
+            solve(o,parms.nrBoot);
             % Do split halves validation
-            splithalves = splitHalves(o,nrBoot);
+            splithalves = splitHalves(o,parms.nrSplitHalves);
             
             % Translate parameters to more meaningful vars with CI that no
-            % longer use the exp(parms) of poissyFit
-            [~,prefPeak,antiPeak,kappa,offset] = poissyFit.twoVonMisesParms(o.bootParms,o.binWidth);
-            bsParms = [prefPeak antiPeak kappa offset];
-            ci    = prctile(bsParms,[100*alpha/2  100*(1-alpha/2)]);
-            err = iqr(bsParms);
-            parms  = median(bsParms);            
-            parms = [mod(o.parms(2),360) parms]; % Add preferred 
-            ci =  [o.parmsCI(:,2) ci];
-            err = [o.parmsError(:,2) err];
-
-            %% Visualizee
-            % If debugging/visualizeing , show the tuning curves and
-            % estimated parameters
-            if show
-                figure(ceil(cntr/20));
-                if mod(cntr-1,20)+1==1
-                    tiledlayout('flow')
-                end
-                nexttile;
-                plot(o,showErrorbars= false, showBootstrapSets= true,equalAxes=true);                
-                txt=  sprintf('Roi#%d - PD:%.0f [%.0f %.0f], kappa: %.1f  [%.0f %.0f]\n Amp: %.2f [%.2f %.2f] AntiAmp: %.2f [%.2f %.2f], \n (p : %.3g)',key.roi,...
-                        parms(1),ci(1,1),ci(2,1),...
-                        parms(4),ci(1,4),ci(2,4),...
-                        parms(2),ci(1,2),ci(2,2),...
-                        parms(3),ci(1,3),ci(2,3),...
-                        o.p);
-                title(txt);
-                yyaxis left
-                ylabel 'Spike Rate (spk/s)' % Avoid confusion
-                legend('Data','Fit')
-                drawnow;
-            end
-    
+            % longer use the exp(parms) of poissyFit            
             %% Insert in table.
             tpl = mergestruct(key, ...
-                struct('parms',parms', ...
-                'ci',ci',...
-                'error',err', ...
+                struct('estimate',poissyFit.convertLogParms(o.parms,o.binWidth,"log2lin")', ...
+                'ci',poissyFit.convertLogParms(o.parmsCI,o.binWidth,"log2lin")',...
+                'error',poissyFit.convertLogParms(o.parmsError,o.binWidth,"log2lin")', ...
                 'splithalves',splithalves, ...
                 'r',o.gof, ...
                 'residualz',o.residualZ, ...
                 'residualnoise',o.residualNoise, ...
-                'bootstrap',nrBoot, ...
-                'stepsize',stepSize, ...
                 'scale',o.scale, ...
-                'p',o.p,...
-                'alpha',alpha));
+                'p',o.p, ...
+                'bootparms',poissyFit.convertLogParms(o.bootParms,o.binWidth,"log2lin")));
             insert(tbl,tpl);
         end
     end
