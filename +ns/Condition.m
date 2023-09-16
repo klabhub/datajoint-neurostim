@@ -67,8 +67,12 @@ classdef Condition < dj.Manual
                 for c=1:nrConditions
                     tpl(c).name = strjoin(uVal(c,:),SEPARATOR2);
                     tpl(c).conditionnr= c;                    
+                    if count(tbl & tpl(c))==0
+                        insert(tbl,tpl(c));
+                    end
                 end
-                insert(tbl,tpl);
+                
+                
                 %% Create and insert ConditionTrial tuples
                 trialTpl = [];
                 for c=1:nrConditions
