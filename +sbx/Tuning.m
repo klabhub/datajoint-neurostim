@@ -169,8 +169,8 @@ tic
 
             %% Fit a parametric (twoHumps) function
             bootfun = @(x,y) sbx.Tuning.solve(x,y,npMin,npPreferred,npAmplitude,npAntiAmplitude);
-            bootOpts = statset;
-            bootOpts.UseParallel = true;
+            bootOpts = statset;            
+            bootOpts.UseParallel = ~isempty(gcp("nocreate")); % Use parallel pool only if the user has started it.
             [bootEstimates]=bootstrp(parms.nrBoot,bootfun,direction,spk,'Options',bootOpts);
             % Determine preferred axis and circular standard deviation
             % Multiply by two in case the preferred swaps
