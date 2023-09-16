@@ -47,10 +47,10 @@ insertNewTuples(tSession,ns.Session,p.Results.dryrun);
 
 %% Add Experiments
 tExperiment = removevars(tExperiment,'id');
-[newExpts] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
+[newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
 if  ~p.Results.dryrun && ~isempty(newExpts)  && p.Results.populateFile
     if ~isempty(p.Results.cic)
-        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic)
+        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows))
     end 
     populate(ns.File, newExpts)
 end
@@ -61,7 +61,7 @@ warning(warnstate);
 
 
 end
-function [newTpls,newMetaTpls] = insertNewTuples(tbl,djTbl,dryrun)
+function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun)
 % Given a table read from a folder and a table (Relvar) from the Datajoint
 % databse, determin which tuples are new and the meta data associated with
 % those new tuples and insert those in the Datajoint tables.
@@ -104,6 +104,7 @@ djMetaTbl = feval(djMetaTblName);
 
 
 % Loop over the new table
+newTplsRows = [];
 for row=1:height(tbl)
     thisPrimaryTpl =table2struct(tbl(row,pkey));
     dbTpl = fetch(djTbl & thisPrimaryTpl);
@@ -115,6 +116,7 @@ for row=1:height(tbl)
         % No match with the primary key
         % Add to the newTpls array
         newTpls = cat(1,newTpls,thisTblTpl);
+        newTplsRows = cat(1,newTplsRows,row);
         if nrMeta>0
             newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);       
         end
@@ -140,6 +142,7 @@ for row=1:height(tbl)
         else
             %Add to the updateTpls array
             updateTpls = cat(1,updateTpls, thisTblTpl);
+            newTplsRows = cat(1,newTplsRows,row);
             % The update will remove meta data, so add those as new as well
             if nrMeta>0
                 newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
