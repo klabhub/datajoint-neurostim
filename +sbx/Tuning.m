@@ -56,16 +56,16 @@ nrtrials    : float # Number of trials used in estimates
 classdef Tuning <dj.Computed
     methods (Access=public)
         function plot(tbl,pv)
+            % Function to show a set of tuning functions
             arguments
                 tbl (1,1) sbx.Tuning
-                pv.nrPerFigure (1,1) {mustBeNonnegative,mustBeInteger} = 20
-                pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50
-                pv.showNP (1,1) logical =false
-                pv.linkAxes (1,1) logical =false
+                pv.nrPerFigure (1,1) {mustBeNonnegative,mustBeInteger} = 20  % How many curves per figure
+                pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50  % How many boostrap samples to show
+                pv.showNP (1,1) logical =false                          % Show Non-Parametric estimates?
+                pv.linkAxes (1,1) logical =false                        % Link axes in the figure?
             end
+
             cntr =0;
-
-
             % Loop over the table
             for tpl = tbl.fetch('*')'
                 cntr =cntr+1;
@@ -85,15 +85,14 @@ classdef Tuning <dj.Computed
                 % Generate estimated tuning curve
                 uDirection = (0:1:330);                
                 if pv.nrBootToShow >0
-                    % Show Bootstrap estimates
-                    
+                    % Show Bootstrap estimates                    
                     for i=1:min(pv.nrBootToShow,parms.nrBoot)
                         errorCurve =  sbx.Tuning.twoHumps(uDirection,tpl.bootparms(i,:))';
                         plot(uDirection,errorCurve,'LineWidth',0.5,'Color',0.6*ones(1,3),'LineStyle','-');
                     end
                 end
 
-                % Prediction on top
+                % Prediction (mean over bootstatp sets) on top
                 estimate = [tpl.offset tpl.preferred tpl.width tpl.antiwidth tpl.amplitude tpl.antiamplitude];
                 predictedTuningCurve = sbx.Tuning.twoHumps(uDirection,estimate)';
                 plot(uDirection,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
@@ -130,6 +129,7 @@ classdef Tuning <dj.Computed
     methods (Access=protected)
 
         function makeTuples(tbl,key)
+            tic
             %% Retrive sources
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
