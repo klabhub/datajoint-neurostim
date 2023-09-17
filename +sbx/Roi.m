@@ -503,7 +503,9 @@ classdef Roi < dj.Imported
             % stop   - Last time point to extract
             % step   - Step size in seconds.
             % interpolation -  enum('nearest','linear','spline','pchip','makima')
-            %               Interpolation method; see timetable/synchronize. ['linear']
+            %               Interpolation method; see timetable/retime. ['linear']
+        %                   For binning, use one of the aggregation methods
+        %                   ('mean','median')
             % crossTrial - Allow values to be returned that are from one
             % trial before or one trial after. This is helpful to set start
             % =-1 to get the values from the iti before the trial. [true]
@@ -524,7 +526,7 @@ classdef Roi < dj.Imported
                 pv.trial (1,:) double = []
                 pv.start (1,1) double = 0
                 pv.stop  (1,1) double = 3
-                pv.step (1,1) double  = 1/15.5;
+                pv.step (1,1) double  = 0.250;
                 pv.interpolation {mustBeText} = 'linear'
                 pv.crossTrial (1,1) logical = true;
             end
@@ -597,6 +599,16 @@ classdef Roi < dj.Imported
                 end
                 thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
                 T.(varNames(trCntr)) = table2array(thisT);
+            end
+            aggregationMethods= {'sum','mean','median','mode','prod','min','max','firstValue','lastValue'};
+            if ismember(pv.interpolation,aggregationMethods)
+                % retime with aggregation returns the left edge of each bin
+                % and the last entry in the table is the value that occurs
+                % exactly at thelast time point (so not a bin).  Correct
+                % this here to return the time of the center of the bins
+                % and only the mean values in those bins.
+                T(end,:) = [];
+                T.Time = T.Time -seconds(pv.step)/2;
             end
             % Return as doubles or as timetable.
             if nargout ==2

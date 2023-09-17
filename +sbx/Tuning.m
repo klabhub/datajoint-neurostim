@@ -140,27 +140,28 @@ classdef Tuning <dj.Computed
                 return
             end
 
-            % Determine baseline
-            [~,spkBaseline] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.startBaseline,stop=parms.stopBaseline,step=parms.step,interpolation = parms.interpolation);
-            baseline = mean(spkBaseline,"all","omitnan");
-            baselineStd = std(spkBaseline,0,"all","omitnan");
-
-
             % Get the data and the directions
-            [~,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
+            [trialTime,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stopBaseline,step=parms.step,interpolation = parms.interpolation);
             direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
             direction = direction(trials);
             % Remove trials with NaN
             out = any(isnan(spk),1);
             spk(:,out)= [];
             direction(out) =[];
+            
+            % Determine baseline
+            isBaseline = trialTime>=parms.startBaseline & trialTime<parms.stopBaseline;
+            baseline = mean(spk(isBaseline,:),"all","omitnan");
+            baselineStd = std(spk(isBaseline,:),0,"all","omitnan");
+
+            isResponse = trialTime>=parms.start & trialTime<parms.stop;
+            spk = spk(isResponse,:);
             % If multiple bins per trial are used, we need to repmat the
             % direction to match those bins  (in that case each bin is
             % considered an independent observation to be fitted). If you
             % just want to fit the mean rate in a trial, set step to
             % stop-start which will generate a single bin per trial.
             direction = repmat(direction,[size(spk,1) 1]);
-
             spk = spk(:); % single column
             direction = direction(:); % Column
 
@@ -263,7 +264,7 @@ classdef Tuning <dj.Computed
                 'npanova',npAnova, ...
                 'nrtrials',nrTrials, ...
                 'npbaseline',baseline, ...
-                'npbaselinestd',baselineStd));
+                'npbaselinesd',baselineStd));
             insert(tbl,tpl);
             toc
         end
