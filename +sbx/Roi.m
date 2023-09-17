@@ -546,7 +546,7 @@ classdef Roi < dj.Imported
             end
             V = [sessionActivity.(pv.modality)]; %[nrFramesPerSession nrROIs]
 
-
+           
             newTimes = seconds(pv.start:pv.step:pv.stop);
             nrTimes  = numel(newTimes);
 

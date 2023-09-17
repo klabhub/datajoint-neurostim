@@ -25,6 +25,9 @@ nptc        : blob  # Non parametric tuning curve
 nptcerr     : blob # non parametric tuning curve standard errror
 nptcx       : blob # Independent variable for the nptc (orientation/direction)
 npanova     : float # ANOVA based on non parametric tuning curve.
+npbaseline  : float # Mean baseline (spontaneous) activity
+npbaselinesd: float # Standard deviation of the baseline activity
+nrtrials    : float # Number of trials used in estimates
 %}
 %
 % This table depends on sbx.Roi and sbx.Experiments, and the parameter
@@ -131,11 +134,18 @@ classdef Tuning <dj.Computed
             expt = ns.Experiment & key;
             parms = fetch1(sbx.TuningParms &key,'parms');
             trials = [fetch(ns.Condition*ns.ConditionTrial & key,'trial').trial];
+            nrTrials = numel(trials);
             if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
                 fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
                 return
             end
-tic
+
+            % Determine baseline
+            [~,spkBaseline] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.startBaseline,stop=parms.stopBaseline,step=parms.step,interpolation = parms.interpolation);
+            baseline = mean(spkBaseline,"all","omitnan");
+            baselineStd = std(spkBaseline,0,"all","omitnan");
+
+
             % Get the data and the directions
             [~,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation);
             direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
@@ -250,7 +260,10 @@ tic
                 'nptcerr',tuningCurveErr,...
                 'nptcx',uDirection,...
                 'npmin',npMin,...
-                'npanova',npAnova));
+                'npanova',npAnova, ...
+                'nrtrials',nrTrials, ...
+                'npbaseline',baseline, ...
+                'npbaselinestd',baselineStd));
             insert(tbl,tpl);
             toc
         end

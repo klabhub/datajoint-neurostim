@@ -138,10 +138,17 @@ classdef Experiment  < dj.Manual
                     end
                     v.(plgName) = get(parms);
                 end
+                
+                notFound = ~isfield(v,plg);
+                if any(notFound)
+                    warnNoTrace('This experiment (%s/%s/%s) did not use the %s plugin(s) ',exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'));
+                    out{exptCntr} = [];
+                    continue; % Next experiment 
+                end
 
                 % Post-process all (including cic) if requested
                 if ~isnan(pv.atTrialTime)
-                    % Single prm from a specified plugin,  at a specific time
+                    % Single prm from a specified plugin,  at a specific time                    
                     out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
                 elseif strlength(pv.prm) ~=0
                     % Single plugin, all values.
