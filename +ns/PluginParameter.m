@@ -129,7 +129,8 @@ classdef PluginParameter < dj.Part
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
-           
+             persistent warnedAlready
+              if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.            
             [vals,names] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name');
             glbl = cell(1,2*numel(names));
@@ -152,11 +153,11 @@ classdef PluginParameter < dj.Part
             for j=1:numel(names)
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
-                    name = [names{j} '2'];
-                    warning([oldName ':renamed'],'%s already defined; renamed to %s',oldName,name);
-                    warning('off',[oldName ':renamed']);
-                    
-                    
+                    name = [names{j} '2'];                                     
+                    if ~ismember(oldName,warnedAlready)
+                        warnedAlready = cat(2,warnedAlready,{oldName});                    
+                        warnNoTrace('%s already defined; renamed to %s',oldName,name);
+                    end
                     % This happes because block and
                     % blockTrial are both cic properties. Unlikely to
                     % happen anywhere else.

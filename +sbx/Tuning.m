@@ -75,18 +75,18 @@ classdef Tuning <dj.Computed
                     T= tiledlayout('flow');
                 end
                 nexttile;
+                hold on
                 % Fetch parameters used to estmate the tuning curve
                 parms = fetch1(sbx.TuningParms & tpl,'parms');
                 cond = fetch(ns.Condition*ns.ConditionTrial & tpl,'*');
                 conditionName = unique({cond.name});
                 conditionName= conditionName{1};
                 trials = [cond.trial];
-
                 % Generate estimated tuning curve
                 uDirection = (0:1:330);                
                 if pv.nrBootToShow >0
                     % Show Bootstrap estimates
-                    hold on
+                    
                     for i=1:min(pv.nrBootToShow,parms.nrBoot)
                         errorCurve =  sbx.Tuning.twoHumps(uDirection,tpl.bootparms(i,:))';
                         plot(uDirection,errorCurve,'LineWidth',0.5,'Color',0.6*ones(1,3),'LineStyle','-');
@@ -102,6 +102,7 @@ classdef Tuning <dj.Computed
                 if pv.showNP
                     % Get the data and the directions
                     ploterr(tpl.nptcx, tpl.nptc,tpl.nptcerr/sqrt(numel(trials)),'ShadingAlpha',0.5,'LineWidth',2,'Color','r');
+                    ploterr(xlim',tpl.npbaseline*[1 1]',tpl.npbaselinesd/sqrt(numel(trials))*[1 1]','ShadingAlpha',0.5,'Color','k');
                 end
                 % Show parameters in the title
                 txt=  sprintf('%s (%d trials)- Roi#%d \n PD:%.0f [+/- %.0f], Amp: %.2g [%.2g %.2g], AntiAmp: %.2g [%.2g %.2g], Width: %.2g  [%.2g %.2g]  ,AntiWidth: %.2g  [%.2g %.2g]  , Offset %.2g  [%.2g %.2g] \n gof : %.3f, splithalves: %.2f', ...
