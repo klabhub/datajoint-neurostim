@@ -57,29 +57,29 @@ arguments
     pv.edgeThreshold = [];
     pv.minRadius (1,1) double = 10
     pv.maxRadius (1,1) double = 50
-    pv.searchRadius  (1,1) double = 90   % From center.
+    pv.searchRadius  (1,1) double = inf   % From center.
 
     pv.history = 3; % Show the last n frames
     pv.startFrame = 1;
     pv.stopFrame = inf;
     pv.manualRoi (1,1) logical = false
-    pv.binarize (1,1) logical = false
+  
 end
 
 %% Get the frames
 switch class(in)
-    case 'ns.Experiment'
+    case 'ns.Experiment'        
         % A key representing an experiment
-        matFile = fetch1(ns.File & in & 'extension=''.mat''' & ['filename LIKE ''%_'  type '.mat'''],'filename');
+        file = ns.File & in & 'extension=''.mj2''' & ['filename LIKE ''%_'  type '.mj2'''];       
+        matFile = fetch1(file,'filename');
         ff = fullfile(folder(in),matFile);
-        movie = load(ff,'data','abstime');
-    case 'struct'
-        % The data in the _eye or _ball.mat file packaged as a struct
-        % with fields .data and .abstime
-        movie = in;
+        if ~exist(ff,'file')
+            error('Movie file %s not found',ff)
+        end
+        movie = VideoReader(ff);        
     case {'char','string'}
         % Load from file
-        load(file,'movie')
+        movie = VideoReader(in);
     otherwise
         error('sbx.eyeTracker cannot handle %s inputs',class(in));
 end
@@ -101,20 +101,17 @@ if pv.manualRoi || pv.movie
     end
 end
 
+if isinf(pv.stopFrame)
+    pv.stopFrame = movie.NumFrames;
+end
 
-frames = squeeze(movie.data); % Squeeze out the 3rd singleton dimension
-nrFrames= size(frames,3);
-[nrY,nrX,nrFrames] =size(frames(:,:,max(1,pv.startFrame):min(nrFrames,pv.stopFrame)));
-% Scale
-frames = single(frames);
-%frames = (frames-min(frames,[],"all"))./(max(frames,[],"all")-min(frames,[],"all"));
 
 %% Select an ROI manually or based on the search radius
 if pv.manualRoi && ~isstruct(pv.track)
     figure(hFig)
     colormap("gray")
     %imagesc(mean(frames,3,"omitnan"));
-    imagesc(frames(:,:,1));
+    imagesc(movie.readFrame);
     [xLim,yLim] = ginput(2);
     center = [xLim(1) yLim(1)];
     searchRadius = ceil(sqrt(diff(xLim).^2+diff(yLim).^2));
@@ -122,46 +119,37 @@ if pv.manualRoi && ~isstruct(pv.track)
     range = (-searchRadius:searchRadius);
     xWindow = round(center(1)+range);
     yWindow = round(center(2)+range);
+elseif ~isinf(pv.searchRadius)
+    xWindow  = round((-pv.searchRadius:pv.searchRadius) + movie.Width/2);
+    yWindow  = round((-pv.searchRadius:pv.searchRadius) + movie.Height/2);
 else
-    xWindow  = round((-pv.searchRadius:pv.searchRadius) + nrX/2);
-    yWindow  = round((-pv.searchRadius:pv.searchRadius) + nrY/2);
+    xWindow  = 1:movie.Width;
+    yWindow  = 1:movie.Height;
 end
 
-xWindow(xWindow< 1 | xWindow>nrX) =[];
-yWindow(yWindow< 1 | yWindow>nrY) =[];
-zoomed = frames(yWindow,xWindow,:);
+xWindow(xWindow< 1 | xWindow>movie.Width) =[];
+yWindow(yWindow< 1 | yWindow>movie.Height) =[];
 
-
-
-
-if pv.binarize
-    % Binarize the images based on a threshold estimated from
-    % a random sample of 100 frames.
-    % Does not seem to help.
-    iCntr=0;
-    level = nan(100,1);
-    for i=randperm(nrFrames,100)
-        iCntr = iCntr+1;
-        level(iCntr) = graythresh(zoomed(:,:,i));
-    end
-    zoomed= imbinarize(zoomed,median(level));
-end
 
 %% Run the tracking algorithm
 if islogical(pv.track) && pv.track
     %% Initialize output vars
-    x       = nan(nrFrames,1);
-    y       = nan(nrFrames,1);
-    a       = nan(nrFrames,1);
-    velocity = nan(nrFrames,1);
-    quality  = nan(nrFrames,1);
+    x       = nan(movie.NumFrames,1);
+    y       = nan(movie.NumFrames,1);
+    a       = nan(movie.NumFrames,1);
+    velocity = nan(movie.NumFrames,1);
+    quality  = nan(movie.NumFrames,1);
 
+            
     switch type
         case 'eye'
+    
             fprintf('Eye tracking analysis on %d workers\n',pv.nrWorkers)
-            %parfor (f=1:nrFrames,pv.nrWorkers)
-            for f=1:nrFrames  % debug
-                [center,radius,thisQuality] = imfindcircles(zoomed(:,:,f),[pv.minRadius searchRadius],'Method',pv.method,'Sensitivity',pv.sensitivity,'EdgeThreshold',pv.edgeThreshold); %#ok<PFBNS>
+            parfor (f=pv.startFrame:pv.stopFrame,pv.nrWorkers)
+            %for f=1:movie.NumFrames  % debug
+                frame  = movie.read(f);
+                frame = frame(xWindow,yWindow);   
+                [center,radius,thisQuality] = imfindcircles(single(frame),[pv.minRadius searchRadius],'Method',pv.method,'Sensitivity',pv.sensitivity,'EdgeThreshold',pv.edgeThreshold); %#ok<PFBNS>
                 if ~isempty(center)
                     [~,idx] = max(thisQuality); % pick the circle with best score
                     x(f) = xWindow(1) + center(idx,1);
@@ -177,9 +165,10 @@ if islogical(pv.track) && pv.track
             % of an advantage (if any). Probably because xcorr already uses
             % multithreading. I also tried imregtform and normxcorr2 but
             % saw worse performance.
-            for f=2:nrFrames
-                z1 = zoomed(:,:,f);
-                z2 = zoomed(:,:,f-1);
+            for f=(pv.startFrame+1):pv.stopFrame
+                frames = movie.read([f-1 f]);
+                z1= frames(yWindow,xWindow,1);
+                z2= frames(yWindow,xWindow,2);
                 z1 = z1 -mean(z1,"all");
                 z2 = z2 -mean(z2,"all");
                 xc =xcorr2(z1,z2);
@@ -222,11 +211,10 @@ if pv.movie
                 axSpeed = axes(hFig,'Position',[0.75 0.05 pos(3:4)/5]);
         end
 
-        for f=1:nrFrames
+        for f=pv.startFrame:pv.stopFrame
             hold off
-            imagesc(ax,1:nrX,1:nrY,frames(:,:,f));
+            imagesc(ax,1:movie.Width,1:movie.Height,movie.read(f));
             hold on
-            imagesc(ax,xWindow,yWindow,zoomed(:,:,f));
             % Show the zoomed search limits
             line(ax,[min(xWindow) min(xWindow) max(xWindow) max(xWindow) min(xWindow) ]',[min(yWindow) max(yWindow) max(yWindow) min(yWindow) min(yWindow)])
             if  pv.track
@@ -234,7 +222,7 @@ if pv.movie
                     case 'eye'
                         if ~isnan(x(f))
                             % Show the pupil estimate
-                            areaScale=(hFig.Position(3)/nrX).^2;
+                            areaScale=(hFig.Position(3)/movie.Width).^2;
                             scatter(ax,x(f),y(f),areaScale*a(f),'r');
                             hold off
                         end
@@ -250,7 +238,8 @@ if pv.movie
                             colors = gray;
                             colors = num2cell(colors(ix,:),2)';
                             [h.Color] =deal(colors{:});
-                            axPolar.RLim = [0 prctile(abs(velocity),95)];
+                            maxVelocity = max(eps,prctile(abs(velocity),95));
+                            axPolar.RLim = [0 maxVelocity];
 
                             %% speed
                             nrFramesToKeep= 100;
@@ -258,7 +247,7 @@ if pv.movie
                             fToKeep(fToKeep<1)=[];
                             plot(axSpeed,fToKeep,abs(velocity(fToKeep)),'r');
                             xlim(axSpeed,[f-nrFramesToKeep f])
-                            ylim(axSpeed,[0 prctile(abs(velocity),95)]);
+                            ylim(axSpeed,[0 maxVelocity]);
                             set(axSpeed,'YTick',[])
                         end
 
@@ -277,8 +266,8 @@ if pv.movie
             drawnow
         end
     else % Not tracking just viewing the movie
-        for f=1:nrFrames
-            imagesc(ax,frames(:,:,f));
+        for f=pv.startFrame:pv.stopFrame
+            imagesc(ax,movie.read(f));
             hold on
             % Show the zoomed search limits
             line([min(xWindow) min(xWindow) max(xWindow) max(xWindow) min(xWindow) ]',[min(yWindow) max(yWindow) max(yWindow) min(yWindow) min(yWindow)])
