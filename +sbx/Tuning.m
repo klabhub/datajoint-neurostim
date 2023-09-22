@@ -144,6 +144,9 @@ classdef Tuning <dj.Computed
             [trialTime,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stopBaseline,step=parms.step,interpolation = parms.interpolation);
             direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
             direction = direction(trials);
+            %          
+            dj.conn(-1);% Disconnect while computing.
+
             % Remove trials with NaN
             out = any(isnan(spk),1);
             spk(:,out)= [];
@@ -267,7 +270,7 @@ classdef Tuning <dj.Computed
                 'npbaselinesd',baselineStd));
             insert(tbl,tpl);
 
-            dj.conn(-1);% Disconnect
+   
             toc
         end
     end
