@@ -145,8 +145,7 @@ classdef Tuning <dj.Computed
             direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
             direction = direction(trials);
             %          
-            dj.conn(-1);% Disconnect while computing.
-
+          
             % Remove trials with NaN
             out = any(isnan(spk),1);
             spk(:,out)= [];
