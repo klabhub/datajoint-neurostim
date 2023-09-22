@@ -64,7 +64,6 @@ classdef Tuning <dj.Computed
                 pv.showNP (1,1) logical =false                          % Show Non-Parametric estimates?
                 pv.linkAxes (1,1) logical =false                        % Link axes in the figure?
             end
-
             cntr =0;
             % Loop over the table
             for tpl = tbl.fetch('*')'
@@ -267,6 +266,8 @@ classdef Tuning <dj.Computed
                 'npbaseline',baseline, ...
                 'npbaselinesd',baselineStd));
             insert(tbl,tpl);
+
+            dj.conn(-1);% Disconnect
             toc
         end
     end
