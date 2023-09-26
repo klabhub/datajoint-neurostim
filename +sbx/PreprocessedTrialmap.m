@@ -94,9 +94,10 @@ classdef PreprocessedTrialmap < dj.Part
                             % fprintf(2,'Prepending %d\n',nrMissing);
                         end
                     else                        
-                        error('Cannot map SBX frames to trials. SBX stopped saving data before the end of the experiment (nrTTL %d, nrFrames %d)',nrTTL,nrFrames);
+                        warning('Cannot map SBX frames to trials. SBX stopped saving data before the end of the experiment (nrTTL %d, nrFrames %d)',nrTTL,nrFrames);
+                        continue; % Not an error; the other experimetns in this session can still be analyzed.
                         %laserOnTime(nrFrames+1:end)=[];  % Cutting does
-                        %not help; itwill create tpls with empty frames.
+                        %not help; it will create tpls with empty frames.
                     end
 
 
