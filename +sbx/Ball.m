@@ -3,7 +3,7 @@
 -> ns.Experiment # Corresponding experiment
 -> sbx.BallParms  # The parameters that define the extraction process.
 ---
-v :longblob  # The velocity; first column is the horizontal component, second column the vertical component. [nrTimePoints 2]
+velocity :longblob  # The velocity; first column is the horizontal component, second column the vertical component. [nrTimePoints 2]
 quality : longblob # The quality of the estimation at each time point [nrTimePoints 1]
 manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
 nrtimepoints :  int unsigned # Number of time points in the pose estimation
@@ -39,65 +39,102 @@ classdef Ball < dj.Computed
             arguments
                 tbl (1,1) sbx.Ball
                 pv.mode (1,1) string {mustBeMember(pv.mode,["MOVIE","TRAJECTORY","TIMECOURSE"])} = "TRAJECTORY"
+                pv.history (1,1) double = 10                
             end
 
             for tpl = tbl.fetch('*')'
                 figName= sprintf('#%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
-                figByName(figName);
+                hFig = figByName(figName);
+                hFig.Units= 'Normalized';
                 clf;
                 switch upper(pv.mode)
                     case "MOVIE"
                         movie = openMovie(tbl,tpl);
-                        frameCntr = 0;
-                        phi = linspace(0,2*pi,100);
-                        while (movie.hasFrame)
-                            frameCntr = frameCntr+1;
+                        ax = axes('Position',[0 0 1 1]);
+                        axis(ax,'off')
+                        pos = get(ax,'Position');
+                        axPolar = polaraxes(hFig,'Position',[0 0 pos(3:4)/5]);
+                        axSpeed = axes(hFig,'Position',[0.75 0.05 pos(3:4)/5]);
+                        maxVelocity = max(eps,prctile(abs(tpl.velocity),95));
+                        historyColormap = gray; % Show multiple trailing vectors as shades of grays
+                        for frameCntr = 1:tpl.nrtimepoints                            
                             frame = movie.readFrame;
                             hold off
-                            imagesc(frame);
+                            imagesc(ax,frame);                             
                             hold on
-                            plot(tpl.x(frameCntr),tpl.y(frameCntr),'r*');
-                            radius = sqrt(tpl.a(frameCntr)/pi);
+                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('Frame #%d/%d',frameCntr,tpl.nrtimepoints),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12)
+                            % Instantaneous velocity with trailing vectors
+                            % for history
+                            if ~isnan(tpl.velocity(frameCntr))
+                                fToKeep = frameCntr-pv.history:frameCntr;
+                                fToKeep(fToKeep<1) =[];
+                                nrF =numel(fToKeep);
+                                h = polarplot(axPolar,[complex(zeros(1,nrF)) ;tpl.velocity(fToKeep)']);
+                                % Use shading such that the most recent frame
+                                % is black and earlier ones fade to white.
+                                ix = round(linspace(255,1,nrF));
+                                
+                                colors = num2cell(historyColormap(ix,:),2)';
+                                [h.Color] =deal(colors{:});                               
+                                axPolar.RLim = [0 maxVelocity];
+                            end
 
-                            line(tpl.x(frameCntr)+radius.*cos(phi),tpl.y(frameCntr)+radius.*sin(phi),'Color','g')
-                            xlabel 'X (pixels)';
-                            ylabel 'Y (pixels)';
+                            %% speed with 100 frames history
+                            nrFramesToKeep= 100;
+                            fToKeep = frameCntr+(-nrFramesToKeep:0);
+                            fToKeep(fToKeep<1)=[];
+                            plot(axSpeed,fToKeep,abs(tpl.velocity(fToKeep)),'r');
+                            xlim(axSpeed,[frameCntr-nrFramesToKeep frameCntr])
+                            ylim(axSpeed,[0 1.1*maxVelocity]);
+                            set(axSpeed,'YTick',[])
+
+
+                            %% Quality indicated by the circle in the polar plot. (red = bad, green is good)
+                            if ~isnan(tpl.quality(frameCntr))
+                                hold(axPolar,"on")
+                                polarplot(axPolar,0,0,'.','MarkerSize',10,'Color',[max(0,1-tpl.quality(frameCntr)) min(1,tpl.quality(frameCntr)) 0])
+                                hold(axPolar,"off")
+                            else
+                                polarplot(axPolar,0,0,'X','MarkerSize',10,'Color','r')
+                            end
+                            % polarplot puts ticks back every time.
+                            axPolar.RTickLabel = [];
+                            axPolar.ThetaTickLabel  = [];
+                            axPolar.RTick = [];
+                            axPolar.ThetaTick  = [];
+
                             drawnow;
                         end
 
-
                     case "TRAJECTORY"
                         % Show trajectory x,y, area
-                        scatter(tpl.x, tpl.y,tpl.a,'ko');
-                        set(gca,'XLim',[1 tpl.width],'Ylim',[1 tpl.height]);
-                        xlabel 'X (pixels)';
-                        ylabel 'Y (pixels)';
-
-                        title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
+                        stay =~any(isnan(tpl.velocity),2);
+                        position  = cumsum(tpl.velocity(stay,:));
+                        speed  = 1+abs(tpl.velocity(stay,:));
+                        time= hsv(sum(stay)); % Show multiple trailing vectors as shades of grays
+                        
+                        scatter(real(position),imag(position),speed,time,'o','filled');
+                        xlabel 'X (a.u.)';
+                        ylabel 'Y (a.u.)';
+                        title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.velocity))));
 
                     case "TIMECOURSE"
-                        T=tiledlayout(3,1,"TileSpacing","tight");
+                        T=tiledlayout(2,1,"TileSpacing","tight");
                         t =(0:tpl.nrtimepoints-1)/tpl.framerate;
                         nexttile(T)
-                        plot(t,tpl.x./tpl.width);
+                        plot(t,real(tpl.velocity));
                         hold on
-                        plot(t,tpl.y/tpl.height);
-                        ylim([0 1]);
-                        ylabel 'Position (frac)'
-                        legend('x','y')
-                        nexttile(T)
-                        scaledA = (tpl.a-mean(tpl.a,"omitnan"))/std(tpl.a,0,"omitnan");
-                        plot(t,scaledA);
-                        ylabel 'Area (z-score)'
-                        legend('area')
+                        plot(t,imag(tpl.velocity));                        
+                        ylabel 'Speed (a.u.)'
+                        legend('dx','dy')
                         nexttile(T)
                         plot(t,tpl.quality);
-                        ylabel 'Position Quality ([0 1])'
+                        ylabel 'Velocity Quality ([0 1])'
                         xlabel 'Time (s)'
-                        ylim([0 1]);
+                        ylim([0 1.1]);
                         legend('quality')
-                        title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
-
+                        title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.velocity))));
+                        linkaxes(T.Children,'x')
                 end
 
             end
@@ -121,17 +158,18 @@ classdef Ball < dj.Computed
     end
 
     methods (Static)
-        function [velocity,quality,nrT,fr] =xcorr(movie,pv)
+        function [velocity,quality,nrFrames,fr] =xcorr(movie,pv)
             arguments
                 movie (1,1) VideoReader
                 pv (1,1) struct
             end
-            maxFrames= 30*60;
+            maxFrames= Inf;%Debugging 30*60;
 
             useGPU = canUseGPU;
 
             w=movie.Width;h =movie.Height;
             nrFrames = movie.NumFrames;
+            fr = movie.FrameRate;
             %% Initialize output vars
             if useGPU
                 velocity = nan(nrFrames,1,"gpuArray");
@@ -143,34 +181,36 @@ classdef Ball < dj.Computed
 
             warnNoTrace('Ball tracking analysis (useGPU: %d)\n',useGPU);
             f=1;
+            pixelScaleDown = 3;
             z1 = single(movie.readFrame);
-            if ndims(z1)==3;z1=z1(:,:,1);end
-            while movie.hasFrame &&  f<maxFrames 
-                z2 = single(movie.readFrame);
-                if ndims(z2)==3;z2=z2(:,:,1);end
+            if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
+            z1 =imresize(z1,round([w h]./pixelScaleDown));
+            [scaledH,scaledW] = size(z1); % After scaling
+            while movie.hasFrame &&  f<maxFrames
+                z2 =  single(movie.readFrame);
+                if ndims(z2)==3;z2=z2(:,:,1);end % Force gray scale
+                z2 =imresize(z2,round([w h]./pixelScaleDown));
                 if useGPU
                     z1 = gpuArray(z1);
                     z2 = gpuArray(z2);
                 end
-                
+                %% Find maximum xcorr
                 xc =xcorr2(z1,z2);
                 [maxXC,ix] = max(xc(:));
                 scale=sum(((z1+z2)/2).^2,'all');
                 quality(f) = maxXC./scale;
                 [dy,dx]= ind2sub(size(xc),ix);
-                dy = dy-h;
-                dx = dx-w;
-                velocity(f) = dx  + 1i.*dy;
+                dy = dy-scaledH;
+                dx = dx-scaledW;
+                velocity(f) = -dx  - 1i.*dy; % Minus sign to reflect the motion of the mouse, which is opposite to that of the ball.
                 % next frame
                 f=f+1;
-                z1=z2;                
+                z1=z2;
             end
             if useGPU
                 velocity = gather(velocity);
                 quality = gather(quality);
             end
-
-
         end
     end
 
