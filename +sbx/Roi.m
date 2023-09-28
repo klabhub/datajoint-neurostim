@@ -556,7 +556,7 @@ classdef Roi < dj.Imported
             % experiments
             frameDuration = seconds(1./unique([fetch(sbx.Preprocessed & roi,'framerate').framerate]));
 
-            nrTrials = numel(trials);
+            nrTrials = numel(trials);            
             varNames = "Trial" + string([trialMap(trials).trial]);
             T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes','VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
             trCntr=0;

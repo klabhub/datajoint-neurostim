@@ -54,6 +54,21 @@ nrtrials    : float # Number of trials used in estimates
 %
 % BK - Sept 2023
 classdef Tuning <dj.Computed
+    properties (Dependent)
+        keySource
+    end
+    methods 
+        function v= get.keySource(~)
+            % Use only those experiments that have an entry in the Trialmap
+            % (as that means that the sbx data were processed and the time course of 
+            % the ROI is known in the experiment). Basically this makes
+            % sure we ignore experiments where the imaging data were
+            % missing.
+            v = (ns.Experiment&sbx.PreprocessedTrialmap)*sbx.Roi*sbx.TuningParms*ns.Condition;
+        end
+    end
+
+
     methods (Access=public)
         function plot(tbl,pv)
             % Function to show a set of tuning functions

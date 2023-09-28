@@ -1,22 +1,18 @@
 %{
-# Stores eye position information 
+# Stores ball velocityinformation 
 -> ns.Experiment # Corresponding experiment
--> sbx.EyeParms  # The parameters that define the pose extraction process.
+-> sbx.BallParms  # The parameters that define the extraction process.
 ---
-x :longblob  # The x position of the pupil center; [nrTimePoints 1]
-y :longblob  # The y position of the pupil center; [nrTimePoints 1]
-a: longblob  # The pupil area
+v :longblob  # The velocity; first column is the horizontal component, second column the vertical component. [nrTimePoints 2]
 quality : longblob # The quality of the estimation at each time point [nrTimePoints 1]
 manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
 nrtimepoints :  int unsigned # Number of time points in the pose estimation
-width  : float # Width of the camera image
-height : float # Height of the camera image
 framerate : float # Framerate of the movie
 %}
 %
 % BK - Sept 2023.
 
-classdef Eye < dj.Computed
+classdef Ball < dj.Computed
     properties (Dependent)
         keySource
     end
@@ -24,14 +20,14 @@ classdef Eye < dj.Computed
 
     methods
         function v= get.keySource(~)
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.mp4'''))*sbx.EyeParms;
+            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_ball.mp4'''))*sbx.BallParms;
         end
 
     end
 
     methods (Access=public)
         function movie=openMovie(~,key)
-            filename = fetch1(ns.File & key & 'filename LIKE ''%_eye.mp4''','filename');
+            filename = fetch1(ns.File & key & 'filename LIKE ''%_ball.mp4''','filename');
             movieFile = fullfile(getenv('NS_ROOT'),filename);
             if ~exist(movieFile,"file")
                 error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
@@ -41,7 +37,7 @@ classdef Eye < dj.Computed
 
         function plot(tbl,pv)
             arguments
-                tbl (1,1) sbx.Eye
+                tbl (1,1) sbx.Ball
                 pv.mode (1,1) string {mustBeMember(pv.mode,["MOVIE","TRAJECTORY","TIMECOURSE"])} = "TRAJECTORY"
             end
 
@@ -110,81 +106,69 @@ classdef Eye < dj.Computed
     end
     methods (Access = protected)
         function makeTuples(tbl,key)
-            parms= fetch1(sbx.EyeParms &key,'parms');
+            parms= fetch1(sbx.BallParms &key,'parms');
             movie = openMovie(tbl,key);
             switch upper(key.tag)
-                case 'IMFINDCIRCLES'
-                    %% Pupil tracking, using imfindcircles
-                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
-                case 'DLC'
-
+                case 'XCORR'
+                    [velocity,quality,nrT,fr] =sbx.Ball.xcorr(movie,parms);
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
 
-            tpl = mergestruct(key,struct('x',x,'y',y,'a',a,'quality',quality,'nrtimepoints',nrT,'width',w,'height',h,'framerate',fr));
+            tpl = mergestruct(key,struct('velocity',velocity,'quality',quality,'nrtimepoints',nrT,'framerate',fr));
             insert(tbl,tpl);
         end
     end
 
     methods (Static)
-        function [x,y,a,quality,nrT, w,h,fr] =imfindcircles(movie,pv)
-            % The imfindcircles tool defines the following parameters,
-            % which should be specified in the pv struct.  These are the
-            % defaults (see help  imfindcircles).
-            % 'objectPolarity','bright'
-            % 'method','PhaseCode'
-            % 'sensitivity',0.85,...
-            % 'edgeThreshold',[],...
-            %'radiusRange',[6 20]);
-            %
-            % NOTE:
-            % The imfindcircles algorithm fails to find some pretty obvious
-            % circles in eye tracking movies. I do not know why. Also, this
-            % algorithm treats each frame on its own even though x,y, and
-            % area cannot change that rapidly. It may be possible to build
-            % in some filtering (e.g., search only an area around the
-            % previously identified location).
-            %
+        function [velocity,quality,nrT,fr] =xcorr(movie,pv)
             arguments
                 movie (1,1) VideoReader
                 pv (1,1) struct
             end
-            %% Use parpool if available
-            if isempty(gcp('nocreate'))
-                nrWorkers = 0;
-            else
-                nrWorkers  = gcp('nocreate').NumWorkers;
-            end
-            maxFrames = inf;%30*60;  % Used for debugging only.
+            maxFrames= 30*60;
 
+            useGPU = canUseGPU;
 
-            w = movie.Width;
-            h = movie.Height;
-            nrT = min(maxFrames,movie.NumFrames);
-            fr = movie.FrameRate;
+            w=movie.Width;h =movie.Height;
+            nrFrames = movie.NumFrames;
             %% Initialize output vars
-            x       = nan(nrT,1);
-            y       = nan(nrT,1);
-            a       = nan(nrT,1);
-            quality  = nan(nrT,1);
-
-            warnNoTrace('Eye tracking analysis on %d workers\n',nrWorkers)
-            % Read the movie into memory (could check that we have
-            % enough...)
-
-            frames= single(movie.read([1 nrT]));
-            parfor (f=1:nrT,nrWorkers)
-                %for f=1:nrT  % debug
-                [center,radius,thisQuality] = imfindcircles(frames(:,:,f),pv.radiusRange,'ObjectPolarity',pv.objectPolarity,'Method',pv.method,'Sensitivity',pv.sensitivity,'EdgeThreshold',pv.edgeThreshold); %#ok<PFBNS>
-                if ~isempty(center)
-                    [quality(f),idx] = max(thisQuality); % pick the circle with best score
-                    x(f) = center(idx,1);
-                    y(f) = center(idx,2);
-                    a(f) = pi*radius(idx)^2;
-                end
+            if useGPU
+                velocity = nan(nrFrames,1,"gpuArray");
+                quality  = nan(nrFrames,1,"gpuArray");
+            else
+                velocity = nan(nrFrames,1);
+                quality  = nan(nrFrames,1);
             end
 
+            warnNoTrace('Ball tracking analysis (useGPU: %d)\n',useGPU);
+            f=1;
+            z1 = single(movie.readFrame);
+            if ndims(z1)==3;z1=z1(:,:,1);end
+            while movie.hasFrame &&  f<maxFrames 
+                z2 = single(movie.readFrame);
+                if ndims(z2)==3;z2=z2(:,:,1);end
+                if useGPU
+                    z1 = gpuArray(z1);
+                    z2 = gpuArray(z2);
+                end
+                
+                xc =xcorr2(z1,z2);
+                [maxXC,ix] = max(xc(:));
+                scale=sum(((z1+z2)/2).^2,'all');
+                quality(f) = maxXC./scale;
+                [dy,dx]= ind2sub(size(xc),ix);
+                dy = dy-h;
+                dx = dx-w;
+                velocity(f) = dx  + 1i.*dy;
+                % next frame
+                f=f+1;
+                z1=z2;                
+            end
+            if useGPU
+                velocity = gather(velocity);
+                quality = gather(quality);
+            end
 
 
         end
