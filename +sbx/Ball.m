@@ -20,14 +20,14 @@ classdef Ball < dj.Computed
 
     methods
         function v= get.keySource(~)
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_ball.mp4'''))*sbx.BallParms;
+            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_ball.avi'''))*sbx.BallParms;
         end
 
     end
 
     methods (Access=public)
         function movie=openMovie(~,key)
-            filename = fetch1(ns.File & key & 'filename LIKE ''%_ball.mp4''','filename');
+            filename = fetch1(ns.File & key & 'filename LIKE ''%_ball.avi''','filename');
             movieFile = fullfile(getenv('NS_ROOT'),filename);
             if ~exist(movieFile,"file")
                 error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
