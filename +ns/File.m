@@ -1,7 +1,7 @@
 %{
 # A table with the names of the data files for each experiment
 -> ns.Experiment         # The experiment to which this belongs (FK)
-filename: varchar(255)   # The relative filename
+filename: varchar(255)   # The relative filename (using / to separate folders)
 ---
 extension : varchar(10)  # File extension for easy filtering.
 %}
@@ -40,8 +40,9 @@ classdef File < dj.Imported
                     % Remove the part of the path that points to the folder
                     % with the neurostim file, but keep subfolders deeper than
                     % that (for most files relFolder will be '').
-                    relFolder = strrep(linkedFiles(f).folder,pth,'');
-                    qry = mergestruct(key,struct('filename',fullfile(relFolder,linkedFiles(f).name)));
+                    relFolder = strrep(linkedFiles(f).folder,pth,'');                    
+                    filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
+                    qry = mergestruct(key,struct('filename',filename));
                     thisFile = ns.File & qry;
                     if ~thisFile.exists
                         qry.extension = ext{f};
