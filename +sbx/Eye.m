@@ -21,18 +21,26 @@ classdef Eye < dj.Computed
         keySource
     end
 
-
     methods
         function v= get.keySource(~)
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.avi'''))*sbx.EyeParms;
+            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.%'''))*sbx.EyeParms;
         end
-
     end
 
     methods (Access=public)
         function movie=openMovie(~,key)
-            filename = fetch1(ns.File & key & 'filename LIKE ''%_eye.avi''','filename');
-            movieFile = fullfile(getenv('NS_ROOT'),filename);
+            % It is possible that there is more than one _eye file; pick the smallest one
+            % (presumably this is a preprocess/compressed version)
+            fldr = folder(ns.Experiment& key);
+            minSize = Inf;
+            for f=fetch(ns.File & key & 'filename LIKE ''%_eye%''','filename')'
+                    ff =fullfile(fldr,f.filename);
+                    d = dir(ff);
+                    if d.bytes<minSize
+                        minSize= d.bytes;
+                        movieFile= ff;
+                    end
+            end
             if ~exist(movieFile,"file")
                 error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
             end
@@ -51,6 +59,7 @@ classdef Eye < dj.Computed
                 clf;
                 switch upper(pv.mode)
                     case "MOVIE"
+                        % Show the movie with the decoded pupil on top.
                         movie = openMovie(tbl,tpl);
                         frameCntr = 0;
                         phi = linspace(0,2*pi,100);
@@ -68,10 +77,8 @@ classdef Eye < dj.Computed
                             ylabel 'Y (pixels)';
                             drawnow;
                         end
-
-
                     case "TRAJECTORY"
-                        % Show trajectory x,y, area
+                        % Show trajectory x,y, area on the screen.
                         scatter(tpl.x, tpl.y,tpl.a,'ko');
                         set(gca,'XLim',[1 tpl.width],'Ylim',[1 tpl.height]);
                         xlabel 'X (pixels)';
@@ -80,6 +87,7 @@ classdef Eye < dj.Computed
                         title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
 
                     case "TIMECOURSE"
+                        % Show x,y, area as a function of time.
                         T=tiledlayout(3,1,"TileSpacing","tight");
                         t =(0:tpl.nrtimepoints-1)/tpl.framerate;
                         nexttile(T)
@@ -101,13 +109,12 @@ classdef Eye < dj.Computed
                         ylim([0 1]);
                         legend('quality')
                         title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
-
                 end
-
             end
-
         end
     end
+
+
     methods (Access = protected)
         function makeTuples(tbl,key)
             parms= fetch1(sbx.EyeParms &key,'parms');
@@ -121,7 +128,6 @@ classdef Eye < dj.Computed
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
-
             tpl = mergestruct(key,struct('x',x,'y',y,'a',a,'quality',quality,'nrtimepoints',nrT,'width',w,'height',h,'framerate',fr));
             insert(tbl,tpl);
         end
@@ -155,13 +161,11 @@ classdef Eye < dj.Computed
                 nrWorkers = 0;
             else
                 nrWorkers  = gcp('nocreate').NumWorkers;
-            end
-            maxFrames = inf;%30*60;  % Used for debugging only.
-
+            end         
 
             w = movie.Width;
             h = movie.Height;
-            nrT = min(maxFrames,movie.NumFrames);
+            nrT = movie.NumFrames;
             fr = movie.FrameRate;
             %% Initialize output vars
             x       = nan(nrT,1);
@@ -172,7 +176,6 @@ classdef Eye < dj.Computed
             warnNoTrace('Eye tracking analysis on %d workers\n',nrWorkers)
             % Read the movie into memory (could check that we have
             % enough...)
-
             frames= single(movie.read([1 nrT]));
             parfor (f=1:nrT,nrWorkers)
                 %for f=1:nrT  % debug
@@ -184,8 +187,16 @@ classdef Eye < dj.Computed
                     a(f) = pi*radius(idx)^2;
                 end
             end
+        end
 
 
+        function [x,y,a,quality,nrT, w,h,fr] =dlc(movie,pv)
+            % Use DeepLabCut to determine the pupil position. The actual
+            % work is done by calling a DLC singularity container, and
+            % parameters of dlc (e.g., which trained network) are specified
+            % as pv (which is pulled from the EyeParms table in
+            % makeTuples).
+                
 
         end
     end

@@ -16,6 +16,13 @@ framerate : float # Framerate of the original movie
 %
 % If a GPU is available this code will use it to speed up xcorr2.
 %
+% The parms struct (set in sbx.BallParms) needs two parameters:
+% .scaleFactor  By how much to scale the raw images (0.5 means reduce the size)
+% .minPixels    The minimum pixels along either width or height after
+%               scalng by scaleFactor (in other words if scaleFactor is too small, it
+%               will be increased such that minPixels remain).
+%
+%
 % BK - Sept 2023.
 
 classdef Ball < dj.Computed
@@ -193,10 +200,10 @@ classdef Ball < dj.Computed
     end
 
     methods (Static)
-        function [velocity,quality,nrFrames,fr] =xcorr(movie,pv)
+        function [velocity,quality,nrFrames,fr] =xcorr(movie,parms)
             arguments
                 movie (1,1) VideoReader
-                pv (1,1) struct  % Not used at the moment
+                parms (1,1) struct 
             end
             useGPU = canUseGPU;  % If a GPU is available we'll use it.
 
@@ -213,16 +220,22 @@ classdef Ball < dj.Computed
             end
 
             warnNoTrace('Ball tracking analysis (useGPU: %d)\n',useGPU);
-            f=1;
-            pixelScaleDown = 3;
+            f=1;            
             z1 = single(movie.readFrame);
             if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
-            z1 =imresize(z1,round([w h]./pixelScaleDown));
-            [scaledH,scaledW] = size(z1); % After scaling
+
+            % Determine the scaling.
+            heightWidth  = round(parms.scaleFactor.*[h w]);
+            if any(heightWidth<parms.minPixels)
+                % Too small: correct
+                parms.scaleFactor = max(parms.minPixels./[h w]);
+                heightWidth = round(parms.scaleFactor*[w h]);
+            end
+            z1 =imresize(z1,heightWidth);            
             while movie.hasFrame
                 z2 =  single(movie.readFrame);
-                if ndims(z2)==3;z2=z2(:,:,1);end % Force gray scale
-                z2 =imresize(z2,round([w h]./pixelScaleDown));
+                if ndims(z2)==3;z2=z2(:,:,1);end 
+                z2 =imresize(z2,heightWidth);
                 if useGPU
                     z1 = gpuArray(z1);
                     z2 = gpuArray(z2);
@@ -236,8 +249,8 @@ classdef Ball < dj.Computed
                 scale=sum(((z1+z2)/2).^2,'all');
                 quality(f) = maxXC./scale;
                 [dy,dx]= ind2sub(size(xc),ix);
-                dy = dy-scaledH;
-                dx = dx-scaledW;
+                dy = dy-heightWidth(1);
+                dx = dx-heightWidth(2);
                 velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
                 % next frame
                 f=f+1;
