@@ -24,14 +24,14 @@ classdef Eye < dj.Computed
 
     methods
         function v= get.keySource(~)
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.mp4'''))*sbx.EyeParms;
+            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.avi'''))*sbx.EyeParms;
         end
 
     end
 
     methods (Access=public)
         function movie=openMovie(~,key)
-            filename = fetch1(ns.File & key & 'filename LIKE ''%_eye.mp4''','filename');
+            filename = fetch1(ns.File & key & 'filename LIKE ''%_eye.avi''','filename');
             movieFile = fullfile(getenv('NS_ROOT'),filename);
             if ~exist(movieFile,"file")
                 error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
@@ -117,7 +117,7 @@ classdef Eye < dj.Computed
                     %% Pupil tracking, using imfindcircles
                     [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
                 case 'DLC'
-
+                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.dlc(movie, parms);
                 otherwise
                     error('Unknown %d tag',key.tag);
             end

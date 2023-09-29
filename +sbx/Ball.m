@@ -39,7 +39,10 @@ classdef Ball < dj.Computed
             arguments
                 tbl (1,1) sbx.Ball
                 pv.mode (1,1) string {mustBeMember(pv.mode,["MOVIE","TRAJECTORY","TIMECOURSE"])} = "TRAJECTORY"
-                pv.history (1,1) double = 10                
+                pv.history (1,1) double = 10         
+                pv.frameStep (1,1) double {mustBeInteger,mustBeNonnegative} =1
+                pv.frameStart (1,1) double {mustBeInteger,mustBeNonnegative} =1
+                pv.frameStop (1,1) double {mustBeInteger,mustBeNonnegative} =inf
             end
 
             for tpl = tbl.fetch('*')'
@@ -49,45 +52,53 @@ classdef Ball < dj.Computed
                 clf;
                 switch upper(pv.mode)
                     case "MOVIE"
+                        fprintf('Opening movie file...')
                         movie = openMovie(tbl,tpl);
+                        fprintf('done.\n Press Ctrl-C to stop.');                        
                         ax = axes('Position',[0 0 1 1]);
                         axis(ax,'off')
                         pos = get(ax,'Position');
                         axPolar = polaraxes(hFig,'Position',[0 0 pos(3:4)/5]);
                         axSpeed = axes(hFig,'Position',[0.75 0.05 pos(3:4)/5]);
-                        maxVelocity = max(eps,prctile(abs(tpl.velocity),95));
+                        xlabel(axSpeed,'Frame #','Color','y','FontWeight','Bold','FontSize',12);
+                        ylabel(axSpeed,'Speed (log10)','Color','y','FontWeight','Bold','FontSize',12)
+                        speed =abs(tpl.velocity);
+                        maxSpeed = max(eps,max(speed));
                         historyColormap = gray; % Show multiple trailing vectors as shades of grays
-                        for frameCntr = 1:tpl.nrtimepoints                            
-                            frame = movie.readFrame;
+                        for frameCntr = pv.frameStart:pv.frameStep:min(pv.frameStop,tpl.nrtimepoints)                           
+                            frame = movie.read(frameCntr);
                             hold off
                             imagesc(ax,frame);                             
                             hold on
-                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('Frame #%d/%d',frameCntr,tpl.nrtimepoints),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12)
+                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('%dx - Frame #%d/%d',pv.frameStep,frameCntr,tpl.nrtimepoints),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12)
                             % Instantaneous velocity with trailing vectors
                             % for history
                             if ~isnan(tpl.velocity(frameCntr))
                                 fToKeep = frameCntr-pv.history:frameCntr;
                                 fToKeep(fToKeep<1) =[];
                                 nrF =numel(fToKeep);
-                                h = polarplot(axPolar,[complex(zeros(1,nrF)) ;tpl.velocity(fToKeep)']);
+                                theta  = angle(tpl.velocity(fToKeep));
+                                rho   = ones(nrF,1);
+                                h = polarplot(axPolar,[zeros(1,nrF);theta'],[zeros(1,nrF);rho']);
                                 % Use shading such that the most recent frame
                                 % is black and earlier ones fade to white.
                                 ix = round(linspace(255,1,nrF));
                                 
                                 colors = num2cell(historyColormap(ix,:),2)';
                                 [h.Color] =deal(colors{:});                               
-                                axPolar.RLim = [0 maxVelocity];
+                                axPolar.RLim = [0 1.1];
                             end
 
                             %% speed with 100 frames history
                             nrFramesToKeep= 100;
                             fToKeep = frameCntr+(-nrFramesToKeep:0);
                             fToKeep(fToKeep<1)=[];
-                            plot(axSpeed,fToKeep,abs(tpl.velocity(fToKeep)),'r');
+                            speed = abs(tpl.velocity(fToKeep));                            
+                            plot(axSpeed,fToKeep,speed,'r');
                             xlim(axSpeed,[frameCntr-nrFramesToKeep frameCntr])
-                            ylim(axSpeed,[0 1.1*maxVelocity]);
-                            set(axSpeed,'YTick',[])
-
+                            set(axSpeed,'YTick',[],'YScale','Linear')
+                            ylim(axSpeed,[eps 1.1*maxSpeed]);
+                           
 
                             %% Quality indicated by the circle in the polar plot. (red = bad, green is good)
                             if ~isnan(tpl.quality(frameCntr))
@@ -102,7 +113,7 @@ classdef Ball < dj.Computed
                             axPolar.ThetaTickLabel  = [];
                             axPolar.RTick = [];
                             axPolar.ThetaTick  = [];
-
+        
                             drawnow;
                         end
 
@@ -218,7 +229,7 @@ classdef Ball < dj.Computed
                 [dy,dx]= ind2sub(size(xc),ix);
                 dy = dy-scaledH;
                 dx = dx-scaledW;
-                velocity(f) = -dx  - 1i.*dy; % Minus sign to reflect the motion of the mouse, which is opposite to that of the ball.
+                velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
                 % next frame
                 f=f+1;
                 z1=z2;
