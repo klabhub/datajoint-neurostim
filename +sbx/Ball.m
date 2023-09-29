@@ -140,6 +140,19 @@ classdef Ball < dj.Computed
             end
 
         end
+
+        function redo(tbl)
+            key =fetch(tbl,'LIMIT 1');
+            parms= fetch1(sbx.BallParms & key,'parms');
+            movie = openMovie(tbl,key);
+            switch upper(key.tag)
+                case 'XCORR'
+                    [velocity,quality,nrT,fr] =sbx.Ball.xcorr(movie,parms);
+                otherwise
+                    error('Unknown %d tag',key.tag);
+            end
+
+        end
     end
     methods (Access = protected)
         function makeTuples(tbl,key)
@@ -195,6 +208,9 @@ classdef Ball < dj.Computed
                     z2 = gpuArray(z2);
                 end
                 %% Find maximum xcorr
+                %  Must substract the mean.
+                z1 = z1-mean(z1,"all","omitnan");
+                z2 = z2-mean(z2,"all","omitnan");
                 xc =xcorr2(z1,z2);
                 [maxXC,ix] = max(xc(:));
                 scale=sum(((z1+z2)/2).^2,'all');
