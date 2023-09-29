@@ -10,6 +10,33 @@ extension : varchar(10)  # File extension for easy filtering.
 
 classdef File < dj.Imported
 
+    methods (Access = public)
+        
+        function out = checkExists(tbl)
+            % Check whether files exist on the current file system
+            root = getenv('NS_ROOT');
+            if isempty(root)
+                fprintf('NS_ROOT is empty. Most likely no files will be found.\n')
+            end            
+            nrFiles = count(tbl);
+            exists = false(nrFiles,1);
+            filename =repmat("",[nrFiles 1]);
+            T=table(filename ,exists);
+            fCntr=0;
+            for f = tbl.fetch()'
+                fCntr =fCntr+1;
+                fldr = folder(ns.Experiment &f);
+                full = fullfile(fldr,f.filename);
+                T.filename(fCntr)= full;
+                T.exists(fCntr)= exist(full,"file")==2;
+            end
+            if nargout==0
+                groupcounts(T,"exists")
+            else
+                out =T;
+            end
+        end
+    end
     methods (Access= protected)
 
         function makeTuples(tbl,key)

@@ -3,12 +3,18 @@
 -> ns.Experiment # Corresponding experiment
 -> sbx.BallParms  # The parameters that define the extraction process.
 ---
-velocity :longblob  # The velocity; first column is the horizontal component, second column the vertical component. [nrTimePoints 2]
+velocity :longblob  # The velocity; complex number representing the instantanous velocity of the mouse.[nrTimePoints 2]
 quality : longblob # The quality of the estimation at each time point [nrTimePoints 1]
 manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
-nrtimepoints :  int unsigned # Number of time points in the pose estimation
-framerate : float # Framerate of the movie
+nrtimepoints :  int unsigned # Number of time points in the timecourse
+framerate : float # Framerate of the original movie
 %}
+%
+% For an experiment with two _ball files, the makeTuples function will use the
+% smalllest of the two. This handles the case where large files from SBX
+% were compressed after the experiment into a more tractable format/size.
+%
+% If a GPU is available this code will use it to speed up xcorr2.
 %
 % BK - Sept 2023.
 
@@ -19,16 +25,26 @@ classdef Ball < dj.Computed
 
 
     methods
-        function v= get.keySource(~)
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_ball.avi'''))*sbx.BallParms;
+        function v= get.keySource(~)           
+            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_ball.%'''))*sbx.BallParms;
         end
 
     end
 
     methods (Access=public)
         function movie=openMovie(~,key)
-            filename = fetch1(ns.File & key & 'filename LIKE ''%_ball.avi''','filename');
-            movieFile = fullfile(getenv('NS_ROOT'),filename);
+            % It is possible that there is more than one _ball file; pick the smallest one
+            % (presumably this is a preprocess/compressed version)
+            fldr = folder(ns.Experiment& key);
+            minSize = Inf;
+            for f=fetch(ns.File & key & 'filename LIKE ''%_ball%''','filename')'
+                    ff =fullfile(fldr,f.filename);
+                    d = dir(ff);
+                    if d.bytes<minSize
+                        minSize= d.bytes;
+                        movieFile= ff;
+                    end
+            end
             if ~exist(movieFile,"file")
                 error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
             end
@@ -36,10 +52,11 @@ classdef Ball < dj.Computed
         end
 
         function plot(tbl,pv)
+            % Function to plot sbx.Ball movies for each row in the tbl.
             arguments
                 tbl (1,1) sbx.Ball
                 pv.mode (1,1) string {mustBeMember(pv.mode,["MOVIE","TRAJECTORY","TIMECOURSE"])} = "TRAJECTORY"
-                pv.history (1,1) double = 10         
+                pv.history (1,1) double = 5         % How many vectors to show recent directions
                 pv.frameStep (1,1) double {mustBeInteger,mustBeNonnegative} =1
                 pv.frameStart (1,1) double {mustBeInteger,mustBeNonnegative} =1
                 pv.frameStop (1,1) double {mustBeInteger,mustBeNonnegative} =inf
@@ -118,18 +135,23 @@ classdef Ball < dj.Computed
                         end
 
                     case "TRAJECTORY"
-                        % Show trajectory x,y, area
+                        % Show trajectory by "integrating" over time (cumsum).
+                        % Starting point is always 0,0
+                        % Time is shown as hsv color
+                        % Speed is shown as marker size
                         stay =~any(isnan(tpl.velocity),2);
                         position  = cumsum(tpl.velocity(stay,:));
                         speed  = 1+abs(tpl.velocity(stay,:));
                         time= hsv(sum(stay)); % Show multiple trailing vectors as shades of grays
-                        
+                        scatter(0,0,10,'*');
+                        hold on
                         scatter(real(position),imag(position),speed,time,'o','filled');
                         xlabel 'X (a.u.)';
                         ylabel 'Y (a.u.)';
                         title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.velocity))));
 
                     case "TIMECOURSE"
+                        % Show dx,dy and quality over time.
                         T=tiledlayout(2,1,"TileSpacing","tight");
                         t =(0:tpl.nrtimepoints-1)/tpl.framerate;
                         nexttile(T)
@@ -152,18 +174,7 @@ classdef Ball < dj.Computed
 
         end
 
-        function redo(tbl)
-            key =fetch(tbl,'LIMIT 1');
-            parms= fetch1(sbx.BallParms & key,'parms');
-            movie = openMovie(tbl,key);
-            switch upper(key.tag)
-                case 'XCORR'
-                    [velocity,quality,nrT,fr] =sbx.Ball.xcorr(movie,parms);
-                otherwise
-                    error('Unknown %d tag',key.tag);
-            end
-
-        end
+        
     end
     methods (Access = protected)
         function makeTuples(tbl,key)
@@ -185,11 +196,9 @@ classdef Ball < dj.Computed
         function [velocity,quality,nrFrames,fr] =xcorr(movie,pv)
             arguments
                 movie (1,1) VideoReader
-                pv (1,1) struct
+                pv (1,1) struct  % Not used at the moment
             end
-            maxFrames= Inf;%Debugging 30*60;
-
-            useGPU = canUseGPU;
+            useGPU = canUseGPU;  % If a GPU is available we'll use it.
 
             w=movie.Width;h =movie.Height;
             nrFrames = movie.NumFrames;
@@ -210,7 +219,7 @@ classdef Ball < dj.Computed
             if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
             z1 =imresize(z1,round([w h]./pixelScaleDown));
             [scaledH,scaledW] = size(z1); % After scaling
-            while movie.hasFrame &&  f<maxFrames
+            while movie.hasFrame
                 z2 =  single(movie.readFrame);
                 if ndims(z2)==3;z2=z2(:,:,1);end % Force gray scale
                 z2 =imresize(z2,round([w h]./pixelScaleDown));
