@@ -214,12 +214,20 @@ classdef Eye < dj.Computed
             % path to the singularity (SIF) file in parms.singularity
             % 
             % If the remote cluster uses a conda environment to run DLC,
-            % specify the name of the environment in parms.conda
+            % specify the name of the environment in parms.conda.env. If 
+            % conda activate env would fail on your system (becuase your
+            % bashrc does not initialize conda, you can add a command to
+            % execute as parms.conda.init (e.g. source ~/.condainit) if
+            % ~/.condainit contains the initialization code that is normally in bashrc).
             %
-            % This function will call python -c %s with the DLC command constructed from 
-            % the parms in  %s. 
-            % .            
-            arguments
+            % Ultimately this function will call python with the DLC command constructed from 
+            % the parms, which will write the output to the same folder as
+            % the video file .
+            %
+            % Matlab then reads the csv files, does some postprocessing and stores the results
+            % in the Eye table.
+            % 
+             arguments
                 mvFile  (1,1) string 
                 parms   (1,1) struct                
             end
@@ -249,15 +257,16 @@ classdef Eye < dj.Computed
 
             
             if canUseGPU
-                % [~,ps] = system('ps -u bart');
+                % In case we really need to determine which gpu is availabel, something like this may work
+                %  [~,ps] = system('ps -u bart');
                 %   ps =strsplit(ps ,{' ','\n'});
                 %   ps(cellfun(@isempty,ps)) =[];
                 %   ps = reshape((ps),4,[])';
                 %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
-                % 
-
-                gputouse = '2'; % Use the first available?
-                nvoption = '--nv';
+                % And compare that with 
+                % nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv                
+                gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab.
+                nvoption = '--nv'; % Singularity only
             else
                 gptouse = 'none'; %#ok<NASGU>
                 nvoption = '';
@@ -267,20 +276,32 @@ classdef Eye < dj.Computed
             videotype=extractAfter(videotype,'.');
             pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=%d,TFGPUinference=%d);exit();",parms.config,mvFile,videotype,parms.shuffle,parms.trainingsetindex,gputouse,parms.save_as_csv,parms.TFGPUinference);
             if isfield(parms,'singularity')
-                cmd = sprintf('singularity exec %s %s python -c "%s"',nvoption,parms.singularity, pythonCmd);
-            elseif isfield(parms,'conda')
-                cmd = sprintf('conda activate %s; python -c %s', parms.conda,pythonCmd);
+                cmd = sprintf('singularity exec %s %s python -Wdefault -c "%s"',nvoption,parms.singularity, pythonCmd);
+            elseif isfield(parms,'conda')                                
+                cmd = sprintf('conda activate %s; python -Wdefault -c %s', parms.conda.env,pythonCmd);
+                if ~isempty(parms.conda.init)
+                    % Prepend cona initialization code provided in the
+                    % parms
+                    cmd = [parms.conda.init ';' cmd];
+                end
             else
-                cmd = sprintf('python -c %s', pythonCmd);
+                cmd = sprintf('python -Wdefault -c %s', pythonCmd);
             end
                
             try
                 fprintf('Runing system command:\n\n %s \n\n',cmd);
-                system(cmd)
+                [status] = system(cmd);
             catch me
                 fprintf('DLC failed %s\n',me.message);
             end
 
+            if status~=0
+                fprintf('DLC failed\n');
+            else
+                % Read the csv file
+            end
+
+                
         end
     end
 
