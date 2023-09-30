@@ -213,8 +213,8 @@ classdef Preprocessed < dj.Imported
                     opts =py.numpy.load(resultsFile,allow_pickle=true);
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
-                    fs = double(opts.item{'fs'});
-                    tpl = mergestruct(key,struct('img',img,'folder',fullfile(sessionPath,resultsFolder),'nrframesinsession',N,'framerate',fs));
+                    fs = double(opts.item{'fs'});                    
+                    tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs));
                     insert(tbl,tpl);
                     % And make the part table that maps trials to frames
                     % for this preprocessed set.

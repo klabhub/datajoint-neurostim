@@ -66,7 +66,7 @@ classdef Ball < dj.Computed
                 pv.history (1,1) double = 5         % How many vectors to show recent directions
                 pv.frameStep (1,1) double {mustBeInteger,mustBeNonnegative} =1
                 pv.frameStart (1,1) double {mustBeInteger,mustBeNonnegative} =1
-                pv.frameStop (1,1) double {mustBeInteger,mustBeNonnegative} =inf
+                pv.frameStop (1,1) double {mustBeInteger,mustBeNonnegative} = 100000000
             end
 
             for tpl = tbl.fetch('*')'
@@ -85,7 +85,7 @@ classdef Ball < dj.Computed
                         axPolar = polaraxes(hFig,'Position',[0 0 pos(3:4)/5]);
                         axSpeed = axes(hFig,'Position',[0.75 0.05 pos(3:4)/5]);
                         xlabel(axSpeed,'Frame #','Color','y','FontWeight','Bold','FontSize',12);
-                        ylabel(axSpeed,'Speed (log10)','Color','y','FontWeight','Bold','FontSize',12)
+                        ylabel(axSpeed,'Speed','Color','y','FontWeight','Bold','FontSize',12)
                         speed =abs(tpl.velocity);
                         maxSpeed = max(eps,max(speed));
                         historyColormap = gray; % Show multiple trailing vectors as shades of grays
@@ -94,7 +94,7 @@ classdef Ball < dj.Computed
                             hold off
                             imagesc(ax,frame);                             
                             hold on
-                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('%dx - Frame #%d/%d',pv.frameStep,frameCntr,tpl.nrtimepoints),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12)
+                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('%s       %dx - Frame #%d/%d',movie.Name,pv.frameStep,frameCntr,tpl.nrtimepoints),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12,'Interpreter','none')
                             % Instantaneous velocity with trailing vectors
                             % for history
                             if ~isnan(tpl.velocity(frameCntr))
@@ -102,7 +102,7 @@ classdef Ball < dj.Computed
                                 fToKeep(fToKeep<1) =[];
                                 nrF =numel(fToKeep);
                                 theta  = angle(tpl.velocity(fToKeep));
-                                rho   = ones(nrF,1);
+                                rho   = speed(fToKeep);
                                 h = polarplot(axPolar,[zeros(1,nrF);theta'],[zeros(1,nrF);rho']);
                                 % Use shading such that the most recent frame
                                 % is black and earlier ones fade to white.
@@ -116,12 +116,12 @@ classdef Ball < dj.Computed
                             %% speed with 100 frames history
                             nrFramesToKeep= 100;
                             fToKeep = frameCntr+(-nrFramesToKeep:0);
-                            fToKeep(fToKeep<1)=[];
-                            speed = abs(tpl.velocity(fToKeep));                            
-                            plot(axSpeed,fToKeep,speed,'r');
+                            fToKeep(fToKeep<1)=[];                                                      
+                            plot(axSpeed,fToKeep,speed(fToKeep),'r');
                             xlim(axSpeed,[frameCntr-nrFramesToKeep frameCntr])
                             set(axSpeed,'YTick',[],'YScale','Linear')
                             ylim(axSpeed,[eps 1.1*maxSpeed]);
+                            axSpeed.XColor ='y';
                            
 
                             %% Quality indicated by the circle in the polar plot. (red = bad, green is good)
