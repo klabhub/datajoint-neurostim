@@ -114,10 +114,15 @@ classdef Eye < dj.Computed
                      movie = openMovie(tbl,key);
                     [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
                 case 'DLC'
-                    mvFile =  sbx.Eye.movieFile(key);
-                    [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms,key.tag);                    
+                    
+                    
                 otherwise
-                    error('Unknown %d tag',key.tag);
+                    if strcmpi(key.tag,'DLC')
+                        mvFile =  sbx.Eye.movieFile(key);
+                            [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms,key.tag);                    
+                    else
+                        error('Unknown %d tag',key.tag);
+                    end
             end
             tpl = mergestruct(key,struct('x',x,'y',y,'a',a,'quality',quality,'nrtimepoints',nrT,'width',w,'height',h,'framerate',fr));
             insert(tbl,tpl);
