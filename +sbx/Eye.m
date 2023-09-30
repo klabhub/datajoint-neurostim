@@ -278,19 +278,19 @@ classdef Eye < dj.Computed
             if isfield(parms,'singularity')
                 cmd = sprintf('singularity exec %s %s python -Wdefault -c "%s"',nvoption,parms.singularity, pythonCmd);
             elseif isfield(parms,'conda')                                
-                cmd = sprintf('conda activate %s; python -Wdefault -c %s', parms.conda.env,pythonCmd);
+                cmd = sprintf('conda activate %s; python -Wdefault -c "%s"', parms.conda.env,pythonCmd);
                 if ~isempty(parms.conda.init)
                     % Prepend cona initialization code provided in the
                     % parms
                     cmd = [parms.conda.init ';' cmd];
                 end
             else
-                cmd = sprintf('python -Wdefault -c %s', pythonCmd);
+                cmd = sprintf('python -Wdefault -c "%s"', pythonCmd);
             end
                
             try
                 fprintf('Runing system command:\n\n %s \n\n',cmd);
-                [status] = system(cmd);
+                [status,stdout] = system(cmd);
             catch me
                 fprintf('DLC failed %s\n',me.message);
             end
