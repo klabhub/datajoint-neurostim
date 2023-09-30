@@ -117,7 +117,7 @@ classdef Eye < dj.Computed
                     
                     
                 otherwise
-                    if strcmpi(key.tag,'DLC')
+                    if startsWith(key.tag,'DLC')
                         mvFile =  sbx.Eye.movieFile(key);
                             [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms,key.tag);                    
                     else
