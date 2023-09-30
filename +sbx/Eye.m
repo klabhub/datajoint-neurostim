@@ -245,9 +245,18 @@ classdef Eye < dj.Computed
             % calibrate=False, 
             % identity_only=False, 
             % use_openvino=None)
+
+
             
             if canUseGPU
-                gputouse = '1'; % Use the first available?
+                % [~,ps] = system('ps -u bart');
+                %   ps =strsplit(ps ,{' ','\n'});
+                %   ps(cellfun(@isempty,ps)) =[];
+                %   ps = reshape((ps),4,[])';
+                %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
+                % 
+
+                gputouse = '2'; % Use the first available?
                 nvoption = '--nv';
             else
                 gptouse = 'none'; %#ok<NASGU>
