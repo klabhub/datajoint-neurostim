@@ -18,33 +18,23 @@ framerate : float # Framerate of the movie
 
 classdef Eye < dj.Computed
     properties (Dependent)
-        keySource
+        keySource        
     end
+
 
     methods
         function v= get.keySource(~)
             v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.%'''))*sbx.EyeParms;
-        end
+        end        
     end
 
     methods (Access=public)
         function movie=openMovie(~,key)
-            % It is possible that there is more than one _eye file; pick the smallest one
-            % (presumably this is a preprocess/compressed version)
-            fldr = folder(ns.Experiment& key);
-            minSize = Inf;
-            for f=fetch(ns.File & key & 'filename LIKE ''%_eye%''','filename')'
-                    ff =fullfile(fldr,f.filename);
-                    d = dir(ff);
-                    if d.bytes<minSize
-                        minSize= d.bytes;
-                        movieFile= ff;
-                    end
+            mvFile =  sbx.Eye.movieFile(key);
+            if ~exist(mvFile,"file")
+                error('%s file not found. (Is NS_ROOT set correctly (%s)?)',mvFile,getenv('NS_ROOT'));
             end
-            if ~exist(movieFile,"file")
-                error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
-            end
-            movie = VideoReader(movieFile);
+            movie = VideoReader(mvFile);
         end
 
         function plot(tbl,pv)
@@ -117,14 +107,15 @@ classdef Eye < dj.Computed
 
     methods (Access = protected)
         function makeTuples(tbl,key)
-            parms= fetch1(sbx.EyeParms &key,'parms');
-            movie = openMovie(tbl,key);
+            parms= fetch1(sbx.EyeParms &key,'parms');          
             switch upper(key.tag)
                 case 'IMFINDCIRCLES'
                     %% Pupil tracking, using imfindcircles
+                     movie = openMovie(tbl,key);
                     [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
                 case 'DLC'
-                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.dlc(movie, parms);
+                    mvFile =  sbx.Eye.movieFile(key);
+                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.dlc(mvFile, parms);
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
@@ -134,6 +125,21 @@ classdef Eye < dj.Computed
     end
 
     methods (Static)
+        function v= movieFile(key)
+             % It is possible that there is more than one _eye file; pick the smallest one
+            % (presumably this is a preprocess/compressed version)
+            fldr = folder(ns.Experiment& key);
+            minSize = Inf;
+            v='';
+            for f=fetch(ns.File & key & 'filename LIKE ''%_eye%''','filename')'
+                    ff =fullfile(fldr,f.filename);
+                    d = dir(ff);
+                    if d.bytes<minSize
+                        minSize= d.bytes;
+                        v= ff;
+                    end
+            end           
+        end
         function [x,y,a,quality,nrT, w,h,fr] =imfindcircles(movie,pv)
             % The imfindcircles tool defines the following parameters,
             % which should be specified in the pv struct.  These are the
@@ -190,13 +196,73 @@ classdef Eye < dj.Computed
         end
 
 
-        function [x,y,a,quality,nrT, w,h,fr] =dlc(movie,pv)
-            % Use DeepLabCut to determine the pupil position. The actual
-            % work is done by calling a DLC singularity container, and
-            % parameters of dlc (e.g., which trained network) are specified
-            % as pv (which is pulled from the EyeParms table in
-            % makeTuples).
-                
+        function [x,y,a,quality,nrT, w,h,fr] =dlc(mvFile,parms)
+            % Use DeepLabCut to determine the pupil position. The parms
+            % (from sbx.EyeParms) must specify the following parameters of 
+            % the analyze_videos function in DLC:
+            %    .config
+            %    .shuffle (1,1) double {mustBeNonnegative,mustBeInteger} 
+            %    .trainingsetindex (1,1) double {mustBeNonnegative,mustBeInteger}             
+            %    .save_as_csv (1,1) logical 
+            %    .TFGPUinference  (1,1) logical 
+            % All other analyze_videos parameters use the default value and
+            % gputouse is determined on the fly.
+            %            
+            % If the remote cluster uses singularity to run DLC , specify the full
+            % path to the singularity (SIF) file. 
+            %  
+            % This function will call python -c %s with the DLC command constructed from 
+            % the parms in  %s. TODO: add conda activation.            
+            arguments
+                mvFile  (1,1) string 
+                parms   (1,1) struct                
+            end
+
+            
+            %% Construct the Python command
+            % In python we import deeplabcut, then call the analyze_videos
+            % function, and then exit()            
+            % analyze_vidoes has many input arguments, we're specifying
+            % only the ones in parms, the rest take their default value. 
+            %
+            % analyze_videos(config, videos, videotype='', shuffle=1, trainingsetindex=0, gputouse=None, save_as_csv=False, 
+            % in_random_order=True - Not used as we're passing one video file at a time
+            % destfolder=None - Not used so the results will be written to the same folder as the vidoes
+            %  batchsize=None, Not used
+            % cropping=None, Not used            
+            % dynamic=(False, 0.5, 10), modelprefix='', 
+            % robust_nframes=False, 
+            % allow_growth=False, 
+            % use_shelve=False, 
+            % auto_track=True, 
+            % n_tracks=None, 
+            % calibrate=False, 
+            % identity_only=False, 
+            % use_openvino=None)
+            
+            if canUseGPU
+                gputouse = '1'; % Use the first available?
+                nvoption = '--nv';
+            else
+                gptouse = 'none'; %#ok<NASGU>
+                nvoption = '';
+            end
+            mvFile = strrep(mvFile,'\','/');
+            [~,~,videotype]= fileparts(mvFile);
+            videotype=extractAfter(videotype,'.');
+            pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=%d,TFGPUinference=%d);exit();",parms.config,mvFile,videotype,parms.shuffle,parms.trainingsetindex,gputouse,parms.save_as_csv,parms.TFGPUinference);
+            if isfield(parms,'singularity')
+                cmd = sprintf('singularity exec %s %s python -c "%s"',nvoption,parms.singularity, pythonCmd);
+            else
+                cmd = sprintf('python -c %s', pythonCmd);
+            end
+               
+            try
+                fprintf('Runing system command:\n\n %s \n\n',cmd);
+                system(cmd)
+            catch me
+                fprintf('DLC failed %s\n',me.message);
+            end
 
         end
     end
