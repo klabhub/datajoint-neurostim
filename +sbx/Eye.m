@@ -133,10 +133,12 @@ classdef Eye < dj.Computed
             v='';
             for f=fetch(ns.File & key & 'filename LIKE ''%_eye%''','filename')'
                     ff =fullfile(fldr,f.filename);
+                    if exist(ff,"file")
                     d = dir(ff);
                     if d.bytes<minSize
                         minSize= d.bytes;
                         v= ff;
+                    end
                     end
             end           
         end
