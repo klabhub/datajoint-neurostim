@@ -211,10 +211,14 @@ classdef Eye < dj.Computed
             % gputouse is determined on the fly.
             %            
             % If the remote cluster uses singularity to run DLC , specify the full
-            % path to the singularity (SIF) file. 
-            %  
+            % path to the singularity (SIF) file in parms.singularity
+            % 
+            % If the remote cluster uses a conda environment to run DLC,
+            % specify the name of the environment in parms.conda
+            %
             % This function will call python -c %s with the DLC command constructed from 
-            % the parms in  %s. TODO: add conda activation.            
+            % the parms in  %s. 
+            % .            
             arguments
                 mvFile  (1,1) string 
                 parms   (1,1) struct                
@@ -255,6 +259,8 @@ classdef Eye < dj.Computed
             pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=%d,TFGPUinference=%d);exit();",parms.config,mvFile,videotype,parms.shuffle,parms.trainingsetindex,gputouse,parms.save_as_csv,parms.TFGPUinference);
             if isfield(parms,'singularity')
                 cmd = sprintf('singularity exec %s %s python -c "%s"',nvoption,parms.singularity, pythonCmd);
+            elseif isfield(parms,'conda')
+                cmd = sprintf('conda activate %s; python -c %s', parms.conda,pythonCmd);
             else
                 cmd = sprintf('python -c %s', pythonCmd);
             end
