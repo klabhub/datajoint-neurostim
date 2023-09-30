@@ -115,7 +115,7 @@ classdef Eye < dj.Computed
                     [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
                 case 'DLC'
                     mvFile =  sbx.Eye.movieFile(key);
-                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.dlc(mvFile, parms);
+                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.dlc(mvFile, parms,key.tag);
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
@@ -198,14 +198,13 @@ classdef Eye < dj.Computed
         end
 
 
-        function [x,y,a,quality,nrT, w,h,fr] =dlc(mvFile,parms)
+        function [x,y,a,quality,nrT, w,h,fr] =dlc(mvFile,parms,tag)
             % Use DeepLabCut to determine the pupil position. The parms
             % (from sbx.EyeParms) must specify the following parameters of 
             % the analyze_videos function in DLC:
             %    .config
             %    .shuffle (1,1) double {mustBeNonnegative,mustBeInteger} 
             %    .trainingsetindex (1,1) double {mustBeNonnegative,mustBeInteger}             
-            %    .save_as_csv (1,1) logical 
             %    .TFGPUinference  (1,1) logical 
             % All other analyze_videos parameters use the default value and
             % gputouse is determined on the fly.
@@ -229,7 +228,8 @@ classdef Eye < dj.Computed
             % 
              arguments
                 mvFile  (1,1) string 
-                parms   (1,1) struct                
+                parms   (1,1) struct        
+                tag (1,1) string
             end
 
             
@@ -254,7 +254,6 @@ classdef Eye < dj.Computed
             % identity_only=False, 
             % use_openvino=None)
 
-
             
             if canUseGPU
                 % In case we really need to determine which gpu is availabel, something like this may work
@@ -265,16 +264,16 @@ classdef Eye < dj.Computed
                 %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
                 % And compare that with 
                 % nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv                
-                gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab.
+                gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab?.
                 nvoption = '--nv'; % Singularity only
             else
                 gptouse = 'none'; %#ok<NASGU>
                 nvoption = '';
             end
             mvFile = strrep(mvFile,'\','/');
-            [~,~,videotype]= fileparts(mvFile);
-            videotype=extractAfter(videotype,'.');
-            pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=%d,TFGPUinference=%d);exit();",parms.config,mvFile,videotype,parms.shuffle,parms.trainingsetindex,gputouse,parms.save_as_csv,parms.TFGPUinference);
+            [videoFolder,videoFile,videoType]= fileparts(mvFile);
+            videoType=extractAfter(videoType,'.');
+            pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=1,TFGPUinference=%d);exit();",parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex,gputouse,parms.TFGPUinference);
             if isfield(parms,'singularity')
                 cmd = sprintf('singularity exec %s %s python -Wdefault -c "%s"',nvoption,parms.singularity, pythonCmd);
             elseif isfield(parms,'conda')                                
@@ -290,18 +289,48 @@ classdef Eye < dj.Computed
                
             try
                 fprintf('Runing system command:\n\n %s \n\n',cmd);
-                [status,stdout] = system(cmd);
+                [status] = system(cmd,'-echo');
             catch me
-                fprintf('DLC failed %s\n',me.message);
+                fprintf('DLC failed %s\n',me.message);                
             end
 
             if status~=0
                 fprintf('DLC failed\n');
             else
                 % Read the csv file
-            end
+                csvFile = fileparts(videoFolder,[videoFile + tag ".csv"]);
+                if exist(csvFile,"file")
+                    fid =fopen(csvFile,'r');
+                    scorer =strsplit(fgetl(fid),',');
+                    bodyparts = strsplit(fgetl(fid),',');
+                    header = strsplit(fgetl(fid),',');
+                    fclose(fid);
+                    T = readtable(csvFile,'NumHeaderLines',3,'FileType','text','Delimiter',',');
+                    varnames = strcat(bodyparts(2:end),header(2:end));
+                    T.Properties.VariableNames = cat(2,{'Frame'},varnames);
 
-                
+
+                    m1 = (T.topy - T.bottomy) ./ (T.topx - T.bottomx);
+                    c1 = T.bottomy - m1 .* T.bottomx;
+                    
+                    m2 = (T.righty - T.lefty)  ./ (T.rightx - T.leftx);
+                    c2 = T.lefty - m2 .* T.leftx;
+
+                    % Find intersection point
+                    x  = (c2 - c1) ./ (m1 - m2);
+                    y = m1 .* x+ c1;
+
+                    topToBottom = sqrt((T.topy - T.bottomy).^2+ (T.topx - T.bottomx).^2);
+                    leftToRight = sqrt((T.righty - T.lefty).^2+ (T.rightx - T.leftx).^2);
+                    a = topToBottom.*leftToRight;
+
+                    quality = mean([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],2,'omitnan');
+                else
+                    dir(videoFolder);
+                    error('The expected DLC output file (%s) was not found. Check your tag (%s) in sbx.EyeParms',csvFile,tag);
+                end
+            end
+               
         end
     end
 
