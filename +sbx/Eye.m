@@ -5,13 +5,13 @@
 ---
 x :longblob  # The x position of the pupil center; [nrTimePoints 1]
 y :longblob  # The y position of the pupil center; [nrTimePoints 1]
-a: longblob  # The pupil area
+a: longblob  # The pupil area [nrTimePoints 1]
 quality : longblob # The quality of the estimation at each time point [nrTimePoints 1]
 manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
 nrtimepoints :  int unsigned # Number of time points in the pose estimation
-width  : float # Width of the camera image
-height : float # Height of the camera image
-framerate : float # Framerate of the movie
+width = NULL : float # Width of the camera image
+height =NULL  : float # Height of the camera image
+framerate =NULL : float # Framerate of the movie
 %}
 %
 % BK - Sept 2023.
@@ -115,7 +115,7 @@ classdef Eye < dj.Computed
                     [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
                 case 'DLC'
                     mvFile =  sbx.Eye.movieFile(key);
-                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.dlc(mvFile, parms,key.tag);
+                    [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms,key.tag);                    
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
@@ -198,7 +198,7 @@ classdef Eye < dj.Computed
         end
 
 
-        function [x,y,a,quality,nrT, w,h,fr] =dlc(mvFile,parms,tag)
+        function [x,y,a,quality,nrFrames] =dlc(mvFile,parms,tag)
             % Use DeepLabCut to determine the pupil position. The parms
             % (from sbx.EyeParms) must specify the following parameters of 
             % the analyze_videos function in DLC:
@@ -301,30 +301,37 @@ classdef Eye < dj.Computed
                 csvFile = fileparts(videoFolder,[videoFile + tag ".csv"]);
                 if exist(csvFile,"file")
                     fid =fopen(csvFile,'r');
-                    scorer =strsplit(fgetl(fid),',');
+                    scorer =strsplit(fgetl(fid),','); %#ok<NASGU>
                     bodyparts = strsplit(fgetl(fid),',');
                     header = strsplit(fgetl(fid),',');
                     fclose(fid);
                     T = readtable(csvFile,'NumHeaderLines',3,'FileType','text','Delimiter',',');
                     varnames = strcat(bodyparts(2:end),header(2:end));
                     T.Properties.VariableNames = cat(2,{'Frame'},varnames);
-
-
-                    m1 = (T.topy - T.bottomy) ./ (T.topx - T.bottomx);
-                    c1 = T.bottomy - m1 .* T.bottomx;
                     
-                    m2 = (T.righty - T.lefty)  ./ (T.rightx - T.leftx);
-                    c2 = T.lefty - m2 .* T.leftx;
+                    % The DLC model determins the left, right, top, and
+                    % bottom points of the pupil
+                    % Determine the intersection of the line from top to
+                    % bottom and the line from left to right to define the
+                    % center (the intersection) and the area (the trapezoid
+                    % spanned by the four points).
+
+                    slopeTopBottom = (T.topy - T.bottomy) ./ (T.topx - T.bottomx);
+                    intersectTopBottom = T.bottomy - slopeTopBottom .* T.bottomx;
+                    
+                    slopeLeftRight = (T.righty - T.lefty)  ./ (T.rightx - T.leftx);
+                    intersectLeftRight = T.lefty - slopeLeftRight .* T.leftx;
 
                     % Find intersection point
-                    x  = (c2 - c1) ./ (m1 - m2);
-                    y = m1 .* x+ c1;
+                    x  = (intersectLeftRight - intersectTopBottom) ./ (slopeTopBottom - slopeLeftRight);
+                    y = slopeTopBottom .* x+ intersectTopBottom;
 
                     topToBottom = sqrt((T.topy - T.bottomy).^2+ (T.topx - T.bottomx).^2);
                     leftToRight = sqrt((T.righty - T.lefty).^2+ (T.rightx - T.leftx).^2);
                     a = topToBottom.*leftToRight;
 
                     quality = mean([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],2,'omitnan');
+                    nrFrames= height(T);
                 else
                     dir(videoFolder);
                     error('The expected DLC output file (%s) was not found. Check your tag (%s) in sbx.EyeParms',csvFile,tag);
