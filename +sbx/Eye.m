@@ -47,6 +47,15 @@ classdef Eye < dj.Computed
                 figName= sprintf('#%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 figByName(figName);
                 clf;
+                if isnan(tpl.framerate)
+                    tpl.framerate = 30;
+                end
+                if isnan(tpl.width)
+                    tpl.width = max(tpl.x);
+                    tpl.height =max(tpl.y);
+                end
+
+
                 switch upper(pv.mode)
                     case "MOVIE"
                         % Show the movie with the decoded pupil on top.
@@ -74,7 +83,7 @@ classdef Eye < dj.Computed
                         xlabel 'X (pixels)';
                         ylabel 'Y (pixels)';
 
-                        title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
+                        title(sprintf('mean quality= %.2f  NaN-Frac=%.2f',mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
 
                     case "TIMECOURSE"
                         % Show x,y, area as a function of time.
@@ -98,7 +107,7 @@ classdef Eye < dj.Computed
                         xlabel 'Time (s)'
                         ylim([0 1]);
                         legend('quality')
-                        title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.a))));
+                        title(T,sprintf('mean quality= %.2f  NaN-Frac=%.2f',mean(tpl.quality,'all','omitnan'),mean(isnan(tpl.a),"all")));
                 end
             end
         end
@@ -219,8 +228,6 @@ classdef Eye < dj.Computed
             %
             % 'DLC_resnet50_EyeTrackerSep27shuffle1_650000'
             %
-            % If the remote cluster uses singularity to run DLC , specify the full
-            % path to the singularity (SIF) file in parms.singularity
             %
             % If the remote cluster uses a conda environment to run DLC,
             % specify the name of the environment in parms.conda.env. If
@@ -228,6 +235,7 @@ classdef Eye < dj.Computed
             % bashrc does not initialize conda, you can add a command to
             % execute as parms.conda.init (e.g. source ~/.condainit) if
             % ~/.condainit contains the initialization code that is normally in bashrc).
+            % If the cluster does not use python, set parms.conda =""
             %
             % Ultimately this function will call python with the DLC command constructed from
             % the parms, which will write the output to the same folder as
@@ -255,7 +263,24 @@ classdef Eye < dj.Computed
 
             mvFile = strrep(mvFile,'\','/');
             [videoFolder,videoFile,videoType]= fileparts(mvFile);
+            videoType=extractAfter(videoType,'.');
             csvFile = fileparts(videoFolder,[videoFile + parms.suffix ".csv"]);
+
+            if canUseGPU
+                % In case we really need to determine which gpu is availabel, something like this may work
+                %  [~,ps] = system('ps -u bart');
+                %   ps =strsplit(ps ,{' ','\n'});
+                %   ps(cellfun(@isempty,ps)) =[];
+                %   ps = reshape((ps),4,[])';
+                %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
+                % And compare that with
+                % nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv
+                gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab?.
+            else
+                gptouse = 'none'; %#ok<NASGU>
+            end
+
+
 
             if exist(csvFile,"File")
                 % Skip running DLC
@@ -282,58 +307,34 @@ classdef Eye < dj.Computed
                 % calibrate=False,
                 % identity_only=False,
                 % use_openvino=None)
-
-
-                if canUseGPU
-                    % In case we really need to determine which gpu is availabel, something like this may work
-                    %  [~,ps] = system('ps -u bart');
-                    %   ps =strsplit(ps ,{' ','\n'});
-                    %   ps(cellfun(@isempty,ps)) =[];
-                    %   ps = reshape((ps),4,[])';
-                    %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
-                    % And compare that with
-                    % nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv
-                    gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab?.
-                    nvoption = '--nv'; % Singularity only
-                else
-                    gptouse = 'none'; %#ok<NASGU>
-                    nvoption = '';
-                end
-
-                videoType=extractAfter(videoType,'.');
-                % The python command is always the same
                 pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=1,TFGPUinference=%d);exit();",parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex,gputouse,parms.TFGPUinference);
-                % But the call to run DLC can differ:
-                if isfield(parms,'singularity')
-                    % Run DLC in a singularity container
-                    cmd = sprintf('singularity exec %s %s python -Wdefault -c "%s"',nvoption,parms.singularity, pythonCmd);
-                elseif isfield(parms,'conda')
-                    % Run in a conda environment (recommended)
-                    cmd = sprintf('conda activate %s; python -Wdefault -c "%s"', parms.conda.env,pythonCmd);
-                    if ~isempty(parms.conda.init)
-                        % Prepend cona initialization code provided in the
-                        % parms
-                        cmd = [parms.conda.init ';' cmd];
-                    end
-                else
-                    % Python install without an environment.
-                    cmd = sprintf('python -Wdefault -c "%s"', pythonCmd);
-                end
+                rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
 
-                %% Start DLC
-                try
-                    fprintf('Runing system command:\n\n %s \n\n',cmd);
-                    [status] = system(cmd,'-echo');
-                catch me
-                    fprintf('DLC failed %s\n',me.message);
-                end
-
-                if status~=0
-                    fprintf('DLC returede status %d\n',status);
-                end
             end
 
+            if isfield(parms.filter)
+                % Also generate the filtered predictions.
+                % parms.filter can have the following fields
+                % parms.filter.filtertype,
+                % parms.filter.windowlength,
+                % parms.filter.p_bound,
+                % parms.filter.ARdegree,
+                % parms.filter.MAdegree,
+                % parms.filter.alpha
+                % Missing fields will get the default values in DLC
+                % deeplabcut.post_processing.filtering.filterpredictions(config, video, videotype='', shuffle=1, trainingsetindex=0, filtertype='median', windowlength=5, p_bound=0.001, ARdegree=3, MAdegree=1, alpha=0.01, save_as_csv=True, destfolder=None, modelprefix='', track_method='')
+                pythonCmd = sprintf("import deeplabcut;deeplabcut.filterpredictions('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,save_as_csv=1'" ,parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex);
+                fn = fieldnames(parms.filter);
+                filterArgs = cell(1,numel(fn));
+                for i=1:numel(fn)
+                    value =parms.filter(fn{i});
+                    if isnumeric(value) ;value=num2str(value);end
+                    filterArgs{i}  = sprintf('%s=%s',fn{i},value);
+                end
+                pythonCmd = [pythonCmd ',' strjoin(filterArgs,',') ');'];
 
+                rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
+            end
 
             % Read the csv file
             if exist(csvFile,"file")
