@@ -153,6 +153,8 @@ classdef Eye < dj.Computed
                         minSize= d.bytes;
                         v= ff;
                     end
+                else
+                        fprintf('File not found: %s\n',ff);
                 end
             end
         end
@@ -265,7 +267,7 @@ classdef Eye < dj.Computed
             mvFile = strrep(mvFile,'\','/');
             [videoFolder,videoFile,videoType]= fileparts(mvFile);
             videoType=extractAfter(videoType,'.');
-            csvFile = fullfile(videoFolder,[videoFile + parms.suffix + ".csv"]);
+            csvFile = fullfile(videoFolder,videoFile + parms.suffix + ".csv");
 
             if canUseGPU
                 % In case we really need to determine which gpu is availabel, something like this may work
@@ -310,11 +312,10 @@ classdef Eye < dj.Computed
                 % use_openvino=None)
                 pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=1,TFGPUinference=%d);exit();",parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex,gputouse,parms.TFGPUinference);
                 rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
-
             end
 
             if isfield(parms.filter)
-                % Also generate the filtered predictions.
+                % Generate the filtered predictions.
                 % parms.filter can have the following fields
                 % parms.filter.filtertype,
                 % parms.filter.windowlength,
@@ -324,51 +325,32 @@ classdef Eye < dj.Computed
                 % parms.filter.alpha
                 % Missing fields will get the default values in DLC
                 % deeplabcut.post_processing.filtering.filterpredictions(config, video, videotype='', shuffle=1, trainingsetindex=0, filtertype='median', windowlength=5, p_bound=0.001, ARdegree=3, MAdegree=1, alpha=0.01, save_as_csv=True, destfolder=None, modelprefix='', track_method='')
-                pythonCmd = sprintf("import deeplabcut;deeplabcut.filterpredictions('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,save_as_csv=1'" ,parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex);
+                pythonCmd = sprintf("import deeplabcut;deeplabcut.filterpredictions('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,save_as_csv=1" ,parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex);
                 fn = fieldnames(parms.filter);
                 filterArgs = cell(1,numel(fn));
                 for i=1:numel(fn)
-                    value =parms.filter(fn{i});
+                    value =parms.filter.(fn{i});
                     if isnumeric(value) ;value=num2str(value);end
                     filterArgs{i}  = sprintf('%s=%s',fn{i},value);
                 end
-                pythonCmd = [pythonCmd ',' strjoin(filterArgs,',') ');'];
-
+                pythonCmd = pythonCmd +"," + strjoin(filterArgs,",")+ ");";
                 rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
+                csvFile = fullfile(videoFolder,videoFile + parms.suffix + "_filtered.csv");
             end
 
             % Read the csv file
             if exist(csvFile,"file")
                 T = readdlc(csvFile);
-                % The DLC model determins the left, right, top, and
-                % bottom points of the pupil
-                % Determine the intersection of the line from top to
-                % bottom and the line from left to right to define the
-                % center (the intersection) and the area (the trapezoid
-                % spanned by the four points).
-                slopeTopBottom = (T.topy - T.bottomy) ./ (T.topx - T.bottomx);
-                intersectTopBottom = T.bottomy - slopeTopBottom .* T.bottomx;
-
-                slopeLeftRight = (T.righty - T.lefty)  ./ (T.rightx - T.leftx);
-                intersectLeftRight = T.lefty - slopeLeftRight .* T.leftx;
-
-                % Find intersection point
-                x  = (intersectLeftRight - intersectTopBottom) ./ (slopeTopBottom - slopeLeftRight);
-                y = slopeTopBottom .* x+ intersectTopBottom;
-
-                topToBottom = sqrt((T.topy - T.bottomy).^2+ (T.topx - T.bottomx).^2);
-                leftToRight = sqrt((T.righty - T.lefty).^2+ (T.rightx - T.leftx).^2);
-                a = topToBottom.*leftToRight;
-
-                quality = min([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],2,'omitnan');
-                nrFrames= height(T);
+                [x,y,a,quality,nrFrames] = postprocessPupilTracker(T);                
             else
                 dir(videoFolder);
                 error('The expected DLC output file (%s) was not found. Check the suffix (%s) in sbx.EyeParms',csvFile,parms.suffix);
             end
-
+  
 
         end
+
+    
     end
 
 end

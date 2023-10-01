@@ -1,4 +1,4 @@
-function T = readdlc(csvFile)
+function [T,bodyparts,scorer] = readdlc(csvFile)
 % function T = readdlc(csvFile)
 % 
 % Read the csv output file that contains pose information extracted by
@@ -26,8 +26,13 @@ bodyparts = strsplit(fgetl(fid),',');
 header = strsplit(fgetl(fid),',');
 fclose(fid);
 % Read the rest as a table
-T = readtable(csvFile,'NumHeaderLines',3,'FileType','text','Delimiter',',');
-varnames = strcat(bodyparts(2:end),header(2:end));
-T.Properties.VariableNames = cat(2,{'Frame'},varnames);
-T.Properties.Description = scorer;
+rawT = readmatrix(csvFile,'NumHeaderLines',3,'FileType','text','Delimiter',',');
+isX = strcmpi(header,'x');
+x = rawT(:,isX);
+isY = strcmpi(header,'y');
+y = rawT(:,isY);
+isl = strcmpi(header,'likelihood');
+quality = rawT(:,isl);
+T =table(x,y,quality);
+bodyparts =bodyparts(isX); % Just need them once
 end
