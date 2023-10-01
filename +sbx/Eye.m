@@ -1,6 +1,6 @@
 %{
 # Stores eye position information 
--> ns.Experiment # Corresponding experiment
+-> ns.Movie # Corresponding movie
 -> sbx.EyeParms  # The parameters that define the pose extraction process.
 ---
 x :longblob  # The x position of the pupil center; [nrTimePoints 1]
@@ -19,7 +19,7 @@ classdef Eye < dj.Computed
 
     methods
         function v= get.keySource(~)
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.%'''))*sbx.EyeParms;
+            v = (ns.Movie & 'filename LIKE ''%_eye.%''')*sbx.EyeParms;
         end
     end
 
