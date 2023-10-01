@@ -314,7 +314,7 @@ classdef Eye < dj.Computed
                 rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
             end
 
-            if isfield(parms.filter)
+            if isfield(parms,'filter')
                 % Generate the filtered predictions.
                 % parms.filter can have the following fields
                 % parms.filter.filtertype,
@@ -330,7 +330,11 @@ classdef Eye < dj.Computed
                 filterArgs = cell(1,numel(fn));
                 for i=1:numel(fn)
                     value =parms.filter.(fn{i});
-                    if isnumeric(value) ;value=num2str(value);end
+                    if isnumeric(value) 
+                        value=num2str(value);
+                    else
+                        value = ['''' value '''']; %#ok<AGROW>
+                    end
                     filterArgs{i}  = sprintf('%s=%s',fn{i},value);
                 end
                 pythonCmd = pythonCmd +"," + strjoin(filterArgs,",")+ ");";

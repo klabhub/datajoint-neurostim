@@ -9,7 +9,7 @@ arguments
     pythonCmd (1,1) string                  % The DLC Python command to run
     pv.singularity (1,1) string =""         % THe name of the singularity container to use
     pv.condaEnv (1,1) string =""            % The name of the conda environment to use
-    pv.condaInit (1,1) sring =""            % A (bash) command to execute before activating the conda environment
+    pv.condaInit (1,1) string =""            % A (bash) command to execute before activating the conda environment
 end
 % command a set of  parms defining how to run
 
@@ -35,10 +35,10 @@ if pv.singularity ~=""
 elseif pv.condaEnv ~=""
     % Run in a conda environment (recommended)
     cmd = sprintf('conda activate %s; python -Wdefault -c "%s"', pv.condaEnv,pythonCmd);
-    if condaInit ~=""
+    if pv.condaInit ~=""
         % Prepend cona initialization code provided in the
         % parms
-        cmd = [condaInit ';' cmd];
+        cmd = pv.condaInit + ";" + cmd;
     end
 else
     % Python install without an environment.
@@ -50,7 +50,8 @@ try
     fprintf('Runing DLC:\n\n %s \n\n',cmd);
     [status] = system(cmd,'-echo');
 catch me
-    fprintf('DLC failed %s\n',me.message);
+    status = -1;
+    fprintf('DLC failed: %s\n',me.message);
 end
 
 if status~=0
