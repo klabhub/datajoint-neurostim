@@ -7,11 +7,6 @@ x :longblob  # The x position of the pupil center; [nrTimePoints 1]
 y :longblob  # The y position of the pupil center; [nrTimePoints 1]
 a: longblob  # The pupil area [nrTimePoints 1]
 quality : longblob # The quality of the estimation at each time point [nrTimePoints 1]
-manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
-nrtimepoints :  int unsigned # Number of time points in the pose estimation
-width = NULL : float # Width of the camera image
-height = NULL  : float # Height of the camera image
-framerate = NULL : float # Framerate of the movie
 %}
 %
 % BK - Sept 2023.
@@ -28,15 +23,7 @@ classdef Eye < dj.Computed
         end
     end
 
-    methods (Access=public)
-        function movie=openMovie(~,key)
-            mvFile =  sbx.Eye.movieFile(key);
-            if ~exist(mvFile,"file")
-                error('%s file not found. (Is NS_ROOT set correctly (%s)?)',mvFile,getenv('NS_ROOT'));
-            end
-            movie = VideoReader(mvFile);
-        end
-
+    methods (Access=public)       
         function plot(tbl,pv)
             arguments
                 tbl (1,1) sbx.Eye
@@ -44,22 +31,14 @@ classdef Eye < dj.Computed
             end
 
             for tpl = tbl.fetch('*')'
-                figName= sprintf('#%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
+                figName= sprintf('Eye: #%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 figByName(figName);
                 clf;
-                if isnan(tpl.framerate)
-                    tpl.framerate = 30;
-                end
-                if isnan(tpl.width)
-                    tpl.width = max(tpl.x);
-                    tpl.height =max(tpl.y);
-                end
-
-
+                
                 switch upper(pv.mode)
                     case "MOVIE"
                         % Show the movie with the decoded pupil on top.
-                        movie = openMovie(tbl,tpl);
+                        movie = openMovie(ns.Movie& tpl);
                         frameCntr = 0;
                         phi = linspace(0,2*pi,100);
                         while (movie.hasFrame)
@@ -68,12 +47,21 @@ classdef Eye < dj.Computed
                             hold off
                             imagesc(frame);
                             hold on
-                            plot(tpl.x(frameCntr),tpl.y(frameCntr),'r*');
-                            radius = sqrt(tpl.a(frameCntr)/pi);
+                            
+                            x = tpl.x(frameCntr,:)';
+                            y = tpl.y(frameCntr,:)';
+                            
+                            plot(x,y,'r*');
 
+                                
+                            if false
+                                radius = sqrt(tpl.a(frameCntr)/pi);
                             line(tpl.x(frameCntr)+radius.*cos(phi),tpl.y(frameCntr)+radius.*sin(phi),'Color','g')
+                            end
+                                
                             xlabel 'X (pixels)';
                             ylabel 'Y (pixels)';
+                            
                             drawnow;
                         end
                     case "TRAJECTORY"
@@ -120,45 +108,26 @@ classdef Eye < dj.Computed
             switch upper(key.tag)
                 case 'IMFINDCIRCLES'
                     %% Pupil tracking, using imfindcircles
-                    movie = openMovie(tbl,key);
-                    [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
+                    movie = open(ns.Movie & key,-1);
+                    [x,y,a,quality] = sbx.Eye.imfindcircles(movie, parms);
                 otherwise
                     if startsWith(key.tag,'DLC','IgnoreCase',true)
                         % Any tag that starts with DLC is processed with
                         % DLC to allow DLC model comparisons.
-                        mvFile =  sbx.Eye.movieFile(key);
-                        [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms);
-                        w=NaN;h=NaN;fr=NaN;
+                        mvFile =  file(ns.Movie & key,-1);
+                        [x,y,a,quality] = sbx.Eye.dlc(mvFile, parms);                        
                     else
                         error('Unknown %d tag',key.tag);
                     end
             end
-            tpl = mergestruct(key,struct('x',x,'y',y,'a',a,'quality',quality,'nrtimepoints',nrT,'width',w,'height',h,'framerate',fr));
+            tpl = mergestruct(key,struct('x',x,'y',y,'a',a,'quality',quality));
             insert(tbl,tpl);
         end
     end
 
     methods (Static)
-        function v= movieFile(key)
-            % It is possible that there is more than one _eye file; pick the smallest one
-            % (presumably this is a preprocess/compressed version)
-            fldr = folder(ns.Experiment& key);
-            minSize = Inf;
-            v='';
-            for f=fetch(ns.File & key & 'filename LIKE ''%_eye%''','filename')'
-                ff =fullfile(fldr,f.filename);
-                if exist(ff,"file")
-                    d = dir(ff);
-                    if d.bytes<minSize
-                        minSize= d.bytes;
-                        v= ff;
-                    end
-                else
-                    fprintf('File not found: %s\n',ff);
-                end
-            end
-        end
-        function [x,y,a,quality,nrT, w,h,fr] =imfindcircles(movie,pv)
+
+        function [x,y,a,quality] =imfindcircles(movie,pv)
             % The imfindcircles tool defines the following parameters,
             % which should be specified in the pv struct.  These are the
             % defaults (see help  imfindcircles).
@@ -214,7 +183,7 @@ classdef Eye < dj.Computed
         end
 
 
-        function [x,y,a,quality,nrFrames] =dlc(mvFile,parms)
+        function [x,y,a,quality] =dlc(mvFile,parms)
             % Use DeepLabCut to determine the pupil position. The parms
             % (from sbx.EyeParms) must specify the following parameters of
             % the analyze_videos function in DLC:
@@ -350,7 +319,7 @@ classdef Eye < dj.Computed
             % Read the csv file
             if exist(csvFile,"file")
                 [T,bodyparts] = readdlc(csvFile);
-                [x,y,a,quality,nrFrames] = postprocessPupilTracker(T,bodyparts);
+                [x,y,a,quality] = postprocessPupilTracker(T,bodyparts);
             else
                 dir(videoFolder);
                 error('The expected DLC output file (%s) was not found. Check the suffix (%s) in sbx.EyeParms',csvFile,parms.suffix);

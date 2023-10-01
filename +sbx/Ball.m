@@ -46,15 +46,16 @@ classdef Ball < dj.Computed
             minSize = Inf;
             for f=fetch(ns.File & key & 'filename LIKE ''%_ball%''','filename')'
                     ff =fullfile(fldr,f.filename);
+                    if ~exist(ff,"file")
+                        fprintf('%s file not found. (Is NS_ROOT set correctly (%s)?)\n',movieFile,getenv('NS_ROOT'));
+                    end
                     d = dir(ff);
                     if d.bytes<minSize
                         minSize= d.bytes;
                         movieFile= ff;
                     end
             end
-            if ~exist(movieFile,"file")
-                error('%s file not found. (Is NS_ROOT set correctly (%s)?)',movieFile,getenv('NS_ROOT'));
-            end
+            
             movie = VideoReader(movieFile);
         end
 
@@ -89,6 +90,7 @@ classdef Ball < dj.Computed
                         speed =abs(tpl.velocity);
                         maxSpeed = max(eps,max(speed));
                         historyColormap = gray; % Show multiple trailing vectors as shades of grays
+                        colormap gray
                         for frameCntr = pv.frameStart:pv.frameStep:min(pv.frameStop,tpl.nrtimepoints)                           
                             frame = movie.read(frameCntr);
                             hold off
