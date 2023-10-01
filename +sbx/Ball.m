@@ -146,6 +146,7 @@ classdef Ball < dj.Computed
                         % Starting point is always 0,0
                         % Time is shown as hsv color
                         % Speed is shown as marker size
+                        
                         stay =~any(isnan(tpl.velocity),2);
                         position  = cumsum(tpl.velocity(stay,:));
                         speed  = 1+abs(tpl.velocity(stay,:));
@@ -153,10 +154,14 @@ classdef Ball < dj.Computed
                         scatter(0,0,10,'*');
                         hold on
                         scatter(real(position),imag(position),speed,time,'o','filled');
-                        xlabel 'X (a.u.)';
-                        ylabel 'Y (a.u.)';
+                        xlabel 'X (pixels)';
+                        ylabel 'Y (pixels)';
+                        set(gca,'XLim',max(abs(xlim))*[-1 1],'ylim',max(abs(ylim))*[-1 1]);
                         title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.velocity))));
-
+                        colormap hsv
+                        h = colorbar; 
+                        ylabel(h,'Time (norm)')
+                        set(h,'YTick',[0:0.25:1])
                     case "TIMECOURSE"
                         % Show dx,dy and quality over time.
                         T=tiledlayout(2,1,"TileSpacing","tight");
@@ -165,7 +170,7 @@ classdef Ball < dj.Computed
                         plot(t,real(tpl.velocity));
                         hold on
                         plot(t,imag(tpl.velocity));                        
-                        ylabel 'Speed (a.u.)'
+                        ylabel 'Speed (pixels/frame)'
                         legend('dx','dy')
                         nexttile(T)
                         plot(t,tpl.quality);

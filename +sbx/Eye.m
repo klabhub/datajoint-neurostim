@@ -18,14 +18,14 @@ framerate =NULL : float # Framerate of the movie
 
 classdef Eye < dj.Computed
     properties (Dependent)
-        keySource        
+        keySource
     end
 
 
     methods
         function v= get.keySource(~)
             v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_eye.%'''))*sbx.EyeParms;
-        end        
+        end
     end
 
     methods (Access=public)
@@ -107,19 +107,18 @@ classdef Eye < dj.Computed
 
     methods (Access = protected)
         function makeTuples(tbl,key)
-            parms= fetch1(sbx.EyeParms &key,'parms');          
+            parms= fetch1(sbx.EyeParms &key,'parms');
             switch upper(key.tag)
                 case 'IMFINDCIRCLES'
                     %% Pupil tracking, using imfindcircles
-                     movie = openMovie(tbl,key);
+                    movie = openMovie(tbl,key);
                     [x,y,a,quality,nrT,w,h,fr] = sbx.Eye.imfindcircles(movie, parms);
-                case 'DLC'
-                    
-                    
                 otherwise
-                    if startsWith(key.tag,'DLC')
+                    if startsWith(key.tag,'DLC','IgnoreCase',true)
+                        % Any tag that starts with DLC is processed with
+                        % DLC to allow DLC model comparisons.
                         mvFile =  sbx.Eye.movieFile(key);
-                            [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms,key.tag);                    
+                        [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms);
                     else
                         error('Unknown %d tag',key.tag);
                     end
@@ -131,21 +130,21 @@ classdef Eye < dj.Computed
 
     methods (Static)
         function v= movieFile(key)
-             % It is possible that there is more than one _eye file; pick the smallest one
+            % It is possible that there is more than one _eye file; pick the smallest one
             % (presumably this is a preprocess/compressed version)
             fldr = folder(ns.Experiment& key);
             minSize = Inf;
             v='';
             for f=fetch(ns.File & key & 'filename LIKE ''%_eye%''','filename')'
-                    ff =fullfile(fldr,f.filename);
-                    if exist(ff,"file")
+                ff =fullfile(fldr,f.filename);
+                if exist(ff,"file")
                     d = dir(ff);
                     if d.bytes<minSize
                         minSize= d.bytes;
                         v= ff;
                     end
-                    end
-            end           
+                end
+            end
         end
         function [x,y,a,quality,nrT, w,h,fr] =imfindcircles(movie,pv)
             % The imfindcircles tool defines the following parameters,
@@ -174,7 +173,7 @@ classdef Eye < dj.Computed
                 nrWorkers = 0;
             else
                 nrWorkers  = gcp('nocreate').NumWorkers;
-            end         
+            end
 
             w = movie.Width;
             h = movie.Height;
@@ -203,146 +202,170 @@ classdef Eye < dj.Computed
         end
 
 
-        function [x,y,a,quality,nrFrames] =dlc(mvFile,parms,tag)
+        function [x,y,a,quality,nrFrames] =dlc(mvFile,parms)
             % Use DeepLabCut to determine the pupil position. The parms
-            % (from sbx.EyeParms) must specify the following parameters of 
+            % (from sbx.EyeParms) must specify the following parameters of
             % the analyze_videos function in DLC:
             %    .config
-            %    .shuffle (1,1) double {mustBeNonnegative,mustBeInteger} 
-            %    .trainingsetindex (1,1) double {mustBeNonnegative,mustBeInteger}             
-            %    .TFGPUinference  (1,1) logical 
+            %    .shuffle (1,1) double {mustBeNonnegative,mustBeInteger}
+            %    .trainingsetindex (1,1) double {mustBeNonnegative,mustBeInteger}
+            %    .TFGPUinference  (1,1) logical
             % All other analyze_videos parameters use the default value and
             % gputouse is determined on the fly.
-            %            
+            %
+            % The parms struct should also specify the suffix it expects
+            % the DLC output to have. This is used to determine which
+            % DLC output file to use. This will looks something like this
+            %
+            % 'DLC_resnet50_EyeTrackerSep27shuffle1_650000'
+            %
             % If the remote cluster uses singularity to run DLC , specify the full
             % path to the singularity (SIF) file in parms.singularity
-            % 
+            %
             % If the remote cluster uses a conda environment to run DLC,
-            % specify the name of the environment in parms.conda.env. If 
-            % conda activate env would fail on your system (becuase your
+            % specify the name of the environment in parms.conda.env. If
+            % conda activate env would fail on your system (because your
             % bashrc does not initialize conda, you can add a command to
             % execute as parms.conda.init (e.g. source ~/.condainit) if
             % ~/.condainit contains the initialization code that is normally in bashrc).
             %
-            % Ultimately this function will call python with the DLC command constructed from 
+            % Ultimately this function will call python with the DLC command constructed from
             % the parms, which will write the output to the same folder as
-            % the video file .
+            % the video file.
             %
-            % Matlab then reads the csv files, does some postprocessing and stores the results
-            % in the Eye table.
-            % 
-             arguments
-                mvFile  (1,1) string 
-                parms   (1,1) struct        
-                tag (1,1) string
+            % Matlab then reads the csv files, does some postprocessing to determine
+            % pupil center and area and stores the results in the Eye table.
+            %
+            % I trained an pupil tracker DLC model on top,left, right, and
+            % bottom points of the pupil. The current postprocessing
+            % determines the intersection between top-bottom and left-right
+            % lines as the pupil center, and the surface of the trapezoid
+            % with these four corners as the area. The quality measure is
+            % the minimum of the likelihoods that DLC assigned to each of
+            % the four points.
+            %
+            % More advanced models for pupil tracking could be integrated
+            % here by changing the postprocessing code.
+            %
+            arguments
+                mvFile  (1,1) string
+                parms   (1,1) struct
             end
 
-            
-            %% Construct the Python command
-            % In python we import deeplabcut, then call the analyze_videos
-            % function, and then exit()            
-            % analyze_vidoes has many input arguments, we're specifying
-            % only the ones in parms, the rest take their default value. 
-            %
-            % analyze_videos(config, videos, videotype='', shuffle=1, trainingsetindex=0, gputouse=None, save_as_csv=False, 
-            % in_random_order=True - Not used as we're passing one video file at a time
-            % destfolder=None - Not used so the results will be written to the same folder as the vidoes
-            %  batchsize=None, Not used
-            % cropping=None, Not used            
-            % dynamic=(False, 0.5, 10), modelprefix='', 
-            % robust_nframes=False, 
-            % allow_growth=False, 
-            % use_shelve=False, 
-            % auto_track=True, 
-            % n_tracks=None, 
-            % calibrate=False, 
-            % identity_only=False, 
-            % use_openvino=None)
 
-            
-            if canUseGPU
-                % In case we really need to determine which gpu is availabel, something like this may work
-                %  [~,ps] = system('ps -u bart');
-                %   ps =strsplit(ps ,{' ','\n'});
-                %   ps(cellfun(@isempty,ps)) =[];
-                %   ps = reshape((ps),4,[])';
-                %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
-                % And compare that with 
-                % nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv                
-                gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab?.
-                nvoption = '--nv'; % Singularity only
-            else
-                gptouse = 'none'; %#ok<NASGU>
-                nvoption = '';
-            end
             mvFile = strrep(mvFile,'\','/');
             [videoFolder,videoFile,videoType]= fileparts(mvFile);
-            videoType=extractAfter(videoType,'.');
-            pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=1,TFGPUinference=%d);exit();",parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex,gputouse,parms.TFGPUinference);
-            if isfield(parms,'singularity')
-                cmd = sprintf('singularity exec %s %s python -Wdefault -c "%s"',nvoption,parms.singularity, pythonCmd);
-            elseif isfield(parms,'conda')                                
-                cmd = sprintf('conda activate %s; python -Wdefault -c "%s"', parms.conda.env,pythonCmd);
-                if ~isempty(parms.conda.init)
-                    % Prepend cona initialization code provided in the
-                    % parms
-                    cmd = [parms.conda.init ';' cmd];
-                end
+            csvFile = fileparts(videoFolder,[videoFile + parms.suffix ".csv"]);
+
+            if exist(csvFile,"File")
+                % Skip running DLC
+                fprintf('DLC output (%s) already exists. Adding to the table.',csvFile);
             else
-                cmd = sprintf('python -Wdefault -c "%s"', pythonCmd);
-            end
-               
-            try
-                fprintf('Runing system command:\n\n %s \n\n',cmd);
-                [status] = system(cmd,'-echo');
-            catch me
-                fprintf('DLC failed %s\n',me.message);                
-            end
 
-            if status~=0
-                fprintf('DLC failed\n');
-            else
-                % Read the csv file
-                csvFile = fileparts(videoFolder,[videoFile + tag ".csv"]);
-                if exist(csvFile,"file")
-                    fid =fopen(csvFile,'r');
-                    scorer =strsplit(fgetl(fid),','); %#ok<NASGU>
-                    bodyparts = strsplit(fgetl(fid),',');
-                    header = strsplit(fgetl(fid),',');
-                    fclose(fid);
-                    T = readtable(csvFile,'NumHeaderLines',3,'FileType','text','Delimiter',',');
-                    varnames = strcat(bodyparts(2:end),header(2:end));
-                    T.Properties.VariableNames = cat(2,{'Frame'},varnames);
-                    
-                    % The DLC model determins the left, right, top, and
-                    % bottom points of the pupil
-                    % Determine the intersection of the line from top to
-                    % bottom and the line from left to right to define the
-                    % center (the intersection) and the area (the trapezoid
-                    % spanned by the four points).
+                %% Construct the Python command
+                % In python we import deeplabcut, then call the analyze_videos
+                % function, and then exit()
+                % analyze_vidoes has many input arguments, we're specifying
+                % only the ones in parms, the rest take their default value.
+                %
+                % analyze_videos(config, videos, videotype='', shuffle=1, trainingsetindex=0, gputouse=None, save_as_csv=False,
+                % in_random_order=True - Not used as we're passing one video file at a time
+                % destfolder=None - Not used so the results will be written to the same folder as the vidoes
+                %  batchsize=None, Not used
+                % cropping=None, Not used
+                % dynamic=(False, 0.5, 10), modelprefix='',
+                % robust_nframes=False,
+                % allow_growth=False,
+                % use_shelve=False,
+                % auto_track=True,
+                % n_tracks=None,
+                % calibrate=False,
+                % identity_only=False,
+                % use_openvino=None)
 
-                    slopeTopBottom = (T.topy - T.bottomy) ./ (T.topx - T.bottomx);
-                    intersectTopBottom = T.bottomy - slopeTopBottom .* T.bottomx;
-                    
-                    slopeLeftRight = (T.righty - T.lefty)  ./ (T.rightx - T.leftx);
-                    intersectLeftRight = T.lefty - slopeLeftRight .* T.leftx;
 
-                    % Find intersection point
-                    x  = (intersectLeftRight - intersectTopBottom) ./ (slopeTopBottom - slopeLeftRight);
-                    y = slopeTopBottom .* x+ intersectTopBottom;
-
-                    topToBottom = sqrt((T.topy - T.bottomy).^2+ (T.topx - T.bottomx).^2);
-                    leftToRight = sqrt((T.righty - T.lefty).^2+ (T.rightx - T.leftx).^2);
-                    a = topToBottom.*leftToRight;
-
-                    quality = mean([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],2,'omitnan');
-                    nrFrames= height(T);
+                if canUseGPU
+                    % In case we really need to determine which gpu is availabel, something like this may work
+                    %  [~,ps] = system('ps -u bart');
+                    %   ps =strsplit(ps ,{' ','\n'});
+                    %   ps(cellfun(@isempty,ps)) =[];
+                    %   ps = reshape((ps),4,[])';
+                    %   T= table(ps(2:end,1),ps(2:end,2),ps(2:end,3),ps(2:end,4),'VariableNames',ps(1,:));
+                    % And compare that with
+                    % nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv
+                    gputouse = '0'; % Manual says to give the index, but '0' seems to work even if 2 is assigned to Matlab?.
+                    nvoption = '--nv'; % Singularity only
                 else
-                    dir(videoFolder);
-                    error('The expected DLC output file (%s) was not found. Check your tag (%s) in sbx.EyeParms',csvFile,tag);
+                    gptouse = 'none'; %#ok<NASGU>
+                    nvoption = '';
+                end
+
+                videoType=extractAfter(videoType,'.');
+                % The python command is always the same
+                pythonCmd = sprintf("import deeplabcut;deeplabcut.analyze_videos('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,gputouse=%s,save_as_csv=1,TFGPUinference=%d);exit();",parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex,gputouse,parms.TFGPUinference);
+                % But the call to run DLC can differ:
+                if isfield(parms,'singularity')
+                    % Run DLC in a singularity container
+                    cmd = sprintf('singularity exec %s %s python -Wdefault -c "%s"',nvoption,parms.singularity, pythonCmd);
+                elseif isfield(parms,'conda')
+                    % Run in a conda environment (recommended)
+                    cmd = sprintf('conda activate %s; python -Wdefault -c "%s"', parms.conda.env,pythonCmd);
+                    if ~isempty(parms.conda.init)
+                        % Prepend cona initialization code provided in the
+                        % parms
+                        cmd = [parms.conda.init ';' cmd];
+                    end
+                else
+                    % Python install without an environment.
+                    cmd = sprintf('python -Wdefault -c "%s"', pythonCmd);
+                end
+
+                %% Start DLC
+                try
+                    fprintf('Runing system command:\n\n %s \n\n',cmd);
+                    [status] = system(cmd,'-echo');
+                catch me
+                    fprintf('DLC failed %s\n',me.message);
+                end
+
+                if status~=0
+                    fprintf('DLC returede status %d\n',status);
                 end
             end
-               
+
+
+
+            % Read the csv file
+            if exist(csvFile,"file")
+                T = readdlc(csvFile);
+                % The DLC model determins the left, right, top, and
+                % bottom points of the pupil
+                % Determine the intersection of the line from top to
+                % bottom and the line from left to right to define the
+                % center (the intersection) and the area (the trapezoid
+                % spanned by the four points).
+                slopeTopBottom = (T.topy - T.bottomy) ./ (T.topx - T.bottomx);
+                intersectTopBottom = T.bottomy - slopeTopBottom .* T.bottomx;
+
+                slopeLeftRight = (T.righty - T.lefty)  ./ (T.rightx - T.leftx);
+                intersectLeftRight = T.lefty - slopeLeftRight .* T.leftx;
+
+                % Find intersection point
+                x  = (intersectLeftRight - intersectTopBottom) ./ (slopeTopBottom - slopeLeftRight);
+                y = slopeTopBottom .* x+ intersectTopBottom;
+
+                topToBottom = sqrt((T.topy - T.bottomy).^2+ (T.topx - T.bottomx).^2);
+                leftToRight = sqrt((T.righty - T.lefty).^2+ (T.rightx - T.leftx).^2);
+                a = topToBottom.*leftToRight;
+
+                quality = min([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],2,'omitnan');
+                nrFrames= height(T);
+            else
+                dir(videoFolder);
+                error('The expected DLC output file (%s) was not found. Check the suffix (%s) in sbx.EyeParms',csvFile,parms.suffix);
+            end
+
+
         end
     end
 
