@@ -154,7 +154,7 @@ classdef Eye < dj.Computed
                         v= ff;
                     end
                 else
-                        fprintf('File not found: %s\n',ff);
+                    fprintf('File not found: %s\n',ff);
                 end
             end
         end
@@ -325,36 +325,41 @@ classdef Eye < dj.Computed
                 % parms.filter.alpha
                 % Missing fields will get the default values in DLC
                 % deeplabcut.post_processing.filtering.filterpredictions(config, video, videotype='', shuffle=1, trainingsetindex=0, filtertype='median', windowlength=5, p_bound=0.001, ARdegree=3, MAdegree=1, alpha=0.01, save_as_csv=True, destfolder=None, modelprefix='', track_method='')
-                pythonCmd = sprintf("import deeplabcut;deeplabcut.filterpredictions('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,save_as_csv=1" ,parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex);
-                fn = fieldnames(parms.filter);
-                filterArgs = cell(1,numel(fn));
-                for i=1:numel(fn)
-                    value =parms.filter.(fn{i});
-                    if isnumeric(value) 
-                        value=num2str(value);
-                    else
-                        value = ['''' value '''']; %#ok<AGROW>
-                    end
-                    filterArgs{i}  = sprintf('%s=%s',fn{i},value);
-                end
-                pythonCmd = pythonCmd +"," + strjoin(filterArgs,",")+ ");";
-                rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
+
                 csvFile = fullfile(videoFolder,videoFile + parms.suffix + "_filtered.csv");
+                if exist(csvFile,"file")
+                    fprintf('Filtered DLC output (%s) already exists. Adding to the table.\n',csvFile);
+                else
+                    pythonCmd = sprintf("import deeplabcut;deeplabcut.filterpredictions('%s',['%s'],videotype='%s',shuffle=%d,trainingsetindex=%d,save_as_csv=1" ,parms.config,mvFile,videoType,parms.shuffle,parms.trainingsetindex);
+                    fn = fieldnames(parms.filter);
+                    filterArgs = cell(1,numel(fn));
+                    for i=1:numel(fn)
+                        value =parms.filter.(fn{i});
+                        if isnumeric(value)
+                            value=num2str(value);
+                        else
+                            value = ['''' value '''']; %#ok<AGROW>
+                        end
+                        filterArgs{i}  = sprintf('%s=%s',fn{i},value);
+                    end
+                    pythonCmd = pythonCmd +"," + strjoin(filterArgs,",")+ ");";
+                    rundlc(pythonCmd,"condaEnv",parms.conda.env,"condaInit",parms.conda.init);
+                end
             end
 
             % Read the csv file
             if exist(csvFile,"file")
-                T = readdlc(csvFile);
-                [x,y,a,quality,nrFrames] = postprocessPupilTracker(T);                
+                [T,bodyparts] = readdlc(csvFile);
+                [x,y,a,quality,nrFrames] = postprocessPupilTracker(T,bodyparts);
             else
                 dir(videoFolder);
                 error('The expected DLC output file (%s) was not found. Check the suffix (%s) in sbx.EyeParms',csvFile,parms.suffix);
             end
-  
+
 
         end
 
-    
+
     end
 
 end

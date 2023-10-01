@@ -32,7 +32,7 @@ x = rawT(:,isX);
 isY = strcmpi(header,'y');
 y = rawT(:,isY);
 isl = strcmpi(header,'likelihood');
-quality = rawT(:,isl);
-T =table(x,y,quality);
+likelihood = rawT(:,isl);
+T =table(x,y,likelihood);
 bodyparts =bodyparts(isX); % Just need them once
 end
