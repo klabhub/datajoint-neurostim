@@ -10,8 +10,8 @@ quality : longblob # The quality of the estimation at each time point [nrTimePoi
 manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
 nrtimepoints :  int unsigned # Number of time points in the pose estimation
 width = NULL : float # Width of the camera image
-height =NULL  : float # Height of the camera image
-framerate =NULL : float # Framerate of the movie
+height = NULL  : float # Height of the camera image
+framerate = NULL : float # Framerate of the movie
 %}
 %
 % BK - Sept 2023.
@@ -128,6 +128,7 @@ classdef Eye < dj.Computed
                         % DLC to allow DLC model comparisons.
                         mvFile =  sbx.Eye.movieFile(key);
                         [x,y,a,quality,nrT] = sbx.Eye.dlc(mvFile, parms);
+                        w=NaN;h=NaN;fr=NaN;
                     else
                         error('Unknown %d tag',key.tag);
                     end
@@ -264,7 +265,7 @@ classdef Eye < dj.Computed
             mvFile = strrep(mvFile,'\','/');
             [videoFolder,videoFile,videoType]= fileparts(mvFile);
             videoType=extractAfter(videoType,'.');
-            csvFile = fileparts(videoFolder,[videoFile + parms.suffix ".csv"]);
+            csvFile = fullfile(videoFolder,[videoFile + parms.suffix + ".csv"]);
 
             if canUseGPU
                 % In case we really need to determine which gpu is availabel, something like this may work
@@ -284,7 +285,7 @@ classdef Eye < dj.Computed
 
             if exist(csvFile,"File")
                 % Skip running DLC
-                fprintf('DLC output (%s) already exists. Adding to the table.',csvFile);
+                fprintf('DLC output (%s) already exists. Adding to the table.\n',csvFile);
             else
 
                 %% Construct the Python command
