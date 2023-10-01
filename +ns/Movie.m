@@ -48,16 +48,16 @@ classdef Movie < dj.Computed
             end
             % Determine existence and size
             files = cell(count(tbl));
-            nrBytes = nan(count(tbl));
+            bytes = nan(count(tbl));
             fCntr=0;
             for f=fetch(tbl,'filename')'                
                 fldr = folder(ns.Experiment& f);
                 ff =fullfile(fldr,f.filename);
                 if exist(ff,"file")
+                    fCntr=fCntr+1;
                     files{fCntr} = ff;
                     info = dir(ff);
-                    nrBytes(fCntr) = info.bytes;
-                    fCntr=fCntr+1;
+                    bytes(fCntr) = info.bytes;                
                 else
                     fprintf('File not found: %s\n',ff);
                 end
@@ -85,7 +85,12 @@ classdef Movie < dj.Computed
             fldr = folder(ns.Experiment& key);
             ff =fullfile(fldr,key.filename);
             if exist(ff,'file')
-                mv= VideoReader(ff); 
+                try
+                    mv= VideoReader(ff); 
+                catch me
+                    fprintf('Could not open %s.\n Error: %s\n', ff,me.message)
+                    return;
+                end
             else
                 error('File not found %s',ff);
             end

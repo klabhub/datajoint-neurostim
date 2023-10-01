@@ -19,7 +19,10 @@ classdef Eye < dj.Computed
 
     methods
         function v= get.keySource(~)
-            v = (ns.Movie & 'filename LIKE ''%_eye.%''')*sbx.EyeParms;
+            % Even though the key source is .mj2, if there is an .avi that
+            % is smaller, that will be used to do the processing  due to
+            % the call of ns.Movie/file with -1. (smallest).
+            v = (ns.Movie & 'filename LIKE ''%_eye.mj2''')*sbx.EyeParms;
         end
     end
 
@@ -29,8 +32,9 @@ classdef Eye < dj.Computed
                 tbl (1,1) sbx.Eye
                 pv.mode (1,1) string {mustBeMember(pv.mode,["MOVIE","TRAJECTORY","TIMECOURSE"])} = "TRAJECTORY"
             end
-
+            
             for tpl = tbl.fetch('*')'
+                movieParms = fetch(ns.Movie&tpl,'*')
                 figName= sprintf('Eye: #%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 figByName(figName);
                 clf;
@@ -38,7 +42,7 @@ classdef Eye < dj.Computed
                 switch upper(pv.mode)
                     case "MOVIE"
                         % Show the movie with the decoded pupil on top.
-                        movie = openMovie(ns.Movie& tpl);
+                        movie = open(ns.Movie& tpl,-1);
                         frameCntr = 0;
                         phi = linspace(0,2*pi,100);
                         while (movie.hasFrame)
@@ -67,7 +71,7 @@ classdef Eye < dj.Computed
                     case "TRAJECTORY"
                         % Show trajectory x,y, area on the screen.
                         scatter(tpl.x, tpl.y,tpl.a,'ko');
-                        set(gca,'XLim',[1 tpl.width],'Ylim',[1 tpl.height]);
+                        set(gca,'XLim',[1 movieParms.width],'Ylim',[1 movieParms.height]);
                         xlabel 'X (pixels)';
                         ylabel 'Y (pixels)';
 
@@ -76,11 +80,11 @@ classdef Eye < dj.Computed
                     case "TIMECOURSE"
                         % Show x,y, area as a function of time.
                         T=tiledlayout(3,1,"TileSpacing","tight");
-                        t =(0:tpl.nrtimepoints-1)/tpl.framerate;
+                        t =(0:movieParms.nrframes-1)/movieParms.framerate;
                         nexttile(T)
-                        plot(t,tpl.x./tpl.width);
+                        plot(t,tpl.x./movieParms.width);
                         hold on
-                        plot(t,tpl.y/tpl.height);
+                        plot(t,tpl.y/movieParms.height);
                         ylim([0 1]);
                         ylabel 'Position (frac)'
                         legend('x','y')
