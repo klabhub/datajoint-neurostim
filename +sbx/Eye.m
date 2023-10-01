@@ -359,7 +359,7 @@ classdef Eye < dj.Computed
                 leftToRight = sqrt((T.righty - T.lefty).^2+ (T.rightx - T.leftx).^2);
                 a = topToBottom.*leftToRight;
 
-                quality = min([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],2,'omitnan');
+                quality = min([T.toplikelihood  T.rightlikelihood T.leftlikelihood T.bottomlikelihood],[],2,'omitnan');
                 nrFrames= height(T);
             else
                 dir(videoFolder);
