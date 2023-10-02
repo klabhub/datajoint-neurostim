@@ -6,8 +6,6 @@
 velocity :longblob  # The velocity; complex number representing the instantanous velocity of the mouse.[nrTimePoints 2]
 quality : longblob # The quality of the estimation at each time point [nrTimePoints 1]
 manualqc = NULL : smallint # quantify the overall quality based on manual inspection. 
-nrtimepoints :  int unsigned # Number of time points in the timecourse
-framerate : float # Framerate of the original movie
 %}
 %
 % For an experiment with two _ball files, the makeTuples function will use the
@@ -143,7 +141,7 @@ classdef Ball < dj.Computed
                         colormap hsv
                         h = colorbar; 
                         ylabel(h,'Time (norm)')
-                        set(h,'YTick',[0:0.25:1])
+                        set(h,'YTick',0:0.25:1)
                     case "TIMECOURSE"
                         % Show dx,dy and quality over time.
                         T=tiledlayout(2,1,"TileSpacing","tight");
@@ -176,15 +174,15 @@ classdef Ball < dj.Computed
             movie = open(ns.Movie &key,"smallest");
             switch upper(key.tag)
                 case 'XCORR'
-                    [velocity,quality,nrT,fr] =sbx.Ball.xcorr(movie,parms);
+                    [velocity,quality] =sbx.Ball.xcorr(movie,parms);
                 case 'PHASECORR'
-                    [velocity,quality,nrT,fr] =sbx.Ball.phasecorr(movie,parms);
+                    [velocity,quality] =sbx.Ball.phasecorr(movie,parms);
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
 
-            tpl = mergestruct(key,struct('velocity',velocity,'quality',quality,'nrtimepoints',nrT,'framerate',fr));
-            insert(tbl,tpl);
+           tpl = mergestruct(key,struct('velocity',velocity,'quality',quality));
+           insert(tbl,tpl);
 
            %%  Also save the results in a csv file
            T = table((1:numel(quality))',real(velocity),imag(velocity),quality,'VariableNames',{'frame','x','y','quality'});
@@ -196,7 +194,7 @@ classdef Ball < dj.Computed
 
     methods (Static)
 
-        function [velocity,quality,nrFrames,fr] =phasecorr(movie,parms)
+        function [velocity,quality] =phasecorr(movie,parms)
             arguments
                 movie (1,1) VideoReader
                 parms (1,1) struct 
@@ -254,7 +252,7 @@ classdef Ball < dj.Computed
 
         end
 
-        function [velocity,quality,nrFrames,fr] =xcorr(movie,parms)
+        function [velocity,quality] =xcorr(movie,parms)
             arguments
                 movie (1,1) VideoReader
                 parms (1,1) struct 
