@@ -34,7 +34,7 @@ classdef Eye < dj.Computed
             end
             
             for tpl = tbl.fetch('*')'
-                movieParms = fetch(ns.Movie&tpl,'*')
+                movieParms = fetch(ns.Movie&tpl,'*');
                 figName= sprintf('Eye: #%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 figByName(figName);
                 clf;
@@ -112,13 +112,13 @@ classdef Eye < dj.Computed
             switch upper(key.tag)
                 case 'IMFINDCIRCLES'
                     %% Pupil tracking, using imfindcircles
-                    movie = open(ns.Movie & key,-1);
+                    movie = open(ns.Movie & key,"smallest");
                     [x,y,a,quality] = sbx.Eye.imfindcircles(movie, parms);
                 otherwise
                     if startsWith(key.tag,'DLC','IgnoreCase',true)
                         % Any tag that starts with DLC is processed with
                         % DLC to allow DLC model comparisons.
-                        mvFile =  file(ns.Movie & key,-1);
+                        mvFile =  file(ns.Movie & key,"smallest");
                         [x,y,a,quality] = sbx.Eye.dlc(mvFile, parms);                        
                     else
                         error('Unknown %d tag',key.tag);
