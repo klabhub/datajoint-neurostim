@@ -78,7 +78,7 @@ classdef Ball < dj.Computed
                 switch upper(pv.mode)
                     case "MOVIE"
                         fprintf('Opening movie file...')
-                        movie = openMovie(tbl,tpl);
+                        movie = open(ns.Movie & tpl,"smallest");
                         fprintf('done.\n Press Ctrl-C to stop.');                        
                         ax = axes('Position',[0 0 1 1]);
                         axis(ax,'off')
@@ -193,10 +193,12 @@ classdef Ball < dj.Computed
     methods (Access = protected)
         function makeTuples(tbl,key)
             parms= fetch1(sbx.BallParms &key,'parms');
-            movie = openMovie(tbl,key);
+            movie = open(ns.Movie &key,"smallest");
             switch upper(key.tag)
                 case 'XCORR'
                     [velocity,quality,nrT,fr] =sbx.Ball.xcorr(movie,parms);
+                case 'PHASECORR'
+                    [velocity,quality,nrT,fr] =sbx.Ball.phasecorr(movie,parms);
                 otherwise
                     error('Unknown %d tag',key.tag);
             end
@@ -207,6 +209,65 @@ classdef Ball < dj.Computed
     end
 
     methods (Static)
+
+        function [velocity,quality,nrFrames,fr] =phasecorr(movie,parms)
+            arguments
+                movie (1,1) VideoReader
+                parms (1,1) struct 
+            end
+            useGPU = canUseGPU;  % If a GPU is available we'll use it.
+
+            w=movie.Width;h =movie.Height;
+            nrFrames = movie.NumFrames;
+            fr = movie.FrameRate;
+            %% Initialize output vars
+            if useGPU
+                velocity = nan(nrFrames,1,"gpuArray");
+                quality  = nan(nrFrames,1,"gpuArray");
+            else
+                velocity = nan(nrFrames,1);
+                quality  = nan(nrFrames,1);
+            end
+
+            warnNoTrace('Ball tracking phasecorr analysis (useGPU: %d)\n',useGPU);
+            f=1;            
+            z1 = im2single(movie.readFrame);
+            if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
+
+            % Determine the scaling.
+            heightWidth  = round(parms.scaleFactor.*[h w]);
+            if any(heightWidth<parms.minPixels)
+                % Too small: correct
+                parms.scaleFactor = max(parms.minPixels./[h w]);
+                heightWidth = round(parms.scaleFactor*[w h]);
+            end
+            z1 =imresize(z1,heightWidth);            
+            while movie.hasFrame
+                z2 =  im2single(movie.readFrame);
+                if ndims(z2)==3;z2=z2(:,:,1);end 
+                z2 =imresize(z2,heightWidth);
+                if useGPU
+                    z1 = gpuArray(z1);
+                    z2 = gpuArray(z2);
+                end
+                
+                tform = imregcorr(z2,z1,"translation", "window",true);
+                
+                [dy,dx]= ind2sub(size(xc),ix);
+                dy = dy-heightWidth(1);
+                dx = dx-heightWidth(2);
+                velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
+                % next frame
+                f=f+1;
+                z1=z2;
+            end
+            if useGPU
+                velocity = gather(velocity);
+                quality = gather(quality);
+            end
+
+        end
+
         function [velocity,quality,nrFrames,fr] =xcorr(movie,parms)
             arguments
                 movie (1,1) VideoReader

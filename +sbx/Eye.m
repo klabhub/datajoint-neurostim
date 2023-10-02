@@ -34,7 +34,7 @@ classdef Eye < dj.Computed
             end
             
             for tpl = tbl.fetch('*')'
-                movieParms = fetch(ns.Movie&tpl,'*')
+                movieParms = fetch(ns.Movie&tpl,'*');
                 figName= sprintf('Eye: #%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 figByName(figName);
                 clf;
@@ -42,7 +42,7 @@ classdef Eye < dj.Computed
                 switch upper(pv.mode)
                     case "MOVIE"
                         % Show the movie with the decoded pupil on top.
-                        movie = open(ns.Movie& tpl,-1);
+                        movie = open(ns.Movie& tpl,"smallest");
                         frameCntr = 0;
                         phi = linspace(0,2*pi,100);
                         while (movie.hasFrame)
