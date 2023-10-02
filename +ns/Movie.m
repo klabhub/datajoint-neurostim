@@ -31,8 +31,8 @@ classdef Movie < dj.Computed
                 sizeOption  (1,1) string {mustBeMember(sizeOption,["smallest","largest","all"])} ="all"
             end           
             mvFile =  file(tbl,sizeOption);
-            if ischar(mvFile)
-                movie(i) = VideoReader(mvFile{i}); %single movie
+            if ischar(mvFile) || isstring(mvFile)
+                movie = VideoReader(mvFile); %single movie
             else
                 for i=1:numel(mvFile)
                     movie{i} = VideoReader(mvFile{i}); %#ok<TNMLP,AGROW>

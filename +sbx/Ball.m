@@ -1,6 +1,6 @@
 %{
 # Stores ball velocityinformation 
--> ns.Experiment # Corresponding experiment
+-> ns.Movie     # Corresponding movie
 -> sbx.BallParms  # The parameters that define the extraction process.
 ---
 velocity :longblob  # The velocity; complex number representing the instantanous velocity of the mouse.[nrTimePoints 2]
@@ -33,32 +33,12 @@ classdef Ball < dj.Computed
 
     methods
         function v= get.keySource(~)           
-            v = (proj(ns.Experiment) & (ns.File & 'filename LIKE ''%_ball.%'''))*sbx.BallParms;
+            v = (ns.Movie & 'filename LIKE ''%_ball.mj2''')*sbx.BallParms;
         end
 
     end
 
     methods (Access=public)
-        function movie=openMovie(~,key)
-            % It is possible that there is more than one _ball file; pick the smallest one
-            % (presumably this is a preprocess/compressed version)
-            fldr = folder(ns.Experiment& key);
-            minSize = Inf;
-            for f=fetch(ns.File & key & 'filename LIKE ''%_ball%''','filename')'
-                    ff =fullfile(fldr,f.filename);
-                    if ~exist(ff,"file")
-                        fprintf('%s file not found. (Is NS_ROOT set correctly (%s)?)\n',movieFile,getenv('NS_ROOT'));
-                    end
-                    d = dir(ff);
-                    if d.bytes<minSize
-                        minSize= d.bytes;
-                        movieFile= ff;
-                    end
-            end
-            
-            movie = VideoReader(movieFile);
-        end
-
         function plot(tbl,pv)
             % Function to plot sbx.Ball movies for each row in the tbl.
             arguments
@@ -205,6 +185,12 @@ classdef Ball < dj.Computed
 
             tpl = mergestruct(key,struct('velocity',velocity,'quality',quality,'nrtimepoints',nrT,'framerate',fr));
             insert(tbl,tpl);
+
+           %%  Also save the results in a csv file
+           T = table((1:numel(quality))',real(velocity),imag(velocity),quality,'VariableNames',{'frame','x','y','quality'});
+           [~,filename] = fileparts(movie.Name);
+           csvFile =fullfile(movie.Path,[filename '_' key.tag '.csv']);
+           writetable(T,csvFile,Delimiter=',',LineEnding='\r\n',WriteVariableNames=true,WriteMode='overwrite');
         end
     end
 
@@ -215,7 +201,7 @@ classdef Ball < dj.Computed
                 movie (1,1) VideoReader
                 parms (1,1) struct 
             end
-            useGPU = canUseGPU;  % If a GPU is available we'll use it.
+            useGPU = false; %canUseGPU;  % If a GPU is available we'll use it.
 
             w=movie.Width;h =movie.Height;
             nrFrames = movie.NumFrames;
@@ -251,11 +237,11 @@ classdef Ball < dj.Computed
                     z2 = gpuArray(z2);
                 end
                 
-                tform = imregcorr(z2,z1,"translation", "window",true);
+                [tform,quality(f)] = imregcorr(z2,z1,"translation", "window",true);
                 
-                [dy,dx]= ind2sub(size(xc),ix);
-                dy = dy-heightWidth(1);
-                dx = dx-heightWidth(2);
+                dy = tform.Translation(2);
+                dx = tform.Translation(1);
+                
                 velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
                 % next frame
                 f=f+1;
@@ -328,6 +314,9 @@ classdef Ball < dj.Computed
                 velocity = gather(velocity);
                 quality = gather(quality);
             end
+
+            
+
         end
     end
 
