@@ -23,6 +23,7 @@ p=inputParser;
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('root',getenv('NS_ROOT'));
 p.addParameter('populateFile',true,@islogical)
+p.addParameter('populateMovie',true,@islogical)
 p.addParameter('dryrun',false,@islogical)
 p.addParameter('cic',[]); % A vector of cic objects. One per row of the experiment table.
 p.parse(varargin{:});
@@ -48,11 +49,18 @@ insertNewTuples(tSession,ns.Session,p.Results.dryrun);
 %% Add Experiments
 tExperiment = removevars(tExperiment,'id');
 [newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
-if  ~p.Results.dryrun && ~isempty(newExpts)  && p.Results.populateFile
+if  ~p.Results.dryrun && ~isempty(newExpts) 
     if ~isempty(p.Results.cic)
         updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows))
-    end 
-    populate(ns.File, newExpts)
+    end
+    if p.Results.populateFile
+        % Populate the File table (all files associated with this experiment)
+        populate(ns.File, newExpts);
+    end
+    if p.Results.populateMovie
+        % Populate the Movie table (subset of files with a specific set of extensions known to be movies) 
+        populate(ns.Movie,newExpts);
+    end
 end
 
 % Restore setting
