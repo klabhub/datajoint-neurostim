@@ -6,6 +6,7 @@ nrframes = NULL : int unsigned      # Number of frames in the video
 framerate = NULL : float            # Framerate (fps)
 width = NULL : int unsigned         # Width in pixelsststr
 height = NULL : int unsigned        # Height in pixels
+bytes = NULL :  int unsigned        # Number of bytes in the file
 %}
 
 classdef Movie < dj.Computed
@@ -44,39 +45,22 @@ classdef Movie < dj.Computed
             % version of a file exist). 
             arguments 
                 tbl (1,1) ns.Movie
-                sizeOption  (1,1) double {mustBeMember(sizeOption,[-1 0 1])} =0
+                sizeOption  (1,1) string  {mustBeMember(sizeOption,"smallest","largest","all")} ="all"
             end
-            % Determine existence and size
-            files = cell(count(tbl));
-            bytes = nan(count(tbl));
-            fCntr=0;
-            for f=fetch(tbl,'filename')'                
-                fldr = folder(ns.Experiment& f);
-                ff =fullfile(fldr,f.filename);
-                if exist(ff,"file")
-                    fCntr=fCntr+1;
-                    files{fCntr} = ff;
-                    info = dir(ff);
-                    bytes(fCntr) = info.bytes;                
-                else
-                    fprintf('File not found: %s\n',ff);
-                end
-            end
+            % Get the list
+            f = fetch(tbl,'*','ORDER BY bytes');            
             % Pick the requested ones
             switch sizeOption
-                case -1
-                    [~,ix] = sort(bytes,'ascend');
-                    ix= ix(1);
-                case +1
-                    [~,ix] = sort(bytes,'descend');
-                    ix= ix(1);
-                case 0
-                    ix = 1:fCntr;
+                case "smallest"
+                    ix =1;
+                case "largest"
+                    ix = numel(f);
+                case "all"
+                    ix = 1:numl(f);
             end
-            v =ff(ix);
-            if numel(v)==1
-                v=v{1};
-            end
+
+            fldrs = folder(ns.Experiment &f(ix));
+            v = [fldrs+ f.filename]
         end
     end
 
@@ -85,6 +69,7 @@ classdef Movie < dj.Computed
             fldr = folder(ns.Experiment& key);
             ff =fullfile(fldr,key.filename);
             if exist(ff,'file')
+                info =dir(ff);                
                 try
                     mv= VideoReader(ff); 
                 catch me
@@ -94,7 +79,7 @@ classdef Movie < dj.Computed
             else
                 error('File not found %s',ff);
             end
-            tpl = mergestruct(key,struct('nrframes',mv.NumFrames,'width',mv.Width,'height',mv.Height,'framerate',mv.FrameRate));
+            tpl = mergestruct(key,struct('nrframes',mv.NumFrames,'width',mv.Width,'height',mv.Height,'framerate',mv.FrameRate,'bytes',info.bytes));
             insert(tbl,tpl)
         end
     end
