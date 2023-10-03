@@ -128,16 +128,9 @@ classdef Preprocessed < dj.Imported
                     if ~exist(resultsFile,'file')
                         % Create a dict with the folder information
                         if isempty(cell(opts{'fast_disk'}))
-                            if opts{'delete_bin'}
-                                % No fast disk specified, and not keeping the
-                                % bin file save to tempname for speed.
-                                % In the db, fast_disk has to be a string, not
-                                % a list.
+                                % No fast disk specified, guessing that tempname will have better access speed.
+                                % In the db, fast_disk has to be a string, not  a list.
                                 fastDisk = tempname;
-                            else
-                                %do nothing. python will default to
-                                %save_path0
-                            end
                         else
                             if opts{'delete_bin'}
                                 % Not keeping the bin file. Use a temp
@@ -154,7 +147,8 @@ classdef Preprocessed < dj.Imported
                         db= py.dict(pyargs('save_path0',sessionPath, ...
                             'save_folder',resultsFolder, ...
                             'data_path',py.list(dataFldr), ...
-                            'fast_disk',fastDisk));
+                            'fast_disk',fastDisk, ...
+                            'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
 
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
                         conda = getenv('NS_CONDA');
@@ -205,7 +199,11 @@ classdef Preprocessed < dj.Imported
                         % they are useful to view in the suite2p gui.
                         statFile = fullfile(sessionPath,resultsFolder,'plane0','stat.npy');
                         npyToMat(statFile);
+
+
                         fprintf('Completed at %s\n',datetime('now'));
+
+
                     else
                         fprintf('Preprocessing results already exist. Importing %s\n',resultsFile);
                     end
