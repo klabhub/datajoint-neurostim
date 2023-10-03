@@ -176,7 +176,7 @@ classdef Ball < dj.Computed
             csvFile =fullfile(pth,filename + '_' + key.tag + '.csv');
             if exist(csvFile,"file")
                 fprintf('%s already exists. Adding to the table.\n',csvFile);
-                T=readtable(csvFile,'NumHeaderLines',1,'ReadVariableNames',true);
+                T=readtable(csvFile,'ReadVariableNames',true);
                 velocity = T.x +1i.*T.y;
                 tpl = mergestruct(key,struct('velocity',velocity,'quality',T.quality));
             else
@@ -196,7 +196,7 @@ classdef Ball < dj.Computed
                 writetable(T,csvFile,Delimiter=',',LineEnding='\r\n',WriteVariableNames=true,WriteMode='overwrite');
             end
 
-            if count (tbl&tpl)==0
+            if count (tbl&ns.stripToPrimary(tbl,tpl))==0
                 insert(tbl,tpl);
             else
                 fprintf('%s/%s already exists in the table\n',key.filename,key.tag)

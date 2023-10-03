@@ -183,6 +183,7 @@ if ~isempty(p.Results.paradigm)
 end
 
 meta = meta(stay);
+fullName=fullName(stay);
 nrExperiments = numel(meta);
 if nrExperiments ==0
     fprintf('No Neurostim files with matching paradigm and subject found in %s\n',srcFolder);
