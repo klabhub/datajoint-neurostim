@@ -30,7 +30,7 @@ classdef Ball < dj.Computed
 
 
     methods
-        function v= get.keySource(~)           
+        function v= get.keySource(~)
             v = (ns.Movie & 'filename LIKE ''%_ball.mj2''')*sbx.BallParms;
         end
 
@@ -47,7 +47,7 @@ classdef Ball < dj.Computed
                 pv.frameStart (1,1) double {mustBeInteger,mustBeNonnegative} =1
                 pv.frameStop (1,1) double {mustBeInteger,mustBeNonnegative} = 100000000
             end
-
+            tbl = tbl*ns.Movie;
             for tpl = tbl.fetch('*')'
                 figName= sprintf('#%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 hFig = figByName(figName);
@@ -57,7 +57,7 @@ classdef Ball < dj.Computed
                     case "MOVIE"
                         fprintf('Opening movie file...')
                         movie = open(ns.Movie & tpl,"smallest");
-                        fprintf('done.\n Press Ctrl-C to stop.');                        
+                        fprintf('done.\n Press Ctrl-C to stop.');
                         ax = axes('Position',[0 0 1 1]);
                         axis(ax,'off')
                         pos = get(ax,'Position');
@@ -69,12 +69,12 @@ classdef Ball < dj.Computed
                         maxSpeed = max(eps,max(speed));
                         historyColormap = gray; % Show multiple trailing vectors as shades of grays
                         colormap gray
-                        for frameCntr = pv.frameStart:pv.frameStep:min(pv.frameStop,tpl.nrtimepoints)                           
+                        for frameCntr = pv.frameStart:pv.frameStep:min(pv.frameStop,tpl.nrframes)
                             frame = movie.read(frameCntr);
                             hold off
-                            imagesc(ax,frame);                             
+                            imagesc(ax,frame);
                             hold on
-                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('%s       %dx - Frame #%d/%d',movie.Name,pv.frameStep,frameCntr,tpl.nrtimepoints),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12,'Interpreter','none')
+                            text(ax,max(ax.XLim), min(ax.YLim),sprintf('%s       %dx - Frame #%d/%d',movie.Name,pv.frameStep,frameCntr,tpl.nrframes),'HorizontalAlignment','Right','VerticalAlignment','top','Color','y','FontWeight','Bold','FontSize',12,'Interpreter','none')
                             % Instantaneous velocity with trailing vectors
                             % for history
                             if ~isnan(tpl.velocity(frameCntr))
@@ -87,22 +87,22 @@ classdef Ball < dj.Computed
                                 % Use shading such that the most recent frame
                                 % is black and earlier ones fade to white.
                                 ix = round(linspace(255,1,nrF));
-                                
+
                                 colors = num2cell(historyColormap(ix,:),2)';
-                                [h.Color] =deal(colors{:});                               
+                                [h.Color] =deal(colors{:});
                                 axPolar.RLim = [0 1.1];
                             end
 
                             %% speed with 100 frames history
                             nrFramesToKeep= 100;
                             fToKeep = frameCntr+(-nrFramesToKeep:0);
-                            fToKeep(fToKeep<1)=[];                                                      
+                            fToKeep(fToKeep<1)=[];
                             plot(axSpeed,fToKeep,speed(fToKeep),'r');
                             xlim(axSpeed,[frameCntr-nrFramesToKeep frameCntr])
                             set(axSpeed,'YTick',[],'YScale','Linear')
                             ylim(axSpeed,[eps 1.1*maxSpeed]);
                             axSpeed.XColor ='y';
-                           
+
 
                             %% Quality indicated by the circle in the polar plot. (red = bad, green is good)
                             if ~isnan(tpl.quality(frameCntr))
@@ -117,7 +117,7 @@ classdef Ball < dj.Computed
                             axPolar.ThetaTickLabel  = [];
                             axPolar.RTick = [];
                             axPolar.ThetaTick  = [];
-        
+
                             drawnow;
                         end
 
@@ -126,7 +126,7 @@ classdef Ball < dj.Computed
                         % Starting point is always 0,0
                         % Time is shown as hsv color
                         % Speed is shown as marker size
-                        
+
                         stay =~any(isnan(tpl.velocity),2);
                         position  = cumsum(tpl.velocity(stay,:));
                         speed  = 1+abs(tpl.velocity(stay,:));
@@ -139,17 +139,17 @@ classdef Ball < dj.Computed
                         set(gca,'XLim',max(abs(xlim))*[-1 1],'ylim',max(abs(ylim))*[-1 1]);
                         title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.velocity))));
                         colormap hsv
-                        h = colorbar; 
+                        h = colorbar;
                         ylabel(h,'Time (norm)')
                         set(h,'YTick',0:0.25:1)
                     case "TIMECOURSE"
                         % Show dx,dy and quality over time.
                         T=tiledlayout(2,1,"TileSpacing","tight");
-                        t =(0:tpl.nrtimepoints-1)/tpl.framerate;
+                        t =(0:tpl.nrframes-1)/tpl.framerate;
                         nexttile(T)
                         plot(t,real(tpl.velocity));
                         hold on
-                        plot(t,imag(tpl.velocity));                        
+                        plot(t,imag(tpl.velocity));
                         ylabel 'Speed (pixels/frame)'
                         legend('dx','dy')
                         nexttile(T)
@@ -166,38 +166,49 @@ classdef Ball < dj.Computed
 
         end
 
-        
+
     end
     methods (Access = protected)
         function makeTuples(tbl,key)
             parms= fetch1(sbx.BallParms &key,'parms');
-            movie = open(ns.Movie &key,"smallest");
-            switch upper(key.tag)
-                case 'XCORR'
-                    [velocity,quality] =sbx.Ball.xcorr(movie,parms);
-                case 'PHASECORR'
-                    [velocity,quality] =sbx.Ball.phasecorr(movie,parms);
-                otherwise
-                    error('Unknown %d tag',key.tag);
+            mvFile = file(ns.Movie &key,"smallest");
+            [pth,filename] = fileparts(mvFile);
+            csvFile =fullfile(pth,filename + '_' + key.tag + '.csv');
+            if exist(csvFile,"file")
+                fprintf('%s already exists. Adding to the table.\n',csvFile);
+                T=readtable(csvFile,'NumHeaderLines',1,'ReadVariableNames',true);
+                velocity = T.x +1i.*T.y;
+                tpl = mergestruct(key,struct('velocity',velocity,'quality',T.quality));
+            else
+                movie = open(ns.Movie &key,"smallest");
+                switch upper(key.tag)
+                    case 'XCORR'
+                        [velocity,quality] =sbx.Ball.xcorr(movie,parms);
+                    case 'PHASECORR'
+                        [velocity,quality] =sbx.Ball.phasecorr(movie,parms);
+                    otherwise
+                        error('Unknown %d tag',key.tag);
+                end
+                tpl = mergestruct(key,struct('velocity',velocity,'quality',quality));
+
+                %%  Also save the results in a csv file
+                T = table((1:numel(quality))',real(velocity),imag(velocity),quality,'VariableNames',{'frame','x','y','quality'});
+                writetable(T,csvFile,Delimiter=',',LineEnding='\r\n',WriteVariableNames=true,WriteMode='overwrite');
             end
 
-           tpl = mergestruct(key,struct('velocity',velocity,'quality',quality));
-           insert(tbl,tpl);
-
-           %%  Also save the results in a csv file
-           T = table((1:numel(quality))',real(velocity),imag(velocity),quality,'VariableNames',{'frame','x','y','quality'});
-           [~,filename] = fileparts(movie.Name);
-           csvFile =fullfile(movie.Path,[filename '_' key.tag '.csv']);
-           writetable(T,csvFile,Delimiter=',',LineEnding='\r\n',WriteVariableNames=true,WriteMode='overwrite');
+            if count (tbl&tpl)==0
+                insert(tbl,tpl);
+            else
+                fprintf('%s/%s already exists in the table\n',key.filename,key.tag)
+            end
         end
     end
-
     methods (Static)
 
         function [velocity,quality] =phasecorr(movie,parms)
             arguments
                 movie (1,1) VideoReader
-                parms (1,1) struct 
+                parms (1,1) struct
             end
             useGPU = false; %canUseGPU;  % If a GPU is available we'll use it.
 
@@ -214,7 +225,7 @@ classdef Ball < dj.Computed
             end
 
             warnNoTrace('Ball tracking phasecorr analysis (useGPU: %d)\n',useGPU);
-            f=1;            
+            f=1;
             z1 = im2single(movie.readFrame);
             if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
 
@@ -225,21 +236,21 @@ classdef Ball < dj.Computed
                 parms.scaleFactor = max(parms.minPixels./[h w]);
                 heightWidth = round(parms.scaleFactor*[w h]);
             end
-            z1 =imresize(z1,heightWidth);            
+            z1 =imresize(z1,heightWidth);
             while movie.hasFrame
                 z2 =  im2single(movie.readFrame);
-                if ndims(z2)==3;z2=z2(:,:,1);end 
+                if ndims(z2)==3;z2=z2(:,:,1);end
                 z2 =imresize(z2,heightWidth);
                 if useGPU
                     z1 = gpuArray(z1);
                     z2 = gpuArray(z2);
                 end
-                
+
                 [tform,quality(f)] = imregcorr(z2,z1,"translation", "window",true);
-                
+
                 dy = tform.Translation(2);
                 dx = tform.Translation(1);
-                
+
                 velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
                 % next frame
                 f=f+1;
@@ -255,7 +266,7 @@ classdef Ball < dj.Computed
         function [velocity,quality] =xcorr(movie,parms)
             arguments
                 movie (1,1) VideoReader
-                parms (1,1) struct 
+                parms (1,1) struct
             end
             useGPU = canUseGPU;  % If a GPU is available we'll use it.
 
@@ -272,7 +283,7 @@ classdef Ball < dj.Computed
             end
 
             warnNoTrace('Ball tracking analysis (useGPU: %d)\n',useGPU);
-            f=1;            
+            f=1;
             z1 = single(movie.readFrame);
             if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
 
@@ -283,10 +294,10 @@ classdef Ball < dj.Computed
                 parms.scaleFactor = max(parms.minPixels./[h w]);
                 heightWidth = round(parms.scaleFactor*[w h]);
             end
-            z1 =imresize(z1,heightWidth);            
+            z1 =imresize(z1,heightWidth);
             while movie.hasFrame
                 z2 =  single(movie.readFrame);
-                if ndims(z2)==3;z2=z2(:,:,1);end 
+                if ndims(z2)==3;z2=z2(:,:,1);end
                 z2 =imresize(z2,heightWidth);
                 if useGPU
                     z1 = gpuArray(z1);
@@ -313,7 +324,7 @@ classdef Ball < dj.Computed
                 quality = gather(quality);
             end
 
-            
+
 
         end
     end
