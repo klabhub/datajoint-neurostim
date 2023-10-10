@@ -21,6 +21,13 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %   root\session_definition.json
 %   root\subject_definition.json
 %
+% OR, if a metaDefinitionTag is specified in
+% root\experiment_definition_tag.json 
+%   root\session_definition_tag.json
+%   root\subject_definition_tag.json
+% This allows different projects to use different meta data definitions in
+% the same data tree.
+%
 % INPUT
 % 'root' - Top level folder (e.g. Z:\). Folders below this root folder should
 %           correspond to the years. This defaults to the value in
@@ -33,6 +40,11 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %
 % readJson - Read the json files containing meta data and add to the tables
 %               [true]
+% metaDefinitionTag - Determines which meta definition files to use (e.g. for
+% metaDefinitionTag=  'rvs', the scan looks for root\experiment_definition_rvs.json
+% for experiment meta data definitions.  Defaults to '' for global
+% defaults in experiment_definition.json
+%
 % paradigm = Cell array or char of paradigms to include. Leave empty to include
 %               all. Paradigms are matched case-insensitively. [{}]
 % subject = Cell array or char of subjects to include. Leave empty to include all.
@@ -77,13 +89,18 @@ p.addParameter('addToDataJoint',false,@islogical)
 p.addParameter('readFileContents',false,@islogical)
 p.addParameter('cicOnly',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
+p.addParameter('metaDefinitionTag','',@ischar);
 p.parse(varargin{:});
 
 tExperiment = [];
 tSession = [];
 tSubject = [];
 
-
+if ~isempty(p.Results.metaDefinitionTag) && p.Results.metaDefinitionTag(1)~='_'
+    metaDefinitionTag = ['_' p.Results.metaDefinitionTag];
+else
+    metaDefinitionTag  = ''; % Use global default definition 
+end
 
 %% A. Find relevant files
 switch (p.Results.schedule)
@@ -208,7 +225,7 @@ end
 if p.Results.readJson
     %% Read Meta information definitions and data from JSON files.
     % Read the current meta definition for experiments
-    definitionFile = fullfile(p.Results.root,'experiment_definition.json');
+    definitionFile = fullfile(p.Results.root,['experiment_definition' metaDefinitionTag '.json']);
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.experiment = json.Locked =="1";
@@ -219,8 +236,11 @@ if p.Results.readJson
         for i=1:numel(experimentMetaFields)
             [meta.(experimentMetaFields{i})] = deal("");
         end
-    else
+    elseif isempty(metaDefinitionTag)
+        % Use no meta definition
         isLocked.experiment = false;
+    else
+        error('Meta definition file %s not found',definitionFile)
     end
 
     % Read associated JSON files (if they exist)
@@ -264,7 +284,7 @@ tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','s
 tSession = unique(tExperiment(:,{'session_date','subject'}));
 nrSessions = height(tSession);  
 if p.Results.readJson
-    definitionFile = fullfile(p.Results.root,'session_definition.json');
+    definitionFile = fullfile(p.Results.root,['session_definition' metaDefinitionTag '.json']);
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.Session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
@@ -273,8 +293,10 @@ if p.Results.readJson
             error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
         end
         nrSessionMetaFields= numel(sessionMetaFields);
-    else
+    elseif isempty(metaDefinitionTag)
         nrSessionMetaFields= 0;
+    else
+        error('Meta definition file %s not found',definitionFile)    
     end
     emptyInit = repmat("",[height(tSession) 1]);
     if nrSessionMetaFields>0
@@ -317,7 +339,7 @@ tSession = movevars(tSession,{'session_date','subject'},'after',1);
 tSubject= unique(tSession(:,'subject'));
 nrSubjects = height(tSubject);
 if p.Results.readJson
-    definitionFile = fullfile(p.Results.root,'subject_definition.json');
+    definitionFile = fullfile(p.Results.root,['subject_definition' metaDefinitionTag '.json']);
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.subject = json.Locked =="1"; % No new meta fields allowed according to _definition
@@ -326,8 +348,10 @@ if p.Results.readJson
             error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
         end
         nrSubjectMetaFields= numel(subjectMetaFields);
-    else
+    elseif isempty(metaDefinitionTag)
         nrSubjectMetaFields= 0;
+    else
+        error('Meta definition file %s not found',definitionFile)    
     end
     emptyInit = repmat("",[height(tSubject) 1]);
     if nrSubjectMetaFields>0
