@@ -317,6 +317,14 @@ if p.Results.readJson
         else
             thisJson = struct;
         end
+        % Check to see if there are any .txt session notes (subjectNr.txt)
+        txtFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".txt");
+        if exist(txtFile,"file")
+            txt =string(fileread(txtFile));            
+            if isfield(thisJson,'comments') && ~any(contains(thisJson.comments,txt))
+                thisJson.comments = thisJson.comments + " " + txt;
+            end
+        end
         metaFieldsFromJson = fieldnames(thisJson);
         for j=1:numel(metaFieldsFromJson)
             if ~ismember(metaFieldsFromJson{j},tSession.Properties.VariableNames)
