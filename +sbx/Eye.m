@@ -26,19 +26,19 @@ classdef Eye < dj.Computed
         end
     end
 
-    methods (Access=public)       
+    methods (Access=public)
         function plot(tbl,pv)
             arguments
                 tbl (1,1) sbx.Eye
                 pv.mode (1,1) string {mustBeMember(pv.mode,["MOVIE","TRAJECTORY","TIMECOURSE"])} = "TRAJECTORY"
             end
-            
+
             for tpl = tbl.fetch('*')'
                 movieParms = fetch(ns.Movie&tpl,'*');
                 figName= sprintf('Eye: #%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
                 figByName(figName);
                 clf;
-                
+
                 switch upper(pv.mode)
                     case "MOVIE"
                         % Show the movie with the decoded pupil on top.
@@ -51,21 +51,21 @@ classdef Eye < dj.Computed
                             hold off
                             imagesc(frame);
                             hold on
-                            
+
                             x = tpl.x(frameCntr,:)';
                             y = tpl.y(frameCntr,:)';
-                            
+
                             plot(x,y,'r*');
 
-                                
+
                             if false
                                 radius = sqrt(tpl.a(frameCntr)/pi);
-                            line(tpl.x(frameCntr)+radius.*cos(phi),tpl.y(frameCntr)+radius.*sin(phi),'Color','g')
+                                line(tpl.x(frameCntr)+radius.*cos(phi),tpl.y(frameCntr)+radius.*sin(phi),'Color','g')
                             end
-                                
+
                             xlabel 'X (pixels)';
                             ylabel 'Y (pixels)';
-                            
+
                             drawnow;
                         end
                     case "TRAJECTORY"
@@ -119,7 +119,7 @@ classdef Eye < dj.Computed
                         % Any tag that starts with DLC is processed with
                         % DLC to allow DLC model comparisons.
                         mvFile =  file(ns.Movie & key,"smallest");
-                        [x,y,a,quality] = sbx.Eye.dlc(mvFile, parms);                        
+                        [x,y,a,quality] = sbx.Eye.dlc(mvFile, parms);
                     else
                         error('Unknown %d tag',key.tag);
                     end
@@ -323,15 +323,41 @@ classdef Eye < dj.Computed
             % Read the csv file
             if exist(csvFile,"file")
                 [T,bodyparts] = readdlc(csvFile);
-                [x,y,a,quality] = postprocessPupilTracker(T,bodyparts);
+                [x,y,a,quality] = sbx.Eye.postprocessPupilTracker(T,bodyparts);
             else
                 dir(videoFolder);
                 error('The expected DLC output file (%s) was not found. Check the suffix (%s) in sbx.EyeParms',csvFile,parms.suffix);
             end
-
-
         end
 
+
+
+        function [x,y,a,quality] = postprocessPupilTracker(T,bodyparts)
+            % Given a table from a csv file output created by a specific
+            % DLC model that determins the left,
+            % right, top, and bottom points of the pupil, determine the intersection of the line from top to
+            % bottom and the line from left to right to define the
+            % center (the intersection) and the area (the trapezoid
+            % spanned by the four points).
+            isTop = strcmpi(bodyparts,'top');
+            isBottom = strcmpi(bodyparts,'bottom');
+            isLeft = strcmpi(bodyparts,'left');
+            isRight = strcmpi(bodyparts,'right');
+
+            slopeTopBottom = (T.y(:,isTop) - T.y(:,isBottom)) ./ (T.x(:,isTop) - T.x(:,isBottom));
+            intersectTopBottom = T.y(:,isBottom) - slopeTopBottom .* T.x(:,isBottom);
+
+            slopeLeftRight = (T.y(:,isRight)- T.y(:,isLeft))  ./ (T.x(:,isRight) - T.x(:,isLeft));
+            intersectLeftRight = T.y(:,isLeft) - slopeLeftRight .* T.x(:,isLeft);
+
+            % Find intersection point
+            x  = (intersectLeftRight - intersectTopBottom) ./ (slopeTopBottom - slopeLeftRight);
+            y = slopeTopBottom .* x+ intersectTopBottom;
+            topToBottom = sqrt((T.y(:,isTop) - T.y(:,isBottom)).^2+ (T.x(:,isTop) - T.x(:,isBottom)).^2);
+            leftToRight = sqrt((T.y(:,isRight) - T.y(:,isLeft)).^2+ (T.x(:,isRight) - T.x(:,isLeft)).^2);
+            a = topToBottom.*leftToRight;
+            quality = min(T.likelihood,[],2,'omitnan');           
+        end
 
     end
 
