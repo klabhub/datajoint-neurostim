@@ -20,7 +20,7 @@ compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less c
 classdef Roi < dj.Imported
 
     methods (Access = public)
-        function [hScatter,ax,axImg] = plotSpatial(roi,pv)
+        function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.
             %
@@ -41,9 +41,7 @@ classdef Roi < dj.Imported
             %
             % OUTPUT
             %    hScatter - Handle to the scatter object
-            %   ax - Axes showing the cells
-            %  axImg - Axes showing the backgroun image.
-            % EXAMPLE
+             % EXAMPLE
             %
             %
             % plot(sbx.Roi); % Encode all cell radius (size) and z-scored session activity (color).
@@ -51,76 +49,122 @@ classdef Roi < dj.Imported
             % plot(sbx.Roi,color =z,clim = [0 5]);  % Encode z by the color, crop colors at 5
             arguments
                 roi (1,1) sbx.Roi
-                pv.sz      = []
-                pv.szLabel = ''
-                pv.color   = []
-                pv.colorLabel = ''
-                pv.clim     =[];
-                pv.showImg = true;
-                pv.colormap = hot;
+                pv.sz   (1,:)  double  = []
+                pv.szLabel (1,1) string = ''
+                pv.color   (1,:) double = []
+                pv.colorLabel (1,1) string = ''
+                pv.clim    (1,:) double  =[];
+                pv.showImg (1,1) logical = true;
+                pv.colormap (:,3) double = hot;
+                pv.pix (1,1) logical  = false
+                pv.alpha (1,1) double = 0.5;
+                pv.alphaThreshold (1,1) double =0;
             end
-            MAXPOINTS = 500; % S
-            [x,y,radius,m,sd] = fetchn(roi,'x','y','radius','meanrate','stdrate');
+
+            if count(roi) ==0
+                fprintf('No rois, nothing to plot \n');
+                return;
+            end
+            
+            % To visualize an arbitrary and large subset of rois, this
+            % function can be called with a large struct array (one per roi),
+            % which is potentially inefficient. Silencing DJ warning about this.
+            warnState = warning('query');
+            warning('off', 'DataJoint:longCondition');
+
+            MAXPOINTS = 300; % 
+            [x,y,radius,m,sd,roiNr] = fetchn(roi,'x','y','radius','meanrate','stdrate','roi');
             micPerPix = sbx.micronPerPixel(roi);  % Scaling
             mixPerPixR = sqrt(sum(micPerPix.^2));
-            % Setup size
-            if isempty(pv.sz)
-                % Use the physical size as the size of the cells
-                pv.sz =min(pi*(radius*mixPerPixR).^2,MAXPOINTS);
-                pv.szLabel = 'size (\mum^2)';
-            end
-            zeroSize = pv.sz==0;
-            if any(zeroSize)
-                pv.sz(zeroSize) = eps;
-            end
-            % Setup color
+
+            %% Setup color
             if isempty(pv.color)
                 % Use the z-scored rate as the color of the cells
                 z = m./sd;
                 pv.color = z;
                 pv.colorLabel = 'rate (Z)';
             end
-            colormap(pv.colormap)
-            if pv.showImg
-                % Show mean image as background
-                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');
-                cl = [min(meanImg,[],"all") max(meanImg,[],"all")];
-                RI = imref2d(size(meanImg),micPerPix(1),micPerPix(2));
-                imshow(meanImg,RI,'DisplayRange',cl,'colormap',gray);
-                axImg =gca;
-                % Another set of axes for the scatter (uses a different
-                % colormap)
-                ax = axes('position',get(axImg,'position'),'Color','none');
+            % Clamp to the limits
+            if isempty(pv.clim)
+                pv.clim = [min(pv.color) max(pv.color)];
             else
-                ax =gca;
+                pv.color = max(min(pv.color,pv.clim(2)),pv.clim(1)); % Clamp between clims
+            end
+            colormap(pv.colormap)
+
+
+            %% Show mean image as background
+            if pv.showImg
+                meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');
+                RI = imref2d(size(meanImg),micPerPix(1),micPerPix(2));
+                cl = [min(meanImg,[],"all") max(meanImg,[],"all")];
+                meanImg  = 1+round((size(gray,1)-1)*(meanImg-cl(1))./(cl(2)-cl(1)));
+                % Convert to true color to reuse axes for color map
+                meanImg = ind2rgb(meanImg,gray);
+                imshow(meanImg,RI);
+                hold on
             end
 
-            % The data
-            hScatter = scatter(ax,y*micPerPix(2),x*micPerPix(1),pv.sz(:), pv.color(:),'filled');
-            xlabel 'Y (\mum)'
-            ylabel 'X (\mum)'
-            % Match Suite2p layout
-            set(ax,'XDir','normal','YDir','reverse');
-            if ~isempty(pv.clim)
-                clim(ax,pv.clim)
-            end
-            ax.Color = "none";
-            h = colorbar;
-            ylabel(h,pv.colorLabel);
-            if exist('axImg','var')
-                set(axImg,'position',get(ax,'position'));
-                ax.XLim = axImg.XLim;
-                ax.YLim = axImg.YLim;
-                ax.Visible ='off';
-            end
+            if pv.pix
+                %% Show the data in the ROI pixels
+                overlay = zeros(RI.ImageSize);
+                alpha   = zeros(RI.ImageSize);
+                prep = sbx.Preprocessed & roi;
+                stat =  prep.stat; % Reads the stat.npy file
+                rCntr  =0;
+                % Scale to the full colormap
+                scaled  = (pv.color-min(pv.color))./(max(pv.color)-min(pv.color));
+                clrIndex  = 1+round((size(pv.colormap,1)-1)*scaled);
+                for r=roiNr'
+                    rCntr= rCntr+1;
+                    x =stat(r).xpix;
+                    y = stat(r).ypix;
+                    ix =sub2ind(size(overlay),y,x);
+                    overlay(ix)= clrIndex(rCntr);
+                    alpha(ix) = pv.alpha*(abs(pv.color(rCntr))>pv.alphaThreshold);
+                end
+               overlay = ind2rgb(overlay,pv.colormap); % Convert to true color using the colormap
+               hData = imshow(overlay,RI);
+               set(hData,'AlphaData',alpha)
+            else
+                %% Show the data as circles                
+                % Setup size
+                if isempty(pv.sz)
+                    % Use the physical size as the size of the cells
+                    pv.sz =min(pi*(radius*mixPerPixR).^2,MAXPOINTS);
+                    pv.szLabel = 'size (\mum^2)';
+                end
+                zeroSize = pv.sz==0;
+                if any(zeroSize)
+                    pv.sz(zeroSize) = eps;
+                end
 
-            % Data tips
+                % Show the data symbolically on top of the image. Match
+                % orientation to suite2p
+                hData = scatter((x-1)*micPerPix(1),(y-1)*micPerPix(2),pv.sz(:), pv.color(:),'filled','MarkerFaceAlpha',pv.alpha.*(abs(pv.color(:))>pv.alphaThreshold));
+                set(gca,'Color','none','XDir','normal','YDir','reverse','colormap',pv.colormap);
+
+                % Data tips
             if ~isempty(pv.szLabel)
-                hScatter.DataTipTemplate.DataTipRows(3).Label = pv.szLabel;
+                hData.DataTipTemplate.DataTipRows(3).Label = pv.szLabel;
             end
             if ~isempty(pv.colorLabel)
-                hScatter.DataTipTemplate.DataTipRows(4).Label = pv.colorLabel;
+                hData.DataTipTemplate.DataTipRows(4).Label = pv.colorLabel;
             end
+            end
+            if ~isempty(pv.clim)
+                clim(pv.clim)
+            end
+
+            %% Add Markup
+            xlabel 'X (\mum)'
+            ylabel 'Y (\mum)'
+            h = colorbar;
+            ylabel(h,pv.colorLabel);
+
+            
+            % Restore warning state
+            warning(warnState);
 
         end
 
@@ -157,7 +201,7 @@ classdef Roi < dj.Imported
                 expt (1,1) ns.Experiment  {mustHaveRows}
                 pv.trial   (1,:) double = []
                 pv.baseline (1,:) double = [2 3]
-                pv.window (1,2) double = [0 3]                
+                pv.window (1,2) double = [0 3]
                 pv.maxdFF (1,1) double = Inf;
                 pv.fetchOptions {mustBeText} = ''
                 pv.percentile (1,1) double {mustBeInRange(pv.percentile,0,100)} = 8;
@@ -297,18 +341,18 @@ classdef Roi < dj.Imported
             if isempty(pv.name)
                 pv.name = names;
             end
-            
+
             nrConditions = numel(trialsPerCondition);
             if isempty(pv.name)
                 pv.name= "Condition " + string(1:nrConditions);
             end
-           
+
             if isempty(pv.fetchOptions)
                 roiTpls = fetch(roi);
             else
                 roiTpls = fetch(roi,pv.fetchOptions);
             end
-             nrRois = numel(roiTpls);
+            nrRois = numel(roiTpls);
             if pv.averageRoi || pv.mode=="COHERENCE"
                 nrRois =1;
             end
@@ -330,8 +374,8 @@ classdef Roi < dj.Imported
                     end
                     if pv.averageRoi || pv.mode=="COHERENCE"
                         % Get all rois
-                        [time,y] = get(roi ,expt,fetchOptions = pv.fetchOptions,crossTrial =pv.crossTrial, trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);                        
-                        if pv.averageRoi 
+                        [time,y] = get(roi ,expt,fetchOptions = pv.fetchOptions,crossTrial =pv.crossTrial, trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
+                        if pv.averageRoi
                             % Average
                             y = mean(y,2,"omitnan"); % Average over rois
                         end
@@ -341,7 +385,7 @@ classdef Roi < dj.Imported
                     end
 
                     if isempty(y);continue;end
-                     
+
                     perTrial{c} = y;
                     switch upper(pv.mode)
                         case {"TOTAL","EVOKED"}
@@ -358,7 +402,7 @@ classdef Roi < dj.Imported
                             [thisM,thisE] = pv.fun(meanResponseInWindow);
                         case {"TIMECOURSE", "RASTER"}
                             % Average over trials  in the condition
-                            [thisM,thisE] = pv.fun(y);       
+                            [thisM,thisE] = pv.fun(y);
                         case "COHERENCE"
                             y = y- mean(y,1,"omitnan"); % Remove mean
                             y(isnan(y)) = 0; % Remove nans
@@ -384,7 +428,7 @@ classdef Roi < dj.Imported
                         ylabel (pv.mode + ' Power')
                         h =legend(h,pv.name);
                         h.Interpreter  = 'None';
-    
+
                     case "TUNING"
                         if isempty(pv.x)
                             pv.x = (1:nrConditions)';
@@ -408,58 +452,58 @@ classdef Roi < dj.Imported
                             ploterr(pv.x,m,e)
                             set(gca,'xTick',pv.x,'xTickLabel',pv.name)
                         end
-                    
+
                     case "RASTER"
-                         grandMax = max(cellfun(@(x) prctile(x(:),pv.prctileMax ),perTrial));
-                         grandMin = min(cellfun(@(x) prctile(x(:),100-pv.prctileMax ),perTrial));
-                         nrTime = numel(allTime);
-                         cmap = [hot(255);0 0 1];
-                         I =[];
-                         for c=1:nrConditions
-                             I = cat(2,I,perTrial{c},nan(nrTime,1));                             
-                         end
+                        grandMax = max(cellfun(@(x) prctile(x(:),pv.prctileMax ),perTrial));
+                        grandMin = min(cellfun(@(x) prctile(x(:),100-pv.prctileMax ),perTrial));
+                        nrTime = numel(allTime);
+                        cmap = [hot(255);0 0 1];
+                        I =[];
+                        for c=1:nrConditions
+                            I = cat(2,I,perTrial{c},nan(nrTime,1));
+                        end
 
-                         
 
-                         I = ((I-grandMin)./(grandMax-grandMin))';
-                         % Clamp
-                         I(I<0) = 0;
-                         I(I>1) = 1;
-                         I= round(I*255);
-                         I(isnan(I))=256;
-                         nrTrials = size(I,1);
-                         image(allTime,1:nrTrials, I,'CDataMapping','direct');                         
-                         colormap(cmap)
-                         title(['ROI #' num2str(roiTpls(roiCntr).roi)]);
-                         nrTrialsPerCondition = cellfun(@(x) size(x,2),perTrial);
-                         leftEdge = [0 cumsum(nrTrialsPerCondition(1:end-1))];
-                         middleOfCondition = leftEdge+nrTrialsPerCondition./2;                         
-                         set(gca,'yTick',middleOfCondition,'yTickLabel',pv.name)
-                          
-                         if pv.compact
-                             set(gca,'XTick',[]);
-                         else
+
+                        I = ((I-grandMin)./(grandMax-grandMin))';
+                        % Clamp
+                        I(I<0) = 0;
+                        I(I>1) = 1;
+                        I= round(I*255);
+                        I(isnan(I))=256;
+                        nrTrials = size(I,1);
+                        image(allTime,1:nrTrials, I,'CDataMapping','direct');
+                        colormap(cmap)
+                        title(['ROI #' num2str(roiTpls(roiCntr).roi)]);
+                        nrTrialsPerCondition = cellfun(@(x) size(x,2),perTrial);
+                        leftEdge = [0 cumsum(nrTrialsPerCondition(1:end-1))];
+                        middleOfCondition = leftEdge+nrTrialsPerCondition./2;
+                        set(gca,'yTick',middleOfCondition,'yTickLabel',pv.name)
+
+                        if pv.compact
+                            set(gca,'XTick',[]);
+                        else
                             xlabel 'Time (s)'
-                            ylabel('Conditions')                            
+                            ylabel('Conditions')
                             h = colorbar;
                             set(h,'YTick',0:50:250,'YTickLabel',round(grandMin +(0:50:250)*(grandMax-grandMin)/255) )
                             ylabel(h,'Response')
-                         end
-                            
+                        end
+
                     case "TIMECOURSE"
 
-                       
+
 
                         %% TimeCourse
                         nrTime = numel(allTime);
                         % Scale each condition to the grandMax
-                          if pv.perTrial
+                        if pv.perTrial
                             grandMax = max(cellfun(@(x) prctile(x(:),pv.prctileMax ),perTrial));
                             grandMin = min(cellfun(@(x) prctile(x(:),100-pv.prctileMax ),perTrial));
-                          else
+                        else
                             grandMax = prctile(abs(m(:)),pv.prctileMax );
                             grandMin = prctile(abs(m(:)),100-pv.prctileMax );
-                          end
+                        end
                         m = (m-grandMin)./(grandMax-grandMin);
                         e = e./(grandMax-grandMin);
                         % Add the conditionNr so that each m column has a mean of
@@ -480,11 +524,11 @@ classdef Roi < dj.Imported
                             [h.Color] = deal([0 0 0]);
                             [hErr.FaceColor] = deal([0 0 0]);
                             colorOrder = get(gca,'ColorOrder');
-                            for c=1:nrConditions                                
-                                 plot(allTime,c+ perTrial{c}./(grandMax-grandMin),'Color',colorOrder(mod(c-1,size(colorOrder,1))+1,:),'LineWidth',.5)
-                            end                
-                            
-                        end                        
+                            for c=1:nrConditions
+                                plot(allTime,c+ perTrial{c}./(grandMax-grandMin),'Color',colorOrder(mod(c-1,size(colorOrder,1))+1,:),'LineWidth',.5)
+                            end
+
+                        end
                 end
             end
         end
@@ -504,8 +548,8 @@ classdef Roi < dj.Imported
             % step   - Step size in seconds.
             % interpolation -  enum('nearest','linear','spline','pchip','makima')
             %               Interpolation method; see timetable/retime. ['linear']
-        %                   For binning, use one of the aggregation methods
-        %                   ('mean','median')
+            %                   For binning, use one of the aggregation methods
+            %                   ('mean','median')
             % crossTrial - Allow values to be returned that are from one
             % trial before or one trial after. This is helpful to set start
             % =-1 to get the values from the iti before the trial. [true]
@@ -548,7 +592,7 @@ classdef Roi < dj.Imported
             end
             V = [sessionActivity.(pv.modality)]; %[nrFramesPerSession nrROIs]
 
-           
+
             newTimes = seconds(pv.start:pv.step:pv.stop);
             nrTimes  = numel(newTimes);
 
@@ -556,7 +600,7 @@ classdef Roi < dj.Imported
             % experiments
             frameDuration = seconds(1./unique([fetch(sbx.Preprocessed & roi,'framerate').framerate]));
 
-            nrTrials = numel(trials);            
+            nrTrials = numel(trials);
             varNames = "Trial" + string([trialMap(trials).trial]);
             T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes','VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
             trCntr=0;
@@ -660,7 +704,7 @@ classdef Roi < dj.Imported
                 med= cat(1,stat.med); %[x y] pixels per ROI.
                 compact = cat(1,stat.compact);
                 aspect = cat(1,stat.aspect_ratio);
-        
+
                 radius = cat(1,stat.radius); % Pixels
                 radius = radius.*micPerPix;
                 stdfluorescence = cat(1,stat.std);
@@ -684,8 +728,8 @@ classdef Roi < dj.Imported
                     'spikes',num2cell(spks',1)', ...
                     'meanrate',num2cell(meanrate',1)',...
                     'stdrate', num2cell(stdrate',1)', ...
-                    'x',num2cell(med(:,1)), ...
-                    'y',num2cell(med(:,2)), ...
+                    'x',num2cell(med(:,2)), ...    % Dim 2 is the horizontal axis of the image
+                    'y',num2cell(med(:,1)), ...    % Dim 1 is the vertical axis of the image
                     'radius',num2cell(radius',1)', ...
                     'compact',num2cell(compact',1)', ...
                     'aspect',num2cell(aspect',1)' , ...
