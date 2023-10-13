@@ -701,7 +701,7 @@ classdef Roi < dj.Imported
                 thisFile = fullfile(fldr,planes(pl).name,'stat.mat');
                 load(thisFile,'stat');
                 stat= [stat{:}];
-                med= cat(1,stat.med); %[x y] pixels per ROI.
+                med= cat(1,stat.med); %[y x] center pixels per ROI.
                 compact = cat(1,stat.compact);
                 aspect = cat(1,stat.aspect_ratio);
 
