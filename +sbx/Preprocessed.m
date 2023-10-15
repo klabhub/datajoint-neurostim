@@ -19,7 +19,7 @@ framerate : double          # Acquisition framerate
 % With suite2p preprocessing, the fast_disk option can be set in PrepParms,
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
-% local disk) will be used. 
+% local disk) will be used.
 classdef Preprocessed < dj.Imported
     properties (Dependent)
         keySource
@@ -35,12 +35,17 @@ classdef Preprocessed < dj.Imported
         function v =  get.ops(tbl)
             % Retrieve the parameters used by suite2p
             keyCntr = 0;
-            for key =fetch(tbl*sbx.PrepParms,'*')
+            for key =fetch(tbl*sbx.PrepParms,'*')'
                 keyCntr = keyCntr+1;
                 sessionPath=unique(folder(ns.Experiment & key));
                 resultsFolder = [key.subject '.' key.toolbox '.' key.tag];
                 resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
-                v{keyCntr} =   py.numpy.load(resultsFile,allow_pickle=true); %#ok<AGROW>
+                if exist(resultsFile,"file")
+                    v{keyCntr} =   py.numpy.load(resultsFile,allow_pickle=true); %#ok<AGROW>
+                else
+                    fprintf('OPS file  %s not found \n',resultsFile);
+                    v{keyCntr} = [];
+                end
             end
             if numel(v)==1
                 v =v{1};
@@ -56,8 +61,13 @@ classdef Preprocessed < dj.Imported
                 sessionPath=unique(folder(ns.Experiment & key));
                 resultsFolder = [key.subject '.' key.toolbox '.' key.tag];
                 resultsFile =fullfile(sessionPath,resultsFolder,'plane0','stat.mat');
-                load(resultsFile,'stat');
-                v{keyCntr} =   [stat{:}];            %#ok<PROP>
+                if exist(resultsFile,"file")
+                    load(resultsFile,'stat');
+                    v{keyCntr} =   [stat{:}];   %#ok<PROP>
+                else
+                    fprintf('Stat file  %s not found \n',resultsFile);
+                    v{keyCntr} = [];
+                end
             end
             if numel(v)==1
                 v =v{1};
@@ -65,7 +75,151 @@ classdef Preprocessed < dj.Imported
         end
 
     end
-    methods (Access=public)
+    methods (Access=public)        
+        function openGui(tbl)            
+            % Open the preprocessed data in the relevant gui (suite2p)
+            % I have not found a way to load the stat.npy
+            % file into suite2p from the command line (or to change its
+            % working directory), but the gui will open with its working directory
+            % set to the relevant folder so that the user can rapdily select the stat.npy 
+            % from the gui.
+            conda = getenv('NS_CONDA');
+            if isempty(conda)
+                fprintf('Please set the environment variable NS_CONDA to the conda folder\n')
+                return;
+            else
+                % Construct a batch/bash command.
+                tpl = fetch(tbl*sbx.PrepParms,'*');
+                switch (tpl.toolbox)
+                    case 'suite2p'
+                        env = 'suite2p';  % the conda environment
+                        sessionPath=unique(folder(ns.Experiment & tpl));
+                        statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
+                        if ~exist(statsFile,"file")
+                            error('File not found %s',statsFile);
+                        end
+                        if ispc
+                        drive = extractBefore(statsFile,':');
+                        condaCmd = sprintf('cd "%s" & %s: & suite2p',fileparts(statsFile),drive);
+                        cmd = sprintf('%s/Scripts/activate.bat %s & %s &',strrep(conda,'\','/'),env,condaCmd);
+                        else
+                            error('Not implemented yet')
+                        end 
+                    otherwise
+                        error('Not implemented yet')
+                end
+            end
+
+            fprintf('Starting the external %s gui\n',tpl.toolbox)
+            system(cmd ,'-echo');
+            
+        end
+        function [nu,sd,normalized] = shotNoise(tbl,expt,pv)
+            % Estimate the shotnoise in the session by randomly sampling a
+            % number of ROIs, extract Fluorescence and Neuropil in a time 
+            % window in the trial with spontaneous activity and then
+            % calling dFOverF.m
+            %
+            % INPUT
+            % start - window start (in seconds relative to the start of the trial)
+            % stop - window stop 
+            % percentile  - Which percentile to use as the F0
+            % nrRoi - How many ROI to sample
+            % minPCell - Sampl only ROIs with pCell larger than this.
+            % minRadius - Sample only ROIS with radius larger than this.
+            %
+            % OUTPUT
+            %  sh - The average of the standardized shotnoise level across the nrRoi rois in each session (i.e. a row in tbl)
+            % sd  - The standard deviation of the shotnoise across the rois in each session.
+            % normalized - The shotnoise level scaled to the number of
+            %               ROIs such that 1 corresponds to the line in
+            %               Rupprecht et al
+            %               (https://gcamp6f.com/2021/10/04/large-scale-calcium-imaging-noise-levels/).
+            %               normalized values >1 have more shot noise than the
+            %               datasets in that paper, <1  have less shot
+            %               noise.
+            arguments
+                tbl (1,1) sbx.Preprocessed
+                expt (1,1) ns.Experiment
+                pv.start (1,1)
+                pv.stop (1,1)
+                pv.percentile (1,1) double {mustBeInRange(pv.percentile,0,100)} = 8;                     
+                pv.nrRoi (1,1) double = 10
+                pv.minPCell (1,1) double = 0.75
+                pv.minRadius (1,1) double = 5 
+            end
+            sessionCntr = 0;
+            nrSessions = count(tbl);
+            nu = nan(count(tbl),pv.nrRoi);
+            nrRoisInSession = nan(nrSessions,1);
+            for key =tbl.fetch()'
+                % Extract fluorescence and neuropil for a subset of rois.
+                sessionCntr= sessionCntr+1;
+                thisRoi = sbx.Roi & key & ['radius>' num2str(pv.minRadius)] & ['pcell > ' num2str(pv.minPCell)];
+                nrRoisInSession(sessionCntr) = count(thisRoi);
+                thisSessionRoi = [fetch(thisRoi,'roi').roi];
+                pickRoi = randperm(nrRoisInSession(sessionCntr),pv.nrRoi);
+                selectedRoi = struct('roi',num2cell(thisSessionRoi(pickRoi)));                           
+                tF  = get(thisRoi &  selectedRoi,expt, modality='fluorescence',start = pv.start ,stop=pv.stop);
+                tNeuropil  = get(thisRoi & selectedRoi,expt, modality='neuropil',start = pv.start ,stop=pv.stop);                        
+                [~,nu(sessionCntr,:)] =  sbx.dFOverF(tF,tNeuropil,[pv.start pv.stop],percentile = pv.percentile);
+            end
+            sd = std(nu,0,2,"omitnan"); % Std across rois
+            nu = mean(nu,2,"omitnan"); % Average shotnoise over rois.
+            %https://gcamp6f.com/2021/10/04/large-scale-calcium-imaging-noise-levels/
+            % What is "good" also depends on the number of rois recorded simultaneously
+            % log(nu) = -1 + 0.5*log(n) looks like the best case in the graphs of
+            % Rupprecht et al. 
+            normalized = log10(nu)/(-1+0.5*log10(nrRoisInSession)); % 1 =good, lower is better.
+        end
+
+        function q =  motionMetrics(tbl)
+            % Compute quality control metrics for the registration of the
+            % frames
+            %
+            % q.speed = rigid pixel displacement per frame for each frame  (coudl be used
+            %               to regress out co-registration artifacts from the data?)
+            % q.meanSpeed = rigid pixels of displacement  per frame averaged over all frames
+            %
+            % Suite 2p computes regDX per PC (spatial PC of the image), this is the shift
+            % needed to match the frames that project most onto the PC (top 500) with those
+            % that project least onto this PC. The first column is the rigid registration, the second is
+            % the mean across all squares in the non-rigid registration, and the third column is the max shift
+            % across all squares. From these I compute the mean , the
+            % max of the max and the mean of hte max regDX.
+            %
+            % q.rigid = mean regDX for the rigid coregistration (seems to be zero always?)
+            % q.meanNonRigid = average regDX across all PCs of the image.
+            % q.maxMaxNonRigid  =  largest regDX across all PCS of the image
+            % q.meanMaxNonRigid = mean of the largest regDX across all PCs
+            %                           of the image
+            %
+            q= struct('rigid',nan,'meanNonRigid',nan,'maxMaxNonRigid',nan,'meanMaxNonRigid',nan);
+            q = repmat(q,[count(tbl) 1]);
+            keyCntr = 0;
+            for key = fetch(tbl)'
+                keyCntr= keyCntr+1;
+                thisPrep = (tbl&key);
+                switch fetch1(sbx.PrepParms&key,'toolbox')
+                    case 'suite2p'
+                        o = thisPrep.ops; % Read the npy file
+                        if isempty(o); continue;end
+                        x =double((o.item{'xoff'}.tolist)); % rigid translation in x-direction for each frame
+                        y =double((o.item{'yoff'}.tolist)); % rigid translation in y-direction for each frame
+                        speed = [sum(sqrt([diff(x); diff(y)].^2)) 0];  % "speed" with 0 for the last frame
+                        regDX = cellfun(@double, cell(o.item{'regDX'}.tolist), 'UniformOutput', false); %
+                        regDX = cat(1,regDX{:});
+                        q(keyCntr).speed = speed;
+                        q(keyCntr).meanSpeed = mean(speed);
+                        q(keyCntr).rigid = mean(regDX(:,1));
+                        q(keyCntr).meanNonRigid = mean(regDX(:,2));
+                        q(keyCntr).maxMaxNonRigid = max(regDX(:,3));
+                        q(keyCntr).meanMaxNonRigid = mean(regDX(:,3));
+                    otherwise
+                        fprintf('Not implemented yet')
+                end
+            end
+        end
         function v = getFolder(tbl)
             % subject.suite2p.name-of-preprocessing
             sessionPath=unique(folder(ns.Experiment & tbl));
@@ -128,9 +282,9 @@ classdef Preprocessed < dj.Imported
                     if ~exist(resultsFile,'file')
                         % Create a dict with the folder information
                         if isempty(cell(opts{'fast_disk'}))
-                                % No fast disk specified, guessing that tempname will have better access speed.
-                                % In the db, fast_disk has to be a string, not  a list.
-                                fastDisk = tempname;
+                            % No fast disk specified, guessing that tempname will have better access speed.
+                            % In the db, fast_disk has to be a string, not  a list.
+                            fastDisk = tempname;
                         else
                             if opts{'delete_bin'}
                                 % Not keeping the bin file. Use a temp
@@ -154,7 +308,7 @@ classdef Preprocessed < dj.Imported
                         conda = getenv('NS_CONDA');
                         if isempty(conda)
                             % Pass to InProcess python to process
-                            py.suite2p.run_s2p(ops =opts,db=db);                        
+                            py.suite2p.run_s2p(ops =opts,db=db);
                         else
                             % Calling python in-process can lead to problems
                             % with library conflicts (not so much with simple dict calls).
@@ -162,7 +316,7 @@ classdef Preprocessed < dj.Imported
                             % different installs. To pass the ops and db dicst we save them
                             % to a temporary file.
 
-                            cfd = fileparts(mfilename('fullpath'));                            
+                            cfd = fileparts(mfilename('fullpath'));
                             % The python tools are in the tools folder.
                             % Temporarily go there to import  (full path
                             % did not seem to work).
@@ -211,7 +365,7 @@ classdef Preprocessed < dj.Imported
                     opts =py.numpy.load(resultsFile,allow_pickle=true);
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
-                    fs = double(opts.item{'fs'});                    
+                    fs = double(opts.item{'fs'});
                     tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs));
                     insert(tbl,tpl);
                     % And make the part table that maps trials to frames

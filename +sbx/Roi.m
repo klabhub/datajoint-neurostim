@@ -20,6 +20,7 @@ compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less c
 classdef Roi < dj.Imported
 
     methods (Access = public)
+        
         function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.

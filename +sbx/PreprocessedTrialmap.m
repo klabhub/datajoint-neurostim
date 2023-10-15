@@ -4,9 +4,9 @@
 ->ns.Experiment
 trial  : int
 --- 
-frame       :  blob   # Frames from this Preprocessed set that correspond to this trial
-nstime   : blob       # Time in seconds on the Neurostim experiment clock
-trialtime   : blob    # Time in seconds relatve to the first frame in the trial.
+frame       : blob   # Frames from this Preprocessed set that correspond to this trial
+nstime      : blob   # Time in seconds on the Neurostim experiment clock
+trialtime   : blob   # Time in seconds relatve to the first frame in the trial.
 %}
 % This determines how each frame in a session maps to a trial and a time in
 % a Neurostim experiment. A frame is assigned to a trial if it occurs after
@@ -28,7 +28,7 @@ classdef PreprocessedTrialmap < dj.Part
     methods (Access=public)
         function make(tbl,key)
             % This is called automatically from sbx.Preprocessed.makeTuples
-            % (i.e. when calling populate on sbx.Preprocessed.
+            % (i.e. when calling populate on sbx.Preprocessed).
             expts = ns.Experiment & key;
             previousScanFrames =0;
             for expt= expts.fetch()'

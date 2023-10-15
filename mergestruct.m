@@ -10,7 +10,10 @@ function v= mergestruct(varargin)
 
 nrStructs = numel(varargin);
 
-
+isscalar = cellfun(@numel,varargin)==1;
+if ~all(isscalar)
+    error('mergestruct can only merge scalar structs')
+end
 % Extract fieldnames and values from each input struct
 fn = {};
 vals ={};

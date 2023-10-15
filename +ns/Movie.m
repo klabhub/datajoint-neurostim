@@ -1,12 +1,12 @@
 %{
 # Movie - A table listing movies associated with an experiment
--> ns.File 
+-> ns.File
 ---
-nrframes = NULL : int unsigned      # Number of frames in the video
-framerate = NULL : float            # Framerate (fps)
-width = NULL : int unsigned         # Width in pixelsststr
-height = NULL : int unsigned        # Height in pixels
-bytes = NULL :  double              # Number of bytes in the file
+nrframes=null               : int unsigned                  # Number of frames in the video
+framerate=null              : float                         # Framerate (fps)
+width=null                  : int unsigned                  # Width in pixelsststr
+height=null                 : int unsigned                  # Height in pixels
+bytes=null                  : double                        # Number of bytes in the file
 %}
 
 classdef Movie < dj.Computed
@@ -89,8 +89,12 @@ classdef Movie < dj.Computed
             else
                 error('File not found %s',ff);
             end
-            tpl = mergestruct(key,struct('nrframes',mv.NumFrames,'width',mv.Width,'height',mv.Height,'framerate',mv.FrameRate,'bytes',info.bytes));
+          
+            tpl = mergestruct(key,struct('nrframes',mv.NumFrames,'width',mv.Width,'height',mv.Height,'framerate',mv.FrameRate,'bytes',info.bytes));        
             insert(tbl,tpl)
+
+            % Now fill the MovieTrialmap
+            make(ns.MovieTrialmap,tpl);
         end
     end
 
