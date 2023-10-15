@@ -623,14 +623,15 @@ classdef Roi < dj.Imported
                 end
 
                 if  pv.crossTrial &&  pv.stop > trialMap(tr).trialtime(end) && trialMap(tr).trial < numel(trialMap)
-                    % Extract from next trial (time requested was after
-                    % trial end).
-                    nextTrial  = trialMap(tr).trial +1;
-                    postTime = seconds(trialMap(nextTrial).trialtime);
-                    % This time starts1 frame after the end of the previous
-                    % trial (=tr)
-                    postTime = seconds(trialMap(tr).trialtime(end)) + frameDuration+postTime-postTime(1);
-                    postT = timetable(postTime,V(trialMap(nextTrial).frame,:));
+                    % Extract from next trial (time requested was after trial end).
+                    nrFramesAfter = ceil((pv.stop-trialMap(tr).trialtime(end))/seconds(frameDuration));
+                    framesAfter =  (1:nrFramesAfter);
+                    postTime     = seconds(trialMap(tr).trialtime(end))+framesAfter*frameDuration;
+                    keepFrames = trialMap(tr).frame(end)+framesAfter;
+                    out = keepFrames >trialMap(end).frame(end);
+                    postTime(out) = [];
+                    keepFrames(out) = [];
+                    postT = timetable(postTime',V(keepFrames',:));
                     thisT = [thisT;postT]; %#ok<AGROW>
                 end
                 thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);

@@ -55,9 +55,9 @@ classdef Ball < dj.Computed
                 clf;
                 switch upper(pv.mode)
                     case "MOVIE"
-                        fprintf('Opening movie file...')
+                        fprintf('Opening movie file...\n')
                         movie = open(ns.Movie & tpl,"smallest");
-                        fprintf('done.\n Press Ctrl-C to stop.');
+                        fprintf('done.\n Press Ctrl-C to stop, or close the window to move to the next movie in the table\n');
                         ax = axes('Position',[0 0 1 1]);
                         axis(ax,'off')
                         pos = get(ax,'Position');
@@ -70,6 +70,7 @@ classdef Ball < dj.Computed
                         historyColormap = gray; % Show multiple trailing vectors as shades of grays
                         colormap gray
                         for frameCntr = pv.frameStart:pv.frameStep:min(pv.frameStop,tpl.nrframes)
+                            if  ~ishandle(hFig);break;end;
                             frame = movie.read(frameCntr);
                             hold off
                             imagesc(ax,frame);

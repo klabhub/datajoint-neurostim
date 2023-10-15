@@ -1,4 +1,4 @@
-function [varargout] = getTrialAligned(tbl,key,data,pv)
+function [varargout] = getTrialAligned(tbl,expt,data,pv)
 % Function to retrieve trial-start aligned data for a Eye or Ball table.
 % tbl  - Table to use
 % key - Specific experiment (tuple from fetch)
@@ -27,7 +27,7 @@ function [varargout] = getTrialAligned(tbl,key,data,pv)
 %
 arguments
     tbl (1,1)
-    key (1,1)
+    expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
     data (1,:) cell
 
     pv.trial (1,:) double = []
@@ -39,7 +39,9 @@ arguments
 end
 
 %% Get the mapping from Frames to trials.
-trialMap = fetch(ns.MovieTrialmap & key,'*');
+trialMap = fetch(ns.MovieTrialmap & tbl & expt,'*');
+noFrames= cellfun(@ischar,{trialMap.frame});
+trialMap(noFrames) = [];
 if isempty(pv.trial)
     trials = [trialMap.trial]; % All trials
 else
@@ -51,22 +53,27 @@ if nargout>nrDataColumns
     error('Number of outputs (%d) should not be larger than the number of requested data columns (%d)',nargout,nrDataColumns);
 end
 V = cell(1,nrDataColumns);
-[V{:}]= fetchn(tbl&key,data{:}); % fetchn wraps in a cell
+[V{:}]= fetchn(tbl&expt,data{:}); % fetchn wraps in a cell
 V = cellfun(@(x)(x(1)),V);
 V = [V{:}];  % One column per column...
 
 %% Setup the target table
 newTimes = seconds(pv.start:pv.step:pv.stop);
 nrTimes  = numel(newTimes);
-frameDuration = seconds(1./unique([fetch(ns.Movie & key,'framerate').framerate]));
+frameDuration = seconds(1./unique([fetch(ns.Movie*(tbl& expt),'framerate').framerate]));
 nrTrials = numel(trials);
 varNames = "Trial" + string([trialMap(trials).trial]);
 T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes','VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
 trCntr=0;
+
 %% Loop over the trials to extract the relevant frames from the movie-derived data.
 for tr = trials
     trCntr= trCntr+1;
     thisT = timetable(seconds(trialMap(tr).trialtime(:)),V(trialMap(tr).frame,:));
+
+    % With Crosstrial set to true we take frames from preceding or
+    % succeding trials, assuming that the frameDuration is constant (i.e.
+    % regular sampling by the TPI). 
     if pv.crossTrial &&  pv.start <0 && trialMap(tr).trial>1
         % Extract from previous trial (i.e. the time requested was before
         % firstframe)
@@ -82,14 +89,15 @@ for tr = trials
     end
 
     if  pv.crossTrial &&  pv.stop > trialMap(tr).trialtime(end) && trialMap(tr).trial < numel(trialMap)
-        % Extract from next trial (time requested was after
-        % trial end).
-        nextTrial  = trialMap(tr).trial +1;
-        postTime = seconds(trialMap(nextTrial).trialtime);
-        % This time starts1 frame after the end of the previous
-        % trial (=tr)
-        postTime = seconds(trialMap(tr).trialtime(end)) + frameDuration+postTime-postTime(1);
-        postT = timetable(postTime,V(trialMap(nextTrial).frame,:));
+        % Extract from next trial (time requested was after trial end).
+        nrFramesAfter = ceil((pv.stop-trialMap(tr).trialtime(end))/seconds(frameDuration));
+        framesAfter =  (1:nrFramesAfter);
+        postTime     = seconds(trialMap(tr).trialtime(end))+framesAfter*frameDuration;
+        keepFrames = trialMap(tr).frame(end)+framesAfter;
+        out = keepFrames >trialMap(end).frame(end);
+        postTime(out) = [];
+        keepFrames(out) = [];
+        postT = timetable(postTime',V(keepFrames',:));
         thisT = [thisT;postT]; %#ok<AGROW>
     end
     thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);

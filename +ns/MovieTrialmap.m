@@ -51,7 +51,16 @@ classdef MovieTrialmap < dj.Part
                     nrFramesPerTrial2PI = cellfun(@numel,{tpiTpl.frame});
                     SLACK = 0.01;% Allow this much slack (as a fraction of the frame count to allow for a few extra frames in the movie)
                     if abs(sum(nrFramesPerTrial2PI)-mvTpl.nrframes)/mvTpl.nrframes<SLACK
-                        % Match; reuse the trialmap for the tpi.
+                        % Match; reuse the trialmap for the tpi. But the
+                        % TPI trialmap is across the session, while movies
+                        % are per experiment. So we subtract the (session-based) frame
+                        % number of the first trial in this experiment
+                        offset = tpiTpl(1).frame(1)-1;
+                        if offset>0
+                            for i=1:numel(tpiTpl)
+                                tpiTpl(i).frame = tpiTpl(i).frame-offset;
+                            end
+                        end
                         mvTrialMapTpl = rmfield(tpiTpl,{'tag'});
                         [mvTrialMapTpl.filename]  =deal(mvTpl.filename);
                         insert(tbl,mvTrialMapTpl);

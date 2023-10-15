@@ -36,8 +36,9 @@ classdef Eye < dj.Computed
             for tpl = tbl.fetch('*')'
                 movieParms = fetch(ns.Movie&tpl,'*');
                 figName= sprintf('Eye: #%s on %s@%s',tpl.subject, tpl.session_date,tpl.starttime);
-                figByName(figName);
-                clf;
+                hFig = figByName(figName);
+                colormap gray
+                clf
 
                 switch upper(pv.mode)
                     case "MOVIE"
@@ -45,7 +46,7 @@ classdef Eye < dj.Computed
                         movie = open(ns.Movie& tpl,"smallest");
                         frameCntr = 0;
                         phi = linspace(0,2*pi,100);
-                        while (movie.hasFrame)
+                        while (movie.hasFrame) && ishandle(hFig)
                             frameCntr = frameCntr+1;
                             frame = movie.readFrame;
                             hold off
@@ -58,11 +59,10 @@ classdef Eye < dj.Computed
                             plot(x,y,'r*');
 
 
-                            if false
+                           
                                 radius = sqrt(tpl.a(frameCntr)/pi);
                                 line(tpl.x(frameCntr)+radius.*cos(phi),tpl.y(frameCntr)+radius.*sin(phi),'Color','g')
-                            end
-
+                           
                             xlabel 'X (pixels)';
                             ylabel 'Y (pixels)';
 
