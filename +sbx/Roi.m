@@ -20,7 +20,7 @@ compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less c
 classdef Roi < dj.Imported
 
     methods (Access = public)
-        
+
         function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.
@@ -42,7 +42,7 @@ classdef Roi < dj.Imported
             %
             % OUTPUT
             %    hScatter - Handle to the scatter object
-             % EXAMPLE
+            % EXAMPLE
             %
             %
             % plot(sbx.Roi); % Encode all cell radius (size) and z-scored session activity (color).
@@ -66,14 +66,14 @@ classdef Roi < dj.Imported
                 fprintf('No rois, nothing to plot \n');
                 return;
             end
-            
+
             % To visualize an arbitrary and large subset of rois, this
             % function can be called with a large struct array (one per roi),
             % which is potentially inefficient. Silencing DJ warning about this.
             warnState = warning('query');
             warning('off', 'DataJoint:longCondition');
 
-            MAXPOINTS = 300; % 
+            MAXPOINTS = 300; %
             [x,y,radius,m,sd,roiNr] = fetchn(roi,'x','y','radius','meanrate','stdrate','roi');
             micPerPix = sbx.micronPerPixel(roi);  % Scaling
             mixPerPixR = sqrt(sum(micPerPix.^2));
@@ -124,11 +124,11 @@ classdef Roi < dj.Imported
                     overlay(ix)= clrIndex(rCntr);
                     alpha(ix) = pv.alpha*(abs(pv.color(rCntr))>pv.alphaThreshold);
                 end
-               overlay = ind2rgb(overlay,pv.colormap); % Convert to true color using the colormap
-               hData = imshow(overlay,RI);
-               set(hData,'AlphaData',alpha)
+                overlay = ind2rgb(overlay,pv.colormap); % Convert to true color using the colormap
+                hData = imshow(overlay,RI);
+                set(hData,'AlphaData',alpha)
             else
-                %% Show the data as circles                
+                %% Show the data as circles
                 % Setup size
                 if isempty(pv.sz)
                     % Use the physical size as the size of the cells
@@ -146,12 +146,12 @@ classdef Roi < dj.Imported
                 set(gca,'Color','none','XDir','normal','YDir','reverse','colormap',pv.colormap);
 
                 % Data tips
-            if ~isempty(pv.szLabel)
-                hData.DataTipTemplate.DataTipRows(3).Label = pv.szLabel;
-            end
-            if ~isempty(pv.colorLabel)
-                hData.DataTipTemplate.DataTipRows(4).Label = pv.colorLabel;
-            end
+                if ~isempty(pv.szLabel)
+                    hData.DataTipTemplate.DataTipRows(3).Label = pv.szLabel;
+                end
+                if ~isempty(pv.colorLabel)
+                    hData.DataTipTemplate.DataTipRows(4).Label = pv.colorLabel;
+                end
             end
             if ~isempty(pv.clim)
                 clim(pv.clim)
@@ -163,7 +163,7 @@ classdef Roi < dj.Imported
             h = colorbar;
             ylabel(h,pv.colorLabel);
 
-            
+
             % Restore warning state
             warning(warnState);
 
@@ -611,23 +611,14 @@ classdef Roi < dj.Imported
                 if pv.crossTrial &&  pv.start <0 && trialMap(tr).trial>1
                     % Extract from previous trial (i.e. the time requested was before
                     % firstframe)
-                    if true
-                        nrFramesBefore = ceil(pv.start/seconds(frameDuration));
-                        framesBefore  =nrFramesBefore:-1;
-                        preTime  = seconds(trialMap(tr).trialtime(1))+framesBefore*frameDuration;
-                        keepFrames = trialMap(tr).frame(1)+framesBefore;
-                        out = keepFrames <1;
-                        preTime(out) = [];
-                        keepFrames(out) = [];
-                        preT = timetable(preTime',V(keepFrames',:));
-                    else
-                        previousTrial = trialMap(tr).trial-1;
-                        preTime = seconds(trialMap(previousTrial).trialtime);
-                        % This time ends 1 frame before the start of the
-                        % next trial (=tr)
-                        preTime = preTime-preTime(end)-frameDuration;
-                        preT = timetable(preTime,V(trialMap(previousTrial).frame,:));
-                    end
+                    nrFramesBefore = ceil(pv.start/seconds(frameDuration));
+                    framesBefore  =nrFramesBefore:-1;
+                    preTime  = seconds(trialMap(tr).trialtime(1))+framesBefore*frameDuration;
+                    keepFrames = trialMap(tr).frame(1)+framesBefore;
+                    out = keepFrames <1;
+                    preTime(out) = [];
+                    keepFrames(out) = [];
+                    preT = timetable(preTime',V(keepFrames',:));
                     thisT = [preT;thisT]; %#ok<AGROW>
                 end
 
