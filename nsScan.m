@@ -87,6 +87,8 @@ p.addParameter('subject',{});
 p.addParameter('folderFun','');
 p.addParameter('addToDataJoint',false,@islogical)
 p.addParameter('readFileContents',false,@islogical)
+p.addParameter('populateFile',true,@islogical)
+p.addParameter('populateMovie',true,@islogical)
 p.addParameter('cicOnly',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('metaDefinitionTag','',@ischar);
@@ -403,5 +405,6 @@ if p.Results.addToDataJoint
     else
         cic =[];
     end
-    nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode,'root',p.Results.root);
+    nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode, ...
+                            'root',p.Results.root,'populateFile',p.Results.populateFile,'populateMovie',p.Results.populateMovie);
 end

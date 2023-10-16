@@ -85,7 +85,7 @@ classdef MovieTrialmap < dj.Part
                     % No entry yet in the sbx.Preprocessed table. Generate
                     % an error so that a future populate call on ns.Movie
                     % will retry this.
-                    error(2,'For SBX _ball and _eye movies the Preprocessed table needs to be populated first. Rerun later.\n')                    
+                    error('For SBX _ball and _eye movies the Preprocessed table needs to be populated first. Rerun later.\n')                    
                 end
             else
                 % Non sbx movies: TODO

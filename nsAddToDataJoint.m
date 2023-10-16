@@ -134,7 +134,7 @@ for row=1:height(tbl)
         % existing one
         if exists(djTbl & table2struct(tbl(row,tblFields))) && nrMeta>0
             % Tpls are the same, check if the meta information is different.
-            fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);
+            fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);            
             fromDbase = convertvars(fromDbase,1:width(fromDbase),"string"); % Match the "" format of the tbl
             if isempty(fromDbase) 
                 % Everything is new
