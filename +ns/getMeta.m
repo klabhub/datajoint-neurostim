@@ -7,7 +7,8 @@ function T = getMeta(tbl,meta)
 % meta - name(s) of the meta parameter to retrieve
 % OUTPUT
 % T  -  A Matlab Table with columns for the primary keys of the table, plus columns
-%       for each of the requested meta parameters. 
+%       for each of the requested meta parameters. Note that meta data are
+%       strings.
 arguments
     tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subject','ns.Session'})}
     meta {mustBeText} = ""

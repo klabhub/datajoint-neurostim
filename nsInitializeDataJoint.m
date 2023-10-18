@@ -69,8 +69,10 @@ query(dj.conn, sprintf('CREATE DATABASE IF NOT EXISTS `%s`',schemaName))
 
 for i=1:numel(packageName)
     %% Create a package folder in the project to extend the schema
-    mkdir(fullfile(code,['+' packageName{i}]));
-
+    packageDir =fullfile(code,['+' packageName{i}]);
+    if ~exist(packageDir,"dir")
+        mkdir(packageDir);
+    end
 
     %% Create the getSchema function
     gs= 'function obj = getSchema\n persistent OBJ \n if isempty(OBJ) \n     OBJ = dj.Schema(dj.conn,''%s'', ''%s'');\n end\n obj = OBJ;\n end \n';

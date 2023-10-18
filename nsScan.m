@@ -61,6 +61,8 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 % addToDataJoint - Set to true to add the new
 %                   Subjects/Sessions/Experiments/Files to the DataJoint
 %                   database. [false]
+% newOnly       - Set to true to process only experiments that are not
+%               already in Datajoint
 % readFileContents - Set to true to read file contents when adding to the
 %                   DataJoint database [false]
 % cicOnly   - Set tot true to only add CIC information (and not other
@@ -86,6 +88,7 @@ p.addParameter('paradigm',{});
 p.addParameter('subject',{});
 p.addParameter('folderFun','');
 p.addParameter('addToDataJoint',false,@islogical)
+p.addParameter('newOnly',false,@islogical);
 p.addParameter('readFileContents',false,@islogical)
 p.addParameter('populateFile',true,@islogical)
 p.addParameter('populateMovie',true,@islogical)
@@ -204,11 +207,21 @@ end
 meta = meta(stay);
 fullName=fullName(stay);
 nrExperiments = numel(meta);
+if p.Results.newOnly
+    stay = true(1,nrExperiments);
+    for i=1:numel(meta)
+        stay(i) = ~exists(ns.Experiment & meta(i));
+    end
+    meta = meta(stay);
+    fullName=fullName(stay);
+    nrExperiments = numel(meta);    
+end
 if nrExperiments ==0
     fprintf('No Neurostim files with matching paradigm and subject found in %s\n',srcFolder);
     return;
 else
-    fprintf('Foound %d matching Neurostim files \n',nrExperiments)
+    fprintf('Found %d matching Neurostim files \n',nrExperiments)
+    
 end
 
 if  p.Results.readFileContents
