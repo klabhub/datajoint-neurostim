@@ -1,6 +1,6 @@
 %{
 #  Preprocessing parameter sets used for calcium imaging data
-    prep:  varchar(128)
+    tag:  varchar(128)
     ---
     toolbox : enum('suite2p','caiman')
     description : varchar(1024)
@@ -18,10 +18,9 @@
 %                      'delete_bin',true, ...   % No need to keep
 %                      'use_builtin_classifier',true); % Use the built-in classifier
 % add this to this table by calling: 
-% insert(sbx.PreParameters, struct('prep','gCamp6s', ...
+% insert(sbx.PreParameters, struct('tag','gCamp6s', ...
 %                                 'toolbox','suite2p', ...
-%                                 'description', ...
-%                                 'Longer tau for GCamp6s, deleting bin file, builtin classifier', ...
+%                                 'description', 'Longer tau for GCamp6s, deleting bin file, builtin classifier', ...
 %                                 'parms',gCamp6s))
 % 
 % Then populate(sbx.Preprocessd,'prep=''gcamp6s'') will populate the

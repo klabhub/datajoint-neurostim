@@ -158,6 +158,13 @@ classdef Experiment  < dj.Manual
                     end
                     v.(plgName) = get(parms);
                 end
+                
+                notFound = ~isfield(v,plg);
+                if any(notFound)
+                    warnNoTrace('This experiment (%s/%s/%s) did not use the %s plugin(s) ',exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'));
+                    out{exptCntr} = [];
+                    continue; % Next experiment 
+                end
 
                 % Post-process all (including cic) if requested
                 if strlength(pv.prm) ~=0  %prm was specified

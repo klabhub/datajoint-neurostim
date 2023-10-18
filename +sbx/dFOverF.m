@@ -54,6 +54,9 @@ end
 
 %% Shot noise
 % Rupprecht et al. A measure of shot noise.
+%https://gcamp6f.com/2021/10/04/large-scale-calcium-imaging-noise-levels/
+% What is "good" also depends on the number of rois recorded simultaneously
+% log(nu) = 2*log(n) looks like the best case
 if nargout>1
     % Compute df/f without neuropil subtraction
     fUncorrected = baseline(tFluorescence,baselineWindow,pv.percentile);

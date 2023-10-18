@@ -19,7 +19,14 @@ if isempty(info)
     load(fullfile(fldr,file +".mat"),'info');
 end
 dirInfo = dir(fullfile(fldr,file + ".sbx"));
-nrPlanes = max(1,numel(info.otwave));
+% Determine the number off planes  from the optotune settings.
+if isfield(info,'otwave')
+    nrPlanes = max(1,numel(info.otwave));
+elseif isnan(info.otparam(3))
+    nrPlanes = 1 ;
+else
+    nrPlanes = info.otparam(3);
+end
 nrChannels = numel(info.channels);
 % 2 bytes per pixel.
 v= dirInfo.bytes./prod(info.sz)/nrChannels/nrPlanes/2;

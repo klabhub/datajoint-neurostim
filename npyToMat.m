@@ -14,6 +14,9 @@ if matFile==""
     [fldr,file,~] = fileparts(npyFile);
     matFile = fullfile(fldr,string(file) + ".mat");
 end
+if ~exist(npyFile,"file")
+    error('NPY file not found : %s ',npyFile);
+end
 pyCode = 'from scipy.io import savemat; import numpy as np;stat = np.load(''%s'',allow_pickle=True);savemat(''%s'',mdict={''stat'': stat})';
 pyCode = sprintf(pyCode,strrep(npyFile,'\','/'), strrep(matFile,'\','/'));
 pyrun(pyCode);

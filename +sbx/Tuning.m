@@ -1,132 +1,360 @@
 %{
-# An ROI's direction tuning, fit with the sum of two von Mises functions.
+# An ROI's direction tuning, fit with the sum of two humps (von Mises functions.
 -> sbx.Roi
 -> ns.Experiment
+-> sbx.TuningParms
+-> ns.Condition
 ---
-parms       : blob # Tuning parameters [Preferred Peak AntiPeak Kappa Offset]
-ci          : blob # Tuning parameters confidence intervals 
-error       : blob # IQR of the parameters
+amplitude   : float # Response at the preferred direction. 
+preferred   : float # Preferred direction in degrees
+width       : float # Widht of the tuning at the preferred
+antiwidth   : float # Widht of the tuning at the anti preferred
+antiamplitude:float # Response at the anti-preferred direction.
+offset      : float # Offset response.
+ci          : blob # Tuning parameters confidence intervals  [Offset Preferred Width AntiWidth Peak AntiPeak]
+error       : blob # Error estimate [Offset Preferred Width AntiWidth Peak AntiPeak]
 splithalves : float # Quality of the fit based on split-halves cross validation
 r           : float # Correlation between fit and non-parametric estimate
 residualz   : float # Z-score of mean residuals (0=good)
-residualnoise:float # Ratio of stdev of residuals to the measurement noise (1 =good)
-stepsize    : float # Binwidth used
-p           : float # Tuning p-value 
-bootstrap   : integer # Number of bootstrap sets used
-scale       : float  # Number by which the spike rate was scaled.
-alpha       : float # Alpha level for CI
+bootparms   : blob  # Boostrap estimates of the parameters
+nppeak      : float # Non parameteric peak firing rate
+nppreferred : float # non parametric prefferred direction.
+npmean      : float # Mean firing rate over all directions
+npmin       : float # Minimum response.
+nptc        : blob  # Non parametric tuning curve
+nptcerr     : blob # non parametric tuning curve standard errror
+nptcx       : blob # Independent variable for the nptc (orientation/direction)
+npanova     : float # ANOVA based on non parametric tuning curve.
+npbaseline  : float # Mean baseline (spontaneous) activity
+npbaselinesd: float # Standard deviation of the baseline activity
+nrtrials    : float # Number of trials used in estimates
 %}
+%
+% This table depends on sbx.Roi and sbx.Experiments, and the parameter
+% settings for the Tuning table in the sbx.TuningParms table.
+% For instance:
+%
+% tuningParms  =struct('stimulus','gbr', ...            % Use the stimulus named gbr
+%                        'independentVariable','orientation', ... % gbr.orientation has the directions/orientations
+%                        'start',0.5,'stop',1.5,'step',1/15.5, 'interpolation','nearest', ...  % Time and bins within each trial to use
+%                         'nrBoot',100, ...                              % Bootstrap resampling estimates
+%                         'nrSplitHalves',20, ...                        % Splithalves validation (see poissyFit/splitHalves)
+%                         'alpha',0.05);                          % Alpha level for CI
+%
+% Create a tuple, and tag this parameter set 'default'
+% tuningTpl = struct('tag','default','description','Fit to spikes fom 0.5 to 1.5 with two humps','parms',tuningParms);
+% Insert into the sbx.TuningParms table
+%    insert(sbx.TuningParms,tuningTpl)
+% Then call
+% populate(sbx.Tuning)
+%
+%
+% Although this table is specific for direction tuning, it can easily be
+% extended to fit other parametric functions too.
+%
+% BK - Sept 2023
 classdef Tuning <dj.Computed
+    properties (Dependent)
+        keySource
+    end
+    methods 
+        function v= get.keySource(~)
+            % Use only those experiments that have an entry in the Trialmap
+            % (as that means that the sbx data were processed and the time course of 
+            % the ROI is known in the experiment). Basically this makes
+            % sure we ignore experiments where the imaging data were
+            % missing.
+            v = (ns.Experiment&sbx.PreprocessedTrialmap)*sbx.Roi*sbx.TuningParms*ns.Condition;
+        end
+    end
 
-    methods (Access=protected)
-        function makeTuples(tbl,key)
-            if isempty(which('poissyFit'))
-                error('This function uses the poissyFit class. Please install it first (https://github.com/klabhub/poissyFit)')
+
+    methods (Access=public)
+        function plot(tbl,pv)
+            % Function to show a set of tuning functions
+            arguments
+                tbl (1,1) sbx.Tuning
+                pv.nrPerFigure (1,1) {mustBeNonnegative,mustBeInteger} = 20  % How many curves per figure
+                pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50  % How many boostrap samples to show
+                pv.showNP (1,1) logical =false                          % Show Non-Parametric estimates?
+                pv.linkAxes (1,1) logical =false                        % Link axes in the figure?
+            end
+            cntr =0;
+            % Loop over the table
+            for tpl = tbl.fetch('*')'
+                cntr =cntr+1;
+                % 1 figure for every nrPerFigure plots
+                figure(ceil(cntr/pv.nrPerFigure));
+                if mod(cntr-1,pv.nrPerFigure)+1==1
+                    T= tiledlayout('flow');
+                end
+                nexttile;
+                hold on
+                % Fetch parameters used to estmate the tuning curve
+                parms = fetch1(sbx.TuningParms & tpl,'parms');
+                cond = fetch(ns.Condition*ns.ConditionTrial & tpl,'*');
+                conditionName = unique({cond.name});
+                conditionName= conditionName{1};
+                trials = [cond.trial];
+                % Generate estimated tuning curve
+                uDirection = (0:1:330);                
+                if pv.nrBootToShow >0
+                    % Show Bootstrap estimates                    
+                    for i=1:min(pv.nrBootToShow,parms.nrBoot)
+                        errorCurve =  sbx.Tuning.twoHumps(uDirection,tpl.bootparms(i,:))';
+                        plot(uDirection,errorCurve,'LineWidth',0.5,'Color',0.6*ones(1,3),'LineStyle','-');
+                    end
+                end
+
+                % Prediction (mean over bootstatp sets) on top
+                estimate = [tpl.offset tpl.preferred tpl.width tpl.antiwidth tpl.amplitude tpl.antiamplitude];
+                predictedTuningCurve = sbx.Tuning.twoHumps(uDirection,estimate)';
+                plot(uDirection,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+
+                % Show non parametric tuning cuvrev (mean/ste)
+                if pv.showNP
+                    % Get the data and the directions
+                    ploterr(tpl.nptcx, tpl.nptc,tpl.nptcerr/sqrt(numel(trials)),'ShadingAlpha',0.5,'LineWidth',2,'Color','r');
+                    ploterr(xlim',tpl.npbaseline*[1 1]',tpl.npbaselinesd/sqrt(numel(trials))*[1 1]','ShadingAlpha',0.5,'Color','k');
+                end
+                % Show parameters in the title
+                txt=  sprintf('%s (%d trials)- Roi#%d \n PD:%.0f [+/- %.0f], Amp: %.3g [%.3g %.3g], AntiAmp: %.3g [%.3g %.3g], Width: %.3g  [%.3g %.3g]  ,AntiWidth: %.3g  [%.3g %.3g]  , Offset %.3g  [%.3g %.3g] \n gof : %.3f, splithalves: %.3f', ...
+                    conditionName, ...
+                    numel(trials),...
+                    tpl.roi,...
+                    tpl.preferred,tpl.error(2),...
+                    tpl.amplitude,tpl.ci(5,1),tpl.ci(5,2),...
+                    tpl.antiamplitude,tpl.ci(6,1),tpl.ci(6,2),...
+                    tpl.width,tpl.ci(3,1),tpl.ci(3,2),...
+                    tpl.antiwidth,tpl.ci(4,1),tpl.ci(4,2),...
+                    tpl.offset,tpl.ci(1,1),tpl.ci(1,2),...
+                    tpl.r, ...
+                    tpl.splithalves);
+                title(txt,'Interpreter','None');
+                ylabel 'Spike Rate (spk/s)'
+                drawnow;
+                if pv.linkAxes
+                    linkaxes(T.Children)
+                end
             end
 
-            %% Setup and retrieve ROI data.
+        end
+    end
+    methods (Access=protected)
+
+        function makeTuples(tbl,key)
+            tic
+            %% Retrive sources
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
-
-            persistent cntr
-            if isempty(cntr)
-                cntr= 1;
-            else
-                cntr= cntr+1;
+            parms = fetch1(sbx.TuningParms &key,'parms');
+            trials = [fetch(ns.Condition*ns.ConditionTrial & key,'trial').trial];
+            nrTrials = numel(trials);
+            if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
+                fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
+                return
             end
-            
-            % Hardcoded, but stored in table.
-            stepSize = 1/15.5;  % Always using the full sampling rate.
-            nrBoot = 100;                                           
-            show = false; % For debugging, set to true
-            alpha = 0.05;
 
-            % If workers have been started, we'll use them
-            if isempty(gcp('nocreate'))
-                nrWorkers = 0;
-            else
-                nrWorkers = gcp('nocreate').NumWorkers;
-            end            
             % Get the data and the directions
-            [~,spk] = get(roi,expt,modality = 'spikes',start=0.5,stop=1.5,step=stepSize,interpolation ='nearest');
-            direction = get(expt ,'gbr','prm','orientation','atTrialTime',0);
-            % Rmeove trials with NaN
+            [trialTime,spk] = get(roi,expt,trial = trials,modality = 'spikes',start=parms.start,stop=parms.stopBaseline,step=parms.step,interpolation = parms.interpolation);
+            direction = get(expt ,parms.stimulus,'prm',parms.independentVariable,'atTrialTime',0);
+            direction = direction(trials);
+            %          
+          
+            % Remove trials with NaN
             out = any(isnan(spk),1);
             spk(:,out)= [];
             direction(out) =[];
             
-            %% Fit
-            % Setup the poissyFit function for spike rate estimation from
-            % the deconvolved spike estimates; the "rate" will be
-            % downscaled to match the maximum in the poissyFit class (100 spk/s).
-            o = poissyFit(direction,spk,stepSize,@poissyFit.logTwoVonMises, ...
-                            "fPerSpike",1, ...
-                            "tau",0, ...
-                            "hasDerivatives",1, ...
-                            "scaleToMax",true);
-            o.spikeCountDistribution = 'POISSON';
-            o.measurementNoise =estimateNoise(o);
-            o.nrWorkers = nrWorkers;
-            o.options =    optimoptions(@fminunc,'Algorithm','trust-region', ...
-                'SpecifyObjectiveGradient',true, ...
-                'display','none', ...
-                'CheckGradients',false, ... % Set to true to check supplied gradients against finite differences
-                'diagnostics','off');
+            % Determine baseline
+            isBaseline = trialTime>=parms.startBaseline & trialTime<parms.stopBaseline;
+            baseline = mean(spk(isBaseline,:),"all","omitnan");
+            baselineStd = std(spk(isBaseline,:),0,"all","omitnan");
 
-            % Bootstrap the MLE of the tuning parms
-            solve(o,nrBoot);
-            % Do split halves validation
-            splithalves = splitHalves(o,nrBoot);
-            
-            % Translate parameters to more meaningful vars with CI that no
-            % longer use the exp(parms) of poissyFit
-            [~,prefPeak,antiPeak,kappa,offset] = poissyFit.twoVonMisesParms(o.bootParms,o.binWidth);
-            bsParms = [prefPeak antiPeak kappa offset];
-            ci    = prctile(bsParms,[100*alpha/2  100*(1-alpha/2)]);
-            err = iqr(bsParms);
-            parms  = median(bsParms);            
-            parms = [mod(o.parms(2),360) parms]; % Add preferred 
-            ci =  [o.parmsCI(:,2) ci];
-            err = [o.parmsError(:,2) err];
+            isResponse = trialTime>=parms.start & trialTime<parms.stop;
+            spk = spk(isResponse,:);
+            % If multiple bins per trial are used, we need to repmat the
+            % direction to match those bins  (in that case each bin is
+            % considered an independent observation to be fitted). If you
+            % just want to fit the mean rate in a trial, set step to
+            % stop-start which will generate a single bin per trial.
+            direction = repmat(direction,[size(spk,1) 1]);
+            spk = spk(:); % single column
+            direction = direction(:); % Column
 
-            %% Visualizee
-            % If debugging/visualizeing , show the tuning curves and
-            % estimated parameters
-            if show
-                figure(ceil(cntr/20));
-                if mod(cntr-1,20)+1==1
-                    tiledlayout('flow')
-                end
-                nexttile;
-                plot(o,showErrorbars= false, showBootstrapSets= true,equalAxes=true);                
-                txt=  sprintf('Roi#%d - PD:%.0f [%.0f %.0f], kappa: %.1f  [%.0f %.0f]\n Amp: %.2f [%.2f %.2f] AntiAmp: %.2f [%.2f %.2f], \n (p : %.3g)',key.roi,...
-                        parms(1),ci(1,1),ci(2,1),...
-                        parms(4),ci(1,4),ci(2,4),...
-                        parms(2),ci(1,2),ci(2,2),...
-                        parms(3),ci(1,3),ci(2,3),...
-                        o.p);
-                title(txt);
-                yyaxis left
-                ylabel 'Spike Rate (spk/s)' % Avoid confusion
-                legend('Data','Fit')
-                drawnow;
+
+            %% Determine the nonparametric tuning curve
+            [uDirection,~,stimulusIx] = unique(direction);
+            tuningCurve = accumarray(stimulusIx,spk,[],@(x) mean(x,"omitnan"));
+            tuningCurveErr = accumarray(stimulusIx,spk,[],@(x) std(x,0,1,"omitnan"));
+            [npAmplitude,ix] = max(tuningCurve);
+            npPreferred = uDirection(ix);
+            npMean = mean(tuningCurve);
+            npAntiAmplitude  = tuningCurve(uDirection==npPreferred+180 | uDirection==npPreferred-180);
+            npMin = min(tuningCurve);
+            npAnova = anovan(spk,direction,'display','off');
+
+
+            %% Fit a parametric (twoHumps) function
+            bootfun = @(x,y) sbx.Tuning.solve(x,y,npMin,npPreferred,npAmplitude,npAntiAmplitude);
+            bootOpts = statset;            
+            bootOpts.UseParallel = ~isempty(gcp("nocreate")); % Use parallel pool only if the user has started it.
+            [bootEstimates]=bootstrp(parms.nrBoot,bootfun,direction,spk,'Options',bootOpts);
+            % Determine preferred axis and circular standard deviation
+            % Multiply by two in case the preferred swaps
+            % between bootstrap sets (i.e. an orientation tuned
+            % neuron).
+            z = exp(2*pi/180*1i*bootEstimates(:,2));
+            R = mean(z);
+
+            preferredOrAntiPreferred = angle(R)/2; % Back to the original 360 space
+            % Because we always call the direction with the highest amplitude the
+            % preferred direction (see "SOLVE" above), we just have to count which occurs
+            % most frequently : preferredAxis or preferredAxis+180.
+            z = exp(pi/180*1i*bootEstimates(:,2));
+            inner = [real(z), imag(z)]*[cos(preferredOrAntiPreferred); sin(preferredOrAntiPreferred)];
+            if mean(inner>0)>0.5
+                isPreferred = inner>0;
+            else
+                isPreferred = inner<0;
             end
-    
+
+            bootEstimates(~isPreferred,[2 4 5]) = bootEstimates(~isPreferred,[2 5 4]) + [180 0 0];
+            bootEstimates(:,2)= mod(bootEstimates(:,2),360);% Convenience
+
+            estimate = mean(bootEstimates,1,'omitnan');
+            error = std(bootEstimates,0,1,"omitnan");
+            ci= prctile(bootEstimates,[parms.alpha/2 1-parms.alpha/2]);
+
+            % Correct circular vriables.
+            z = exp(pi/180*1i*bootEstimates(:,2));
+            R = mean(z);
+            estimate(2) = 180/pi*angle(R);
+            error(2) = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
+            % Use circular standard deviation as the
+            % confidence limits.
+            ci(:,2) = mod(estimate(2) + error(2)*[-1 1]',360);
+
+            fittedCurve = sbx.Tuning.twoHumps(uDirection,estimate);
+            gof = corr(tuningCurve,fittedCurve,'type','Spearman');
+
+            residuals = sbx.Tuning.twoHumps(direction,estimate)- spk;
+            meanR = mean(residuals,"all","omitnan");
+            stdR =  std(residuals,0,"all","omitnan");
+            residualZ = abs(meanR./stdR);
+
+            %% SplitHalves
+            r= nan(1,parms.nrSplitHalves);
+            for i=1:parms.nrSplitHalves
+                [oneHalfTrials,otherHalfTrials] =resampleTrials(stimulusIx,false,0.5) ;
+                % First half
+                firstHalfEstimate = sbx.Tuning.solve(direction(oneHalfTrials),spk(oneHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
+                otherHalfEstimate = sbx.Tuning.solve(direction(otherHalfTrials),spk(otherHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
+                tc1 = sbx.Tuning.twoHumps(uDirection,firstHalfEstimate);
+                tc2 = sbx.Tuning.twoHumps(uDirection,otherHalfEstimate);
+                r(i) = corr(tc1,tc2);
+            end
+            splithalves  = mean(r);
+
+
             %% Insert in table.
             tpl = mergestruct(key, ...
-                struct('parms',parms', ...
+                struct('offset',estimate(1),...
+                'preferred',estimate(2),...
+                'width',estimate(3),...
+                'antiwidth',estimate(4),...
+                'amplitude',estimate(5), ...
+                'antiamplitude',estimate(6),...
                 'ci',ci',...
-                'error',err', ...
+                'error',error', ...
                 'splithalves',splithalves, ...
-                'r',o.gof, ...
-                'residualz',o.residualZ, ...
-                'residualnoise',o.residualNoise, ...
-                'bootstrap',nrBoot, ...
-                'stepsize',stepSize, ...
-                'scale',o.scale, ...
-                'p',o.p,...
-                'alpha',alpha));
+                'r',gof,...
+                'residualz',residualZ,...
+                'bootparms',bootEstimates,...
+                'nppeak',npAmplitude,...
+                'npmean',npMean,...
+                'nppreferred',npPreferred,...
+                'nptc',tuningCurve,...
+                'nptcerr',tuningCurveErr,...
+                'nptcx',uDirection,...
+                'npmin',npMin,...
+                'npanova',npAnova, ...
+                'nrtrials',nrTrials, ...
+                'npbaseline',baseline, ...
+                'npbaselinesd',baselineStd));
             insert(tbl,tpl);
+
+   
+            toc
         end
     end
+
+    methods (Static)
+        function [y] = twoHumps(x,parms)
+            % Use this to fit a direction selective tuning function with
+            % one bump at the preferred, and a (potentially smaller) bump
+            % at the anti-preferred (=preferred +180).
+            %
+            % I tried this with the sum of two Von Mises functions:
+            % y = amp1*exp(kappa1*cos((x - preferred))) +amp2*exp(kappa2*cos((x - preferred-180)))+offset;
+            % but did not work well (solutions were oddly always pretty
+            % poor). Currently the function uses two wrapped/circular
+            % gaussians instead, which seems to work better.
+            %
+            % INPUT
+            % x - Stimulus angles in degrees.
+            % parms - parameter vector - [offset, preferred , width1, width2, amp1 ,amp2]
+            %
+            % OUTPUT
+            %  y - Value per x
+            offset = parms(1); preferred = parms(2); sigma1 = parms(3); sigma2 = parms(4); amp1=parms(5); amp2=parms(6);
+
+            % Von Mises attempt
+            %deg2rad =pi/180;
+            %term1 = amp1*exp(sigma1*cos(deg2rad*(x-preferred)));
+            %term2 = amp2*exp(sigma2*cos(deg2rad*(x-preferred-180)));
+            %y = term1 + term2 + offset;
+
+            y = offset;
+            for k=-4:4
+                y = y + amp1*exp(-(1/sigma1^2)*(x-preferred-360*k).^2);
+                y = y + amp2*exp(-(1/sigma2^2)*(x-preferred-180-360*k).^2);
+            end
+        end
+
+        function estimate = solve(direction,spk,npMin,npPreferred,npAmplitude,npAntiAmplitude)
+            % Use the optimization toolbox to do a nonlinear least squares
+            % fit of the spiking data to the twoHumps function
+
+            % Setup the variables and bounds
+            offset = optimvar('offset',1,'LowerBound',0,'UpperBound',2*npMin);
+            preferred = optimvar('preferred',1,'LowerBound',npPreferred-45,'UpperBound',npPreferred+45);
+            sigma = optimvar('sigma',1,'LowerBound',0);
+            amplitude = optimvar('amplitude',1,'LowerBound',0,'UpperBound',2*npAmplitude);
+            antiAmplitude = optimvar('antiAmplitude',1,'LowerBound',0,'UpperBound',2*npAntiAmplitude);
+            antiSigma = optimvar('antiSigma',1,'LowerBound',0); % kappa= 30 is a 25 degree FWHM.
+
+            % Least square
+            objective = sum((spk  - sbx.Tuning.twoHumps(direction,[offset preferred sigma antiSigma amplitude antiAmplitude ])).^2);
+            problem = optimproblem("Objective",objective);
+
+            % Initial values
+            initialValue.offset = 0;
+            initialValue.sigma= 100;            % Start wide
+            initialValue.antiSigma = 100;
+            initialValue.amplitude= npAmplitude;  % Start with nonparameteric estiamtes
+            initialValue.antiAmplitude = npAntiAmplitude;
+            initialValue.preferred = npPreferred;
+
+            % Set options
+            opts =optimset;
+            opts.Display = 'off';
+            opts.Algorithm = 'trust-region-reflective';
+
+            % Solve and return as vector
+            solution =solve(problem,initialValue,'Options',opts);
+            estimate  = [solution.offset mod(solution.preferred,360) solution.sigma  solution.antiSigma solution.amplitude solution.antiAmplitude];
+        end
+    end
+
 end

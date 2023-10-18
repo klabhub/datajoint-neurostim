@@ -23,6 +23,7 @@ p=inputParser;
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('root',getenv('NS_ROOT'));
 p.addParameter('populateFile',true,@islogical)
+p.addParameter('populateMovie',true,@islogical)
 p.addParameter('dryrun',false,@islogical)
 p.addParameter('cic',[]); % A vector of cic objects. One per row of the experiment table.
 p.parse(varargin{:});
@@ -47,12 +48,19 @@ insertNewTuples(tSession,ns.Session,p.Results.dryrun);
 
 %% Add Experiments
 tExperiment = removevars(tExperiment,'id');
-[newExpts] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
-if  ~p.Results.dryrun && ~isempty(newExpts)  && p.Results.populateFile
+[newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
+if  ~p.Results.dryrun && ~isempty(newExpts) 
     if ~isempty(p.Results.cic)
-        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic)
-    end 
-    populate(ns.File, newExpts)
+        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows))
+    end
+    if p.Results.populateFile
+        % Populate the File table (all files associated with this experiment)
+        populate(ns.File, newExpts);
+    end
+    if p.Results.populateMovie
+        % Populate the Movie table (subset of files with a specific set of extensions known to be movies) 
+        populate(ns.Movie,newExpts);
+    end
 end
 
 % Restore setting
@@ -61,7 +69,7 @@ warning(warnstate);
 
 
 end
-function [newTpls,newMetaTpls] = insertNewTuples(tbl,djTbl,dryrun)
+function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun)
 % Given a table read from a folder and a table (Relvar) from the Datajoint
 % databse, determin which tuples are new and the meta data associated with
 % those new tuples and insert those in the Datajoint tables.
@@ -104,6 +112,7 @@ djMetaTbl = feval(djMetaTblName);
 
 
 % Loop over the new table
+newTplsRows = [];
 for row=1:height(tbl)
     thisPrimaryTpl =table2struct(tbl(row,pkey));
     dbTpl = fetch(djTbl & thisPrimaryTpl);
@@ -115,6 +124,7 @@ for row=1:height(tbl)
         % No match with the primary key
         % Add to the newTpls array
         newTpls = cat(1,newTpls,thisTblTpl);
+        newTplsRows = cat(1,newTplsRows,row);
         if nrMeta>0
             newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);       
         end
@@ -124,7 +134,7 @@ for row=1:height(tbl)
         % existing one
         if exists(djTbl & table2struct(tbl(row,tblFields))) && nrMeta>0
             % Tpls are the same, check if the meta information is different.
-            fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);
+            fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);            
             fromDbase = convertvars(fromDbase,1:width(fromDbase),"string"); % Match the "" format of the tbl
             if isempty(fromDbase) 
                 % Everything is new
@@ -140,6 +150,7 @@ for row=1:height(tbl)
         else
             %Add to the updateTpls array
             updateTpls = cat(1,updateTpls, thisTblTpl);
+            newTplsRows = cat(1,newTplsRows,row);
             % The update will remove meta data, so add those as new as well
             if nrMeta>0
                 newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);

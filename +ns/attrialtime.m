@@ -47,7 +47,7 @@ for e=1:numel(allEventTrials)
         [vals{currentTrial+1:allEventTrials(e)-1}] =deal(currentValue);
     end    
     % Next trial or same trial, update until atTrialTime reached.
-    currentTrial = allEventTrials(e);
+    currentTrial = allEventTrials(e);   
     currentTime = allEventTimes(e);
     if iscell(allEventValues)
         currentValue = allEventValues{e};
@@ -56,6 +56,10 @@ for e=1:numel(allEventTrials)
     end
     if currentTime <= time
         vals{currentTrial} = currentValue;
+    else 
+        % Event occurred after the atTrialTime; use the value from the
+        % previous trial
+        vals{currentTrial} = vals{currentTrial-1};
     end    
 end
 % Fill in to the end from the last value that was stored.
