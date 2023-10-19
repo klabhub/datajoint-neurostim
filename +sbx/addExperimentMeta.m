@@ -32,8 +32,8 @@ end
 % Consider only files that don't have the meta data already
 expts = expts - (ns.ExperimentMeta & struct('meta_name',METANAME));
 for e = fetch(expts)'
-   info = sbx.readInfoFile(e);
-    N= sbx.nrFrames(fldr + fname,info);
+   info = sbx.readInfoFile(e);   
+   N= sbx.nrFrames(e,info);
     switch info.scanbox_version
         case 3
             xscale = info.dxcal;
@@ -54,7 +54,7 @@ for e = fetch(expts)'
                     'session_date',e.session_date,...
                     'starttime',e.starttime, ...
                     'meta_name',METANAME, ...
-                    'meta_value',{N,xscale,yscale}');
+                    'meta_value',{string(N),string(xscale),string(yscale)}');
     insert(ns.ExperimentMeta,tpl);
 end
 end

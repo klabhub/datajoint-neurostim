@@ -42,26 +42,26 @@ classdef File < dj.Imported
         function makeTuples(tbl,key)
             % TODO handle p.Results.folderFun
 
-            root = getenv('NS_ROOT');
             % Search for files with matching prefix (subject.paradigm.startTime.*) in
             % the same folder and all files in the folder with this name.
             exptTpl = fetch(ns.Experiment &key,'*');
-            pth = fullfile(root,strrep(exptTpl.session_date,'-','/'));
+            pth =  folder(ns.Experiment &key);
             prefix  = fullfile(pth,regexprep(exptTpl.file,'(\.mat$)','*')); % Swap extension
             inFolder = dir(prefix);
             % Search for a folder with matching prefix; add its content
             % (inluding content in all sub/sub folders).
             subFolder = inFolder([inFolder.isdir]);
-            inSubFolder = dir(fullfile(subFolder.folder,subFolder.name,'**','*'));
-            linkedFiles = cat(1,inFolder,inSubFolder);
+            if isempty(subFolder)
+                linkedFiles= inFolder;
+            else
+                inSubFolder = dir(fullfile(subFolder.folder,subFolder.name,'**','*'));
+                linkedFiles = cat(1,inFolder,inSubFolder);
+            end
             % Remove folders
             linkedFiles([linkedFiles.isdir]) =[];
             if ~isempty(linkedFiles)
-                % Extract extension
-                match = regexp({linkedFiles.name},'.*\.(?<ext>.*$)','names');
-                match = [match{:}];
-                ext = strcat('.',{match.ext});
-
+                % Extract extension                
+                [~,~,ext] =fileparts({linkedFiles.name});
                 % Add each one
                 for f=1:numel(linkedFiles)
                     % Remove the part of the path that points to the folder

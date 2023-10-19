@@ -1,25 +1,29 @@
-function v = nrFrames(sbxFile,info)
-% Determine the number of frames in an sbx file.
+function v = nrFrames(expt,info)
+% Determine the number of frames in an sbx experiment .
 % INPUT
-% sbxFile = full path to an sbxFile
+% expt = Tuple from the ns.Experiment table (corresponding to an sbx experiment)
 % OUTPUT
 % N = number of frames in the file.
 % 
 arguments
-    sbxFile (1,1) string
-    info (1,1) struct
+    expt (1,1) struct
+    info struct = struct([])
 end
 
-if ~exist(sbxFile,"file")
-    error('This file does not exist: %s',sbxFile)
+sbxFile = ((ns.File & expt) & 'extension=''.sbx''');
+if count(sbxFile) ~=1
+    error('nrFrames requires a single matching experiment tpl as input, not %d ',count(sbxFile))
 end
-
-[fldr,file,~] =fileparts(sbxFile);
+fname = fetch1(sbxFile & expt,'filename');
+filename  = folder(ns.Experiment & expt) + fname;
+dirInfo = dir(filename);
 if isempty(info)
+    % Read the corresponding info struct
+    [fldr,file,~] =fileparts(strrep(filename,'.sbx','.mat')); 
     load(fullfile(fldr,file +".mat"),'info');
 end
-dirInfo = dir(fullfile(fldr,file + ".sbx"));
-% Determine the number off planes  from the optotune settings.
+
+% Determine the number of planes  from the optotune settings.
 if isfield(info,'otwave')
     nrPlanes = max(1,numel(info.otwave));
 elseif isnan(info.otparam(3))

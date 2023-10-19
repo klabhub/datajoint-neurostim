@@ -1,4 +1,4 @@
-function nsInitializeDataJoint(code,schemaName,dataRoot,packageName)
+function nsInitializeDataJoint(code,databaseName,dataRoot,packageName)
 % Setup a new datajoint pipeline for a Neurostim project.
 % For instance, if Alice's data are all under the root folder x:\data\
 % and she wants to start a new project called 'alice_memory' with Matlab code
@@ -30,7 +30,7 @@ function nsInitializeDataJoint(code,schemaName,dataRoot,packageName)
 % INPUT
 % code -  The root level folder where your project's code lives. The script
 %           will create a +ns package subfolder with a getSchema.m file.
-% schemaName - The name of this project in your SQL database (e.g.
+% databasename - The name of this project in your SQL database (e.g.
 %                   'alice_memory')
 % dataRoot - The root folder that contains all data files. The
 %               folders below this are the years.
@@ -38,18 +38,19 @@ function nsInitializeDataJoint(code,schemaName,dataRoot,packageName)
 % (package to handle Neurostim files). Other options are:
 %               'sbx' - Calcium imaging with ScanBox
 %               To use multiple packages, pass a cell array of strings with
-%               package names ({'ns','sbx'})
+%               package names ({'ns','sbx'}). Each package will create a
+%               separate schema within the same database
 %  BK - April 2022
 
 arguments
     code {mustBeText} 
-    schemaName {mustBeText}
+    databaseName {mustBeText}
     dataRoot {mustBeText}
     packageName {mustBeText} = {'ns'}
 end
-% Make sure the schema begins with a lower case letter
-if isempty(regexp(schemaName,'^[a-z]+', 'once'))
-    error('The schemaName (%s) must start with a lower case character\n', schemaName);
+% Make sure the database name begins with a lower case letter
+if isempty(regexp(databaseName,'^[a-z]+', 'once'))
+    error('The schemaName (%s) must start with a lower case character\n', databaseName);
 end
 if ~exist(code,'dir')
     mkdir(code);
@@ -65,7 +66,7 @@ cd(code)
 setenv('NS_ROOT',dataRoot);
 %% Create the schema on the SQL server
 
-query(dj.conn, sprintf('CREATE DATABASE IF NOT EXISTS `%s`',schemaName))
+query(dj.conn, sprintf('CREATE DATABASE IF NOT EXISTS `%s`',databaseName))
 
 for i=1:numel(packageName)
     %% Create a package folder in the project to extend the schema
@@ -74,14 +75,14 @@ for i=1:numel(packageName)
         mkdir(packageDir);
     end
 
-    %% Create the getSchema function
-    gs= 'function obj = getSchema\n persistent OBJ \n if isempty(OBJ) \n     OBJ = dj.Schema(dj.conn,''%s'', ''%s'');\n end\n obj = OBJ;\n end \n';
+    %% Create the getSchema function - use databaseName/packageName to setup different schemas for each package.
+    gs= 'function obj = getSchema\n persistent OBJ \n if isempty(OBJ) \n     OBJ = dj.Schema(dj.conn,''%s'', ''%s/%s'');\n end\n obj = OBJ;\n end \n';
     fid = fopen(fullfile(code,['+' packageName{i}],'getSchema.m'),"w");
-    fprintf(fid,gs,packageName{i},schemaName);
+    fprintf(fid,gs,packageName{i},databaseName,packageName{i});
     fclose(fid);
     switch (packageName{i})
         case 'ns'          
-            fprintf('The datajoint pipeline for %s has been setup. Run nsScan to add files.\n',schemaName);     
+            fprintf('The datajoint pipeline for %s has been setup. Run nsScan to add files.\n',databaseName);     
         case 'sbx'
             % Nothing to do
         otherwise

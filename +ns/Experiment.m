@@ -132,7 +132,7 @@ classdef Experiment  < dj.Manual
             out = cell(numel(ix),1);
             filename = cell(numel(ix),1);
             exptCntr =0;
-            for exptKey=tbl.fetch()'
+            for exptKey=tbl.fetch('paradigm')'
                 exptCntr = exptCntr + 1;
                 filename{exptCntr} = fetch1(tbl &exptKey,'file');
                 if nrPlugins==0
@@ -161,7 +161,7 @@ classdef Experiment  < dj.Manual
                 
                 notFound = ~isfield(v,plg);
                 if any(notFound)
-                    warnNoTrace('This experiment (%s/%s/%s) did not use the %s plugin(s) ',exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'));
+                    warnNoTrace('This experiment (%s:%s/%s@%s) did not use the %s plugin(s) ',exptKey.paradigm,exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'));
                     out{exptCntr} = [];
                     continue; % Next experiment 
                 end
