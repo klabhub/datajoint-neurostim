@@ -2,9 +2,8 @@ function warnNoTrace(msg,link,varargin)
 % Same as warning, but without the (often confusing) backtrace
 % and a clickable link to the relevant line in the m file that generated the warning.
 arguments
-    msg (1,1) string
-    link (1,1) logical = true;
-    
+    msg (1,:) char
+    link (1,1) logical = true;    
 end
 arguments (Repeating)
     varargin
@@ -24,8 +23,8 @@ end
 
 state=warning;
 warning('backtrace','off')
-warning(msg + ' (<a href="matlab:matlab.desktop.editor.openAndGoToLine(''%s'',%d);">%s@line %d</a>) ' ,varargin{:},file,line,fun,line);
+warning([msg + ' (<a href="matlab:matlab.desktop.editor.openAndGoToLine(''%s'',%d);">%s@line %d</a>) '] ,varargin{:},file,line,fun,line);
 warning(state);
 else
-    fprintf(2,msg + "\n",varargin{:});
+    fprintf(2,[msg + '\n'],varargin{:});
 end
