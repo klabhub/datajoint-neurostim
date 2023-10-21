@@ -6,10 +6,10 @@ function v = micronPerPixel(key)
 %
 
 %% Get calibration info
-cal = fetch(ns.ExperimentMeta &key & struct('meta_name','xscale'),'meta_value');
-ux = unique([cal.meta_value]);
-cal = fetch(ns.ExperimentMeta &key & struct('meta_name','yscale'),'meta_value');
-uy = unique([cal.meta_value]);
+cal = ns.getMeta(ns.Experiment &key,'xscale');
+ux = str2double(unique([cal.xscale{:}]));
+cal = ns.getMeta(ns.Experiment &key,'yscale');
+uy = str2double(unique([cal.yscale{:}]));
 assert(numel(ux)==1 && numel(uy)==1,"Magniification changed within this session??");
 v = [ux uy];
 end

@@ -7,6 +7,7 @@ startsample: longblob  # Vector of the first sample in each trial
 stopsample: longblob   # Vector with the last sample in each trial
 trialstart: longblob   # Start of the trial on the neurostim clock
 sampleduration: float  # Duration of a sample
+info :  longblob       # General hardware info that is not specific to a channel.
 %}
 
 % This is a generic table that (together with its dj.Part table
@@ -15,7 +16,7 @@ sampleduration: float  # Duration of a sample
 % the name of a function that reads data, preprocesses them and returns
 % values that are stored in the preprocessed table. Specifically, this
 % preprocessing function has the following prototype:
-% [signal,time,info] = myprep(key, channels, parms)
+% [signal,time,channelInfo,recordingInfo] = myprep(key, channels, parms)
 % INPUT
 % key   -  The tuple that defines the source data (i.e. a row in the join of ns.Experiment
 %               and ephys.PrepParm). The user function uses this key
@@ -35,16 +36,19 @@ sampleduration: float  # Duration of a sample
 %               match the neurostim clock. The user function likely
 %               includes some code to matchup the clock of the data
 %               acquisition device with some event in Neurostim.
-% info - This is an optional struct array with nrChannels elements. Each cell
-%           provides some additional information on the channel to be stored in the
-%           info field of the Preprocessed table. For example, this could contain the
+% channelInfo - This is an optional struct array with nrChannels elements. Each
+%           struct provides some additional information on the channel to be stored in the
+%           info field of the PreprocessedChannel table. For example, this could contain the
 %           hardware filtering parameters of the channel as read from the raw data
 %           file.
+% recordingInfo - General (channel non-specific) info on the recording.
 %
 % EXAMPLE:
 % The ephys.ripple.preprocess functon shows a complete implementation of a
 % preprocessing function that handles MUAE, LFP, and EEG recordings with
 % the Ripple Grapevine system.
+% 
+% ephys.intan. preprocess does the same for Intan RHX recordings
 %
 % Once preprocessing is complete, use the get() function of this class to
 % retrieve (subsets of ) preprocessed data:
@@ -60,7 +64,18 @@ sampleduration: float  # Duration of a sample
 
 classdef Preprocessed < dj.Imported
     properties (Dependent)
-        %    keySource  (limit to a subset of experiments with ephys data)
+        keySource  %(limit to a subset of experiments with ephys data)
+    end
+    properties (Constant)
+        extensions = {'.rhs','.nev'};
+    end
+    methods
+    function v = get.keySource(~)
+            % Restrict to sessions that have files for which we have
+            % preprocess functions
+            exts= struct('extension',ephys.Preprocessed.extensions);
+            v =(ns.Experiment & (ns.File & exts ))*ephys.PrepParm;
+        end
     end
 
     methods (Access=public)
@@ -124,7 +139,7 @@ classdef Preprocessed < dj.Imported
             else
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             end
-            tblChannel =ephys.PreprocessedChannel & tbl & channelRestriction;
+            tblChannel =ephys.PreprocessedChannel & proj(tbl) & channelRestriction;
             if ~isempty(pv.fetchOptions)
                 channelTpl = fetch(tblChannel,'signal',pv.fetchOptions);
             else
@@ -145,10 +160,16 @@ classdef Preprocessed < dj.Imported
                 T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
                 trCntr=0;
                 % Loop over trials to collect the relevant samples
+                trialOut =false(1,nrTrials);
                 for tr = trials
                     trCntr= trCntr+1;
                     samplesThisTrial = (trialMap.startsample(tr):trialMap.stopsample(tr))';
                     nrSamplesThisTrial= numel(samplesThisTrial);
+                    if isinf(pv.align(trCntr)) || isnan(pv.align(trCntr))
+                        fprintf('Align even did not occur in trial %d. Skipping trial.\n',tr)
+                        trialOut(trCntr) = true;
+                        continue;
+                    end
                     trialTime = (0:nrSamplesThisTrial-1)'*trialMap.sampleduration - pv.align(trCntr); %Time in the trial
 
                     thisT = timetable(seconds(trialTime),signal(samplesThisTrial,:)); % The table for this trial, at the original sampling rate.
@@ -179,6 +200,7 @@ classdef Preprocessed < dj.Imported
                     thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
                     T.(varNames(trCntr)) = table2array(thisT);
                 end
+                T(:,trialOut) = [];
             end
             % Return as doubles or as timetable.
             if nargout ==2
@@ -200,11 +222,11 @@ classdef Preprocessed < dj.Imported
             channels = fetch1(ephys.Array & key,'channels');
             % The (user-provided) prep funciton has to return the signal
             % as [nrSamples, nrChannels]  and the channels [nrChannels 1]
-            [signal,time,info] = feval(preParms.fun,key,channels, preParms.parms);
+            [signal,time,channelInfo,recordingInfo] = feval(preParms.fun,key,channels, preParms.parms);
             [nrSamples,nrChannels] = size(signal);
             assert(nrSamples==numel(time),'The number of rows in the preprocessed signal does not match the number of time points ')
             assert(nrChannels==numel(channels),'The number of columns in the preprocessed signal does not match the number of channels')
-            assert(isempty(info) || (numel(info)==nrChannels),'The info rerturned by preprocessing deos not match the number of channels')
+            assert(isempty(channelInfo) || (numel(channelInfo)==nrChannels),'The info rerturned by preprocessing deos not match the number of channels')
 
 
             %% Store the information to map samples to trials (Used in ephys.Preprocessed.get)
@@ -231,21 +253,22 @@ classdef Preprocessed < dj.Imported
                 struct('startsample',startSample, ...
                 'stopsample',stopSample,...
                 'trialstart',trialStartTime', ...
-                'sampleduration',sampleduration));
+                'sampleduration',sampleduration, ...
+                'info',recordingInfo));
             insert(tbl,tpl)
 
             % Create tpls for the PreprocessedChannel part table and insert
             channelsTpl = mergestruct(key,...
                 struct('signal',num2cell(single(signal),1)',...
                 'channel',num2cell(channels(:))));
-            if ~isempty(info)
-                for i=1:numel(info)
-                    channelsTpl(i).info = info(i);
+            if ~isempty(channelInfo)
+                for i=1:numel(channelInfo)
+                    channelsTpl(i).info = channelInfo(i);
                 end
             end
 
             % Chunking the inserts to avoid overloading the server
-            chunkSize = 1; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
+            chunkSize = 32; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
             tic;
             fprintf('Uploading to server')
             for i=1:chunkSize:nrChannels

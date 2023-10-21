@@ -14,12 +14,12 @@ function [header,data] = read(filename,pv)
 arguments
     filename (1,1) string
     pv.headerOnly (1,1) logical =false
-    pv.digIn (1,:) double {mustBeNonnegative,mustBeInteger}= [];  
-    pv.digOut (1,:) double {mustBeNonnegative,mustBeInteger}= [];  
-    pv.amplifier (1,:) double {mustBeNonnegative,mustBeInteger}= [];  
-    pv.dac (1,:) double {mustBeNonnegative,mustBeInteger}= [];  
-    pv.adc (1,:) double {mustBeNonnegative,mustBeInteger}= [];  
-    pv.stim (1,:) double {mustBeNonnegative,mustBeInteger}= [];  
+    pv.digIn (1,:) double = [];  
+    pv.digOut (1,:) double = [];  
+    pv.amplifier (1,:) double = [];  
+    pv.dac (1,:) double = [];  
+    pv.adc (1,:) double = [];  
+    pv.stim (1,:) double = [];  
 
 end
 
@@ -70,7 +70,7 @@ switch upper(ext)
             data.dac = board_dac_data(pv.dac,:)'; % volts
             data.adc = board_adc_data(pv.adc,:)'; % volts
             data.stim = stim_data(pv.stim,:)';  % microamps
-            data.time  = t; %time in seconds
+            data.time  = t'; %time in seconds
         else
             data = struct('digIn',[],'digoOut',[],'amplifier',[],'dac',[],'adc',[],'stim',[],'time',[]);
         end

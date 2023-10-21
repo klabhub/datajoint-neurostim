@@ -1,4 +1,4 @@
-function [signal,timeNeurostim,info] = preprocess(key,channels,parms)
+function [signal,timeNeurostim,channelInfo,recordingInfo] = preprocess(key,channels,parms)
 % Read from Ripple data files, preprocess them according to the parameters
 % passed in the parms struct.  This handles MUAE, LFP, SPIKES, and EEG
 % data and relies on the Ripple neuroshare tools to read the nev, nsx etc
@@ -64,7 +64,7 @@ end
 nrChannels = numel(entityIx);
 fprintf('%d channels from this Array in this file\n',nrChannels)
 if nrChannels ==0
-    signal = []; timeNeurostim = [];info=[];
+    signal = []; timeNeurostim = [];channelInfo=[];
     return;
 end
 assert(nrChannels==numel(channels),'Multiple channel matches?')
@@ -76,10 +76,10 @@ assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samp
 switch upper(parms.type)
     case 'MUAE'
         for i=1:nrChannels
-            [errCode, info(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
+            [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
             if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
         end
-        samplingRate = info(1).SampleRate;% All are  the same for sure.
+        samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
         rawTime = ((0:nrSamples-1)'/samplingRate);
         nrSamplesInMuae = numel(downsample(rawTime,samplingRate/parms.targetHz));
         signal = nan(nrSamplesInMuae,nrChannels);
@@ -99,10 +99,10 @@ switch upper(parms.type)
         end        
     case {'EEG','LFP'}
         for i=1:nrChannels
-            [errCode, info(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
+            [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
             if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
         end
-        samplingRate = info(1).SampleRate;% All are  the same for sure.
+        samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
         timeRipple = (0:nrSamples-1)/samplingRate;        
         tic
         fprintf('Reading from file...')
@@ -151,6 +151,8 @@ clockParms = matchRiplleNeurostim(trialBitTime(:),trialBitValue(:),trialStartTim
 timeNeurostim =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime
 
 ns_CloseFile(hFile);
+
+recordingInfo = struct;  % nothing yet.
 
 end
 
