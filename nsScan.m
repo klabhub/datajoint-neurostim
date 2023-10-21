@@ -122,7 +122,7 @@ switch (p.Results.schedule)
         error('Unknown schedule %s',p.Results.schedule)
 end
 
-fprintf('Scanning %s ...\n',srcFolder)
+fprintf('Scanning %s for %s ...\n',srcFolder,strjoin(p.Results.paradigm,'/'))
 
 % Find the files matching the wildcard
 dirInfo= dir(fullfile(srcFolder,'*.mat'));
