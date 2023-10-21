@@ -35,11 +35,7 @@ classdef PreprocessedTrialmap < dj.Part
                 if ~exists(ns.File & expt & 'extension=''.sbx''')
                     warnNoTrace('Skipping experiment %s as it has no associated sbx file',expt.starttime);
                 else
-                    meta = fetch(ns.ExperimentMeta & expt & struct('meta_name','nrframes'),'*');
-                    if isempty(meta)
-                        error('No nrFrames meta information found. Please sbx.addExperimentMeta.')
-                    end
-                    nrframes = meta.meta_value;
+                    nrframes  = ns.getMeta(ns.Experiment& expt ,'nrframes',type='double');
                     thisFrames = previousScanFrames+ (1:nrframes);
                     nrFrames= numel(thisFrames);
                     previousScanFrames = thisFrames(end);

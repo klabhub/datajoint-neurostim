@@ -1,4 +1,4 @@
-function T = getMeta(tbl,meta)
+function out = getMeta(tbl,meta,pv)
 % Convenience function to retrieve meta data for Subject, Session, or
 % Experiment tables.
 % 
@@ -12,6 +12,8 @@ function T = getMeta(tbl,meta)
 arguments
     tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subject','ns.Session'})}
     meta {mustBeText} = ""
+    pv.type = table
+    pv.number = inf
 end
 % Get the meta table
 metaTable = feval([class(tbl) 'Meta']);
@@ -32,4 +34,19 @@ for i=1:numel(meta)
         T = outerjoin(T,thisMetaT,'MergeKeys',true,'RightVariables',setdiff(thisMetaT.Properties.VariableNames,{'meta_name','meta_value'}));    
     end
 end
+
+
+switch (pv.type)
+    case 'table'
+        % nothing to do
+        out = T;
+    case 'double'
+        % Meta is a number stored as string.
+        out =cellfun(@str2num,T{:,meta});
+    otherwise 
+
+end
+
+
+
 
