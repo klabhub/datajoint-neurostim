@@ -12,7 +12,7 @@ function out = getMeta(tbl,meta,pv)
 arguments
     tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subject','ns.Session'})}
     meta {mustBeText} = ""
-    pv.type = table
+    pv.type (1,1) string = "table"
     pv.number = inf
 end
 % Get the meta table
