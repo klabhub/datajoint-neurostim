@@ -10,8 +10,12 @@ function v= mergestruct(varargin)
 %
 % BK - Dec 2022
 
-nrStructs = numel(varargin);
+% Remove empty structs
 arraySize= cellfun(@numel,varargin);
+varargin(arraySize==0) = [];
+arraySize= cellfun(@numel,varargin);
+nrStructs = numel(varargin);
+
 singleton = arraySize==1;
 expandTo  = unique(arraySize(~singleton));
 assert(numel(expandTo)<=1,'mergestruct can only merge singletons with one struct array size');

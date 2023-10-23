@@ -71,7 +71,9 @@ time  = polyval(clockParms,data.time);
 %% Preprocess
 switch upper(parms.type)    
     case {'EEG','LFP'}       
+       
         % DownSample 
+        
         if isfield(parms,'downsample')
             tic
             fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample.frequency);    
@@ -85,7 +87,7 @@ switch upper(parms.type)
             time = linspace(time(1),time(end),nrSamples)';
             fprintf('Done in %d seconds.\n.',round(toc))
         end
-        %% Filtering
+        %% Notch
         if isfield(parms,'designfilt') && ~isempty(parms.designfilt)
             tic
             fprintf('Applying filter (designfilt)...')       
@@ -93,7 +95,12 @@ switch upper(parms.type)
             signal = filtfilt(d,signal);
             fprintf('Done in %d seconds.\n.',round(toc))
         end        
-        
+         % Highpass
+        if isfield(parms,'highpass')
+            [B,A] = butter(parms.highpass{:});
+            signal = filtfilt(B,A,signal);
+        end
+
     otherwise 
         error('Unknown Intan preprocessing type %s.',parms.type)
 end

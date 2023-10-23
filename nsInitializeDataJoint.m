@@ -1,4 +1,4 @@
-function nsInitializeDataJoint(code,databaseName,dataRoot,packageName)
+function nsInitializeDataJoint(code,databaseName,packageName,pv)
 % Setup a new datajoint pipeline for a Neurostim project.
 % For instance, if Alice's data are all under the root folder x:\data\
 % and she wants to start a new project called 'alice_memory' with Matlab code
@@ -32,21 +32,25 @@ function nsInitializeDataJoint(code,databaseName,dataRoot,packageName)
 %           will create a +ns package subfolder with a getSchema.m file.
 % databasename - The name of this project in your SQL database (e.g.
 %                   'alice_memory')
-% dataRoot - The root folder that contains all data files. The
-%               folders below this are the years.
 % packageName- The package(s) to install in the database. Default is ns
 % (package to handle Neurostim files). Other options are:
 %               'sbx' - Calcium imaging with ScanBox
+%               'ephys' -  EEG , LFP electrophysiology 
 %               To use multiple packages, pass a cell array of strings with
 %               package names ({'ns','sbx'}). Each package will create a
 %               separate schema within the same database
+% Parm/Value pairs:
+% 'dataRoot' - The root folder that contains all data files. The
+%               folders below this are the years. Defaults to
+%               getenv('NS_ROOT')
+
 %  BK - April 2022
 
 arguments
     code {mustBeText} 
-    databaseName {mustBeText}
-    dataRoot {mustBeText}
+    databaseName {mustBeText}    
     packageName {mustBeText} = {'ns'}
+    pv.dataRoot {mustBeText} = getenv('NS_ROOT');
 end
 % Make sure the database name begins with a lower case letter
 if isempty(regexp(databaseName,'^[a-z]+', 'once'))
@@ -63,7 +67,9 @@ end
 % Move to the code folder and add it to the path
 cd(code)
 %% Define the ROOT as an environment variable
-setenv('NS_ROOT',dataRoot);
+if ~isempty(pv.dataRoot)
+    setenv('NS_ROOT',pv.dataRoot);
+end
 %% Create the schema on the SQL server
 
 query(dj.conn, sprintf('CREATE DATABASE IF NOT EXISTS `%s`',databaseName))

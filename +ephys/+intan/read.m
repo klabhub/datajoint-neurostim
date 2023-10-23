@@ -14,13 +14,13 @@ function [header,data] = read(filename,pv)
 arguments
     filename (1,1) string
     pv.headerOnly (1,1) logical =false
+    %% Specify the channels that should be read. NaN means all.
     pv.digIn (1,:) double = [];  
     pv.digOut (1,:) double = [];  
     pv.amplifier (1,:) double = [];  
     pv.dac (1,:) double = [];  
     pv.adc (1,:) double = [];  
     pv.stim (1,:) double = [];  
-
 end
 
 
@@ -71,6 +71,13 @@ switch upper(ext)
             data.adc = board_adc_data(pv.adc,:)'; % volts
             data.stim = stim_data(pv.stim,:)';  % microamps
             data.time  = t'; %time in seconds
+            % Cut to size
+            header.digIn =header.digIn(pv.digIn);
+            header.digOut =header.digIn(pv.digOut);           
+            header.amplifier= header.amplifier(pv.amplifier);
+            header.dac =header.digIn(pv.dac);
+            header.adc = header.adc(pv.adc);
+            header.stim = header.stim(pv.stim);
         else
             data = struct('digIn',[],'digoOut',[],'amplifier',[],'dac',[],'adc',[],'stim',[],'time',[]);
         end
