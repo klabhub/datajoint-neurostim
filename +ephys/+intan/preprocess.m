@@ -85,21 +85,26 @@ switch upper(parms.type)
             end
             signal =tmp;
             time = linspace(time(1),time(end),nrSamples)';
-            fprintf('Done in %d seconds.\n.',round(toc))
+            fprintf('Done in %d seconds.\n.',round(toc));
+            sampleRate = parms.downsample.frequency;
+        else
+            sampleRate = hdr.frequency.amplifier_sample_rate;
         end
-        %% Notch
-        if isfield(parms,'designfilt') && ~isempty(parms.designfilt)
-            tic
-            fprintf('Applying filter (designfilt)...')       
-            d = designfilt(parms.designfilt{:},'SampleRate',hdr.frequency.amplifier_sample_rate);
-            signal = filtfilt(d,signal);
-            fprintf('Done in %d seconds.\n.',round(toc))
+        %% Notch, Bandpass,etc. 
+        if isfield(parms,'designfilt') 
+            fn = fieldnames(parms.designfilt);
+            for i=1:numel(fn)
+                tic;
+                fprintf('Applying filter (designfilt.%s)...',fn{i}) 
+                prms= parms.designfilt.(fn{i});
+                d = designfilt(prms{:},'SampleRate',sampleRate);
+                signal = filtfilt(d,signal);
+                fprintf('Done in %d seconds.\n.',round(toc))
+            end            
         end        
-         % Highpass
-        if isfield(parms,'highpass')
-            [B,A] = butter(parms.highpass{:});
-            signal = filtfilt(B,A,signal);
-        end
+         
+        
+
 
     otherwise 
         error('Unknown Intan preprocessing type %s.',parms.type)

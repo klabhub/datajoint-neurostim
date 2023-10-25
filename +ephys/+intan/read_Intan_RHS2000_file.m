@@ -282,6 +282,36 @@ else
     fprintf(1, '\n');
 end
 
+%% BK
+%% Rearrange to put data in a more usable format.
+header.frequency = frequency_parameters;
+header.stim  = stim_parameters;
+header.trigger = spike_triggers;
+header.amplifier = amplifier_channels;
+header.digIn = board_dig_in_channels;
+header.digOut = board_dig_out_channels;
+header.adc  = board_adc_channels;
+header.dac = board_dac_channels;
+if isnan(pv.digIn)
+    pv.digIn = 1:numel(header.digIn);
+end
+if isnan(pv.digOut)
+    pv.digOut = 1:numel(header.digOut);
+end
+if isnan(pv.amplifier)
+    pv.amplifier= 1:numel(header.amplifier);
+end
+if isnan(pv.dac)
+    pv.dac = 1:numel(header.dac);
+end
+if isnan(pv.adc)
+    pv.adc= 1:numel(header.adc);
+end
+if isnan(pv.stim)
+    pv.stim = 1:numel(header.stim);
+end
+%%
+
 if pv.headerOnly
 
 else
@@ -294,20 +324,22 @@ else
         fprintf(1, 'Allocating memory for data...\n');
 
         t = zeros(1, num_amplifier_samples);
-
-        amplifier_data = zeros(num_amplifier_channels, num_amplifier_samples);
+        nrAmplifierKept = numel(pv.amplifier);
+        nrAdcKept = numel(pv.adc);
+        nrDacKept = numel(pv.dac);
+        nrDigOutKept  = numel(pv.digOut);
+        nrDigInKept = numel(pv.digIn);
+        nrStimKept  = numel(pv.stim);
+        amplifier_data = zeros(nrAmplifierKept, num_amplifier_samples);
         if (dc_amp_data_saved ~= 0)
-            dc_amplifier_data = zeros(num_amplifier_channels, num_amplifier_samples);
+            dc_amplifier_data = zeros(nrAmplifierKept, num_amplifier_samples);
         end
-        stim_data = zeros(num_amplifier_channels, num_amplifier_samples);
-        amp_settle_data = zeros(num_amplifier_channels, num_amplifier_samples);
-        charge_recovery_data = zeros(num_amplifier_channels, num_amplifier_samples);
-        compliance_limit_data = zeros(num_amplifier_channels, num_amplifier_samples);
-        board_adc_data = zeros(num_board_adc_channels, num_board_adc_samples);
-        board_dac_data = zeros(num_board_dac_channels, num_board_dac_samples);
-        board_dig_in_data = zeros(num_board_dig_in_channels, num_board_dig_in_samples);
+        stim_data = zeros(nrAmplifierKept, num_amplifier_samples);
+        board_adc_data = zeros(nrAdcKept, num_board_adc_samples);
+        board_dac_data = zeros(nrDacKept, num_board_dac_samples);
+        board_dig_in_data = zeros(nrDigInKept, num_board_dig_in_samples);
         board_dig_in_raw = zeros(1, num_board_dig_in_samples);
-        board_dig_out_data = zeros(num_board_dig_out_channels, num_board_dig_out_samples);
+        board_dig_out_data = zeros(nrDigOutKept, num_board_dig_out_samples);
         board_dig_out_raw = zeros(1, num_board_dig_out_samples);
 
         % Read sampled data from file.
@@ -324,23 +356,52 @@ else
         for i=1:num_data_blocks
             t(amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'int32');
             if (num_amplifier_channels > 0)
-                amplifier_data(:, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                % Read all , keep only the selected channels to save
+                % memory.
+                tmp = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                % Keep only the requested channels
+                amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1))  = tmp(pv.amplifier,:);
                 if (dc_amp_data_saved ~= 0)
-                    dc_amplifier_data(:, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                    tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                    dc_amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.amplifier,:);
                 end
-                stim_data(:, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+
+                if nrStimKept>0
+                    tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                    stim_data(1:nrStimKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.stim,:);
+                else
+                    fseek(fid,num_samples_per_data_block*num_amplifier_channels*2,'cof');
+                end
             end
             if (num_board_adc_channels > 0)
-                board_adc_data(:, board_adc_index:(board_adc_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, num_board_adc_channels], 'uint16')';
+                if nrAdcKept>0
+                    tmp =  fread(fid, [num_samples_per_data_block, num_board_adc_channels], 'uint16')';
+                    board_adc_data(1:nrAdcKept, board_adc_index:(board_adc_index + num_samples_per_data_block - 1)) =tmp(pv.adc,:);
+                else
+                    fseek(fid,num_samples_per_data_block*num_board_adc_channels*2,'cof');
+                end
             end
             if (num_board_dac_channels > 0)
-                board_dac_data(:, board_dac_index:(board_dac_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, num_board_dac_channels], 'uint16')';
+                if nrDacKept>0
+                    tmp =  fread(fid, [num_samples_per_data_block, num_board_dac_channels], 'uint16')';
+                    board_dac_data(1:nrDacKept, board_dac_index:(board_dac_index + num_samples_per_data_block - 1)) =tmp(pv.dac,:);
+                else
+                    fseek(fid,num_samples_per_data_block*num_board_dac_channels*2,'cof');
+                end
             end
             if (num_board_dig_in_channels > 0)
-                board_dig_in_raw(board_dig_in_index:(board_dig_in_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'uint16');
+                if nrDigInKept >0
+                    board_dig_in_raw(board_dig_in_index:(board_dig_in_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'uint16');
+                else
+                    fseek(fid,num_samples_per_data_block*2,'cof');
+                end
             end
             if (num_board_dig_out_channels > 0)
-                board_dig_out_raw(board_dig_out_index:(board_dig_out_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'uint16');
+                if nrDigOutKept>0
+                    board_dig_out_raw(board_dig_out_index:(board_dig_out_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'uint16');
+                else
+                    fseek(fid,num_samples_per_data_block*2,'cof');
+                end
             end
 
             amplifier_index = amplifier_index + num_samples_per_data_block;
@@ -371,10 +432,13 @@ else
             mask = 2^(board_dig_in_channels(i).native_order) * ones(size(board_dig_in_raw));
             board_dig_in_data(i, :) = (bitand(board_dig_in_raw, mask) > 0);
         end
+        board_dig_in_data  = board_dig_in_data(pv.digIn,:);
+
         for i=1:num_board_dig_out_channels
             mask = 2^(board_dig_out_channels(i).native_order) * ones(size(board_dig_out_raw));
             board_dig_out_data(i, :) = (bitand(board_dig_out_raw, mask) > 0);
         end
+        board_dig_out_data  = board_dig_out_data(pv.digIn,:);
 
         % Scale voltage levels appropriately.
         amplifier_data = 0.195 * (amplifier_data - 32768); % units = microvolts
@@ -407,7 +471,25 @@ else
         % Scale time steps (units = seconds).
         t = t / sample_rate;
     end
+
+    % Keep only the requested channels
+    data.digIn = board_dig_in_data'; % Channels to columns
+    data.digOut = board_dig_out_data'; % Channels to columns
+    data.amplifier = amplifier_data'; % microvolts
+    data.dac = board_dac_data'; % volts
+    data.adc = board_adc_data'; % volts
+    data.stim = stim_data';  % microamps
+    data.time  = t'; %time in seconds
+
 end
+
+% Cut header to requested size
+header.digIn =header.digIn(pv.digIn);
+header.digOut =header.digIn(pv.digOut);
+header.amplifier= header.amplifier(pv.amplifier);
+header.dac =header.digIn(pv.dac);
+header.adc = header.adc(pv.adc);
+header.stim = header.stim(pv.stim);
 
 % Close data file.
 fclose(fid);

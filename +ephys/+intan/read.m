@@ -34,53 +34,7 @@ switch upper(ext)
     case '.RHS'
         %% Call the Intan Function        
         %#ok<*USENS> % Many variables are created in the script
-        ephys.intan.read_Intan_RHS2000_file;
-        %% Rearrange to put data in a more usable format.        
-        header.frequency = frequency_parameters;
-        header.stim  = stim_parameters;
-        header.trigger = spike_triggers;
-        header.amplifier = amplifier_channels;
-        header.digIn = board_dig_in_channels;
-        header.digOut = board_dig_out_channels;
-        header.adc  = board_adc_channels;
-        header.dac = board_dac_channels;
-        if ~pv.headerOnly
-            if isnan(pv.digIn)
-                pv.digIn = 1:numel(header.digIn);
-            end
-            if isnan(pv.digOut)
-                pv.digOut = 1:numel(header.digOut);
-            end
-            if isnan(pv.amplifier)
-                pv.amplifier= 1:numel(header.amplifier);
-            end
-            if isnan(pv.dac)
-                pv.dac = 1:numel(header.dac);
-            end
-            if isnan(pv.adc)
-                pv.adc= 1:numel(header.adc);
-            end
-            if isnan(pv.stim)
-                pv.stim = 1:numel(header.stim);
-            end
-            % Keep only the requested channels            
-            data.digIn = board_dig_in_data(pv.digIn,:)'; % Channels to columns
-            data.digOut = board_dig_out_data(pv.digOut,:)'; % Channels to columns
-            data.amplifier = amplifier_data(pv.amplifier,:)'; % microvolts
-            data.dac = board_dac_data(pv.dac,:)'; % volts
-            data.adc = board_adc_data(pv.adc,:)'; % volts
-            data.stim = stim_data(pv.stim,:)';  % microamps
-            data.time  = t'; %time in seconds
-            % Cut to size
-            header.digIn =header.digIn(pv.digIn);
-            header.digOut =header.digIn(pv.digOut);           
-            header.amplifier= header.amplifier(pv.amplifier);
-            header.dac =header.digIn(pv.dac);
-            header.adc = header.adc(pv.adc);
-            header.stim = header.stim(pv.stim);
-        else
-            data = struct('digIn',[],'digoOut',[],'amplifier',[],'dac',[],'adc',[],'stim',[],'time',[]);
-        end
+        ephys.intan.read_Intan_RHS2000_file;        
     case '.RHD'
         error('RHD Not implemented yet.')
     otherwise
