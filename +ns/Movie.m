@@ -7,6 +7,7 @@ framerate=null              : float                         # Framerate (fps)
 width=null                  : int unsigned                  # Width in pixelsststr
 height=null                 : int unsigned                  # Height in pixels
 bytes=null                  : double                        # Number of bytes in the file
+intensity=null              : longblob                # Mean intensity per frame
 %}
 
 classdef Movie < dj.Computed
@@ -81,6 +82,7 @@ classdef Movie < dj.Computed
             if exist(ff,'file')
                 info =dir(ff);                
                 try
+                    fprintf('Opening %s \n',ff)
                     mv= VideoReader(ff); 
                 catch me
                     fprintf('Could not open %s.\n Error: %s\n', ff,me.message)
@@ -89,12 +91,15 @@ classdef Movie < dj.Computed
             else
                 error('File not found %s',ff);
             end
-          
-            tpl = mergestruct(key,struct('nrframes',mv.NumFrames,'width',mv.Width,'height',mv.Height,'framerate',mv.FrameRate,'bytes',info.bytes));        
+            fprintf('Reading %d frames to determine mean intensity...',mv.NumFrames)
+            frames= read(mv);            
+            fprintf('Done.\n')
+            intensity = squeeze(mean(frames,1:(ndims(frames)-1),"omitnan"));
+            tpl = mergestruct(key,struct('nrframes',mv.NumFrames,'width',mv.Width,'height',mv.Height,'framerate',mv.FrameRate,'bytes',info.bytes,'intensity',intensity));        
             insert(tbl,tpl)
 
             % Now fill the MovieTrialmap
-            make(ns.MovieTrialmap,tpl);
+            make(ns.MovieTrialmap,key);
         end
     end
 

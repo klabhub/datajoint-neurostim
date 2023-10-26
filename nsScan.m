@@ -55,6 +55,9 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %           the relevant folders. See nsScanDicomFolder for an example. Not
 %           commonly needed. [].
 % 
+% excludeSubject - Cell array of subjects to exclude. Defaults to  {'0'}
+% which is the default test subject.
+%
 % The nsAddToDataJoint function can add the output of nsScan to a DataJoint
 % database. To call that automatically, use the following two options:
 % 
@@ -86,6 +89,7 @@ p.addParameter('schedule','d');
 p.addParameter('readJson',true);
 p.addParameter('paradigm',{});
 p.addParameter('subject',{});
+p.addParameter('excludeSubject',{'0'});
 p.addParameter('folderFun','');
 p.addParameter('addToDataJoint',false,@islogical)
 p.addParameter('newOnly',false,@islogical);
@@ -193,7 +197,8 @@ if ~isempty(p.Results.subject)
     end
     stay = stay &  ismember(upper({meta.subject}),upper(subject));
 end
-stay = stay &  ~ismember({meta.subject},'0');
+
+stay = stay &  ~ismember({meta.subject},p.Results.excludeSubject);
 
 if ~isempty(p.Results.paradigm)
     if ischar(p.Results.paradigm)

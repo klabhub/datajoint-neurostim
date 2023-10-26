@@ -342,6 +342,13 @@ else
         board_dig_out_data = zeros(nrDigOutKept, num_board_dig_out_samples);
         board_dig_out_raw = zeros(1, num_board_dig_out_samples);
 
+        useBlockRead = false;
+        if useBlockRead
+            allAmplifierChannels = 1:num_amplifier_channels;
+            ampChannelsToKeep = ismember(allAmplifierChannels,pv.amplifier);            
+            startChannelBlock = [1 find(diff(ampChannelsToKeep)~=0)+1];
+            nrBlocks = numel(startChannelBlock);
+        end
         % Read sampled data from file.
         fprintf(1, 'Reading data from file...\n');
 
@@ -351,26 +358,59 @@ else
         board_dig_in_index = 1;
         board_dig_out_index = 1;
 
+
+
         print_increment = 10;
         percent_done = print_increment;
         for i=1:num_data_blocks
             t(amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'int32');
             if (num_amplifier_channels > 0)
-                % Read all , keep only the selected channels to save
-                % memory.
-                tmp = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
-                % Keep only the requested channels
-                amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1))  = tmp(pv.amplifier,:);
-                if (dc_amp_data_saved ~= 0)
-                    tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
-                    dc_amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.amplifier,:);
-                end
-
-                if nrStimKept>0
-                    tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
-                    stim_data(1:nrStimKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.stim,:);
+                if useBlockRead
+                    % Read blocks of channels that are kept, while skipping
+                    % the interspersed channels of no interest. Turns out
+                    % this is slower than just reading all of the data and
+                    % not keeping some channels(the 'else' option below)
+                    for blck  =1:nrBlocks
+                        if blck==nrBlocks
+                            channelsInBlock = startChannelBlock(blck):num_amplifier_channels;
+                        else
+                            channelsInBlock = startChannelBlock(blck):(startChannelBlock(blck+1)-1);
+                        end
+                        nrChannelsInBlock = numel(channelsInBlock);
+                        skipBlock = ~ampChannelsToKeep(channelsInBlock(1));% If the first is skipped the block should be skipped
+                        if skipBlock
+                            nrSamples= (2+(dc_amp_data_saved ~= 0))*num_samples_per_data_block*nrChannelsInBlock*2;
+                            fseek(fid,nrSamples,'cof');
+                        else
+                            channelIx = find(ismember(pv.amplifier,channelsInBlock));
+                            % Read channel block
+                            amplifier_data(channelIx, amplifier_index:(amplifier_index + num_samples_per_data_block - 1))  = fread(fid, [num_samples_per_data_block, nrChannelsInBlock], 'uint16')';
+                            if (dc_amp_data_saved ~= 0)
+                                dc_amplifier_data(channelIx, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, nrChannelsInBlock], 'uint16')';
+                            end
+                            if nrStimKept>0
+                                stim_data(channelIx, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = fread(fid, [num_samples_per_data_block, nrChannelsInBlock], 'uint16')';
+                            else
+                                fseek(fid,num_samples_per_data_block*nrChannelsInBlock*2,'cof');
+                            end
+                        end
+                    end
                 else
-                    fseek(fid,num_samples_per_data_block*num_amplifier_channels*2,'cof');
+                    % Read all , keep only the selected channels to save
+                    % memory.
+                    tmp = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                    % Keep only the requested channels
+                    amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1))  = tmp(pv.amplifier,:);
+                    if (dc_amp_data_saved ~= 0)
+                        tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                        dc_amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.amplifier,:);
+                    end
+                    if nrStimKept>0
+                        tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                        stim_data(1:nrStimKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.stim,:);
+                    else
+                        fseek(fid,num_samples_per_data_block*num_amplifier_channels*2,'cof');
+                    end
                 end
             end
             if (num_board_adc_channels > 0)
@@ -438,7 +478,7 @@ else
             mask = 2^(board_dig_out_channels(i).native_order) * ones(size(board_dig_out_raw));
             board_dig_out_data(i, :) = (bitand(board_dig_out_raw, mask) > 0);
         end
-        board_dig_out_data  = board_dig_out_data(pv.digIn,:);
+        board_dig_out_data  = board_dig_out_data(pv.digOut,:);
 
         % Scale voltage levels appropriately.
         amplifier_data = 0.195 * (amplifier_data - 32768); % units = microvolts

@@ -32,7 +32,7 @@ end
 
 switch upper(ext)
     case '.RHS'
-        %% Call the Intan Function        
+        %% Call the modified Intan script
         %#ok<*USENS> % Many variables are created in the script
         ephys.intan.read_Intan_RHS2000_file;        
     case '.RHD'

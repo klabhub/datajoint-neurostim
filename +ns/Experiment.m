@@ -88,7 +88,7 @@ classdef Experiment  < dj.Manual
             % not.
             % 'prm' -  Specify a single parameter to retrieve
             % 'what' - What is it about the single parameter you want to
-            % retrieve?
+            % retrieve.
             %       'data' : the value 
             %       'trialtime' : the trial time at which the parameter was
             %       set (0= firstFrame in the trial)
@@ -166,24 +166,10 @@ classdef Experiment  < dj.Manual
                     continue; % Next experiment 
                 end
 
-                % Post-process all (including cic) if requested
-                if strlength(pv.prm) ~=0  %prm was specified
-                    if ~isnan(pv.atTrialTime)
-                        % Single prm from a specified plugin,  at a specific time
-                        out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic);
-                    else
-                    switch pv.what
-                        case 'data'
-                            % Return only the values, not the time/trial;
-                            out{exptCntr} = v.(plg{1}).(pv.prm);
-                        case 'trialtime'
-                            out{exptCntr} = v.(plg{1}).([pv.prm 'Time']);
-                        case 'clocktime'
-                            out{exptCntr} = v.(plg{1}).([pv.prm 'NsTime']);
-                        case 'trial'
-                            out{exptCntr} = v.(plg{1}).([pv.prm 'Trial']);
-                    end
-                    end
+               
+                if strlength(pv.prm) ~=0  %prm was specified  
+                    % Single prm from a specified plugin,  at a specific time
+                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what);                    
                 else
                     % Everything
                     % Return struct with all info

@@ -68,7 +68,7 @@ classdef Ball < dj.Computed
                         speed =abs(tpl.velocity);
                         maxSpeed = max(eps,max(speed));
                         historyColormap = gray; % Show multiple trailing vectors as shades of grays
-                        colormap gray
+                        colormap gray                        
                         for frameCntr = pv.frameStart:pv.frameStep:min(pv.frameStop,tpl.nrframes)
                             if  ~ishandle(hFig);break;end;
                             frame = movie.read(frameCntr);
@@ -134,7 +134,7 @@ classdef Ball < dj.Computed
                         time= hsv(sum(stay)); % Show multiple trailing vectors as shades of grays
                         scatter(0,0,10,'*');
                         hold on
-                        scatter(real(position),imag(position),speed,time,'o','filled');
+                        scatter(real(position),imag(position),2,time,'o','filled');
                         xlabel 'X (pixels)';
                         ylabel 'Y (pixels)';
                         set(gca,'XLim',max(abs(xlim))*[-1 1],'ylim',max(abs(ylim))*[-1 1]);
@@ -161,6 +161,7 @@ classdef Ball < dj.Computed
                         legend('quality')
                         title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',tpl.subject, tpl.session_date,tpl.starttime,mean(tpl.quality,'omitnan'),mean(isnan(tpl.velocity))));
                         linkaxes(T.Children,'x')
+
                 end
 
             end
