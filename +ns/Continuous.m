@@ -1,7 +1,7 @@
 %{
-# Preprocessed signals per electrode and experiment 
--> ns.Experiment
--> ephys.PrepParm
+# Preprocessed continuous signals per channel 
+-> ns.File
+-> ns.ContinuousParm
 --- 
 startsample: longblob  # Vector of the first sample in each trial 
 stopsample: longblob   # Vector with the last sample in each trial
@@ -9,7 +9,6 @@ trialstart: longblob   # Start of the trial on the neurostim clock
 sampleduration: float  # Duration of a sample
 info :  longblob       # General hardware info that is not specific to a channel.
 %}
-
 % This is a generic table that (together with its dj.Part table
 % PreprocessedChannel) stores preprocessed
 % data for electrophysiological recordings. The user provides
@@ -47,7 +46,7 @@ info :  longblob       # General hardware info that is not specific to a channel
 % The ephys.ripple.preprocess functon shows a complete implementation of a
 % preprocessing function that handles MUAE, LFP, and EEG recordings with
 % the Ripple Grapevine system.
-% 
+%
 % ephys.intan. preprocess does the same for Intan RHX recordings
 %
 % Once preprocessing is complete, use the get() function of this class to
@@ -62,22 +61,32 @@ info :  longblob       # General hardware info that is not specific to a channel
 %
 % BK - June 2023
 
-classdef Preprocessed < dj.Imported
+classdef Continuous < dj.Computed
     properties (Dependent)
-        keySource  %(limit to a subset of experiments with ephys data)
-    end
-    properties (Constant)
-        extensions = {'.rhs','.nev'};
-    end
-    methods
-    function v = get.keySource(~)
-            % Restrict to sessions that have files for which we have
-            % preprocess functions
-            exts= struct('extension',ephys.Preprocessed.extensions);
-            v =(ns.Experiment & (ns.File & exts ))*ephys.PrepParm;
-        end
+        keySource
     end
 
+    methods
+
+        function v = get.keySource(~)
+            % Restrict to files that have the relevant files
+            % parms = fetch(ns.ContinuousParm,'extension');
+            % restrict = struct('extension',{parms.extension});
+            % v =(ns.File & restrict)*proj(ns.ContinuousParm);
+            %
+            for prms= fetch(ns.ContinuousParm,'extension')'
+                restrict  =struct('extension',prms.extension);
+                thisV = fetch((ns.File & restrict)*proj(ns.ContinuousParm&restrict));
+                if exist("v","var")
+                    v  = catstruct(1,v,thisV);
+                else
+                    v = thisV;
+                end
+            end
+            v = (ns.File*proj(ns.ContinuousParm)) & v;
+
+        end
+    end
     methods (Access=public)
         function [varargout] = get(tbl,pv)
             % Function to retrieve trial-start aligned preprocessed signals
@@ -108,7 +117,7 @@ classdef Preprocessed < dj.Imported
             %          Channels are along the columns of the rows of the
             %           elements of the table.
             arguments
-                tbl  (1,1) ephys.Preprocessed {mustHaveRows}
+                tbl  (1,1) ns.Continuous
                 pv.fetchOptions {mustBeText} = ''
                 pv.channel (1,:) double = []
                 pv.trial (1,:) double = []
@@ -139,7 +148,7 @@ classdef Preprocessed < dj.Imported
             else
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             end
-            tblChannel =ephys.PreprocessedChannel & proj(tbl) & channelRestriction;
+            tblChannel =ns.ContinuousChannel & proj(tbl) & channelRestriction;
             if ~isempty(pv.fetchOptions)
                 channelTpl = fetch(tblChannel,'signal',pv.fetchOptions);
             else
@@ -171,7 +180,6 @@ classdef Preprocessed < dj.Imported
                         continue;
                     end
                     trialTime = (0:nrSamplesThisTrial-1)'*trialMap.sampleduration - pv.align(trCntr); %Time in the trial
-
                     thisT = timetable(seconds(trialTime),signal(samplesThisTrial,:)); % The table for this trial, at the original sampling rate.
                     if pv.crossTrial &&  pv.start <0 && trials(tr) >1
                         % Extract from previous trial (i.e. the time requested was before
@@ -203,8 +211,12 @@ classdef Preprocessed < dj.Imported
                 T(:,trialOut) = [];
             end
             % Return as doubles or as timetable.
-            if nargout ==2
+            if nargout >=2
                 [varargout{1},varargout{2}] = timetableToDouble(T);
+                if nargout >2
+                    nsClockTime = trialMap.trialstart(~trialOut) + repmat(seconds(T.Time),[1 sum(~trialOut)]);
+                    varargout{3} = nsClockTime;
+                end
             else
                 varargout{1} =T;
             end
@@ -212,22 +224,20 @@ classdef Preprocessed < dj.Imported
     end
 
 
+
     methods (Access=protected)
         function makeTuples(tbl,key)
-
-
             %% Evaluate the user-specified prep function for the specified parms
             % and channels and insert in the table.
-            preParms = fetch(ephys.PrepParm & key,'*');
-            channels = fetch1(ephys.Array & key,'channels');
+            prepParms = fetch(ns.ContinuousParm & key,'*');            
             % The (user-provided) prep funciton has to return the signal
             % as [nrSamples, nrChannels]  and the channels [nrChannels 1]
-            [signal,time,channelInfo,recordingInfo] = feval(preParms.fun,key,channels, preParms.parms);
+            [signal,time,channelInfo,recordingInfo] = feval(prepParms.fun,key,prepParms.parms);
             [nrSamples,nrChannels] = size(signal);
             assert(nrSamples==numel(time),'The number of rows in the preprocessed signal does not match the number of time points ')
-            assert(nrChannels==numel(channels),'The number of columns in the preprocessed signal does not match the number of channels')
-            assert(isempty(channelInfo) || (numel(channelInfo)==nrChannels),'The info rerturned by preprocessing deos not match the number of channels')
-
+            assert(nrChannels==numel(channelInfo),'The number of columns in the preprocessed signal does not match the number of channels')
+          
+            channels =[channelInfo.nr];
 
             %% Store the information to map samples to trials (Used in ephys.Preprocessed.get)
             % This is used in the get function to retriev signals per trial
@@ -274,13 +284,67 @@ classdef Preprocessed < dj.Imported
             for i=1:chunkSize:nrChannels
                 fprintf('.')
                 thisChunk = i:min(nrChannels,i+chunkSize-1);
-                insert(ephys.PreprocessedChannel,channelsTpl(thisChunk));
+                insert(ns.ContinuousChannel,channelsTpl(thisChunk));
             end
             fprintf('Done in %d seconds.\n.',round(toc))
 
-
-
         end
     end
+
+    methods (Access=public)
+        function [hdr,data,evts] = fieldtrip(tbl,pv)
+            arguments
+                tbl (1,1) ns.Continuous
+                pv.channel =  [];
+            end
+
+
+            %   hdr.Fs                  sampling frequency
+            %   hdr.nChans              number of channels
+            %   hdr.nSamples            number of samples per trial
+            %   hdr.nSamplesPre         number of pre-trigger samples in each trial
+            %   hdr.nTrials             number of trials
+            %   hdr.label               Nx1 cell-array with the label of each channel
+            %   hdr.chantype            Nx1 cell-array with the channel type, see FT_CHANTYPE
+            %   hdr.chanunit            Nx1 cell-array with the physical units, see FT_CHANUNIT
+            % data - a 2-D matrix of size Nchans*Nsamples for continuous
+            % data
+            %   event.type      = string
+            %   event.sample    = expressed in samples, the first sample of a recording is 1
+            %   event.value     = number or string
+            %   event.offset    = expressed in samples
+            %   event.duration  = expressed in samples
+            %   event.timestamp = expressed in timestamp units, which vary over systems (optional)
+
+
+
+            for key = fetch(tbl)'
+                tpl = fetch(tbl*(proj(ns.ContinuousChannel,'info->channelInfo','signal') &  key) & struct('channel',num2cell(pv.channel)'),'*') ;
+                nrChannels = numel(tpl);
+                channelInfo = [tpl.channelInfo];
+                nrTrials = fetch1(ns.Experiment &key,'trials');
+                hdr = struct('Fs',1./tpl.sampleduration,...
+                    'nChans',nrChannels, ...
+                    'nSamples',size(tpl(1).signal,1), ...
+                    'nSamplesPre',0, ...
+                    'nTrials',nrTrials,...
+                    'label',string(channelInfo.custom_channel_name), ...
+                    'chantype',repmat({'eeg'},[1 nrChannels]), ...
+                    'chanUnit',repmat({'uv'},[1 nrChannels]));
+                %'elec',struct('unit','uv','elecpos','')
+
+
+                data = [tpl.signal]';
+
+                if nargout>2
+                    evts  =struct('type','trial','sample',num2cell(tpl(1).startsample)','value',num2cell(1:numel(tpl(1).startsample))','offset',0,'duration',1,'timestamp',[]);
+                end
+            end
+
+        end
+
+    end
+
+
 
 end
