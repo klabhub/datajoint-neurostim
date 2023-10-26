@@ -11,7 +11,10 @@ function[signal,time,channelInfo,recordingInfo] = read(key,parms)
 % .fillmissing = Arguments to replace NaN. Passed to fillmissing (e.g. use
 % {"nearest","EndValues","nearest"} to replace all NaN with the nearest
 % sample.
-% 
+% .scale = Set to true to scale the raw pupil position measures to fractions of the
+% camera image  (0,0) = center, (0.5,0.5) = top right. And pupil size
+% between 0 and 1 with 1 the largest pupil that Eyelink captures.
+%
 % See Also fillmissing, decimate, ns.Continuous
 arguments
     key % The key of the Expriment table (File and ContinuousParm tuple)
@@ -123,6 +126,17 @@ if isfield(parms,'downsample')
         time = linspace(time(1),time(end),nrTimePoints)';
         fprintf('Done in %d seconds.\n.',round(toc));
     end
+end
+if isfield(parms,'scale')
+    fprintf('Scaling raw pupil coordinates\n');     
+    % Raw pupil data (px py) are between -30e3 and + 30e3. We scale to this
+    % to get position relative to the center (of the camera image), with
+    % (0,0 at the center and (0.5,0.5) the top right corner.
+    XYSCALE= 30e3;
+    % The pupil area maxes out at 10000. Let's call that 1.
+    PUPILSCALE = 10000;
+    signal(:,ismember(parms.channel,{'px','py'})) = 0.5*signal(:,ismember(parms.channel,{'px','py'}))./XYSCALE;
+    signal(:,ismember(parms.channel,{'pa'}))= signal(:,ismember(parms.channel,{'pa'}))./PUPILSCALE;
 end
 % Information per channel
 channelInfo =struct('name',parms.channel,'nr',num2cell(1:nrChannels));
