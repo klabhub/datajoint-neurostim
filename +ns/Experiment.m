@@ -238,8 +238,11 @@ classdef Experiment  < dj.Manual
                     [thisTpl,thisC] = ns.Experiment.readCicContents(key);
                 else
                     % Cic was passed check that it matches, then add
-                    % contents
-                    thisC = cic(keyCntr);
+                    % contents. The order of the tbl is not guaranteed, so make sure
+                    % to matchup with the correct cic.
+                    cicUID = string(datetime({cic.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({cic.file})+".mat"; %#ok<DATST>
+                    stay = cicUID==string([key.session_date key.file]);
+                    thisC = cic(stay);
                     thisTpl = ns.Experiment.tplFromCic(thisC);
                     thisTpl =mergestruct(key,thisTpl); % Errors if thisC does not belong to this key.
                 end

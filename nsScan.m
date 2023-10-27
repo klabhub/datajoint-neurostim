@@ -424,5 +424,6 @@ if p.Results.addToDataJoint
         cic =[];
     end
     nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode, ...
-                            'root',p.Results.root,'populateFile',p.Results.populateFile,'populateMovie',p.Results.populateMovie);
+                            'root',p.Results.root,'populateFile',p.Results.populateFile,'populateMovie',p.Results.populateMovie, ...
+                            'newOnly',p.Results.newOnly);
 end
