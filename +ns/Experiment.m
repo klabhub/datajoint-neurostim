@@ -220,7 +220,8 @@ classdef Experiment  < dj.Manual
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
             end
-
+            tic;
+            fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
             % Run all
             keyCntr = 0;
             pkey = tbl.primaryKey;
@@ -229,15 +230,12 @@ classdef Experiment  < dj.Manual
                 keyCntr=keyCntr+1;
                 if isempty(cic)
                     % Read from files
-
                     % Check if this eperiment already has file data, if newOnly
                     % is true, we skip those.
                     if pv.newOnly && ~isnan(fetchn(tbl & key,'stimuli'))
                         continue;
                     end
-
                     [thisTpl,thisC] = ns.Experiment.readCicContents(key);
-
                 else
                     % Cic was passed check that it matches, then add
                     % contents
@@ -246,7 +244,7 @@ classdef Experiment  < dj.Manual
                     thisTpl =mergestruct(key,thisTpl); % Errors if thisC does not belong to this key.
                 end
 
-                % Remove current tuple
+                % Remove current Experiment tuple
                 if pv.pedantic
                     if exists(tbl&key)
                         del(tbl & key);
@@ -254,7 +252,7 @@ classdef Experiment  < dj.Manual
                     insert(tbl,thisTpl);
                 else
                     %Update each field. Potential for referential integrity
-                    %loss.
+                    %loss (not in practice, though).
                      fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
                      for fld = fieldsToUpdate
                         update(tbl&key,fld{1},thisTpl.(fld{1}))
@@ -274,8 +272,8 @@ classdef Experiment  < dj.Manual
                     for plg = plgsToAdd
                         try
                             make(ns.Plugin,plgKey,plg);
-                        catch
-                            fprintf('Failed to add plugin %s information\n',plg.name);
+                        catch me
+                            fprintf(2,'Failed to add plugin %s information\n (%s)',plg.name,me.message);
                         end
                     end
                 end

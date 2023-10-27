@@ -29,141 +29,140 @@ classdef PluginParameter < dj.Part
                 tbl (1,1) ns.PluginParameter
                 key (1,1) struct % Key of the parent plugin
                 name (1,:) char
-                value 
+                value
                 type
                 trialTime
                 trial
-                nsTime                
+                nsTime
             end
-            
+
             key.property_name = name;
             key.property_value = value;
             key.property_type = type;
             key.property_time = trialTime;
             key.property_trial = trial;
             key.property_nstime = nsTime;
-            
-            tryInsert(tbl,key)
+
+            encodeAndInsert(tbl,key)
 
         end
     end
 
     methods (Access= ?ns.Plugin)
-        function make(self,key,prm)
+        function make(tbl,key,prms)
             % Called from ns.Plugin to fill the parameter values
-            assert(isa(prm,'neurostim.parameter'),'PluginParameter needs a neurostim.parameter object as its input.');
-
-            time =[];
-            trial =[];
-            nsTime = [];
-            if prm.cntr==1
-                % Single value: global property
-                % Easy: store only this value
-                type = 'Global';
-                value =prm.value;
-            elseif prm.changesInTrial
-                % Changes within a trial : event
-                % Store all values, plus the time at which the event
-                % occurred.
-                type = 'Event';
-                [value,trial,time,nsTime] =get(prm,'matrixIfPossible',true); %neurostim.parameter.get
-            else
-                % One value per trial : parameter
-                % Some could be single key presses. So filling in across trials is not always right.
-                % So pull all values,just like events.
-                type = 'Parameter';
-                [value,trial,time,nsTime] = get(prm,'matrixIfPossible',true);
-            end
-
-
-            % Some cleanup to store the values in the database
-            if iscell(value)
-                %Replace function handles with strings
-                isFun = cellfun(@(x) (isa(x,'function_handle')),value);
-                [value(isFun)] = cellfun(@func2str,value(isFun),'UniformOutput',false);
-            end
-            % Neurostim should only store changing values, but that
-            % did not always work perfectly. Here we detect values that
-            % were really constant so that we can store a single value
-            % for the experiment (i.e. Global type).
-            if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
-                if iscellstr(value) %#ok<ISCLSTR>
-                    uValue=  unique(value);
-                    if size(uValue,1)==1
-                        uValue= uValue{1}; % Get rid of cell
-                    end
-                elseif ismatrix(value)
-                  uValue =unique(value);
-                    % Dont do this: some events have nan values and only store the 
-                   % time
-                   % if isnumeric(value) && all(isnan(value(:)))
-                        % A vector with all nans
-                    %    uValue =NaN;
-                    %end
-                else % it is something >2D
-                    uValue = nan(2,1); % Just a flag to skip the next part
-                end
-                if size(uValue,1)==1
-                    % Really only one value
-                    value = uValue;
+            
+            prmNames = fieldnames(prms);
+            nrPrms = numel(prmNames);
+            key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part 
+            fprintf('Adding %d parameters for %s plugin\n',nrPrms,key(1).plugin_name);
+            for i=1:nrPrms
+                thisPrm = prms.(prmNames{i});
+                time =[];
+                trial =[];
+                nsTime = [];
+                if thisPrm.cntr==1
+                    % Single value: global property
+                    % Easy: store only this value
                     type = 'Global';
-                    time = [];
-                    nsTime = [];
+                    value =thisPrm.value;
+                elseif thisPrm.changesInTrial
+                    % Changes within a trial : event
+                    % Store all values, plus the time at which the event
+                    % occurred.
+                    type = 'Event';
+                    [value,trial,time,nsTime] =get(thisPrm,'matrixIfPossible',true); %neurostim.parameter.get
+                else
+                    % One value per trial : parameter
+                    % Some could be single key presses. So filling in across trials is not always right.
+                    % So pull all values,just like events.
+                    type = 'Parameter';
+                    [value,trial,time,nsTime] = get(thisPrm,'matrixIfPossible',true);
                 end
+
+
+                % Some cleanup to store the values in the database
+                if iscell(value)
+                    %Replace function handles with strings
+                    isFun = cellfun(@(x) (isa(x,'function_handle')),value);
+                    [value(isFun)] = cellfun(@func2str,value(isFun),'UniformOutput',false);
+                end
+                % Neurostim should only store changing values, but that
+                % did not always work perfectly. Here we detect values that
+                % were really constant so that we can store a single value
+                % for the experiment (i.e. Global type).
+                if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
+                    if iscellstr(value) %#ok<ISCLSTR>
+                        uValue=  unique(value);
+                        if size(uValue,1)==1
+                            uValue= uValue{1}; % Get rid of cell
+                        end
+                    elseif ismatrix(value)
+                        uValue =unique(value);
+                        % Dont do this: some events have nan values and only store the
+                        % time
+                        % if isnumeric(value) && all(isnan(value(:)))
+                        % A vector with all nans
+                        %    uValue =NaN;
+                        %end
+                    else % it is something >2D
+                        uValue = nan(2,1); % Just a flag to skip the next part
+                    end
+                    if size(uValue,1)==1
+                        % Really only one value
+                        value = uValue;
+                        type = 'Global';
+                        time = [];
+                        nsTime = [];
+                    end
+                end
+
+
+                if isstruct(value) && numel(fieldnames(value))==0
+                    value = true(size(value));
+                end
+
+                key(i).property_name = thisPrm.name;
+                key(i).property_value= value;
+                key(i).property_type = type;
+                key(i).property_time = time;
+                key(i).property_trial = trial;
+                key(i).property_nstime = nsTime;
             end
 
-
-            if isstruct(value) && numel(fieldnames(value))==0
-                value = true(size(value));
-            end
-
-            key.property_name = prm.name;
-            key.property_value = value;
-            key.property_type = type;
-            key.property_time = time;
-            key.property_trial = trial;
-            key.property_nstime = nsTime;
-            tryInsert(self,key);
+            encodeAndInsert(tbl,key);
         end
 
 
 
     end
 
-methods (Access=protected)
-    function tryInsert(self,key)
-          
-            try
-                self.insert(key);
-            catch me
-                if contains(me.message,'Duplicate entry')
-                    key.property_name = strcat(key.property_name,key.property_name);
-                    self.insert(key)
-                elseif contains(me.message,'Matlab placeholder') || contains(me.message,'unsupported type')
-                    % Database could not store this value. Probably some
-                    % kind of object. Convert to byte stream, the user can
-                    % get the value by using getArrayFromByteStream if
-                    % really needed,  at least in
-                    % Matlab (see Experiment.get),
-                    key.property_value = getByteStreamFromArray(value);
-                    key.property_type = 'ByteStream';
-                    self.insert(key);
-                else
-                    rethrow(me)
+    
+    methods (Access=protected)
+        function encodeAndInsert(tbl,key)
+            for i=1:numel(key)
+                meta = metaclass(key(i).property_value);
+                if ismember(meta.Name,{'cell'})
+                          % Database cannot not store this value. Convert to byte stream, the user can
+                          % get the value by using getArrayFromByteStream,at
+                         % least in Matlab (see Experiment.get),
+                          key(i).property_value = getByteStreamFromArray(key(i).property_value);
+                          key(i).property_type = 'ByteStream';
                 end
             end
+            insert(tbl,key)
         end
-end
-
+    end
+    
     methods (Access= public)
 
         function v = get(tbl)
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
-             persistent warnedAlready
-              if isempty(warnedAlready);warnedAlready ={};end
-            %% First the Global consts.            
+            persistent warnedAlready
+            if isempty(warnedAlready);warnedAlready ={};end
+            %% First the Global consts.
             [vals,names] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name');
             glbl = cell(1,2*numel(names));
             [glbl{1:2:end}] =deal(names{:});
@@ -185,9 +184,9 @@ end
             for j=1:numel(names)
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
-                    name = [names{j} '2'];                                     
+                    name = [names{j} '2'];
                     if ~ismember(oldName,warnedAlready)
-                        warnedAlready = cat(2,warnedAlready,{oldName});                    
+                        warnedAlready = cat(2,warnedAlready,{oldName});
                         warnNoTrace('%s already defined; renamed to %s',oldName,name);
                     end
                     % This happes because block and
@@ -203,7 +202,7 @@ end
                 end
                 v.([name 'Time']) = times{j};
                 v.([name 'NsTime']) = nsTimes{j};
-                v.([name 'Trial']) = trials{j};                                
+                v.([name 'Trial']) = trials{j};
             end
         end
     end

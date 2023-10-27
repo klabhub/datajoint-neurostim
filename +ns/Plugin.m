@@ -14,11 +14,8 @@ classdef Plugin < dj.Manual
             
             key.plugin_name = plg.name;
             insert(self,key);
-            prms = fieldnames(plg.prms);
-            for i=1:numel(prms)
-                thisPrm = plg.prms.(prms{i});              
-                make(ns.PluginParameter,key,thisPrm);   
-            end
+            make(ns.PluginParameter,key,plg.prms);   
+           
         end   
     end
 end

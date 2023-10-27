@@ -94,7 +94,7 @@ if isfield(parms,'asEvent')
         % the digital input
         name =[char(digNames{ch}) 'High'];
         goesHighNsTime = time([digital(1,ch); diff(digital(:,ch))>0])*1000;
-        fprintf('Creating %d new %sHigh events in mdaq plugin',numel(goesHigNsTime), digNames{ch})
+        fprintf('Creating %d new %sHigh events in mdaq plugin.\n',numel(goesHighNsTime), digNames{ch})
         [trialTime,trial] = eTime2TrialTime(c.mdaq.prms.vendor,goesHighNsTime);
         nrEvents= numel(goesHighNsTime);        
         addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesHighNsTime);
@@ -103,7 +103,7 @@ if isfield(parms,'asEvent')
         % the digital input        
         name =[char(digNames{ch}) 'Low'];      
         goesLowNsTime= time([~digital(1,ch); diff(digital,ch)<0])*1000;
-        fprintf('Creating %d new %sLow events in mdaq plugin',numel(goesLowNsTime), digNames{ch})
+        fprintf('Creating %d new %sLow events in mdaq plugin\.n',numel(goesLowNsTime), digNames{ch})
         [trialTime,trial] = eTime2TrialTime(c.mdaq.prms.vendor,goesLowNsTime);
         nrEvents= numel(goesLowNsTime);
         addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesLowNsTime);

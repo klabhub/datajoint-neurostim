@@ -51,7 +51,7 @@ tExperiment = removevars(tExperiment,'id');
 [newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun);
 if  ~p.Results.dryrun && ~isempty(newExpts) 
     if ~isempty(p.Results.cic)
-        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows))
+        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows));
     end
     if p.Results.populateFile
         % Populate the File table (all files associated with this experiment)
@@ -62,7 +62,6 @@ if  ~p.Results.dryrun && ~isempty(newExpts)
         populate(ns.Movie,newExpts);
     end
 end
-
 % Restore setting
 dj.config('safemode',currentSafeMode);
 warning(warnstate);
@@ -176,12 +175,12 @@ else
         fprintf('Updating DataJoint for %s ...\n',djTblName)
         if ~isempty(newTpls)
             fprintf('Adding new tuples to %s \n',djTblName)
-            insert(djTbl,newTpls)
+            insert(djTbl,newTpls);
             fprintf('\t Done. %d new tuples \n',numel(newTpls))
         end
 
         if ~isempty(updateTpls)
-            fprintf('Updating tuples in %s \n',djTblName)
+            fprintf('Updating tuples in %s \n',djTblName);
             if true
                 % Update one tpl and one field at a time.
                 % In theory this could affect referential integrity, but the
@@ -191,7 +190,7 @@ else
                 for tpl =updateTpls
                     thisDj= djTbl & ns.stripToPrimary(djTbl,tpl);
                     for fld = fieldsToUpdate
-                        update(thisDj,fld{1},tpl.(fld{1}))
+                        update(thisDj,fld{1},tpl.(fld{1}));
                     end
                 end
             else
@@ -203,7 +202,7 @@ else
 
         if ~isempty(newMetaTpls)
             fprintf('Adding new Meta tuples in %s \n',djMetaTblName)
-            insert(djMetaTbl,newMetaTpls)
+            insert(djMetaTbl,newMetaTpls);
             fprintf('\t Done. %d new tuples\n',numel(newMetaTpls))
         end
         if ~isempty(updateMetaTpls)
