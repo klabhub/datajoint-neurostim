@@ -1,3 +1,4 @@
+function [header,data] = read_Intan_RHS2000_file(filename,pv)
 % read_Intan_RHS2000_file
 %
 % Version 3.0, 8 February 2021
@@ -9,12 +10,25 @@
 %
 % notch_filter is never applied (even if selected in the gui, the raw data
 % are returned)
-% variables are not assigend in the base workspace. (See readIntan function
-% that collects the relevant information read by this script).
-%
+% variables are not assigend in the base workspace but returned as header
+% and data.
+% 
+% A subset of channels can be selected from each of the groups of channels
+% (digIn, digOut, adc,dac,stim, amplifier).
+arguments
+    filename (1,1) string
+    % Select which channels to read. NaN means all, [] means none.
+    pv.amplifier = [];  % The neural data channels are called "amplifier"
+    pv.digIn = [];      
+    pv.digOut = [];
+    pv.adc =[];
+    pv.dac =[];
+    pv.stim =[];
+    pv.headerOnly = false;
+end
+
 
 fid = fopen(filename, 'r');
-
 s = dir(filename);
 filesize = s.bytes;
 
@@ -73,15 +87,15 @@ charge_recovery_target_voltage = fread(fid, 1, 'single');
 notes = struct( ...
     'note1', fread_QString(fid), ...
     'note2', fread_QString(fid), ...
-    'note3', fread_QString(fid) );
+    'note3', fread_QString(fid) ); %#ok<NASGU>
 
 % See if dc amplifier data was saved
 dc_amp_data_saved = fread(fid, 1, 'int16');
 
 % Load board mode.
-board_mode = fread(fid, 1, 'int16');
+board_mode = fread(fid, 1, 'int16'); %#ok<NASGU>
 
-reference_channel = fread_QString(fid);
+reference_channel = fread_QString(fid); %#ok<NASGU>
 
 % Place frequency-related information in data structure.
 frequency_parameters = struct( ...
@@ -156,7 +170,7 @@ for signal_group = 1:number_of_signal_groups
     signal_group_prefix = fread_QString(fid);
     signal_group_enabled = fread(fid, 1, 'int16');
     signal_group_num_channels = fread(fid, 1, 'int16');
-    signal_group_num_amp_channels = fread(fid, 1, 'int16');
+    signal_group_num_amp_channels = fread(fid, 1, 'int16'); %#ok<NASGU>
 
     if (signal_group_num_channels > 0 && signal_group_enabled > 0)
         new_channel(1).port_name = signal_group_name;
@@ -483,7 +497,7 @@ else
         % Scale voltage levels appropriately.
         amplifier_data = 0.195 * (amplifier_data - 32768); % units = microvolts
         if (dc_amp_data_saved ~= 0)
-            dc_amplifier_data = -0.01923 * (dc_amplifier_data - 512); % units = volts
+            dc_amplifier_data = -0.01923 * (dc_amplifier_data - 512); %#ok<NASGU> % units = volts
         end
         compliance_limit_data = stim_data >= 2^15;
         stim_data = stim_data - (compliance_limit_data * 2^15);
@@ -535,7 +549,7 @@ header.stim = header.stim(pv.stim);
 fclose(fid);
 %End of Script
 
-
+end
 %% Helper functions
 function a = fread_QString(fid)
 % a = read_QString(fid)
