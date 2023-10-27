@@ -3,8 +3,9 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % passed in the parms struct.
 % 
 % .intan - parameters that determine which channels to read. The neural
-% data are called .amplifier. hence parms.intan.amplifier = [1 2] will read
-% channels 1 and 2.  See read_Intan_RHS2000_file for the options.
+% data are called .amplifier. For instance, parms.intan.amplifier = [1 2] will read
+% channels 1 and 2. and parms.intan.digIn =NaN will read all digital
+% inputs.
 % OPTIONAL parms struct members
 % .downsample ; The frequency used for downsampling (uses decimate).
 % .designfilt ; A struct array of parameters that are passed to designfilt 
@@ -48,10 +49,21 @@ switch upper(ext)
         error('Unknown Intan data file extension %s .',ext);
 end
 fprintf('Done in %d seconds.\n ',round(toc))
-nrChannels = numel(parms.intan.amplifier);
-assert(size(data.amplifier,2)==nrChannels,'Mismatch in requested channels and read channels.');
-signal = data.amplifier;
-nrSamples= size(signal,1);
+
+groups = fieldnames(parms.intan); % amplifier,digIn,digOut, etc.
+signal = [];
+channelInfo = [];
+for i=1:numel(groups)
+    if ~isnan(parms.intan.(groups{i})) % Nan means all - no mismatch checking
+        nrChannels = numel(parms.intan.(groups{i}));
+        assert(size(data.(groups{i}),2)==nrChannels,'Mismatch in requested channels and read channels for %s.',groups{i});
+    end
+    signal = [signal data.(groups{i})];%#ok<AGROW>
+    channelInfo = [channelInfo hdr.(groups{i})]; %#ok<AGROW> -  Per channel filter info.;
+end    
+[nrSamples,nrChannels]= size(signal);
+ch = num2cell(1:nrChannels);
+[channelInfo.nr] = deal(ch{:}); % Number them in the order they were concatenated here (if reading different groups together (unlikely ?) , the groups will be concatenated alphabetically)
 
 %% Determine trial start events to  fill the trial mapper and convert Intan time to NS time.
 % The Neurostim ripple plugin sends a TTL to the ''trial' digital input channel of the
@@ -110,9 +122,8 @@ if isfield(parms,'designfilt')
         fprintf('Done in %d seconds.\n.',round(toc))
     end
 end
-channelInfo = hdr.amplifier; % Per channel filter info.
-ch = num2cell(1:nrChannels);
-[channelInfo.nr] = deal(ch{:}); % Number them in the order they were requested (as parms.amplifier)
+
+
 recordingInfo = mergestruct(hdr.frequency,hdr.stim);
 
 end

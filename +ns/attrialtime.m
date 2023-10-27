@@ -26,13 +26,13 @@ end
 if isnan(time)
     switch what
         case 'data'
-            data = v.(plg{1}).(pv.prm);
+            out = props.(propName);
         case 'trialtime'
-            data = v.(plg{1}).([pv.prm 'Time']);
+            out = props.([propName 'Time']);
         case 'clocktime'
-            data = v.(plg{1}).([pv.prm 'NsTime']);
+            out = props.([propName 'NsTime']);
         case 'trial'
-            data = v.(plg{1}).([pv.prm 'Trial']);
+            out = props.([propName 'Trial']);
     end
     return;
 end

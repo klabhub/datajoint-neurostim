@@ -23,6 +23,30 @@ classdef PluginParameter < dj.Part
     properties (SetAccess = protected)
         master = ns.Plugin;  % Part  table for the plugin
     end
+    methods (Access=public)
+        function addNew(tbl,key,name,value,type,trialTime,trial,nsTime)
+            arguments
+                tbl (1,1) ns.PluginParameter
+                key (1,1) struct % Key of the parent plugin
+                name (1,:) char
+                value 
+                type
+                trialTime
+                trial
+                nsTime                
+            end
+            
+            key.property_name = name;
+            key.property_value = value;
+            key.property_type = type;
+            key.property_time = trialTime;
+            key.property_trial = trial;
+            key.property_nstime = nsTime;
+            
+            tryInsert(tbl,key)
+
+        end
+    end
 
     methods (Access= ?ns.Plugin)
         function make(self,key,prm)
@@ -93,18 +117,27 @@ classdef PluginParameter < dj.Part
                 value = true(size(value));
             end
 
-
             key.property_name = prm.name;
             key.property_value = value;
             key.property_type = type;
             key.property_time = time;
             key.property_trial = trial;
             key.property_nstime = nsTime;
+            tryInsert(self,key);
+        end
+
+
+
+    end
+
+methods (Access=protected)
+    function tryInsert(self,key)
+          
             try
                 self.insert(key);
             catch me
                 if contains(me.message,'Duplicate entry')
-                    key.property_name = [key.property_name key.property_name];
+                    key.property_name = strcat(key.property_name,key.property_name);
                     self.insert(key)
                 elseif contains(me.message,'Matlab placeholder') || contains(me.message,'unsupported type')
                     % Database could not store this value. Probably some
@@ -120,8 +153,7 @@ classdef PluginParameter < dj.Part
                 end
             end
         end
-
-    end
+end
 
     methods (Access= public)
 

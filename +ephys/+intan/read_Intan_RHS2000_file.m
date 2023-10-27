@@ -12,14 +12,14 @@ function [header,data] = read_Intan_RHS2000_file(filename,pv)
 % are returned)
 % variables are not assigend in the base workspace but returned as header
 % and data.
-% 
+%
 % A subset of channels can be selected from each of the groups of channels
 % (digIn, digOut, adc,dac,stim, amplifier).
 arguments
     filename (1,1) string
     % Select which channels to read. NaN means all, [] means none.
     pv.amplifier = [];  % The neural data channels are called "amplifier"
-    pv.digIn = [];      
+    pv.digIn = [];
     pv.digOut = [];
     pv.adc =[];
     pv.dac =[];
@@ -359,7 +359,7 @@ else
         useBlockRead = false;
         if useBlockRead
             allAmplifierChannels = 1:num_amplifier_channels;
-            ampChannelsToKeep = ismember(allAmplifierChannels,pv.amplifier);            
+            ampChannelsToKeep = ismember(allAmplifierChannels,pv.amplifier);
             startChannelBlock = [1 find(diff(ampChannelsToKeep)~=0)+1];
             nrBlocks = numel(startChannelBlock);
         end
@@ -410,20 +410,25 @@ else
                         end
                     end
                 else
-                    % Read all , keep only the selected channels to save
-                    % memory.
-                    tmp = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
-                    % Keep only the requested channels
-                    amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1))  = tmp(pv.amplifier,:);
-                    if (dc_amp_data_saved ~= 0)
-                        tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
-                        dc_amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.amplifier,:);
-                    end
-                    if nrStimKept>0
-                        tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
-                        stim_data(1:nrStimKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.stim,:);
+                    if nrAmplifierKept >0
+                        % Read all , keep only the selected channels to save
+                        % memory.
+                        tmp = fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                        % Keep only the requested channels
+                        amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1))  = tmp(pv.amplifier,:);
+                        if (dc_amp_data_saved ~= 0)
+                            tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                            dc_amplifier_data(1:nrAmplifierKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.amplifier,:);
+                        end
+                        if nrStimKept>0
+                            tmp =fread(fid, [num_samples_per_data_block, num_amplifier_channels], 'uint16')';
+                            stim_data(1:nrStimKept, amplifier_index:(amplifier_index + num_samples_per_data_block - 1)) = tmp(pv.stim,:);
+                        else
+                            fseek(fid,num_samples_per_data_block*num_amplifier_channels*2,'cof');
+                        end
                     else
-                        fseek(fid,num_samples_per_data_block*num_amplifier_channels*2,'cof');
+                        % Skip entire amplifier block
+                        fseek(fid,((dc_amp_data_saved ~= 0)+2)*num_samples_per_data_block*num_amplifier_channels*2,'cof');
                     end
                 end
             end
@@ -432,6 +437,7 @@ else
                     tmp =  fread(fid, [num_samples_per_data_block, num_board_adc_channels], 'uint16')';
                     board_adc_data(1:nrAdcKept, board_adc_index:(board_adc_index + num_samples_per_data_block - 1)) =tmp(pv.adc,:);
                 else
+                    % Skip entire adc block
                     fseek(fid,num_samples_per_data_block*num_board_adc_channels*2,'cof');
                 end
             end
@@ -440,6 +446,7 @@ else
                     tmp =  fread(fid, [num_samples_per_data_block, num_board_dac_channels], 'uint16')';
                     board_dac_data(1:nrDacKept, board_dac_index:(board_dac_index + num_samples_per_data_block - 1)) =tmp(pv.dac,:);
                 else
+                    % Skip entire dac block
                     fseek(fid,num_samples_per_data_block*num_board_dac_channels*2,'cof');
                 end
             end
@@ -447,6 +454,7 @@ else
                 if nrDigInKept >0
                     board_dig_in_raw(board_dig_in_index:(board_dig_in_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'uint16');
                 else
+                    % Skip entire digInblock
                     fseek(fid,num_samples_per_data_block*2,'cof');
                 end
             end
@@ -454,6 +462,7 @@ else
                 if nrDigOutKept>0
                     board_dig_out_raw(board_dig_out_index:(board_dig_out_index + num_samples_per_data_block - 1)) = fread(fid, num_samples_per_data_block, 'uint16');
                 else
+                    % Skip entire digOut block
                     fseek(fid,num_samples_per_data_block*2,'cof');
                 end
             end
