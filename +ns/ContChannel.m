@@ -1,15 +1,15 @@
 %{
 # Preprocessed continuous signals per channel 
--> ns.Continuous
+-> ns.Cont
 channel : int # The channel that recorded the signal
 ---
 signal : longblob # The preprocessed signal for each sample in the experiment
-info = NULL : longblob # Any additional information on this preprocessed channel
+info = NULL : longblob # Information on this preprocessed channel
 %}
 %
-% See also ns.Continuous
-classdef ContinuousChannel < dj.Part
+% See also ns.Cont
+classdef ContChannel < dj.Part
      properties (SetAccess = protected)
-        master = ns.Continuous;  
+        master = ns.Cont  
      end 
 end

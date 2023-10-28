@@ -21,23 +21,9 @@ arguments
     parms (1,1) struct  =struct% The preprocessing parameters
 end
 
-%% Determine which file to read for this experiment
 import ns.eyelink.*
-
-qry = ns.File & key;
-nrFiles = count(qry);
-if nrFiles ~=1
-    % Zero or more than 1 file
-    error('This experiment has %d files. Cannot proceed.',nrFiles);
-else
-    % Fetch the file to read
-    filename = fullfile(folder(ns.Experiment &key),fetch1(qry,'filename'));
-end
-if exist(filename,'file') && ~exist(filename,'dir')
-    fprintf('Reading from  %s\n',filename);
-else
-    error('Eyelink %s does not exist',filename);
-end
+% Fetch the file to read (ns.Cont has already checked that it exists)
+filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 
 
 %% The file exist. Open it and read using a MEX file from Christopher Kovach
@@ -95,11 +81,11 @@ if (mean(missingTrials)>0.1)
     warning('More than 10% TRIALIDs are missing from edf file %s. ',filename);
 end
 % Convert eyelink sample time to neurostim time
-time  = polyval(clockParms,double(data.FSAMPLE.time))'/1000;
-nrTimePoints= numel(time);
+time  = polyval(clockParms,double(data.FSAMPLE.time))';
+nrSamples= numel(time);
 % Put the requested channels in signal
 nrChannels =numel(parms.channel);
-signal= nan(nrTimePoints,nrChannels);
+signal= nan(nrSamples,nrChannels);
 for i=1:nrChannels
     signal(:,i) = data.FSAMPLE.(parms.channel{i})(parms.eye,:)';
 end
@@ -117,13 +103,13 @@ if isfield(parms,'downsample')
     if R>1
         fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);        
         tic
-        nrTimePoints = ceil(nrTimePoints/R);
-        tmp = nan(nrTimePoints,nrChannels);
+        nrSamples = ceil(nrSamples/R);
+        tmp = nan(nrSamples,nrChannels);
         for ch = 1:nrChannels
             tmp(:,ch) =  decimate(signal(:,ch),R);
         end
         signal =tmp;
-        time = linspace(time(1),time(end),nrTimePoints)';
+        time = linspace(time(1),time(end),nrSamples)';
         fprintf('Done in %d seconds.\n.',round(toc));
     end
 end
@@ -143,6 +129,10 @@ channelInfo =struct('name',parms.channel,'nr',num2cell(1:nrChannels));
 % Overall recording info.
 recordingInfo= data.RECORDINGS(end);
 recordingInfo.header = data.HEADER;
+% Regular sampling so reduce time representation
+time = [time(1) time(end) nrSamples];
+% Reduce storage (ns.Cont.align converts back to double
+signal  = single(signal);
 
 
 end

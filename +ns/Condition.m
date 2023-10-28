@@ -4,7 +4,7 @@
 name        : varchar(255)      # Condition name (plg_prm_value)
 ---
 conditionnr : smallint unsigned  # Condition number 1:nrConditions
-group = NULL : varchar(10)        # Group of conditions 
+tag = NULL : varchar(10)        # Group of conditions 
 %}
 % As the definition of what constitutes a condition (i.e. the set of
 % stimulus parameters) varies per paradigm, this table has to be populated 
@@ -18,7 +18,7 @@ group = NULL : varchar(10)        # Group of conditions
 % The .name field creates unique names for the conditions. For instance, if one of
 % the frequencies was 10, its name would become gabor_frequency_10
 % 
-% The group can be used to define multiple groupings of conditions. For
+% The tag can be used to define multiple groupings of conditions. For
 % isntance, one grouping could assign trials to condition based on the
 % visual stimulus presented on the screen (group ="orientation"), while another grouping 
 % could assign based on some intervention (before drug /after drug;
@@ -39,7 +39,7 @@ classdef Condition < dj.Manual
                 prm (1,:) {mustBeNonzeroLengthText}
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.replace (1,1) logical = false; % Set to true to replace (all) existing conditions
-                pv.group (1,1) string = ""
+                pv.tag (1,1) string = ""
                 pv.nameValueOnly (1,1) = false; % Set to true to define condition names based o the prm values alone (and not their name).
             end
             if ischar(plg);plg={plg};end
@@ -55,7 +55,9 @@ classdef Condition < dj.Manual
             if pv.replace
                 del(existingConditions)
             end
-
+            if pv.tag ~=""
+                expt = expt - proj(ns.Condition & ['tag=''' pv.tag '''']);
+            end
             exptTpl = fetch(expt);
             nrExpt = numel(exptTpl);
             for e =1:nrExpt
@@ -99,7 +101,7 @@ classdef Condition < dj.Manual
                     if count(conditionsThisExpt & tpl) >0
                         % ALready exists, skip                        
                     else
-                        tpl.group = pv.group;      
+                        tpl.tag = pv.tag;      
                         conditionNr = count(conditionsThisExpt) +1;
                         tpl.conditionnr= conditionNr;                    
                         insert(tbl,tpl);

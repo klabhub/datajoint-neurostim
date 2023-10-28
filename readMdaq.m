@@ -27,20 +27,11 @@ end
 if ~iscell(parms.channel)
         parms.channel ={parms.channel};
 end
-%% Check files
-qry = ns.File & key;  % Check for data files
-nrFiles = count(qry);
-if nrFiles ~=1
-    % Zero or more than 1 file
-    error('This experiment has %d files. Cannot proceed.');
-else
-    % Fetch the file to read
-    filename = fullfile(folder(ns.Experiment &key),fetch1(qry,'filename'));
-end
 
-if ~exist(filename,"file")
-    error('Mdaq bin file %s does not exist',filename)
-end
+%% Fetch the file to read (ns.Cont has already checked that it exists)
+filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
+
+
 %% Read using a script
 fprintf('Reading bin data file %s. ', filename)
 tic
@@ -97,16 +88,16 @@ if isfield(parms,'asEvent')
         fprintf('Creating %d new %sHigh events in mdaq plugin.\n',numel(goesHighNsTime), digNames{ch})
         [trialTime,trial] = eTime2TrialTime(c.mdaq.prms.vendor,goesHighNsTime);
         nrEvents= numel(goesHighNsTime);        
-        addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesHighNsTime);
+        addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesHighNsTime,true); % Replace existing
 
         % Create an event representing the high to low transition of
         % the digital input        
         name =[char(digNames{ch}) 'Low'];      
         goesLowNsTime= time([~digital(1,ch); diff(digital,ch)<0])*1000;
-        fprintf('Creating %d new %sLow events in mdaq plugin\.n',numel(goesLowNsTime), digNames{ch})
+        fprintf('Creating %d new %sLow events in mdaq plugin. \n',numel(goesLowNsTime), digNames{ch})
         [trialTime,trial] = eTime2TrialTime(c.mdaq.prms.vendor,goesLowNsTime);
         nrEvents= numel(goesLowNsTime);
-        addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesLowNsTime);
+        addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesLowNsTime,true);% Replace existing
     end
 
 
@@ -115,6 +106,10 @@ end
 % Information per channel
 channelInfo =struct('name',parms.channel,'nr',num2cell(1:nrChannels));
 recordingInfo = struct('vendor',c.mdaq.vendor);
+% MDaq has regular sampling so reduce time representation
+time = [1000*time(1) 1000*time(end) nrSamples];
+% Reduce storage (ns.Cont.align converts back to double
+signal  = single(signal);
 
 end
 

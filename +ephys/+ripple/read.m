@@ -12,7 +12,7 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % filter the signal with filtfilt.
 %
 arguments
-    key % The keysource of the Preprocessed table (Experiment and PrepParm tuple)
+    key % The keysource of the ns.Cont table (File*ContParm tuple)
     parms (1,1) struct % The preprocessing parameters
 end
 import ephys.ripple.*
@@ -27,15 +27,8 @@ switch upper(parms.type)
     case {'BREAKOUT'}
 end
 
-qry = ns.File & key;  
-nrFiles = count(qry);
-if nrFiles ~=1
-    % Zero or more than 1 file
-    error('This experiment has %d files. Cannot proceed.');
-else
-    % Fetch the file to read
-    filename = fullfile(folder(ns.Experiment &key),fetch1(qry,'filename'));
-end
+%% Fetch the file to read (ns.Cont has already checked that it exists)
+filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 
 %% Open it with neuroshare
 tic
@@ -153,7 +146,8 @@ ns_CloseFile(hFile);
 recordingInfo = struct;  % nothing yet.
 % Regualr sampling so reduce time representation and conver to ms.
 time = [1000*time(1) 1000*time(end) nrSamples];
-
+% Reduce storage (ns.Cont.align converts back to double
+signal  = single(signal);
 end
 
 

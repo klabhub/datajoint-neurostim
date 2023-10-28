@@ -24,7 +24,7 @@ classdef PluginParameter < dj.Part
         master = ns.Plugin;  % Part  table for the plugin
     end
     methods (Access=public)
-        function addNew(tbl,key,name,value,type,trialTime,trial,nsTime)
+        function addNew(tbl,key,name,value,type,trialTime,trial,nsTime,replace)
             arguments
                 tbl (1,1) ns.PluginParameter
                 key (1,1) struct % Key of the parent plugin
@@ -34,15 +34,19 @@ classdef PluginParameter < dj.Part
                 trialTime
                 trial
                 nsTime
+                replace =false
             end
 
             key.property_name = name;
+            if exists(tbl & key) && replace
+                delQuick(tbl&key);
+            end
+            %% Add the data
             key.property_value = value;
             key.property_type = type;
             key.property_time = trialTime;
             key.property_trial = trial;
-            key.property_nstime = nsTime;
-
+            key.property_nstime = nsTime;            
             encodeAndInsert(tbl,key)
 
         end
