@@ -22,7 +22,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %   root\subject_definition.json
 %
 % OR, if a metaDefinitionTag is specified in
-% root\experiment_definition_tag.json 
+% root\experiment_definition_tag.json
 %   root\session_definition_tag.json
 %   root\subject_definition_tag.json
 % This allows different projects to use different meta data definitions in
@@ -32,7 +32,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 % 'root' - Top level folder (e.g. Z:\). Folders below this root folder should
 %           correspond to the years. This defaults to the value in
 %           getenv('NS_ROOT')
-%           
+%
 % date - Date to scan.  [today]
 % schedule - 'y' - Scan the year in which the date falls.
 %          - 'm' - Scan the month
@@ -54,18 +54,20 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %           folders. The user is responsible for returning a table from
 %           the relevant folders. See nsScanDicomFolder for an example. Not
 %           commonly needed. [].
-% 
+%
 % excludeSubject - Cell array of subjects to exclude. Defaults to  {'0'}
 % which is the default test subject.
 %
 % The nsAddToDataJoint function can add the output of nsScan to a DataJoint
 % database. To call that automatically, use the following two options:
-% 
+%
 % addToDataJoint - Set to true to add the new
 %                   Subjects/Sessions/Experiments/Files to the DataJoint
 %                   database. [false]
 % newOnly       - Set to true to process only experiments that are not
 %               already in Datajoint
+% minNrTrials  - include only experiments with at least this number of
+% trials (also sets readFileContents =true).
 % readFileContents - Set to true to read file contents when adding to the
 %                   DataJoint database [false]
 % cicOnly   - Set tot true to only add CIC information (and not other
@@ -99,6 +101,7 @@ p.addParameter('populateMovie',true,@islogical)
 p.addParameter('cicOnly',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('metaDefinitionTag','',@ischar);
+p.addParameter('minNrTrials',0,@isnumeric);
 p.parse(varargin{:});
 
 tExperiment = [];
@@ -108,7 +111,7 @@ tSubject = [];
 if ~isempty(p.Results.metaDefinitionTag) && p.Results.metaDefinitionTag(1)~='_'
     metaDefinitionTag = ['_' p.Results.metaDefinitionTag];
 else
-    metaDefinitionTag  = ''; % Use global default definition 
+    metaDefinitionTag  = ''; % Use global default definition
 end
 
 %% A. Find relevant files
@@ -145,7 +148,7 @@ else
 end
 if ispc
     root = strrep(p.Results.root,'/','\');
-else 
+else
     root = p.Results.root;
 end
 pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\.mat$']);
@@ -162,7 +165,7 @@ end
 
 %% Extract meta data from the file name
 % and match the formats stored in the DataJoint database
-[~,file,ext] = fileparts(fullName);  % Store only the filename. Path can be reconstructed from date and root. 
+[~,file,ext] = fileparts(fullName);  % Store only the filename. Path can be reconstructed from date and root.
 file = strcat(file,ext);
 if ~iscell(file);file={file};end
 [meta.file] = deal(file{:});
@@ -219,28 +222,44 @@ if p.Results.newOnly
     end
     meta = meta(stay);
     fullName=fullName(stay);
-    nrExperiments = numel(meta);    
+    nrExperiments = numel(meta);
 end
+
+if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
+    % Read meta data from the content of the Neurostim files
+    % tmp has the meta data, c the CIC objects which are passed to
+    % nsAddToDataJoint below
+    for i=1:nrExperiments
+        [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
+        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
+    end
+    meta  =tmpMeta;
+    nrTrials = [c.trial];
+    out = nrTrials < p.Results.minNrTrials;
+    if any(out)
+        fprintf('Removing %d experiments (fewer than %d trials)',sum(out),p.Results.minNrTrials);
+        meta(out) = [];
+        c(out) =[];
+        fullName(out) =[];
+        nrExperiments = numel(meta);
+    end
+
+else
+    c= [];
+end
+
 if nrExperiments ==0
-    fprintf('No Neurostim files with matching paradigm and subject found in %s\n',srcFolder);
+    if p.Results.newOnly
+        newStr= 'new ';
+    else
+        newStr ='';
+    end
+    fprintf('No %sNeurostim files with matching paradigm and subject and at least %d trials found in %s\n',newStr, p.Results.minNrTrials, srcFolder);
     return;
 else
     fprintf('Found %d matching Neurostim files \n',nrExperiments)
-    
 end
 
-if  p.Results.readFileContents
-     % Read meta data from the content of the Neurostim files 
-     % tmp has the meta data, c the CIC objects which are passed to
-     % nsAddToDataJoint below
-    for i=1:nrExperiments
-        [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>         
-        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.   
-    end
-    meta  =tmpMeta; 
-else    
-    c= [];
-end
 
 if p.Results.readJson
     %% Read Meta information definitions and data from JSON files.
@@ -291,7 +310,7 @@ end
 tExperiment =addprop(tExperiment,{'root'},{'table'}) ;
 tExperiment.Properties.CustomProperties.root = p.Results.root;
 if p.Results.readFileContents
-    tExperiment = addvars(tExperiment,c','NewVariableNames','cic'); 
+    tExperiment = addvars(tExperiment,c','NewVariableNames','cic');
 end
 % Sort to get a consistent order
 tExperiment =  sortrows(tExperiment,{'starttime','subject','paradigm'},'ascend');
@@ -302,21 +321,21 @@ tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','s
 %% B. Session Meta Data
 % Retrieve definition and initialize table
 tSession = unique(tExperiment(:,{'session_date','subject'}));
-nrSessions = height(tSession);  
+nrSessions = height(tSession);
 if p.Results.readJson
     definitionFile = fullfile(p.Results.root,['session_definition' metaDefinitionTag '.json']);
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.Session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
         sessionMetaFields = fieldnames(json.Fields);
-         if any(ismember({'subject','session_date'},sessionMetaFields))
+        if any(ismember({'subject','session_date'},sessionMetaFields))
             error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
         end
         nrSessionMetaFields= numel(sessionMetaFields);
     elseif isempty(metaDefinitionTag)
         nrSessionMetaFields= 0;
     else
-        error('Meta definition file %s not found',definitionFile)    
+        error('Meta definition file %s not found',definitionFile)
     end
     emptyInit = repmat("",[height(tSession) 1]);
     if nrSessionMetaFields>0
@@ -325,15 +344,15 @@ if p.Results.readJson
     end
 
     % See if there are any Session JSON files and put information in the table
-    for i=1:nrSessions        
+    for i=1:nrSessions
         if nrSessions==1
             sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".json");
-             % Check to see if there are any .txt session notes (subjectNr.txt)
+            % Check to see if there are any .txt session notes (subjectNr.txt)
             txtFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".txt");
         else
             sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i} '.json']);
             % Check to see if there are any .txt session notes (subjectNr.txt)
-            txtFile = fullfile(p.Results.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i}  '.txt']);       
+            txtFile = fullfile(p.Results.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i}  '.txt']);
         end
 
         if exist(sessionJsonFile,'file')
@@ -342,8 +361,8 @@ if p.Results.readJson
             thisJson = struct;
         end
         if exist(txtFile,"file")
-            txt =string(fileread(txtFile));            
-            if isfield(thisJson,'comments') 
+            txt =string(fileread(txtFile));
+            if isfield(thisJson,'comments')
                 if ~any(contains(thisJson.comments,txt))
                     thisJson.comments = thisJson.comments + " " + txt;
                 end
@@ -385,7 +404,7 @@ if p.Results.readJson
     elseif isempty(metaDefinitionTag)
         nrSubjectMetaFields= 0;
     else
-        error('Meta definition file %s not found',definitionFile)    
+        error('Meta definition file %s not found',definitionFile)
     end
     emptyInit = repmat("",[height(tSubject) 1]);
     if nrSubjectMetaFields>0
@@ -424,6 +443,6 @@ if p.Results.addToDataJoint
         cic =[];
     end
     nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode, ...
-                            'root',p.Results.root,'populateFile',p.Results.populateFile,'populateMovie',p.Results.populateMovie, ...
-                            'newOnly',p.Results.newOnly);
+        'root',p.Results.root,'populateFile',p.Results.populateFile,'populateMovie',p.Results.populateMovie, ...
+        'newOnly',p.Results.newOnly);
 end
