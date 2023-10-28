@@ -27,17 +27,9 @@ classdef MovieTrialmap < dj.Part
             % the first frame in nsTime. If NS recorded the movie this can be extracted from the plugin parameters,
             % but I haven;t implemented that yet as we  do not have such
             % movies at this time. (Only those recorded by SBX)
-            prms  = get(ns.Experiment & key,'cic');
-            if isempty(fieldnames(prms.cic))
-                % Empty cic means that first frame was never reached.
-                % Skip this experiment
-            else
-                firstFrameNsTime = prms.cic.firstFrameNsTime(1);
-            end
-
-
+            
             mvTpl = fetch(ns.Movie&key,'*');
-            if contains(key.filename,{'_eye' ,'_ball'})
+            if contains(key.filename,{'_eye' ,'_ball'})                
                 % An sbx eye tracker or ball tracker movie. Movie frames are
                 % supposed to match the frames of the TPI.
                 tpi = sbx.Preprocessed & (ns.Session & key);
@@ -87,9 +79,16 @@ classdef MovieTrialmap < dj.Part
                     % will retry this.
                     error('For SBX _ball and _eye movies the Preprocessed table needs to be populated first. Rerun later.\n')                    
                 end
+            elseif exist(ns.Plugin & key & 'plugin_name=''camera''')
+                % A movie captured by the neurostim camera plugin
+                   prms  = get(ns.Experiment & key,'camera','prm','firstVideoFrame','atTrialTime',inf,'what');
+            if isempty(fieldnames(prms.cic))
+                % Empty cic means that first frame was never reached.
+                % Skip this experiment
             else
-                % Non sbx movies: TODO
-                fprintf(2,'Assuming movie %s started with first frame of trial 1. Still to be fixed..\n ',key.filename);                
+                firstFrameNsTime = prms.cic.firstFrameNsTime(1);
+            end
+
             end
 
             % Assume regular sampling at the framerate.

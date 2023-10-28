@@ -42,7 +42,10 @@ info   :  longblob      # General hardware info that is not specific to a channe
 %           struct provides some  information on the channel to be stored in the
 %           info field of the ContChannel table. For example, this could contain the
 %           hardware filtering parameters of the channel as read from the raw data
-%           file.
+%           file. ChannelInfo must contain a .nr field for the number
+%           assigned to the channel and can contain a .name field for a
+%           descriptive name.
+%
 % recordingInfo - General (channel non-specific) info on the recording.
 %
 % EXAMPLE:
@@ -74,9 +77,23 @@ classdef Cont< dj.Computed
             % Restricted to files with the extenstion specified in ContParm
 
             % This seems cumbersome, but I coudl not get a simpler join to work
-            for prms= fetch(ns.ContParm,'extension')'
+            for prms= fetch(ns.ContParm,'extension','include','exclude')'
                 restrict  =struct('extension',prms.extension);
-                thisV = fetch((ns.File & restrict)*proj(ns.ContParm&restrict));
+                fileQry = ns.File;
+                if ~isempty(prms.include)
+                    inc = strsplit(prms.include,',');
+                    for i=1:numel(inc)
+                          fileQry = fileQry & ['filename LIKE ''' inc{i} ''''];
+                    end
+                end
+
+                if ~isempty(prms.exclude)
+                    exc = strsplit(prms.exclude,',');
+                    for i=1:numel(exc)
+                          fileQry = fileQry & ['filename NOT LIKE ''' exc{i} ''''];
+                    end
+                end
+                thisV = fetch((fileQry & restrict)*proj(ns.ContParm&restrict));
                 if exist("v","var")
                     v  = catstruct(1,v,thisV);
                 else
@@ -306,6 +323,9 @@ classdef Cont< dj.Computed
             if ~isempty(channelInfo)
                 for i=1:numel(channelInfo)
                     channelsTpl(i).info = channelInfo(i);
+                    if isfield(channelInfo,'name')
+                        channelsTpl(i).name = channelInfo(i).name;
+                    end
                 end
             end
 
