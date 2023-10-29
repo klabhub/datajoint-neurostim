@@ -11,9 +11,9 @@ function [signal,time,channelInfo,recordingInfo] = readMovie(key,parms)
 %                   height of the movie.
 % 
 %% EYE:
-%   .method = 'imfindcircles', 'dlcXXX'
-% For method = imfindcircles, specify the options of the Matlab imfindcircles
-% function (listed are the defaults):
+%   .method = 'PhaseCode', 'TwoStage', 'dlcXXX'
+% For method = PhaseCode or TwoStage, we use imfindcircles:
+% Specify the options of the Matlab imfindcircles function (listed are the defaults):
 %    .objectPolarity  ['bright']
 %    .method          ['PhaseCode']
 %    .sensitivity    [0.85]
@@ -72,8 +72,6 @@ else
 end
 
 % Sanity checks
-SLACKFRAMES = 2; % Allow this many missing frames
-assert(abs(nrTriggers - movie.NumFrames)<SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
 dt = seconds(diff(time));
 mFrameDuration = mean(dt);
 sdFrameDuration  = std(dt);
@@ -81,6 +79,19 @@ z = sdFrameDuration/mFrameDuration;
 fprintf('Z-score of the variation in frameduration is %.2f\n',z)
 actualFrameRate = 1000./mFrameDuration;
 recordingInfo = struct('nrFrames',movie.NumFrames,'videoFormat',movie.VideoFormat,'width',movie.Width,'height',movie.height,'framerate',actualFrameRate);
+
+SLACKFRAMES = 2; % Allow this many missing frames
+nrMissing =(movie.NumFrames-nrTriggers);
+assert(abs(nrMissing)<SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
+if nrMissing >0
+    % Add triggers at the end
+    fprintf('Adding %d missing triggers at the end of the movie\n',nrMissing)
+    time = [time; time(end)+(1:nrMissing)*mFrameDuration];
+elseif nrMissing<0
+    % Cut triggers at the end.
+    fprintf('Cutting %d extra triggers at the end of the movie\n',-nrMissing)
+    time = time(1:movie.NumFrames);
+end
 
 %% Analyze the movies using functions defined below
 if contains(filename,'_ball')
@@ -99,8 +110,8 @@ if contains(filename,'_ball')
     channelInfo= struct('name',{'velocity','quality'},'nr',{1,2});
 elseif contains(filename,'_eye')
     switch upper(parms.method)
-        case 'IMFINDCIRCLES'
-            %% Pupil tracking, using imfindcircles
+        case {'PHASECODE','TWOSTAGE'}
+            % Pupil tracking, using imfindcircles
             [x,y,a,quality] = sbxImfindcircles(movie, parms);
         otherwise
             if startsWith(parms.method,'DLC','IgnoreCase',true)
@@ -121,7 +132,7 @@ end
 
 %% Package to add to ns.C
 % Regular sampling:  reduce time representation
-time = [time(1) time(end) nrFrames];
+time = [1000*seconds(time(1)) 1000*seconds(time(end)) movie.NumFrames];
 % Reduce storage (ns.C.align converts back to double)
 signal  = single(signal);
 end
@@ -202,7 +213,7 @@ else
     quality  = nan(nrFrames,1);
 end
 
-fprintf('Ball tracking analysis (useGPU: %d)\n',useGPU);
+fprintf('Ball tracking xcorr analysis (useGPU: %d)\n',useGPU);
 f=1;
 z1 = single(movie.readFrame);
 if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
@@ -283,13 +294,13 @@ y       = nan(nrFrames,1);
 a       = nan(nrFrames,1);
 quality  = nan(nrFrames,1);
 
-fprintf('Eye tracking analysis on %d workers\n',nrWorkers)
+fprintf('Eye tracking imfindcircles analysis on %d workers\n',nrWorkers)
 % Read the movie into memory (could check that we have
 % enough...)
 frames= single(movie.read([1 nrFrames]));
 parfor (f=1:nrFrames,nrWorkers)
     %for f=1:nrT  % debug
-    [center,radius,thisQuality] = sbxImfindcircles(frames(:,:,f),parms.radiusRange,'ObjectPolarity',parms.objectPolarity,'Method',parms.method,'Sensitivity',parms.sensitivity,'EdgeThreshold',parms.edgeThreshold); %#ok<PFBNS>
+    [center,radius,thisQuality] = imfindcircles(frames(:,:,f),parms.radiusRange,'ObjectPolarity',parms.objectPolarity,'Method',parms.method,'Sensitivity',parms.sensitivity,'EdgeThreshold',parms.edgeThreshold); %#ok<PFBNS>
     if ~isempty(center)
         [quality(f),idx] = max(thisQuality); % pick the circle with best score
         x(f) = center(idx,1);
