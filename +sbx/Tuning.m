@@ -64,7 +64,7 @@ classdef Tuning <dj.Computed
             % the ROI is known in the experiment). Basically this makes
             % sure we ignore experiments where the imaging data were
             % missing.
-            v = (ns.Experiment&sbx.PreprocessedTrialmap)*sbx.Roi*sbx.TuningParms*ns.Condition;
+            v = (ns.Experiment&sbx.PreprocessedTrialmap)*sbx.Roi*sbx.TuningParms*proj(ns.Condition,'tag->conditionTag');
         end
     end
 
