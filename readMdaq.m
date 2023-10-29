@@ -11,7 +11,9 @@ function [signal,time,channelInfo,recordingInfo] = readMdaq(key,parms)
 %                   designfilt; that is read from the datafile and adjusted
 %                   in case of downsampling).
 % .channel ; A cell array of channels that shoudl be read from the mdaq
-%               .bin file and stored as continuous data/
+%               .bin file and stored as continuous data. Channels that
+%               don't exist in a given .bin file are skipped. 
+%
 % .asEvent ; A logical vector indicating for which of the channels an event should be created in the ns.PluginParmaeter table
 %           For digital TTL inputs this will mark transitions from low to
 %           high or high to low.  For instance for a mdaq channel called
@@ -39,7 +41,13 @@ load(strrep(filename,'.bin','.mat'),'c');
 T=  readBin(c.mdaq,file=filename);
 fprintf('Done in %d seconds.\n ',round(toc))
 
-assert(all(ismember(parms.channel,T.Properties.VariableNames)),"Not all channel names found in .bin file")
+[availableChannels,ix] = intersect(parms.channel,T.Properties.VariableNames);
+if numel(availableChannels)~=numel(parms.channel)
+        fprintf(2,'Channels %s not recorded in %s; skipped.\n',strjoin(setdiff(parms.channel,availableChannels),'/'),filename); 
+        parms.channel= parms.channel(ix);
+        parms.asEvent = parms.asEvent(ix);
+end
+
 time = seconds(T.nsTime);
 signal = T.(parms.channel{:});
 [nrSamples,nrChannels] = size(signal);
