@@ -105,6 +105,17 @@ classdef C< dj.Computed
         end
     end
     methods (Access=public)
+        function [n,T] = toPreprocess(tbl,tag)
+            % Return the number of files that stll need to be processed. If
+            % a second output is requested, also returns a table with the
+            % items that are on the list to be processed. 
+            total = tbl.keySource & struct('tag',tag);
+            done = tbl & struct('tag',tag);
+            n = count(total-done);
+            if nargout>1
+                T =(total-done);
+            end
+        end
         function [varargout] = align(tbl,pv)
             % Function to retrieve trial-based and aligned preprocessed signals.
             %

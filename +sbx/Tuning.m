@@ -148,7 +148,7 @@ classdef Tuning <dj.Computed
             roi  = sbx.Roi & key;
             expt = ns.Experiment & key;
             parms = fetch1(sbx.TuningParms &key,'parms');
-            trials = [fetch(ns.Condition*ns.ConditionTrial & key,'trial').trial];
+            trials = [fetch(ns.Condition & key,'trial').trial];
             nrTrials = numel(trials);
             if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
                 fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
