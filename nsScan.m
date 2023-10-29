@@ -97,7 +97,6 @@ p.addParameter('addToDataJoint',false,@islogical)
 p.addParameter('newOnly',false,@islogical);
 p.addParameter('readFileContents',false,@islogical)
 p.addParameter('populateFile',true,@islogical)
-p.addParameter('populateMovie',true,@islogical)
 p.addParameter('cicOnly',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('metaDefinitionTag','',@ischar);
@@ -234,7 +233,7 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
         tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
     end
     meta  =tmpMeta;
-    nrTrials = [c.trial];
+    nrTrials = [c.nrTrialsTotal];
     out = nrTrials < p.Results.minNrTrials;
     if any(out)
         fprintf('Removing %d experiments (fewer than %d trials)',sum(out),p.Results.minNrTrials);
@@ -443,6 +442,6 @@ if p.Results.addToDataJoint
         cic =[];
     end
     nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode, ...
-        'root',p.Results.root,'populateFile',p.Results.populateFile,'populateMovie',p.Results.populateMovie, ...
+        'root',p.Results.root,'populateFile',p.Results.populateFile, ...
         'newOnly',p.Results.newOnly);
 end

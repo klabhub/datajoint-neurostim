@@ -23,7 +23,6 @@ p=inputParser;
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('root',getenv('NS_ROOT'));
 p.addParameter('populateFile',true,@islogical)
-p.addParameter('populateMovie',true,@islogical)
 p.addParameter('dryrun',false,@islogical)
 p.addParameter('cic',[]); % A vector of cic objects. One per row of the experiment table.
 p.addParameter('newOnly',true)
@@ -57,10 +56,6 @@ if  ~p.Results.dryrun && ~isempty(newExpts)
     if p.Results.populateFile
         % Populate the File table (all files associated with this experiment)
         populate(ns.File, newExpts);
-    end
-    if p.Results.populateMovie
-        % Populate the Movie table (subset of files with a specific set of extensions known to be movies) 
-        populate(ns.Movie,newExpts);
     end
 end
 % Restore setting

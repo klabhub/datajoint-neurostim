@@ -338,12 +338,12 @@ classdef Roi < dj.Imported
                 pv.polar (1,1) logical = false;
             end
 
-            [trialsPerCondition,names] = sbx.trialsPerCondition(condition);
+            [trPerCondition,names] = trialsPerCondition(condition);
             if isempty(pv.name)
                 pv.name = names;
             end
 
-            nrConditions = numel(trialsPerCondition);
+            nrConditions = numel(trPerCondition);
             if isempty(pv.name)
                 pv.name= "Condition " + string(1:nrConditions);
             end
@@ -375,14 +375,14 @@ classdef Roi < dj.Imported
                     end
                     if pv.averageRoi || pv.mode=="COHERENCE"
                         % Get all rois
-                        [time,y] = get(roi ,expt,fetchOptions = pv.fetchOptions,crossTrial =pv.crossTrial, trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
+                        [time,y] = get(roi ,expt,fetchOptions = pv.fetchOptions,crossTrial =pv.crossTrial, trial=trPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
                         if pv.averageRoi
                             % Average
                             y = mean(y,2,"omitnan"); % Average over rois
                         end
                     else
                         %% Loop over roi, one tile per roi
-                        [time,y] = get(roi &roiTpls(roiCntr) ,expt,crossTrial =pv.crossTrial,trial=trialsPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
+                        [time,y] = get(roi &roiTpls(roiCntr) ,expt,crossTrial =pv.crossTrial,trial=trPerCondition{c},modality = pv.modality,start=pv.start,stop=stop,step=pv.step,interpolation =pv.interpolation);
                     end
 
                     if isempty(y);continue;end

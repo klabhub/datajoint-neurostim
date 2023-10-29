@@ -21,7 +21,7 @@ arguments
     parms (1,1) struct  % The preprocessing parameters
 end
 
-%% Fetch the file to read (ns.Cont has already checked that it exists)
+%% Fetch the file to read (ns.C has already checked that it exists)
 filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 [~,~,ext] =fileparts(filename);
 %% Read using a script
@@ -115,7 +115,7 @@ end
 recordingInfo = mergestruct(hdr.frequency,hdr.stim);
 % Regular sampling so reduce time representation and change to ms.
 time = [1000*time(1) 1000*time(end) nrSamples];
-% Reduce storage (ns.Cont.align converts back to double
+% Reduce storage (ns.C.align converts back to double
 signal  = single(signal);
 
 end

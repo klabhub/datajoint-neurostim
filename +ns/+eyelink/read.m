@@ -1,5 +1,5 @@
 function[signal,time,channelInfo,recordingInfo] = read(key,parms)
-% Read routine for ns.Continuous to read from Eyelink edf data files, 
+% Read routine for ns.C to read from Eyelink edf data files, 
 % and preprocess them according to the parameters passed in the parms struct, 
 % which should have the following fields:
 % 
@@ -15,14 +15,14 @@ function[signal,time,channelInfo,recordingInfo] = read(key,parms)
 % camera image  (0,0) = center, (0.5,0.5) = top right. And pupil size
 % between 0 and 1 with 1 the largest pupil that Eyelink captures.
 %
-% See Also fillmissing, decimate, ns.Continuous
+% See Also fillmissing, decimate, ns.C
 arguments
-    key % The key of the Expriment table (File and ContinuousParm tuple)
+    key % The key of the Expriment table (File and CParm tuple)
     parms (1,1) struct  =struct% The preprocessing parameters
 end
 
 import ns.eyelink.*
-% Fetch the file to read (ns.Cont has already checked that it exists)
+% Fetch the file to read (ns.C has already checked that it exists)
 filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 
 
@@ -131,7 +131,7 @@ recordingInfo= data.RECORDINGS(end);
 recordingInfo.header = data.HEADER;
 % Regular sampling so reduce time representation
 time = [time(1) time(end) nrSamples];
-% Reduce storage (ns.Cont.align converts back to double
+% Reduce storage (ns.C.align converts back to double
 signal  = single(signal);
 
 

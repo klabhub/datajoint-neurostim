@@ -18,6 +18,6 @@ exclude=NULL : varchar(128)      # wildcard for filenames to exclude
 %
 % BK - June 2023
 
-classdef ContParm < dj.Lookup
+classdef CParm < dj.Lookup
 
 end

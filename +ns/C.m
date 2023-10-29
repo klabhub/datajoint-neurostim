@@ -1,13 +1,14 @@
 %{
 # Preprocessed continuous signals per channel 
 -> ns.File
--> ns.ContParm
+-> ns.CParm
 --- 
 time :      longblob   # Time of each sample (in *milliseconds* on the neurostim clock).
 info   :  longblob      # General hardware info that is not specific to a channel.
+nrsamples: int          # Number of samples/frames across the experiment
 %}
 % This is a generic table that (together with its dj.Part table
-% ContChannel) stores data as a continuous vector of samples spanning the
+% CChannel) stores data as a continuous vector of samples spanning the
 % entire experiment.
 %
 % The time property stores either all sample times, or in the case of
@@ -17,15 +18,15 @@ info   :  longblob      # General hardware info that is not specific to a channe
 %
 % The table is linked to a specific file in an experiment (via ns.File)
 % and during a call to populate that file is opened by a function specified
-% in the linked ns.ContParm table. This read/preprocess function must have the
+% in the linked ns.CParm table. This read/preprocess function must have the
 % following prototype:
 %  [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % During a call to populate, key will contain a primary key from the
-% ns.File table joined with a key from the ns.ContParm table (i.e. it
+% ns.File table joined with a key from the ns.CParm table (i.e. it
 % identifies which file to read/preprocess).
-% parms will contain the struct stored in ns.ContParm. How this parms
+% parms will contain the struct stored in ns.CParm. How this parms
 % struct is used is completely up to the read function.(see the example read functions below).
-% Before calling the read function, ns.Cont checks that the file exists.
+% Before calling the read function, ns.C checks that the file exists.
 %
 % The read function should return the following:
 %
@@ -40,7 +41,7 @@ info   :  longblob      # General hardware info that is not specific to a channe
 %               example read functions below).
 % channelInfo - This is a struct array with nrChannels elements. Each
 %           struct provides some  information on the channel to be stored in the
-%           info field of the ContChannel table. For example, this could contain the
+%           info field of the CChannel table. For example, this could contain the
 %           hardware filtering parameters of the channel as read from the raw data
 %           file. ChannelInfo must contain a .nr field for the number
 %           assigned to the channel and can contain a .name field for a
@@ -54,19 +55,19 @@ info   :  longblob      # General hardware info that is not specific to a channe
 % ns.eyelink.read   - Read EDF files from the Eyelink eye tracker
 % ephys.ripple.read - Read and preprocess Ripple Grapevine data.
 %
-%  To use these, add a row to ContParm with a line like thise
-% insert(ns.ContParm,struct('tag','eeg','fun','ephys.intan.read','description'','EEG
+%  To use these, add a row to CParm with a line like thise
+% insert(ns.CParm,struct('tag','eeg','fun','ephys.intan.read','description'','EEG
 %                 data', 'parms',parmsStruct))
 % where parmsStruct is a struct that defines what kind of preprocessing the
-% read function should do before adding the data to the ns.Cont table.
+% read function should do before adding the data to the ns.C table.
 %
-% The align() function of the ns.Cont class is used in the analysis to
+% The align() function of the ns.C class is used in the analysis to
 % extract trial-based data, or to align to specific events in the
 % experiment.
 %
 % BK - June 2023
 
-classdef Cont< dj.Computed
+classdef C< dj.Computed
     properties (Dependent)
         keySource
     end
@@ -74,10 +75,10 @@ classdef Cont< dj.Computed
     methods
 
         function v = get.keySource(~)
-            % Restricted to files with the extenstion specified in ContParm
+            % Restricted to files with the extenstion specified in CParm
 
             % This seems cumbersome, but I coudl not get a simpler join to work
-            for prms= fetch(ns.ContParm,'extension','include','exclude')'
+            for prms= fetch(ns.CParm,'extension','include','exclude')'
                 restrict  =struct('extension',prms.extension);
                 fileQry = ns.File;
                 if ~isempty(prms.include)
@@ -93,14 +94,14 @@ classdef Cont< dj.Computed
                           fileQry = fileQry & ['filename NOT LIKE ''' exc{i} ''''];
                     end
                 end
-                thisV = fetch((fileQry & restrict)*proj(ns.ContParm&restrict));
+                thisV = fetch((fileQry & restrict)*proj(ns.CParm&ns.stripToPrimary(ns.CParm,prms)));
                 if exist("v","var")
                     v  = catstruct(1,v,thisV);
                 else
                     v = thisV;
                 end
             end
-            v = (ns.File*proj(ns.ContParm)) & v;
+            v = (ns.File*proj(ns.CParm)) & v;
         end
     end
     methods (Access=public)
@@ -111,7 +112,7 @@ classdef Cont< dj.Computed
             % in the trial and before the first monitor frame of the next trial.
             % (In other words the ITI is included at the *end* of each trial).
             % INPUT
-            % tbl  - ns.Cont table
+            % tbl  - ns.C table
             %
             % Optional Parameter/Value pairs
             % channel  - The subset of channels ([]; means all)
@@ -134,7 +135,7 @@ classdef Cont< dj.Computed
             %               only times/samples between the firstFrame event in the trial and
             %               the firstFrame event of the next trial will be
             %               returned.
-            % fetchOptions - Options passed to the fectch(ns.Cont)
+            % fetchOptions - Options passed to the fectch(ns.C)
             %               call.(For instance 'LIMIT 1')
             %
             % OUTPUT
@@ -149,7 +150,7 @@ classdef Cont< dj.Computed
             %               the preprocessing tag.
             %
             % EXAMPLE
-            % T= align(ns.Cont & 'tag=''eeg''',channel=2,align=
+            % T= align(ns.C & 'tag=''eeg''',channel=2,align=
             % stimulusOnsetTime, start =-250,stop=1000,step=1)
             % will return a timetable with the EEG samples of channel 2,
             % from 250 ms before until 1000 ms after the stimulus onset
@@ -157,7 +158,7 @@ classdef Cont< dj.Computed
             % with a length equal to the number of trials in which each
             % element represent the onset time in ms such as returned by ns.Experiment.get()
             arguments
-                tbl  (1,1) ns.Cont {mustHaveRows(tbl,1)}
+                tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
                 pv.fetchOptions {mustBeText} = ''
                 pv.channel (1,:) double = []
                 pv.trial (1,:) double = []
@@ -196,7 +197,7 @@ classdef Cont< dj.Computed
             else
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             end
-            tblChannel =ns.ContChannel & proj(tbl) & channelRestriction;
+            tblChannel =ns.CChannel & proj(tbl) & channelRestriction;
             if ~isempty(pv.fetchOptions)
                 channelTpl = fetch(tblChannel,'signal',pv.fetchOptions);
             else
@@ -206,7 +207,7 @@ classdef Cont< dj.Computed
             [nrSamples,nrChannels] = size(signal);
             % Fetch the preprocessing tag. The dimensions in the timetable
             % will be named after this.
-            tag = fetch1(ns.ContParm & tbl,'tag');
+            tag = fetch1(ns.CParm & tbl,'tag');
             %% Align
             if nrSamples==0||nrChannels==0
                 T= timetable; % Empty
@@ -296,11 +297,11 @@ classdef Cont< dj.Computed
             if exist(filename,'file') && ~exist(filename,'dir')
                 fprintf('Reading %s\n',filename);
             else
-                error('File %s does not exist. Cannot create Cont',filename);
+                error('File %s does not exist. Cannot create C',filename);
             end
 
             % Get the specified preprocessing parms
-            prepParms = fetch(ns.ContParm & key,'*');
+            prepParms = fetch(ns.CParm & key,'*');
             % Call the prep function
             [signal,time,channelInfo,recordingInfo] = feval(prepParms.fun,key,prepParms.parms);
             [nrSamples,nrChannels] = size(signal);
@@ -309,10 +310,11 @@ classdef Cont< dj.Computed
             assert(nrChannels==numel(channelInfo),'The number of columns in the preprocessed signal does not match the number of channels')
 
             channels =[channelInfo.nr];
-
+            
             % Create tuples and insert.
             tpl = mergestruct(key,...
                 struct('time',time, ...
+                'nrsamples',nrSamples,...
                 'info',recordingInfo));
             insert(tbl,tpl)
 
@@ -336,7 +338,7 @@ classdef Cont< dj.Computed
             for i=1:chunkSize:nrChannels
                 fprintf('.')
                 thisChunk = i:min(nrChannels,i+chunkSize-1);
-                insert(ns.ContChannel,channelsTpl(thisChunk));
+                insert(ns.CChannel,channelsTpl(thisChunk));
             end
             fprintf('Done in %d seconds.\n.',round(toc))
 
@@ -346,7 +348,7 @@ classdef Cont< dj.Computed
     methods (Access=public)
         function [hdr,data,evts] = fieldtrip(tbl,pv)
             arguments
-                tbl (1,1) ns.Cont
+                tbl (1,1) ns.C
                 pv.channel =  [];
             end
 
@@ -371,7 +373,7 @@ classdef Cont< dj.Computed
 
 
             for key = fetch(tbl)'
-                tpl = fetch(tbl*(proj(ns.ContChannel,'info->channelInfo','signal') &  key) & struct('channel',num2cell(pv.channel)'),'*') ;
+                tpl = fetch(tbl*(proj(ns.CChannel,'info->channelInfo','signal') &  key) & struct('channel',num2cell(pv.channel)'),'*') ;
                 nrChannels = numel(tpl);
                 channelInfo = [tpl.channelInfo];
                 nrTrials = fetch1(ns.Experiment &key,'trials');
