@@ -35,7 +35,6 @@ filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 
 
 %% Read using a script
-fprintf('Reading bin data file %s. ', filename)
 tic
 load(strrep(filename,'.bin','.mat'),'c');
 T=  readBin(c.mdaq,file=filename);
@@ -49,7 +48,7 @@ if numel(availableChannels)~=numel(parms.channel)
 end
 
 time = seconds(T.nsTime);
-signal = T.(parms.channel{:});
+signal = T{:,parms.channel};
 [nrSamples,nrChannels] = size(signal);
 sampleRate = get(c.mdaq.prms.samplerate);
 %% Downsample first
@@ -92,20 +91,23 @@ if isfield(parms,'asEvent')
         % Create an event representing the low to high transition of
         % the digital input
         name =[char(digNames{ch}) 'High'];
-        goesHighNsTime = time([digital(1,ch); diff(digital(:,ch))>0])*1000;
+        goesHighNsTime = time([false; diff(digital(:,ch))>0])*1000;
         fprintf('Creating %d new %sHigh events in mdaq plugin.\n',numel(goesHighNsTime), digNames{ch})
         [trialTime,trial] = eTime2TrialTime(c.mdaq.prms.vendor,goesHighNsTime);
-        nrEvents= numel(goesHighNsTime);        
-        addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesHighNsTime,true); % Replace existing
-
+        nrEvents= numel(goesHighNsTime);    
+        if nrEvents>0
+            addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesHighNsTime,true); % Replace existing
+        end
         % Create an event representing the high to low transition of
         % the digital input        
         name =[char(digNames{ch}) 'Low'];      
-        goesLowNsTime= time([~digital(1,ch); diff(digital,ch)<0])*1000;
+        goesLowNsTime= time([false; diff(digital(:,ch))<0])*1000;
         fprintf('Creating %d new %sLow events in mdaq plugin. \n',numel(goesLowNsTime), digNames{ch})
         [trialTime,trial] = eTime2TrialTime(c.mdaq.prms.vendor,goesLowNsTime);
         nrEvents= numel(goesLowNsTime);
-        addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesLowNsTime,true);% Replace existing
+        if nrEvents>0
+            addNew(ns.PluginParameter,plgKey,name,ones(nrEvents,1),'Event',trialTime,trial,goesLowNsTime,true);% Replace existing
+        end
     end
 
 

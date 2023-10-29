@@ -92,7 +92,7 @@ classdef Tuning <dj.Computed
                 hold on
                 % Fetch parameters used to estmate the tuning curve
                 parms = fetch1(sbx.TuningParms & tpl,'parms');
-                cond = fetch(ns.Condition*ns.ConditionTrial & tpl,'*');
+                cond = fetch(ns.Condition & tpl,'*');
                 conditionName = unique({cond.name});
                 conditionName= conditionName{1};
                 trials = [cond.trial];
