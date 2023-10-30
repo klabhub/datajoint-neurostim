@@ -4,7 +4,6 @@ tuningtag                   : varchar(128)                  # Short name to iden
 ---
 description=null            : varchar(1024)                 # Description of the parameter set
 parms                       : longblob                      # struct of all parameters
-cgroup                     : varchar(64)                   # The name of the condition_group used in this analysis
 %}
 % 
 % For example, see sbx.Tuning 

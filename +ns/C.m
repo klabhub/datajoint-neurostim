@@ -74,33 +74,41 @@ classdef C< dj.Computed
 
     methods
 
-        function v = get.keySource(tbl)
+        function v = get.keySource(~)
             % Restricted to files with the extenstion specified in CParm
-
+            % and the include/exclude specs in CParm. 
             % This seems cumbersome, but I coudl not get a simpler join to work
-            for prms= fetch(ns.CParm,'extension','include','exclude')'
-                restrict  =struct('extension',prms.extension);                
-                if ~isempty(prms.include)
-                    inc = strsplit(prms.include,',');
+            for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
+                % Loop over the rows in CParm
+                restrict  =struct('extension',thisPrm.extension);  
+                tbl = ns.File & restrict;
+                if ~isempty(thisPrm.include)
+                    inc = strsplit(thisPrm.include,',');
                     for i=1:numel(inc)
                           tbl = tbl & ['filename LIKE ''' inc{i} ''''];
                     end
                 end
 
-                if ~isempty(prms.exclude)
-                    exc = strsplit(prms.exclude,',');
+                if ~isempty(thisPrm.exclude)
+                    exc = strsplit(thisPrm.exclude,',');
                     for i=1:numel(exc)
                           tbl = tbl & ['filename NOT LIKE ''' exc{i} ''''];
                     end
                 end
-                thisV = fetch((tbl & restrict)*proj(ns.CParm&ns.stripToPrimary(ns.CParm,prms)));
-                if exist("v","var")
-                    v  = catstruct(1,v,thisV);
-                else
-                    v = thisV;
-                end
+                % Table for one row in CParm
+                tbl = tbl*proj(ns.CParm&ns.stripToPrimary(ns.CParm,thisPrm));
+                % Would like to concatenate this tbl with the next row but
+                % this does not work with the | operator. Instead, concatenate
+                % tuples of primary keys
+                thisTpl = fetch(tbl);
+                if exist("allTpl","var")
+                    allTpl  = catstruct(1,allTpl,thisTpl);
+                 else
+                    allTpl = thisTpl;
+                 end
             end
-            v = (ns.File*proj(ns.CParm)) & v;
+            % And then restrict the full table by the set of found tuples.
+            v = (ns.File*proj(ns.CParm,'fun','description','parms')) & allTpl;
         end
     end
     methods (Access=public)

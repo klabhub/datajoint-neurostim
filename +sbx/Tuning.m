@@ -32,8 +32,12 @@ nrtrials    : float # Number of trials used in estimates
 %
 % This table depends on sbx.Roi and sbx.Experiments, and the parameter
 % settings for the Tuning table in the sbx.TuningParms table.
-% For instance:
-%
+% For instance, in an experiment where we mapped direction tuning in three
+% conditions (pre,during, post). We first define ns.Condition entries that identify these 
+% states using defineConditions. We call this group of conditions
+% (condition_group) 'treatment'. Now we want to get the direction tuning
+% for each of these conditions. 
+% Setup how to determine tuning;
 % tuningParms  =struct('stimulus','gbr', ...            % Use the stimulus named gbr
 %                        'independentVariable','orientation', ... % gbr.orientation has the directions/orientations
 %                        'start',0.5,'stop',1.5,'step',1/15.5, 'interpolation','nearest', ...  % Time and bins within each trial to use
@@ -42,15 +46,19 @@ nrtrials    : float # Number of trials used in estimates
 %                         'alpha',0.05);                          % Alpha level for CI
 %
 % Create a tuple, and tag this parameter set 'default'
-% tuningTpl = struct('tag','default','description','Fit to spikes fom 0.5 to 1.5 with two humps','parms',tuningParms);
+% tuningTpl = struct('tuningtag','default','description','Fit to spikes fom 0.5 to 1.5 with two humps','parms',tuningParms);
 % Insert into the sbx.TuningParms table
 %    insert(sbx.TuningParms,tuningTpl)
-% Then call
+% Then calling 
 % populate(sbx.Tuning)
-%
+% would determine tuning for all condition groups. By restricting to a
+% specific group ('treatment') we get tuning curves for each of those
+% conditions (while ignoring other groupings that may exist for his
+% experiment):
+% populate(sbx.Tuning,'condition_group=''treatment''')
 %
 % Although this table is specific for direction tuning, it can easily be
-% extended to fit other parametric functions too.
+% extended/modified to fit other parametric functions too.
 %
 % BK - Sept 2023
 classdef Tuning <dj.Computed
@@ -63,10 +71,8 @@ classdef Tuning <dj.Computed
             % (as that means that the sbx data were processed and the time course of 
             % the ROI is known in the experiment). Basically this makes
             % sure we ignore experiments where the imaging data were
-            % missing.
-            restrictGroup = struct('condition_group',{fetch(sbx.TuningParms,'cgroup').cgroup});
-            v = (ns.Experiment & sbx.PreprocessedTrialmap)*sbx.Roi*(ns.Condition & restrictGroup)*proj(sbx.TuningParms,'nrtrials->nrtuningtrials');
-            
+            % missing.            
+            v = (ns.Experiment & sbx.PreprocessedTrialmap)*sbx.Roi*ns.Condition*sbx.TuningParms;            
         end
     end
 
