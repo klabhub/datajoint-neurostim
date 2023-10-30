@@ -151,7 +151,7 @@ classdef Tuning <dj.Computed
             trials = [fetch(ns.Condition & key,'trial').trial];
             nrTrials = numel(trials);
             if count(ns.Plugin & expt & struct('plugin_name',parms.stimulus))==0
-                fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'trials'))
+                fprintf('This experiment does not have a %s  plugin (%d trials)\n. No tuning computed.',parms.stimulus, fetch1(expt,'nrtrials'))
                 return
             end
 

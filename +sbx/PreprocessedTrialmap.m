@@ -106,7 +106,7 @@ classdef PreprocessedTrialmap < dj.Part
                         % Skip this experiment
                     else
                         % Split into trials
-                        nrTrials = fetch1(ns.Experiment &expt,'trials');
+                        nrTrials = fetch1(ns.Experiment &expt,'nrtrials');
                         % Because events are aligned to firstFrame, we do the same
                         % for the imaging data.
                         trialStartTime = seconds(prms.cic.firstFrameNsTime/1000);

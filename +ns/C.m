@@ -185,7 +185,7 @@ classdef C< dj.Computed
             if numel(sampleTime)==3
                 sampleTime = linspace(sampleTime(1),sampleTime(2),sampleTime(3))';
             end
-            nrAllTrials = fetch1(ns.Experiment*tbl,'trials');
+            nrAllTrials = fetch1(ns.Experiment*tbl,'nrtrials');
             allTrials = 1:nrAllTrials;
             if isempty(pv.trial)
                 trials = allTrials; % All trials
@@ -386,7 +386,7 @@ classdef C< dj.Computed
                 tpl = fetch(tbl*(proj(ns.CChannel,'info->channelInfo','signal') &  key) & struct('channel',num2cell(pv.channel)'),'*') ;
                 nrChannels = numel(tpl);
                 channelInfo = [tpl.channelInfo];
-                nrTrials = fetch1(ns.Experiment &key,'trials');
+                nrTrials = fetch1(ns.Experiment &key,'nrtrials');
                 hdr = struct('Fs',1./tpl.sampleduration,...
                     'nChans',nrChannels, ...
                     'nSamples',size(tpl(1).signal,1), ...

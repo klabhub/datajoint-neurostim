@@ -1,10 +1,10 @@
 %{
 # A condition refers to a set of trials in an Experiment with matching parameters.
 -> ns.Experiment 
-name        : varchar(255)      # Condition name (plg_prm_value)
+name        : varchar(255)              # Condition name (plg_prm_value)
 ---
-trial : blob                    # The trials in this condition
-tag = NULL : varchar(10)        # Group of conditions 
+trials : blob                            # The trials in this condition
+condition_group : varchar(64) # Group of conditions 
 %}
 % As the definition of what constitutes a condition (i.e. the set of
 % stimulus parameters) varies per paradigm, this table has to be populated 
@@ -18,27 +18,28 @@ tag = NULL : varchar(10)        # Group of conditions
 % The .name field creates unique names for the conditions. For instance, if one of
 % the frequencies was 10, its name would become gabor_frequency_10
 % 
-% The tag can be used to define multiple groupings of conditions. For
+% The grp is used to define multiple groupings of conditions. For
 % instance, one grouping could assign trials to condition based on the
 % visual stimulus presented on the screen (group ="orientation"), while another grouping 
 % could assign based on some intervention (before drug /after drug;
 % group="drug"). That would allow one analysis to pool over drug state, but
-% distinguish among orientations, while another could analysis drug states
+% distinguish among orientations, while another could analyze drug states
 % separately.
 %
 % BK - March 2023.
 classdef Condition < dj.Manual
     methods (Access=public)
-        function tbl = defineConditions(tbl,expt,plg,prm,pv)
+        function tbl = defineConditions(tbl,expt,plg,prm,grp,pv)
             arguments
                 tbl (1,1) ns.Condition
                 expt (1,1) ns.Experiment {mustHaveRows}
                 plg (1,:) {mustBeNonzeroLengthText}
                 prm (1,:) {mustBeNonzeroLengthText}
-                pv.tag (1,1) string 
+                grp (1,1) string 
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
-                pv.replace (1,1) logical = false; % Set to true to replace (all) existing conditions                
+                pv.replace (1,1) logical = false; % Set to true to replace (all) existing conditions from this expt and grp.           
                 pv.nameValueOnly (1,1) = false; % Set to true to define condition names based o the prm values alone (and not their name).
+                pv.update (1,1) =false;
             end
             if ischar(plg);plg={plg};end
             if ischar(prm);prm={prm};end
@@ -48,17 +49,21 @@ classdef Condition < dj.Manual
             nrPlg = numel(plg);
             nrPrm = numel(prm);
             assert(nrPlg==nrPrm,"Please specify one parameter per plugin")
-            existingConditions = ns.Condition &expt & ['tag=''' pv.tag ''''];
+            existingConditions = ns.Condition & expt & ['condition_group=''' grp ''''];
             if pv.replace
                 del(existingConditions)
             end
-            % Only process experiments in which this tag  has not already
+            % Only process experiments in which this group  has not already
             % been defined.
-            expt = expt - proj(ns.Condition );            
+            if pv.update
+                expt = expt & proj(existingConditions,'trials->trialsPerCondition')
+            else
+                expt = expt - proj(existingConditions,'trials->trialsPerCondition');            
+            end
             exptTpl = fetch(expt);
             nrExpt = numel(exptTpl);
             tic
-            fprintf('Defining %s conditions for %d experiments...',pv.tag,nrExpt)
+            fprintf('Defining %s conditions for %d experiments...',grp,nrExpt)
             totalNrTpl=0;
             for e =1:nrExpt
                 val = [];
@@ -96,11 +101,22 @@ classdef Condition < dj.Manual
                 tpl = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions                    
                     tpl(c).name = strjoin(uVal(c,:),ppSEPARATOR);
-                    tpl(c).tag  = pv.tag;                    
-                    tpl(c).trial = find(ix==c);                                                                   
+                    tpl(c).condition_group  = grp;                    
+                    tpl(c).trials = find(ix==c);                                                                   
                 end 
-                % Insert the condition tuples
-                insert(tbl,tpl);
+                % Insert the condition tuples for this experiment
+                if pv.update
+                    for c=1:nrConditions
+                        this = tbl& ns.stripToPrimary(tbl,tpl(c));
+                        if count(this)~=1
+                            1;
+                        else
+                            update(this,'trials',tpl(c).trials);
+                        end
+                    end
+                else
+                    insert(tbl,tpl);
+                end
                 totalNrTpl = totalNrTpl + numel(tpl);
             end
             fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);

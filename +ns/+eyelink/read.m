@@ -52,7 +52,7 @@ warning(stts);
 % sends the TRIALID message 
 % Requests the eyelink clock time and stores this as eyeClockTime
 % Hence the eyeClockTime allows us to synchronize the two clocks. 
-nrTrials =fetch1(ns.Experiment & key,'trials');
+nrTrials =fetch1(ns.Experiment & key,'nrtrials');
 messages= {data.FEVENT.message};
 stay = cellfun(@ischar,messages);
 messages = messages(stay);

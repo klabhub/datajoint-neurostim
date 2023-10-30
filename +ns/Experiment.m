@@ -8,7 +8,7 @@ file = NULL : varchar(255)  # File that contains the Neurostim output
 stimuli = NULL : smallint      # Number of stimuli in the experiment
 blocks = NULL : smallint       # Number of blocks in the experiment
 conditions = NULL : smallint   # Number of conditions 
-trials = NULL : smallint       # Number of trials 
+nrtrials = NULL : smallint       # Number of trials 
 matlab = NULL : varchar(100)  # Matlab version used to run the experiment
 ptb = NULL: varchar(100)     # Psychtoolbox version used to run the experiment
 ns = NULL  : varchar(100)   # Neurosti version used to run the experiment
@@ -342,7 +342,7 @@ classdef Experiment  < dj.Manual
                 % Just putting zeros.
                 fprintf('Skipping %s - no completed trials\n',file);
                 tpl = struct('stimuli',0,'blocks',0,...
-                    'conditions',0,'trials',actualNrTrialsStarted,...
+                    'conditions',0,'nrtrials',actualNrTrialsStarted,...
                     'matlab',c.matlabVersion,'ptb',ptbVersion,...
                     'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',[c.file '.mat']);
             else
@@ -359,7 +359,7 @@ classdef Experiment  < dj.Manual
                 end
 
                 tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
-                    'conditions',c.nrConditions,'trials',actualNrTrialsStarted,...
+                    'conditions',c.nrConditions,'nrtrials',actualNrTrialsStarted,...
                     'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',[c.file '.mat']);
             end
             key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
