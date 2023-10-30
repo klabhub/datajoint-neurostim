@@ -48,7 +48,7 @@ classdef PreprocessedTrialmap < dj.Part
                     currentExptFldr = folder(ns.Experiment &expt);
                     [savedFldr] =fileparts(c.mdaq.dataFile);
                     
-                    thisT = readBin(c.mdaq,drive= {savedFldr,currentExptFldr});
+                    thisT = readBin(c.mdaq,root= {savedFldr,currentExptFldr});
                     laserOnIx = find(diff(thisT.laserOnDig)>0.5); % Transition from 0-1
                     laserOnTime = thisT.nsTime(laserOnIx);        % Time in ns time.
                     nrTTL = numel(laserOnTime);
