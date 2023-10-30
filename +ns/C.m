@@ -78,6 +78,7 @@ classdef C< dj.Computed
             % Restricted to files with the extenstion specified in CParm
             % and the include/exclude specs in CParm. 
             % This seems cumbersome, but I coudl not get a simpler join to work
+            allTpl = [];
             for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
                 % Loop over the rows in CParm
                 restrict  =struct('extension',thisPrm.extension);  
@@ -101,14 +102,14 @@ classdef C< dj.Computed
                 % this does not work with the | operator. Instead, concatenate
                 % tuples of primary keys
                 thisTpl = fetch(tbl);
-                if exist("allTpl","var")
-                    allTpl  = catstruct(1,allTpl,thisTpl);
-                 else
+                if isempty(allTpl)
                     allTpl = thisTpl;
+                 else
+                    allTpl  = catstruct(1,allTpl,thisTpl);                 
                  end
             end
             % And then restrict the full table by the set of found tuples.
-            v = (ns.File*proj(ns.CParm,'fun','description','parms')) & allTpl;
+            v = (ns.File*proj(ns.CParm,'fun','description','parms')) & allTpl;            
         end
     end
     methods (Access=public)
