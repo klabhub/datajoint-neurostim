@@ -39,7 +39,6 @@ classdef Condition < dj.Manual
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and grp.           
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
-                pv.rename (1,:) = {}
             end
             if ischar(plg);plg={plg};end
             if ischar(prm);prm={prm};end
