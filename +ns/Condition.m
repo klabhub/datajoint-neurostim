@@ -91,25 +91,11 @@ classdef Condition < dj.Manual
                 end
                 val = fillmissing(val,"constant","unknown");
                 [uVal,~,ix] = unique(val,"rows"); % Sort ascending.
-                nrConditions = size(uVal,1);
-                computedNames = strjoin(uVal,ppSEPARATOR);
-                if ~isempty(pv.rename)
-                    % Check that all computed names exist in the rename
-                    % cell
-                    noMatch = ~ismember(computedNames,pv.rename(1:2:end));
-                    if any(noMatch)
-                        error('Computed names (%s) do not exist in the rename input (%s)',strjoin(computedNames(noMatch),'/'),strjoin(pv.rename(1:2:end),'/'))
-                    end
-                end
+                nrConditions = size(uVal,1);                
                 %% Create tuples and insert.                                
                 tpl = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions                    
-                    if ~isempty(pv.rename)
-                        thisName  = pv.rename{find(ismember(computedNames{c},pv.rename(1:2:end)))*2};
-                    else
-                        thisName = computedNames{c};
-                    end
-                    tpl(c).name = thisName;
+                    tpl(c).name = strjoin(uVal(c,:),ppSEPARATOR);
                     tpl(c).condition_group  = grp;                    
                     tpl(c).trials = find(ix==c);                                                                   
                 end 
