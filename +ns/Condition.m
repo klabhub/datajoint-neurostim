@@ -37,9 +37,9 @@ classdef Condition < dj.Manual
                 prm (1,:) {mustBeNonzeroLengthText}
                 grp (1,1) string 
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
-                pv.replace (1,1) logical = false; % Set to true to replace (all) existing conditions from this expt and grp.           
-                pv.nameValueOnly (1,1) = false; % Set to true to define condition names based o the prm values alone (and not their name).
-                pv.update (1,1) =false;
+                pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and grp.           
+                pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
+                pv.rename (1,:) = {}
             end
             if ischar(plg);plg={plg};end
             if ischar(prm);prm={prm};end
@@ -55,11 +55,7 @@ classdef Condition < dj.Manual
             end
             % Only process experiments in which this group  has not already
             % been defined.
-            if pv.update
-                expt = expt & proj(existingConditions,'trials->trialsPerCondition')
-            else
-                expt = expt - proj(existingConditions,'trials->trialsPerCondition');            
-            end
+            expt = expt - proj(existingConditions);            
             exptTpl = fetch(expt);
             nrExpt = numel(exptTpl);
             tic
@@ -96,27 +92,29 @@ classdef Condition < dj.Manual
                 val = fillmissing(val,"constant","unknown");
                 [uVal,~,ix] = unique(val,"rows"); % Sort ascending.
                 nrConditions = size(uVal,1);
-
+                computedNames = strjoin(uVal,ppSEPARATOR);
+                if ~isempty(pv.rename)
+                    % Check that all computed names exist in the rename
+                    % cell
+                    noMatch = ~ismember(computedNames,pv.rename(1:2:end));
+                    if any(noMatch)
+                        error('Computed names (%s) do not exist in the rename input (%s)',strjoin(computedNames(noMatch),'/'),strjoin(pv.rename(1:2:end),'/'))
+                    end
+                end
                 %% Create tuples and insert.                                
                 tpl = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions                    
-                    tpl(c).name = strjoin(uVal(c,:),ppSEPARATOR);
+                    if ~isempty(pv.rename)
+                        thisName  = pv.rename{find(ismember(computedNames{c},pv.rename(1:2:end)))*2};
+                    else
+                        thisName = computedNames{c};
+                    end
+                    tpl(c).name = thisName;
                     tpl(c).condition_group  = grp;                    
                     tpl(c).trials = find(ix==c);                                                                   
                 end 
                 % Insert the condition tuples for this experiment
-                if pv.update
-                    for c=1:nrConditions
-                        this = tbl& ns.stripToPrimary(tbl,tpl(c));
-                        if count(this)~=1
-                            1;
-                        else
-                            update(this,'trials',tpl(c).trials);
-                        end
-                    end
-                else
-                    insert(tbl,tpl);
-                end
+                insert(tbl,tpl);                
                 totalNrTpl = totalNrTpl + numel(tpl);
             end
             fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);

@@ -64,7 +64,9 @@ classdef Tuning <dj.Computed
             % the ROI is known in the experiment). Basically this makes
             % sure we ignore experiments where the imaging data were
             % missing.
-            v = (ns.Experiment&sbx.PreprocessedTrialmap)*sbx.Roi*sbx.TuningParms*proj(ns.Condition,'tag->conditionTag');
+            restrictGroup = struct('condition_group',{fetch(sbx.TuningParms,'cgroup').cgroup});
+            v = (ns.Experiment & sbx.PreprocessedTrialmap)*sbx.Roi*(ns.Condition & restrictGroup)*proj(sbx.TuningParms,'nrtrials->nrtuningtrials');
+            
         end
     end
 
@@ -95,7 +97,7 @@ classdef Tuning <dj.Computed
                 cond = fetch(ns.Condition & tpl,'*');
                 conditionName = unique({cond.name});
                 conditionName= conditionName{1};
-                trials = [cond.trial];
+                trials = [cond.trials];
                 % Generate estimated tuning curve
                 uDirection = (0:1:330);                
                 if pv.nrBootToShow >0
