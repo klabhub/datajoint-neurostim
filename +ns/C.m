@@ -74,27 +74,26 @@ classdef C< dj.Computed
 
     methods
 
-        function v = get.keySource(~)
+        function v = get.keySource(tbl)
             % Restricted to files with the extenstion specified in CParm
 
             % This seems cumbersome, but I coudl not get a simpler join to work
             for prms= fetch(ns.CParm,'extension','include','exclude')'
-                restrict  =struct('extension',prms.extension);
-                fileQry = ns.File;
+                restrict  =struct('extension',prms.extension);                
                 if ~isempty(prms.include)
                     inc = strsplit(prms.include,',');
                     for i=1:numel(inc)
-                          fileQry = fileQry & ['filename LIKE ''' inc{i} ''''];
+                          tbl = tbl & ['filename LIKE ''' inc{i} ''''];
                     end
                 end
 
                 if ~isempty(prms.exclude)
                     exc = strsplit(prms.exclude,',');
                     for i=1:numel(exc)
-                          fileQry = fileQry & ['filename NOT LIKE ''' exc{i} ''''];
+                          tbl = tbl & ['filename NOT LIKE ''' exc{i} ''''];
                     end
                 end
-                thisV = fetch((fileQry & restrict)*proj(ns.CParm&ns.stripToPrimary(ns.CParm,prms)));
+                thisV = fetch((tbl & restrict)*proj(ns.CParm&ns.stripToPrimary(ns.CParm,prms)));
                 if exist("v","var")
                     v  = catstruct(1,v,thisV);
                 else
