@@ -42,7 +42,12 @@ switch (pv.type)
         out = T;
     case 'double'
         % Meta is a number stored as string.
-        out =cellfun(@str2num,T{:,meta});
+        out = cellfun(@isempty,T{:,meta});
+        if any(~out)
+            out =cellfun(@str2num,T{~out,meta});
+        else
+            error('No %s found in this tbl',meta{:})
+        end
     otherwise 
 
 end

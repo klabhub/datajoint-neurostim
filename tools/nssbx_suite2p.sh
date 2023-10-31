@@ -12,7 +12,7 @@ if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
     if [ -f "$1/etc/profile.d/conda.sh" ]; then
-        . "$1/etc/profile.d/conda.sh"
+        source "$1/etc/profile.d/conda.sh"
     else
        export PATH="$1/bin:$PATH"
     fi
@@ -22,8 +22,9 @@ unset __conda_setup
 # Because this runs in a fresh bash shell, we need to init the conda hook
 #eval "$(conda shell.bash hook)"
 #source "$1/etc/profile.d/conda.sh"
-conda env list
+
 # Now we can activate the suite2p environment
 conda activate suite2p
 # Run the python script
-python -Wdefault #$2 $3 $4
+#python $2 $3 $4
+python -m suite2p
