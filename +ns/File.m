@@ -51,14 +51,11 @@ classdef File < dj.Imported
             % Search for a folder with matching prefix; add its content
             % (inluding content in all sub/sub folders).
             subFolder = inFolder([inFolder.isdir]);
-            if isempty(subFolder)
-                linkedFiles= inFolder;
-            else
-                inSubFolder = dir(fullfile(subFolder.folder,subFolder.name,'**','*'));
-                linkedFiles = cat(1,inFolder,inSubFolder);
+            linkedFiles= inFolder(~[inFolder.isdir]);
+            for i=1:numel(subFolder)
+                    inSubFolder = dir(fullfile(subFolder(i).folder,subFolder(i).name,'**','*'));
+                    linkedFiles = cat(1,linkedFiles,inSubFolder(~[inSubFolder.isdir]));
             end
-            % Remove folders
-            linkedFiles([linkedFiles.isdir]) =[];
             if ~isempty(linkedFiles)
                 % Extract extension                
                 [~,~,ext] =fileparts({linkedFiles.name});
