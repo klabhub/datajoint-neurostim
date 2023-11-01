@@ -134,7 +134,9 @@ classdef C< dj.Computed
             % tbl  - ns.C table
             %
             % Optional Parameter/Value pairs
-            % channel  - The subset of channels ([]; means all)
+            % channel  - The subset of channels ([]; means all). A cellstr
+            % of channel names is valid too (or a single channel name as
+            % string or char)
             % trial   - Which trials to extract
             % The temporal snippet of data to extract runs from start to
             % stop in steps of step.These times are specified relative to
@@ -179,7 +181,7 @@ classdef C< dj.Computed
             arguments
                 tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
                 pv.fetchOptions {mustBeText} = ''
-                pv.channel (1,:) double = []
+                pv.channel (1,:)  =[]   % The channel number (as a vector of double) or name (cellstr or string, char)
                 pv.trial (1,:) double = []
                 pv.start (1,1) double = 0
                 pv.stop  (1,1) double = 1000
@@ -213,8 +215,10 @@ classdef C< dj.Computed
             % [nrSamples nrTrials]
             if isempty(pv.channel)
                 channelRestriction = struct([]);
-            else
+            elseif isnumeric(pv.channel)
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
+            elseif ischar(pv.channel) || isstring(pv.channel) ||iscellstr(pv.channel)
+                channelRestriction = struct('name',pv.channel);
             end
             tblChannel =ns.CChannel & proj(tbl) & channelRestriction;
             if ~isempty(pv.fetchOptions)
