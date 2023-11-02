@@ -297,7 +297,7 @@ classdef C< dj.Computed
                 end
             else
                 varargout{1} =T;
-                T.Properties.DimensionNNames = {'TrialTime',tag};
+                T.Properties.DimensionNames = {'TrialTime',tag};
             end
         end
     end

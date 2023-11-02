@@ -66,7 +66,12 @@ trialChannel = strcmpi({hdr.digIn.custom_channel_name},'trial');
 trialStartIx = find([false; diff(data.digIn(:,trialChannel))>0]);  % Down/Up transition
 trialStartTimeIntan = data.time(trialStartIx);
 nrIntanTrials = numel(trialStartTimeIntan);
-assert(nrNsTrials==nrIntanTrials,'The number of trials in Neurostim (%d) does not match the number recorded by Intan (%d)',nrNsTrials,nrIntanTrials)
+if nrIntanTrials==0
+    fprintf('No trials in the intan file.. skipping. You may want to remove this file from ns.File\n')
+    return
+else
+    assert(nrNsTrials==nrIntanTrials,'The number of trials in Neurostim (%d) does not match the number recorded by Intan (%d)',nrNsTrials,nrIntanTrials)
+end
 
 clockParms =  polyfit(trialStartTimeIntan,trialStartTimeNeurostim,1); % Fit a line to translate intan time to nsTime
 resid = polyval(clockParms,trialStartTimeIntan)-trialStartTimeNeurostim;

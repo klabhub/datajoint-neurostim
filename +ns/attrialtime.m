@@ -94,9 +94,11 @@ for e=1:numel(allEventTrials)
     else
         % Event occurred after the atTrialTime; use the value from the
         % previous trial
-        data{currentTrial} = data{currentTrial-1};
-        eventTime (currentTrial) = -inf;
-        eventNsTime(currentTrial) = eventNsTime(currentTrial-1);
+        if currentTrial >1
+            data{currentTrial} = data{currentTrial-1};
+            eventTime (currentTrial) = -inf;
+            eventNsTime(currentTrial) = eventNsTime(currentTrial-1);
+        end
     end
 end
 % Fill in to the end from the last value that was stored.
