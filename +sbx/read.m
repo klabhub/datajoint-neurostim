@@ -1,0 +1,99 @@
+function [signal,time,channelInfo,recordingInfo] = read(key,parms)
+% The key refers to an sbx file in an experiment.
+%  This function will preprocess the raw data  (for the whole session),
+% create a sbx.Preprocessed and sbx.PreprocessedRoi table and then
+% extract the relevant aspects to store in ns.C. Preprocessing is not
+% repeated if the Preprocessed data already exist. I.e., in a session
+% with multiple experiments, preprocessing is done when ns.C is populated
+% for the first experiment and subsequent calls to populate read the
+% output files and add relevant content to ns.C.
+%
+% The parms struct contains the following fields
+% .toolbox - 'suite2p', or 'caiman'
+% .ops -  A struct with options passed to the toolboxes.
+% .prep -  A unique name to identify these preprocessing instructions.
+% .what - 'F','Fneu', or 'spks'
+
+if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
+    % The session has not been preprocessed. Do that first.
+    make(sbx.Preprocessed,ns.stripToPrimary(sbx.Preprocessed,key),parms)
+end
+
+
+
+
+% Read the npy results from the suit2p folder and store them in
+% the table.
+CHUNK =1000;  % This many ROIs are sent to the server at the same time.
+
+
+%% Determine nstime of each frame in this session
+thisSession =(ns.Session & key);
+allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+nrFramesPrevious = 0;
+for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
+    % Get the meta information from the info structure that is
+    % saved as meta.
+    nrFrames  = ns.getMeta(ns.Experiment& exptThisSession,'nrframes',type='double');
+    if strcmpi(exptThisSession.starttime,key.starttime)
+        mdaq = proj(ns.C & 'tag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
+        assert(exists(mdaq),'%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)
+        laserOnTTL = fetch(mdaq,'signal','time');
+        laserOnIx = diff(laserOnTTL.signal)>0.5; % Transition from 0-1
+        nstime = linspace(laserOnTTL.time(1),laserOnTTL.time(2),laserOnTTL.time(3));
+        frameNsTime = nstime(laserOnIx);        % Time in ns time.
+        nrTTL = numel(frameNsTime);
+
+        % Determine the time when the scanbox was instructed to
+        % start/stop grabbing.
+        %   [isGrabbing,~,~,grabbingTime]= get(c.scanbox.prms.grabbing,'withDataOnly',true);
+        %   dtStart = seconds(grabbingTime(isGrabbing)/1000)-laserOnTime(1); %#ok<NASGU> % Time between grabbing start and first TTL
+        %   dtStop = seconds(grabbingTime(~isGrabbing)/1000)-laserOnTime(end); % Time between grabbing stop and last TTL
+        % Sanity check
+        if nrFrames==nrTTL
+            % OK
+        elseif nrFrames== nrTTL-1
+            % 1 trigger without a
+            % frame. Guessing it was the last.
+            frameNsTime(1)=[];
+            fprintf(2,'Removed 1 extraneous LaserOn TTL (first)\n')
+        else
+            error('Cannot map SBX frames to trials.');
+        end
+        keepFrameIx = nrFramesPrevious+(1:nrFrames);
+        break; % We have what we need; break the loop over experiments in this session
+    else
+        nrFramesPrevious = nrFramesPrevious +nrFrames;
+    end
+end
+
+
+
+%% Read the NPY Output
+fldr= getFolder(sbx.Preprocessed & key);
+planes = dir(fullfile(fldr,'plane*'));
+time = [frameNsTime(1) frameNsTime(end) numel(frameNsTime)];
+
+for pl = 1:numel(planes)
+    %% Read npy
+    tic;
+    fprintf('Reading numpy files...\n')
+    thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
+    if ~exist(thisFile,"file")
+        error('File %s does not exist',thisFile);
+    end
+    signal = single(py.numpy.load(thisFile,allow_pickle=true));
+    signal = signal(:,keepFrameIx)';
+    fprintf('Done in %s.\n',seconds(toc))
+
+    [nrFrames,nrROIs] = size(signal);
+    channelInfo =  struct('nr',num2cell(1:nrROIs)');
+    recordingInfo =struct;
+
+
+
+
+
+
+end
+end
