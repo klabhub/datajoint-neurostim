@@ -26,6 +26,10 @@ condition_group : varchar(64) # Group of conditions
 % distinguish among orientations, while another could analyze drug states
 % separately.
 %
+% .trials can be used to limit the condition definition to a subset of
+% trials. For instance, limit to trials in which one stimulus was disabled
+% trials = {'gbr','disabled',true}   => use only trials in which the
+% 'disabled parameter of the 'gbr' plugin was true. 
 % BK - March 2023.
 classdef Condition < dj.Manual
     methods (Access=public)
@@ -36,6 +40,7 @@ classdef Condition < dj.Manual
                 plg (1,:) {mustBeNonzeroLengthText}
                 prm (1,:) {mustBeNonzeroLengthText}
                 grp (1,1) string 
+                pv.trials (1,:) cell = {} % Define only in this subset of trials by specifying a set of allowed values for a plugin parameter
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and grp.           
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
@@ -48,7 +53,7 @@ classdef Condition < dj.Manual
             nrPlg = numel(plg);
             nrPrm = numel(prm);
             assert(nrPlg==nrPrm,"Please specify one parameter per plugin")
-            existingConditions = ns.Condition & expt & ['condition_group=''' grp ''''];
+            existingConditions = (ns.Condition & 'condition_group=''' + grp + '''')  & expt ;
             if pv.replace
                 del(existingConditions)
             end
@@ -89,6 +94,15 @@ classdef Condition < dj.Manual
                         continue;
                 end
                 val = fillmissing(val,"constant","unknown");
+                if ~isempty(pv.trials)
+                    % Determine which trials meet the specified condition
+                      restrictValue = get(ns.Experiment & exptTpl(e),pv.trials{1},'prm',pv.trials{2}, 'atTrialTime',0)';
+                      stay = ismember(restrictValue,pv.trials{3});
+                      val =val(stay,:);
+                      stayTrials = find(stay);
+                else 
+                      stayTrials = 1:fetch1(ns.Experiment&exptTpl(e),'nrtrials');
+                end
                 [uVal,~,ix] = unique(val,"rows"); % Sort ascending.
                 nrConditions = size(uVal,1);                
                 %% Create tuples and insert.                                
@@ -96,7 +110,7 @@ classdef Condition < dj.Manual
                 for c=1:nrConditions                    
                     tpl(c).name = strjoin(uVal(c,:),ppSEPARATOR);
                     tpl(c).condition_group  = grp;                    
-                    tpl(c).trials = find(ix==c);                                                                   
+                    tpl(c).trials = stayTrials(ix==c);                                                                   
                 end 
                 % Insert the condition tuples for this experiment
                 insert(tbl,tpl);                

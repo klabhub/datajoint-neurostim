@@ -56,11 +56,10 @@ classdef File < dj.Imported
                     inSubFolder = dir(fullfile(subFolder(i).folder,subFolder(i).name,'**','*'));
                     linkedFiles = cat(1,linkedFiles,inSubFolder(~[inSubFolder.isdir]));
             end
-            if ~isempty(linkedFiles)
-                % Extract extension                
-                [~,~,ext] =fileparts({linkedFiles.name});
+            if ~isempty(linkedFiles)                
                 % Add each one
                 for f=1:numel(linkedFiles)
+                    [~,~,ext] =fileparts(linkedFiles(f).name);
                     % Remove the part of the path that points to the folder
                     % with the neurostim file, but keep subfolders deeper than
                     % that (for most files relFolder will be '').
@@ -69,7 +68,7 @@ classdef File < dj.Imported
                     qry = mergestruct(key,struct('filename',filename));
                     thisFile = ns.File & qry;
                     if ~thisFile.exists
-                        qry.extension = ext{f};
+                        qry.extension = ext;
                         insert(tbl,qry);
                     end
                 end
