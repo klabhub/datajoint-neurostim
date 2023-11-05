@@ -61,7 +61,7 @@ classdef PreprocessedRoi < dj.Part
                     'y',num2cell(med(:,1)), ...    % Dim 1 is the vertical axis of the image
                     'radius',num2cell(radius',1)', ...
                     'compact',num2cell(compact',1)', ...
-                    'aspect',num2cell(aspect',1)');                
+                    'aspect',num2cell(aspect',1)'));                
                 insert(tbl,tpl);                
             end
         end
