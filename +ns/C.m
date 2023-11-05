@@ -345,9 +345,10 @@ classdef C< dj.Computed
             channelsTpl = mergestruct(key,...
                 struct('signal',num2cell(single(signal),1)',...
                 'channel',num2cell(channels(:))));
+            
             if ~isempty(channelInfo)
                 for i=1:numel(channelInfo)
-                    channelsTpl(i).info = channelInfo(i);
+                    channelsTpl(i).channelinfo = channelInfo(i);
                     if isfield(channelInfo,'name')
                         channelsTpl(i).name = channelInfo(i).name;
                     end
@@ -355,7 +356,7 @@ classdef C< dj.Computed
             end
 
             % Chunking the inserts to avoid overloading the server
-            chunkSize = 32; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
+            chunkSize = 128; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
             tic;
             fprintf('Uploading to server ')
             for i=1:chunkSize:nrChannels
