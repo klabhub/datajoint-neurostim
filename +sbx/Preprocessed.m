@@ -1,7 +1,7 @@
 %{
 # A complete preprocessed data set of the SBX data obtained in a single session.
 -> ns.Session
--> sbx.PrepParms
+prep  : varchar(255)        # A unique name for this set of preprocessing parameters
 ---
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
@@ -20,7 +20,7 @@ framerate : double          # Acquisition framerate
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
-classdef Preprocessed < dj.Imported
+classdef Preprocessed < dj.Manual
     properties (Dependent)
         keySource
         ops
@@ -233,15 +233,14 @@ classdef Preprocessed < dj.Imported
 
 
     end
-    methods (Access=protected)
+    methods (Access=public)
 
-        function makeTuples(tbl,key)
-            sessionPath=unique(folder(ns.Experiment & key));
-            prep = fetch(sbx.PrepParms & key,'*');
+        function make(tbl,key,parms)
+            sessionPath=unique(folder(ns.Experiment & key));            
             % Set the output folder to be
             % subject.suite2p.preprocessing
             % in the session folder
-            resultsFolder = [key.subject '.' prep.toolbox '.' prep.tag];
+            resultsFolder = [key.subject '.' parms.toolbox '.' parms.prep];
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
@@ -253,18 +252,18 @@ classdef Preprocessed < dj.Imported
                 dataFldr{noDir} %#ok<NOPRT>
                 error('SBX file folder not found');
             end
-            switch (prep.toolbox)
+            switch (parms.toolbox)
                 case 'suite2p'
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
                     %replace parameters defined in the prep
                     %settings
-                    fn= fieldnames(prep.parms);
+                    fn= fieldnames(parms.ops);
                     for  f= 1:numel(fn)
                         try
                             default= opts{fn{f}};
                             pyClass =class(default);
-                            prepValue =prep.parms.(fn{f});
+                            prepValue =parms.ops.(fn{f});
                             if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
                                 % Some options have to specified as a
                                 % length 1 list of strings. If the user
@@ -278,8 +277,13 @@ classdef Preprocessed < dj.Imported
                         end
                         opts{fn{f}} = overruled;
                     end
-                    resultsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
-                    if ~exist(resultsFile,'file')
+                    opsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
+                    outFiles = fullfile(sessionPath,resultsFolder,'plane0',{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
+                    outFilesExist = true;
+                    for of =1:numel(outFiles)
+                        outFilesExist = outFilesExist & exist(outFiles(of),'file');
+                    end
+                    if ~outFilesExist
                         % Create a dict with the folder information
                         if isempty(cell(opts{'fast_disk'}))
                             % No fast disk specified, guessing that tempname will have better access speed.
@@ -354,26 +358,23 @@ classdef Preprocessed < dj.Imported
                         statFile = fullfile(sessionPath,resultsFolder,'plane0','stat.npy');
                         npyToMat(statFile);
 
-
                         fprintf('Completed at %s\n',datetime('now'));
-
-
                     else
-                        fprintf('Preprocessing results already exist. Importing %s\n',resultsFile);
+                        fprintf('Preprocessing results already exist. Importing %s\n',opsFile);
                     end
                     % Load the save ops.npy to extract the mean image
-                    opts =py.numpy.load(resultsFile,allow_pickle=true);
+                    opts =py.numpy.load(opsFile,allow_pickle=true);
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
-                    tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs));
+                    tpl = mergestruct(key,struct('prep',parms.prep,'img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs));
                     insert(tbl,tpl);
-                    % And make the part table wth ROI info
-                    make(sbx.PreprocessedRoi,ns.stripToPrimary(tbl,tpl))
+                    % Make the part table wth ROI info
+                    make(sbx.PreprocessedRoi,ns.stripToPrimary(tbl,tpl))                   
                 case 'caiman'
                     % TODO
                 otherwise
-                    error('Unknown preprocessing toolbox %s',prep.toolbox);
+                    error('Unknown preprocessing toolbox %s',parms.toolbox);
             end
 
 

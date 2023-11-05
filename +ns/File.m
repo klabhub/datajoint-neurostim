@@ -36,7 +36,31 @@ classdef File < dj.Imported
                 out =T;
             end
         end
+
+        function updateWithFiles(tbl,key,linkedFiles)
+            % Usually called from makeTuples to add the standard files
+            % named according to NS conventions, but can be called to add
+            % other file,s that don't match that format. 
+            linkedFiles([linkedFiles.isdir])=[];
+            pth =  folder(ns.Experiment &key);          
+              for f=1:numel(linkedFiles)
+                    [~,~,ext] =fileparts(linkedFiles(f).name);
+                    % Remove the part of the path that points to the folder
+                    % with the neurostim file, but keep subfolders deeper than
+                    % that (for most files relFolder will be '').
+                    relFolder = strrep(linkedFiles(f).folder,pth,'');                    
+                    filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
+                    qry = mergestruct(key,struct('filename',filename));
+                    thisFile = ns.File & qry;
+                    if ~thisFile.exists
+                        qry.extension = ext;
+                        insert(tbl,qry);
+                    end
+              end         
+        end
     end
+
+
     methods (Access= protected)
 
         function makeTuples(tbl,key)
@@ -56,23 +80,7 @@ classdef File < dj.Imported
                     inSubFolder = dir(fullfile(subFolder(i).folder,subFolder(i).name,'**','*'));
                     linkedFiles = cat(1,linkedFiles,inSubFolder(~[inSubFolder.isdir]));
             end
-            if ~isempty(linkedFiles)                
-                % Add each one
-                for f=1:numel(linkedFiles)
-                    [~,~,ext] =fileparts(linkedFiles(f).name);
-                    % Remove the part of the path that points to the folder
-                    % with the neurostim file, but keep subfolders deeper than
-                    % that (for most files relFolder will be '').
-                    relFolder = strrep(linkedFiles(f).folder,pth,'');                    
-                    filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
-                    qry = mergestruct(key,struct('filename',filename));
-                    thisFile = ns.File & qry;
-                    if ~thisFile.exists
-                        qry.extension = ext;
-                        insert(tbl,qry);
-                    end
-                end
-            end
+           updateWithFiles(tbl,key,linkedFiles);
         end
     end
 
