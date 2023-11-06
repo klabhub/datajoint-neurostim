@@ -117,7 +117,7 @@ classdef Tuning <dj.Computed
             %% Retrieve sources
             parms = fetch1(ns.TuningParm &key,'parms');
             conditions = fetch(ns.DimensionCondition & key,'trials');
-            assert(numel(conditions)>0,"No conditions in %s group",parms.cgroup)
+            assert(numel(conditions)>0,"No conditions in %s group",key.dimension)
             %% Find indepdent variable values from the name assigned to the condition (which is 
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
