@@ -23,4 +23,17 @@ if info.scanbox_version==3
     info.calibration = rmfield(info.calibration,'fy');
 end
 
+% Determine the number of planes  from the optotune settings.
+if isfield(info,'otwave')
+    nrPlanes = max(1,numel(info.otwave));
+elseif isnan(info.otparam(3))
+    nrPlanes = 1 ;
+else
+    nrPlanes = info.otparam(3);
+end
+nrChannels = numel(info.channels);
+% 2 bytes per pixel.
+dirInfo = dir(ff);
+info.nrFrames = dirInfo.bytes./prod(info.sz)/nrChannels/nrPlanes/2;
+
 end
