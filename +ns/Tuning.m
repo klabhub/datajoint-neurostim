@@ -1,48 +1,53 @@
 %{
-# An ROI's nonparametreic tuning: rates per condition 
--> sbx.Roi
--> ns.Experiment
--> sbx.TuningParms
+# A tuning curve: rates per condition 
+-> ns.CChannel
+-> ns.TuningParm
+-> ns.Dimension
 ---
-peak      : float # peak firing rate
-preferred : float # prefferred condition/independent variable.
-mean      : float # Mean firing rate over all conditions
-min       : float # Minimum response across all conditions.
+peak      : float # peak value across conditions
+preferred : float # condition/independent variable where the peak value occurs
+mean      : float # Mean value over all conditions
+min       : float # Minimum va;ie across all conditions.
 tc        : blob  # Non parametric tuning curve (onve value per condition)
-tcstd     : blob # non parametric tuning curve standard deviation
-tcx       : blob # Independent variable for the nptc (e.g., orientation/direction)
+tcstd     : blob # Non parametric tuning curve standard deviation
+tcx       : blob # Independent variable for the tc (e.g., orientation/direction)
 panova     : float # ANOVA based on non parametric tuning curve.
-baseline  : float # Mean baseline (spontaneous) activity
-baselinesd: float # Standard deviation of the baseline activity
+baseline  : float # Mean baseline (spontaneous) value
+baselinesd: float # Standard deviation of the baseline va;ie
 nrtrials    : float # Number of trials used in estimates
-nrtrialspercondition  : blob # Number of trials used in estimates
+nrtrialspercondition  : blob # Number of trials used per condition in estimates
 %}
 %
-% This table depends on sbx.Roi and sbx.Experiments, and the parameter
-% settings in the sbx.NPTuningParms table.
-%
 % BK - Nov 2023
-classdef NPTuning <dj.Computed
+classdef Tuning <dj.Computed
     properties (Dependent)
         keySource
     end
-    methods 
-        function v= get.keySource(~)
-            % Use only those experiments that have an entry in the Trialmap
-            % (as that means that the sbx data were processed and the time course of 
-            % the ROI is known in the experiment). Basically this makes
-            % sure we ignore experiments where the imaging data were
-            % missing.            
-            v = (ns.Experiment & sbx.PreprocessedTrialmap)*sbx.Roi*sbx.TuningParms;            
+
+    methods
+
+        function v = get.keySource(~)
+            % Restricted to Dimensions listedin TuningParm
+            dimTpl= [];
+            for thisPrm = fetch(ns.TuningParm,'dimension')'
+                restrict  =struct('dimension',thisPrm.dimension);  
+                thisTpl = fetch((ns.Dimension & restrict));                 
+                if isempty(dimTpl)
+                   dimTpl = thisTpl;
+                 else
+                   dimTpl  = catstruct(1,dimTpl,thisTpl);                 
+                 end
+            end
+             % And then restrict the full table by the set of found tuples.
+            v = (ns.CChannel*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;            
         end
     end
-
 
     methods (Access=public)
         function plot(tbl,pv)
             % Function to show a set of tuning functions
             arguments
-                tbl (1,1) sbx.NPTuning
+                tbl (1,1) ns.Tuning
                 pv.nrPerFigure (1,1) {mustBeNonnegative,mustBeInteger} = 20  % How many curves per figure
                 pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50  % How many boostrap samples to show
                 pv.showNP (1,1) logical =false                          % Show Non-Parametric estimates?
@@ -52,12 +57,12 @@ classdef NPTuning <dj.Computed
             cntr =0;
             % Loop over the table
             if pv.average                 
-                nrRoi = 1;
+                nrChannels = 1;
             else
-                nrRoi = count(tbl);
+                nrChannels = count(tbl);
             end
 
-            for roi =1:nrRoi
+            for roi =1:nrChannels
                 if pv.average 
                     tpl = fetch(tbl,'*');
                      x = tpl(1).tcx';
@@ -83,16 +88,16 @@ classdef NPTuning <dj.Computed
                 hold on
                 
                 % Show non parametric tuning cuvrev (mean/ste)
-                    % Get the data and the directions
-                    ploterr(x,y,e,'ShadingAlpha',0.5,'LineWidth',2,'Color','r');
-                    ploterr(xlim',b*[1 1]',be*[1 1]','ShadingAlpha',0.5,'Color','k');
+                % Get the data and the directions
+                ploterr(x,y,e,'ShadingAlpha',0.5,'LineWidth',2,'Color','r');
+                ploterr(xlim',b*[1 1]',be*[1 1]','ShadingAlpha',0.5,'Color','k');
                 % Show parameters in the title
                 if pv.average
                 else
                 txt=  sprintf('%s (%d trials)- Roi#%d \n', ...                    
                     tpl.tuningtag,...
-                    numel(tpl.nrtrials),...
-                    tpl.roi);
+                    tpl.nrtrials,...
+                    tpl.channel);
                  title(txt,'Interpreter','None');
                 end
                
@@ -110,12 +115,10 @@ classdef NPTuning <dj.Computed
         function makeTuples(tbl,key)
             tic
             %% Retrieve sources
-            roi  = sbx.Roi & key;
-            expt = ns.Experiment & key;
-            parms = fetch1(sbx.TuningParms &key,'parms');
-            conditions = fetch(ns.Condition & key & ['condition_group=''' parms.cgroup ''''],'trials');
+            parms = fetch1(ns.TuningParm &key,'parms');
+            conditions = fetch(ns.DimensionCondition & key,'trials');
             assert(numel(conditions)>0,"No conditions in %s group",parms.cgroup)
-            %% Find indepdent variable balues from the name assigned to the condition (which is 
+            %% Find indepdent variable values from the name assigned to the condition (which is 
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
             xValue= str2double(extractAfter({conditions.name},[parms.independentVariable ':']));
@@ -124,7 +127,7 @@ classdef NPTuning <dj.Computed
             conditions =conditions(ix); 
             % Get the spikes for all trials (some may not be part of this
             % condition group)
-            [~,spk] = get(roi,expt,modality = 'spikes',start=parms.start/1000,stop=parms.stop/1000,step=(parms.stop-parms.start)/1000,interpolation = parms.interpolation);
+            [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
             trialsPerCondition = {conditions.trials};
             
             % Average 
@@ -147,7 +150,7 @@ classdef NPTuning <dj.Computed
 
             % Extract baseline (use only trials that are alos used for the
             % tuning).
-            [~,spkBaseline] = get(roi,expt,modality = 'spikes',start=parms.startBaseline/1000,stop=parms.stopBaseline/1000,step=(parms.stopBaseline-parms.startBaseline)/1000,interpolation = parms.interpolation);
+            [spkBaseline,~] = align(ns.C&key,channel=key.channel,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation);
             baseline = mean(spkBaseline(stayTrials),"all","omitnan");
             baselineStd = std(spkBaseline(stayTrials),0,"all","omitnan");
 

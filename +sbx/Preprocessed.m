@@ -7,6 +7,8 @@ folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
 nrframesinsession : int     # Total number of frames in the session.
 framerate : double          # Acquisition framerate
+xscale : float              # Scale factor of xpixels (micron/pixel)
+yscale : float              # Scale factor of ypixels  (micron/pixels)
 %}
 %
 % If the environment variable NS_CONDA is set to point to a conda
@@ -219,19 +221,7 @@ classdef Preprocessed < dj.Manual
                         fprintf('Not implemented yet')
                 end
             end
-        end
-        function v = getFolder(tbl)
-            % subject.suite2p.name-of-preprocessing
-            sessionPath=unique(folder(ns.Experiment & tbl));
-            prep = fetch(sbx.PrepParms & tbl,'tag','toolbox');
-            session =fetch(ns.Session & tbl,'subject');
-            v = fullfile(sessionPath, [session.subject '.' prep.toolbox '.' prep.tag]);
-            if ~exist(v,'dir')
-                fprintf('Folder %s  does not exist. Is NS_ROOT set correctly?\n',v);
-            end
-        end
-
-
+        end      
     end
     methods (Access=public)
 
@@ -246,6 +236,8 @@ classdef Preprocessed < dj.Manual
             % Experiment).
             dataFldr = file(ns.Experiment & (ns.File & 'extension=''.sbx''' & key));
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
+
+            
             % Check that all folders exist.
             noDir = cellfun(@(x)exist(x,'dir'),dataFldr)==0;
             if any(noDir)
@@ -254,6 +246,16 @@ classdef Preprocessed < dj.Manual
             end
             switch (parms.toolbox)
                 case 'suite2p'
+                    % Check that each experiment used the same scaling
+                    thisSession =(ns.Session & key);
+                    allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+                    scale = [];
+                    for e=fetch(allExptThisSession)'
+                        info = sbx.readInfoFile(e);
+                        scale =  [scale; [info.dxcal info.dycal]]; %#ok<AGROW>
+                    end
+                    uScale = unique(scale,'rows');
+                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                   
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
                     %replace parameters defined in the prep
@@ -367,10 +369,14 @@ classdef Preprocessed < dj.Manual
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
-                    tpl = mergestruct(key,struct('prep',parms.prep,'img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs));
+                    
+                    tpl = mergestruct(key,struct('prep',parms.prep,'img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
                     insert(tbl,tpl);
                     % Make the part table wth ROI info
-                    make(sbx.PreprocessedRoi,ns.stripToPrimary(tbl,tpl))                   
+
+                    micPerPix = sqrt(sum(uScale.^2));
+                     
+                    make(sbx.PreprocessedRoi,ns.stripToPrimary(tbl,tpl),fullfile(sessionPath,resultsFolder),micPerPix)                   
                 case 'caiman'
                     % TODO
                 otherwise

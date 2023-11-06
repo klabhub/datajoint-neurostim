@@ -24,7 +24,6 @@ end
 
 % Read the npy results from the suit2p folder and store them in
 % the table.
-CHUNK =1000;  % This many ROIs are sent to the server at the same time.
 
 
 %% Determine nstime of each frame in this session
@@ -70,10 +69,10 @@ end
 
 
 %% Read the NPY Output
-fldr= getFolder(sbx.Preprocessed & key);
+fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key,'folder'));
 planes = dir(fullfile(fldr,'plane*'));
 time = [frameNsTime(1) frameNsTime(end) numel(frameNsTime)];
-
+recordingInfo =sbx.readInfoFile(key);  % Store the info struct
 for pl = 1:numel(planes)
     %% Read npy
     tic;
@@ -86,14 +85,8 @@ for pl = 1:numel(planes)
     signal = signal(:,keepFrameIx)';
     fprintf('Done in %s.\n',seconds(toc))
 
-    [nrFrames,nrROIs] = size(signal);
+    [nrFrames,nrROIs] = size(signal); %#ok<ASGLU>
     channelInfo =  struct('nr',num2cell(1:nrROIs)');
-    recordingInfo =struct;
-
-
-
-
-
 
 end
 end

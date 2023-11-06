@@ -1,6 +1,6 @@
 %{
 #  Preprocessing instructions used for continuous data
-tag         :  varchar(128)     # A  unique name for these preprocessing instructions
+ctag         :  varchar(32)     # A  unique name for these preprocessing instructions
 ---
 fun         : varchar(255)      # The function that reads the data and does the preprocessing. 
 extension   : varchar(10)       # Extension of the data files to which this applies. 

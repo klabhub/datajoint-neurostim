@@ -56,7 +56,7 @@ nrsamples: int          # Number of samples/frames across the experiment
 % ephys.ripple.read - Read and preprocess Ripple Grapevine data.
 %
 %  To use these, add a row to CParm with a line like thise
-% insert(ns.CParm,struct('tag','eeg','fun','ephys.intan.read','description'','EEG
+% insert(ns.CParm,struct('ctag','eeg','fun','ephys.intan.read','description'','EEG
 %                 data', 'parms',parmsStruct))
 % where parmsStruct is a struct that defines what kind of preprocessing the
 % read function should do before adding the data to the ns.C table.
@@ -117,8 +117,8 @@ classdef C< dj.Computed
             % Return the number of files that stll need to be processed. If
             % a second output is requested, also returns a table with the
             % items that are on the list to be processed. 
-            total = tbl.keySource & struct('tag',tag);
-            done = tbl & struct('tag',tag);
+            total = tbl.keySource & struct('ctag',tag);
+            done = tbl & struct('ctag',tag);
             n = count(total-done);
             if nargout>1
                 T =(total-done);
@@ -171,7 +171,7 @@ classdef C< dj.Computed
             %               the preprocessing tag.
             %
             % EXAMPLE
-            % T= align(ns.C & 'tag=''eeg''',channel=2,align=
+            % T= align(ns.C & 'ctag=''eeg''',channel=2,align=
             % stimulusOnsetTime, start =-250,stop=1000,step=1)
             % will return a timetable with the EEG samples of channel 2,
             % from 250 ms before until 1000 ms after the stimulus onset
@@ -230,7 +230,7 @@ classdef C< dj.Computed
             [nrSamples,nrChannels] = size(signal);
             % Fetch the preprocessing tag. The dimensions in the timetable
             % will be named after this.
-            tag = fetch1(ns.CParm & tbl,'tag');
+            tag = fetch1(ns.CParm & tbl,'ctag');
             %% Align
             if nrSamples==0||nrChannels==0
                 T= timetable; % Empty

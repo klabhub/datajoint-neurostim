@@ -18,16 +18,14 @@ classdef PreprocessedRoi < dj.Part
 
 
     methods (Access=?sbx.Preprocessed)
-        function make(tbl,key)
+        function make(tbl,key,fldr,micPerPix)
             % Read the npy results from the suit2p folder and store them in
             % the table.
 
-            fldr= getFolder(sbx.Preprocessed & key);
             planes = dir(fullfile(fldr,'plane*'));
            
             %% Get calibration info
-            micPerPix = sqrt(sum(sbx.micronPerPixel(key).^2));
-
+         
             for pl = 1:numel(planes)
                 %% Read npy           
                thisFile = fullfile(fldr,planes(pl).name,'iscell.npy');

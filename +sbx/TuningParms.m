@@ -6,7 +6,7 @@ description=null            : varchar(1024)                 # Description of the
 parms                       : longblob                      # struct of all parameters
 %}
 % 
-% For example, see sbx.Tuning 
+% 
 % 
 % BK - Sept 2023
 classdef TuningParms < dj.Lookup
