@@ -35,7 +35,7 @@ for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
      info = sbx.readInfoFile(exptThisSession);
     nrFrames  = info.nrFrames;
     if strcmpi(exptThisSession.starttime,key.starttime)
-        mdaq = proj(ns.C & 'tag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
+        mdaq = proj(ns.C & 'ctag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
         assert(exists(mdaq),'%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)
         laserOnTTL = fetch(mdaq,'signal','time');
         laserOnIx = diff(laserOnTTL.signal)>0.5; % Transition from 0-1
@@ -57,7 +57,7 @@ for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
             frameNsTime(1)=[];
             fprintf(2,'Removed 1 extraneous LaserOn TTL (first)\n')
         else
-            error('Cannot map SBX frames to trials.');
+            error('Cannot map SBX frames to trials; TT-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
         end
         keepFrameIx = nrFramesPrevious+(1:nrFrames);
         break; % We have what we need; break the loop over experiments in this session

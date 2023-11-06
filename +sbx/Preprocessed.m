@@ -252,7 +252,7 @@ classdef Preprocessed < dj.Manual
                     scale = [];
                     for e=fetch(allExptThisSession)'
                         info = sbx.readInfoFile(e);
-                        scale =  [scale; [info.dxcal info.dycal]]; %#ok<AGROW>
+                        scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
                     end
                     uScale = unique(scale,'rows');
                     assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                   
