@@ -36,7 +36,7 @@ classdef Dimension < dj.Manual
      methods (Static)
         function define(expt,plg,prm,name,pv)
             arguments
-                expt (1,1) ns.Experiment {mustHaveRows}
+                expt (1,1) ns.Experiment
                 plg (1,:) {mustBeNonzeroLengthText}
                 prm (1,:) {mustBeNonzeroLengthText}
                 name (1,1) string 
@@ -47,6 +47,10 @@ classdef Dimension < dj.Manual
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
                 
+            end
+            if ~exists(expt)
+                fprintf('Empty experiment table; no dimensions addded.\n')
+                return;
             end
             if ischar(plg);plg={plg};end
             if ischar(prm);prm={prm};end

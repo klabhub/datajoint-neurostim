@@ -31,9 +31,9 @@ thisSession =(ns.Session & key);
 allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
 nrFramesPrevious = 0;
 for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
-    % Get the meta information from the info structure that is
-    % saved as meta.
-    nrFrames  = ns.getMeta(ns.Experiment& exptThisSession,'nrframes',type='double');
+    % Get some nrFrames from the info structure that sbx saves
+     info = sbx.readInfoFile(exptThisSession);
+    nrFrames  = info.nrFrames;
     if strcmpi(exptThisSession.starttime,key.starttime)
         mdaq = proj(ns.C & 'tag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
         assert(exists(mdaq),'%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)

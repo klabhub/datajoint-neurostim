@@ -1,8 +1,8 @@
 function info = readInfoFile(expt)
 % Given an expt tuple, read and return the info struct from the sbx .mat output file.
 
-sbxFiles = ((ns.File & expt) & 'extension=''.sbx''');
-fname = fetch1(sbxFiles & expt,'filename');
+sbxFile = ((ns.File & expt) & 'extension=''.sbx''');
+fname = fetch1(sbxFile & expt,'filename');
 fldr = folder(ns.Experiment & expt);
 ff =fldr + fname(1:end-3) + 'mat';
 if exist(ff,'file')
@@ -33,7 +33,7 @@ else
 end
 nrChannels = numel(info.channels);
 % 2 bytes per pixel.
-dirInfo = dir(ff);
+dirInfo = dir(fullfile(fldr,fname));
 info.nrFrames = dirInfo.bytes./prod(info.sz)/nrChannels/nrPlanes/2;
 
 end
