@@ -44,7 +44,7 @@ py.suite2p.default_ops()
 
 If your pyenv is setup correctly in Matlab, the sbx pipeline will call the suite2p pacakge automatically .
 
-This 'InProcess' version seems to work fine on my Windows desktop, but I had trouble getting this to work on our HPC cluster. The problem appears to be that some of the libraries that Matlab uses conflict with those in the Python install. To get around this, the current code defaults to calling Python outside of Matlab (using the system() command.) This has the advantage that there are no library conflicts. For this version, you have to set the NS_CONDA environment variable. For instance, on a unix installation: 
+This 'InProcess' version seems to work fine on my Windows desktop, but I had trouble getting this to work on our HPC cluster. The problem appears to be that some of the libraries that Matlab uses conflict with those in the Python install. To get around this, the current code defaults to calling Python outside of Matlab (using the system() command.) This has the advantage that there are no library conflicts. For this version, you have to set the NS_CONDA environment variable. For instance, on a unix installation:
 
 ```matlab
 setenv('NS_CONDA','/home/bart/miniconda3')
@@ -82,8 +82,7 @@ ori = get(ns.Experiment ,'gabor','prm','orientation','atTrialTime',0)
 
 ## nsMeta
 
-The `nsMeta` Matlab app provides a graphical interface to the metadata of a Neurostim data tree. This information is partially represented in the file and folder names (e.g., subject identifiers and paradigm names are in the Neurostim output file), but can be complemented with additional meta information stored in JSON files. 
-Note that, even though nsMeta can update a DataJoint database, it retrieves information from the data tree (i.e., the files) and not from DataJoint. 
+The `nsMeta` Matlab app provides a graphical interface to the metadata of a Neurostim data tree. This information is partially represented in the file and folder names (e.g., subject identifiers and paradigm names are in the Neurostim output file), but can be complemented with additional meta information stored in JSON files. Note that, even though nsMeta can update a DataJoint database, it retrieves information from the data tree (i.e., the files) and not from DataJoint.
 
 ### Meta data definitions
 
@@ -131,7 +130,5 @@ In addition, the target database on the server is determined by your working fol
 nsMeta will ask for confirmation the first time you write to a database.
 
 Also, you may want to use the Paradigm or Subject selectors at the top of the interface to only add specific experiments to your database (and ignore the other experiments that may have happened on the same day).
-
-
 
 BK -  April 2023.
