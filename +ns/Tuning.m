@@ -24,17 +24,40 @@ fit=NULL    : blob # Parameters of a user-defined fit.
 % for which the tuning is computed. In addition, the ns.TuningParms tuple
 % contains a 'parms' struct with the following properties:
 % (These are passed to ns.C/align)
-% .start    The time at which to start averaging
-% .stop     The time at which to stop averaging)
-% .baselineStart The time at which to start averaging to determine the baseline
-% .baselineStop The time at which to stop averaging to determine the baseline
+% .start    The time in milliseconds at which to start averaging
+% .stop     The time in milliseconds at which to stop averaging)
+% .baselineStart The time in milliseconds at which to start averaging to determine the baseline
+% .baselineStop The time in milliseconds at which to stop averaging to determine the baseline
 % .interpolation How to average ('mean','median','sum','mode','min','max', or a function handle)
-% .independentVariable  A string identifying a plugin paramaeter as the independent variabe using theformat : pluginNane:parameterName.
-% .stimulus
-% The time in the trial that is considered t=0. For instance by
-% specifying stimulus onset time for each trial, you can determine tuning to
-% that stimulus
-
+% .align  The name of an plugin that serves as t=0. If empty, times are
+% defined relative to the first frame in each trial. Otherwise, start/stop
+% are defined relative to the stimulus' startTime property. 
+%
+% EXAMPLE
+% To determine the mean response to a stimulus called 'gabor' in a
+% window fomr 50 ms until 1050 ms after stimulus onset: 
+% parms.start  =50
+% parms.stop = 1050;
+% parms.baselineStart= 1100
+% parms.baselineStop = 1200
+% parns.interpolation = 'mean'
+% parms.align = 'gabor'
+% 
+% OPTIONAL  - Fit a parametric tuning curve
+% .fun - A handle to a function with the prototype:
+% out = fun(x,y,parms,npEstimate);
+% out - a struct with results
+% This function will be calledwith 
+% x = The independent variable per trial
+% y= The mean signal per trial
+% parms  = The complete parms struct in ns.TuningParm (use this to
+%           specify additional parameters for the fit).
+% npEstimate - The nonparametric estimates (i.e. all values that will be
+%               stored in the table, like .peak, .preferred,etc.). These
+%               can, for instance, be used in your function to start the
+%               fitting procedure from reasonable initial values.
+% For an example, see ns.directionTuning.m
+%
 % BK - Nov 2023
 classdef Tuning <dj.Computed
     properties (Dependent)
@@ -143,13 +166,15 @@ classdef Tuning <dj.Computed
             %% Find indepdent variable values from the name assigned to the condition (which is 
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
-            xValue= condition.value;
-            % Sort by x
-            [xValue,ix] = sort(xValue);
-            conditions =conditions(ix); 
+           
             % Get the spikes for all trials (some may not be part of this
             % condition group)
             [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
+           
+            xValue= [conditions.value];
+            % Sort by x
+            [xValue,ix] = sort(xValue);
+            conditions =conditions(ix); 
             trialsPerCondition = {conditions.trials};
             
             % Average 
@@ -170,17 +195,15 @@ classdef Tuning <dj.Computed
             conditionIx(~stayTrials) = [];
             pAnova = anovan(spk(stayTrials),conditionIx','display','off');
 
+
             % Extract baseline (use only trials that are alos used for the
             % tuning).
             [spkBaseline,~] = align(ns.C&key,channel=key.channel,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation);
             baseline = mean(spkBaseline(stayTrials),"all","omitnan");
             baselineStd = std(spkBaseline(stayTrials),0,"all","omitnan");
 
-
-         
-            %% Insert in table.
-            tpl = mergestruct(key, ...
-                struct('peak',peak,...
+            % Combine results into a struct 
+            estimate = struct('peak',peak,...
                 'mean',m,...
                 'preferred',preferred,...
                 'tc',tuningCurve,...
@@ -191,13 +214,20 @@ classdef Tuning <dj.Computed
                 'nrtrialspercondition',nrTrialsPerCondition, ...
                 'nrtrials',sum(nrTrialsPerCondition),...
                 'baseline',baseline, ...
-                'baselinesd',baselineStd));
-            insert(tbl,tpl);
+                'baselinesd',baselineStd);
 
-   
-            toc
+            % If fun is specified; do a parametric fit using the specified function
+            if isfield(parms.fun)
+                x = xValue(conditionIx);
+                y = spk(stayTrials);
+                estimate.fit = feval(fun,x,y,parms,estimate);
+            end
 
          
+            %% Insert in table.
+            tpl = mergestruct(key, estimate);
+            insert(tbl,tpl);
+
         end
     end
 end
