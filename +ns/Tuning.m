@@ -19,7 +19,7 @@ nrtrialspercondition  : blob # Number of trials used per condition in estimates
 fit=NULL    : blob # Parameters of a user-defined fit.  
 %}
 %
-% The ns.TuningParms table defines how the tuning curves are computed. 
+% The ns.TuningParms table defines how the tuning curves are computed.
 % Each row in ns.TuningParms identifies a dimension (a row in ns.Dimension)
 % for which the tuning is computed. In addition, the ns.TuningParms tuple
 % contains a 'parms' struct with the following properties:
@@ -31,23 +31,26 @@ fit=NULL    : blob # Parameters of a user-defined fit.
 % .interpolation How to average ('mean','median','sum','mode','min','max', or a function handle)
 % .align  The name of an plugin that serves as t=0. If empty, times are
 % defined relative to the first frame in each trial. Otherwise, start/stop
-% are defined relative to the stimulus' startTime property. 
+% are defined relative to the stimulus' startTime property.
 %
 % EXAMPLE
 % To determine the mean response to a stimulus called 'gabor' in a
-% window fomr 50 ms until 1050 ms after stimulus onset: 
+% window fomr 50 ms until 1050 ms after stimulus onset:
 % parms.start  =50
 % parms.stop = 1050;
 % parms.baselineStart= 1100
 % parms.baselineStop = 1200
 % parns.interpolation = 'mean'
 % parms.align = 'gabor'
-% 
+%
 % OPTIONAL  - Fit a parametric tuning curve
 % .fun - A handle to a function with the prototype:
 % out = fun(x,y,parms,npEstimate);
-% out - a struct with results
-% This function will be calledwith 
+% out - a struct with results.  This struct will be stored in the table.
+%       If this struct has a field .estimate  (the estimated parameter values) 
+%       and .fun the function that takes the indepependent variable and the estimated 
+%       parameter as input, then the plot funciton can show the results.
+% This function will be called with
 % x = The independent variable per trial
 % y= The mean signal per trial
 % parms  = The complete parms struct in ns.TuningParm (use this to
@@ -70,16 +73,16 @@ classdef Tuning <dj.Computed
             % Restricted to Dimensions listedin TuningParm
             dimTpl= [];
             for thisPrm = fetch(ns.TuningParm,'dimension')'
-                restrict  =struct('dimension',thisPrm.dimension);  
-                thisTpl = fetch((ns.Dimension & restrict));                 
+                restrict  =struct('dimension',thisPrm.dimension);
+                thisTpl = fetch((ns.Dimension & restrict));
                 if isempty(dimTpl)
-                   dimTpl = thisTpl;
-                 else
-                   dimTpl  = catstruct(1,dimTpl,thisTpl);                 
-                 end
+                    dimTpl = thisTpl;
+                else
+                    dimTpl  = catstruct(1,dimTpl,thisTpl);
+                end
             end
-             % And then restrict the full table by the set of found tuples.
-            v = (ns.CChannel*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;            
+            % And then restrict the full table by the set of found tuples.
+            v = (ns.CChannel*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;
         end
     end
 
@@ -90,31 +93,30 @@ classdef Tuning <dj.Computed
                 tbl (1,1) ns.Tuning
                 pv.nrPerFigure (1,1) {mustBeNonnegative,mustBeInteger} = 20  % How many curves per figure
                 pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50  % How many boostrap samples to show
-                pv.showNP (1,1) logical =false                          % Show Non-Parametric estimates?
                 pv.linkAxes (1,1) logical =false                        % Link axes in the figure?
                 pv.average (1,1) logical =false
             end
             cntr =0;
             % Loop over the table
-            if pv.average                 
+            if pv.average
                 nrChannels = 1;
             else
                 nrChannels = count(tbl);
             end
 
             for roi =1:nrChannels
-                if pv.average 
+                if pv.average
                     tpl = fetch(tbl,'*');
-                     x = tpl(1).tcx';
-                     tc = cat(1,tpl.tc);
-                     pk = cat(1,tpl.peak);
-                     tc = tc./pk;
-                     y = mean(tc,1)';
-                     n = size(tc,1);
-                     e = std(tc,0,1)'./sqrt(n);
-                     base= cat(1,tpl.baseline)./pk;
-                     b = mean(base);
-                     be = std(base)./sqrt(n);
+                    x = tpl(1).tcx';
+                    tc = cat(1,tpl.tc);
+                    pk = cat(1,tpl.peak);
+                    tc = tc./pk;
+                    y = mean(tc,1)';
+                    n = size(tc,1);
+                    e = std(tc,0,1)'./sqrt(n);
+                    base= cat(1,tpl.baseline)./pk;
+                    b = mean(base);
+                    be = std(base)./sqrt(n);
                 else
                     tpl =fetch(tbl,'*',sprintf('LIMIT 1 OFFSET %d',roi-1));
                     x =tpl.tcx';
@@ -131,7 +133,29 @@ classdef Tuning <dj.Computed
                 end
                 nexttile;
                 hold on
-                
+
+
+                % The .fit field is optional for user defined parametric
+                % fits and can have any number of fields, this is
+                % specifically for the struct output of
+                % ns.directionTuning.m although other fits could follow the
+                % same format.
+                if isfield(tpl,'fit') 
+                    % Show estimated fitted tuning curve
+                    if pv.nrBootToShow >0 && isfield(tpl.fit,'bootparms')
+                        % Show Bootstrap estimates
+                        for i=1:min(pv.nrBootToShow,tpl.parms.nrBoot)
+                            curve =  feval(tpl.fit.fun,tpl.tcx,tpl.fit.bootparms(i,:))';
+                            plot(tpl.tcx,curve,'LineWidth',0.5,'Color',0.6*ones(1,3),'LineStyle','-');
+                        end
+                    end
+                    % Prediction on top
+                    if isfield(tpl.fit,'estimate')
+                        predictedTuningCurve = feval(tpl.fit.fun,tpl.tcx,tpl.fit.estimate)';
+                        plot(tpl.tcx,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+                    end
+                end
+
                 % Show non parametric tuning cuvrev (mean/ste)
                 % Get the data and the directions
                 ploterr(x,y,e,'ShadingAlpha',0.5,'LineWidth',2,'Color','r');
@@ -139,13 +163,13 @@ classdef Tuning <dj.Computed
                 % Show parameters in the title
                 if pv.average
                 else
-                txt=  sprintf('%s (%d trials)- Roi#%d \n', ...                    
-                    tpl.tuningtag,...
-                    tpl.nrtrials,...
-                    tpl.channel);
-                 title(txt,'Interpreter','None');
+                    txt=  sprintf('%s (%d trials)- Roi#%d \n', ...
+                        tpl.tuningtag,...
+                        tpl.nrtrials,...
+                        tpl.channel);
+                    title(txt,'Interpreter','None');
                 end
-               
+
                 ylabel 'Spike Rate (spk/s)'
                 drawnow;
                 if pv.linkAxes
@@ -163,28 +187,28 @@ classdef Tuning <dj.Computed
             parms = fetch1(ns.TuningParm &key,'parms');
             conditions = fetch(ns.DimensionCondition & key,'trials','value');
             assert(numel(conditions)>0,"No conditions in %s group",key.dimension)
-            %% Find indepdent variable values from the name assigned to the condition (which is 
+            %% Find indepdent variable values from the name assigned to the condition (which is
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
-           
+
             % Get the spikes for all trials (some may not be part of this
             % condition group)
             [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
-           
+
             xValue= [conditions.value];
             % Sort by x
             [xValue,ix] = sort(xValue);
-            conditions =conditions(ix); 
+            conditions =conditions(ix);
             trialsPerCondition = {conditions.trials};
-            
-            % Average 
+
+            % Average
             tuningCurve = cellfun(@(x) mean(spk(x),"omitnan"),trialsPerCondition);
             tuningCurveSd = cellfun(@(x) std(spk(x),0,"omitnan"),trialsPerCondition);
             nrTrialsPerCondition = cellfun(@numel,trialsPerCondition);
             [peak,ix] = max(tuningCurve);
             preferred = xValue(ix);
-            m = mean(tuningCurve);            
-            mi = min(tuningCurve);           
+            m = mean(tuningCurve);
+            mi = min(tuningCurve);
 
             % Map trials to conditions to do anova.
             conditionIx = nan(1,size(spk,2));
@@ -202,7 +226,7 @@ classdef Tuning <dj.Computed
             baseline = mean(spkBaseline(stayTrials),"all","omitnan");
             baselineStd = std(spkBaseline(stayTrials),0,"all","omitnan");
 
-            % Combine results into a struct 
+            % Combine results into a struct
             estimate = struct('peak',peak,...
                 'mean',m,...
                 'preferred',preferred,...
@@ -223,7 +247,7 @@ classdef Tuning <dj.Computed
                 estimate.fit = feval(fun,x,y,parms,estimate);
             end
 
-         
+
             %% Insert in table.
             tpl = mergestruct(key, estimate);
             insert(tbl,tpl);

@@ -93,12 +93,8 @@ end
 splithalves  = mean(r);
 
 %% Package into a struct 
-out.offset = estimate(1);
-out.preferred = estimate(2);
-out.width = estimate(3);
-out.antiWidth = estimate(4);
-out.amplitude = estimate(5);
-out.antiAmplitude = estimate(6);
+out.estimate = estimate;
+out.fun  = func2str(fun);
 out.ci = ci';
 out.error = error';
 out.splitHalves = splithalves;
