@@ -3,6 +3,8 @@
 -> ns.Experiment 
 dimension        : varchar(32)              # Name for the dimension (e.g,'ori')
 ---
+plugin           : blob             # The plugin(s) that define this dimension
+parameter        : blob             # The parameter(s) that define this dimension
 description = NULL :varchar(1024)   #   A brief description
 %}
 % 
@@ -72,8 +74,11 @@ classdef Dimension < dj.Manual
             tic
             fprintf('Defining Dimension %s for %d experiments...',name,nrExpt)
             totalNrTpl=0;
+            % Collect values as string (to make a unique condition name)
+            % and as actual values (to store as values).
             for e =1:nrExpt
-                val = [];
+                valStr = [];
+                valTbl = table;
                 for i=1:nrPlg
                     if pv.nameValueOnly
                         prefix="";
@@ -92,7 +97,8 @@ classdef Dimension < dj.Manual
                         % experiment
                         break;
                     end
-                    val= [val prefix+string(prmValues)]; %#ok<AGROW> 
+                    valStr= [valStr prefix+string(prmValues)]; %#ok<AGROW>
+                    valTbl = addvars(valTbl,prmValues,'NewVariableNames',plg{i} + pvSEPARATOR + prm{i});
                 end
                 if isempty(prmValues)
                         % This experiment did not use the plugin; error in
@@ -100,25 +106,33 @@ classdef Dimension < dj.Manual
                         % experiment                        
                         continue;
                 end
-                val = fillmissing(val,"constant","unknown");
+                valStr = fillmissing(valStr,"constant","unknown");
                 if ~isempty(pv.restrict)
                     % Determine which trials meet the specified condition
                       restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{1},'prm',pv.restrict{2}, 'atTrialTime',0)';
                       stay = ismember(restrictValue,pv.restrict{3});
-                      val =val(stay,:);
+                      valStr =valStr(stay,:);
                       stayTrials = find(stay);
+                      valTbl= valTbl(stay,:);
                 else 
                       stayTrials = 1:fetch1(ns.Experiment&exptTpl(e),'nrtrials');
                 end
-                [uVal,~,ix] = unique(val,"rows"); % Sort ascending.
+                % Find the unique combinations of parameters
+                [valTbl,ia,ic] = unique(valTbl,'rows');
+                uVal = valStr(ia,:);
                 nrConditions = size(uVal,1);                
                 %% Create tuples 
-                tplD = mergestruct(exptTpl(e),struct('dimension',name,'description',pv.description));                
+                tplD = mergestruct(exptTpl(e), ...
+                    struct('dimension',name, ...
+                            'description',pv.description,...
+                            'plugin',plg, ...
+                            'parameter',prm));                
                 tplC = repmat(exptTpl(e),[nrConditions 1]);
                 for c=1:nrConditions                    
                     tplC(c).name = strjoin(uVal(c,:),ppSEPARATOR);
                     tplC(c).dimension  = name;                    
-                    tplC(c).trials = stayTrials(ix==c);                                                                   
+                    tplC(c).trials = stayTrials(ic==c);   
+                    tplC(c).value = table2cell(valTbl(c,:)); % Must store as cell for mym
                 end 
                 %% Insert the condition tuples for this experiment as one transaction
                 C =dj.conn;

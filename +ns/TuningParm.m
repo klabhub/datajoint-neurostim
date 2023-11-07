@@ -8,6 +8,8 @@ dimension                    :varchar(255)                  # The name of the di
 parms                       : longblob                      # struct of all parameters used for the tuning curve estimation
 %}
 % 
+% See also ns.Tuning 
+%
 % BK - Sept 2023
 classdef TuningParm < dj.Lookup
     

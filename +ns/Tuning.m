@@ -1,5 +1,5 @@
 %{
-# A tuning curve: rates per condition 
+# A tuning curve: signal averageds computed channel for each ns.Dimension
 -> ns.CChannel
 -> ns.TuningParm
 -> ns.Dimension
@@ -16,8 +16,25 @@ baseline  : float # Mean baseline (spontaneous) value
 baselinesd: float # Standard deviation of the baseline va;ie
 nrtrials    : float # Number of trials used in estimates
 nrtrialspercondition  : blob # Number of trials used per condition in estimates
+fit=NULL    : blob # Parameters of a user-defined fit.  
 %}
 %
+% The ns.TuningParms table defines how the tuning curves are computed. 
+% Each row in ns.TuningParms identifies a dimension (a row in ns.Dimension)
+% for which the tuning is computed. In addition, the ns.TuningParms tuple
+% contains a 'parms' struct with the following properties:
+% (These are passed to ns.C/align)
+% .start    The time at which to start averaging
+% .stop     The time at which to stop averaging)
+% .baselineStart The time at which to start averaging to determine the baseline
+% .baselineStop The time at which to stop averaging to determine the baseline
+% .interpolation How to average ('mean','median','sum','mode','min','max', or a function handle)
+% .independentVariable  A string identifying a plugin paramaeter as the independent variabe using theformat : pluginNane:parameterName.
+% .stimulus
+% The time in the trial that is considered t=0. For instance by
+% specifying stimulus onset time for each trial, you can determine tuning to
+% that stimulus
+
 % BK - Nov 2023
 classdef Tuning <dj.Computed
     properties (Dependent)
@@ -66,10 +83,15 @@ classdef Tuning <dj.Computed
                 if pv.average 
                     tpl = fetch(tbl,'*');
                      x = tpl(1).tcx';
-                     y = mean(cat(1,tpl.tc),1)';
-                     e = mean(cat(1,tpl.tcstd)./sqrt(numel([tpl.nrtrialspercondition])),1)';
-                     b = mean(cat(1,tpl.baseline));
-                     be = mean(cat(1,[tpl.baseline]./sqrt([tpl.nrtrials])));
+                     tc = cat(1,tpl.tc);
+                     pk = cat(1,tpl.peak);
+                     tc = tc./pk;
+                     y = mean(tc,1)';
+                     n = size(tc,1);
+                     e = std(tc,0,1)'./sqrt(n);
+                     base= cat(1,tpl.baseline)./pk;
+                     b = mean(base);
+                     be = std(base)./sqrt(n);
                 else
                     tpl =fetch(tbl,'*',sprintf('LIMIT 1 OFFSET %d',roi-1));
                     x =tpl.tcx';
@@ -116,12 +138,12 @@ classdef Tuning <dj.Computed
             tic
             %% Retrieve sources
             parms = fetch1(ns.TuningParm &key,'parms');
-            conditions = fetch(ns.DimensionCondition & key,'trials');
+            conditions = fetch(ns.DimensionCondition & key,'trials','value');
             assert(numel(conditions)>0,"No conditions in %s group",key.dimension)
             %% Find indepdent variable values from the name assigned to the condition (which is 
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
-            xValue= str2double(extractAfter({conditions.name},[parms.independentVariable ':']));
+            xValue= condition.value;
             % Sort by x
             [xValue,ix] = sort(xValue);
             conditions =conditions(ix); 
