@@ -194,7 +194,7 @@ classdef Tuning <dj.Computed
             % Get the spikes for all trials (some may not be part of this
             % condition group)
             [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
-
+            spk =spk(1,:);
             xValue= [conditions.value];
             if iscell(xValue)
                 xValue = [xValue{:}];
@@ -247,7 +247,7 @@ classdef Tuning <dj.Computed
             if isfield(parms,'fun')
                 x = xValue(conditionIx);
                 y = spk(stayTrials);
-                estimate.fit = feval(fun,x,y,parms,estimate);
+                estimate.fit = feval(parms.fun,x,y,parms,estimate);
             end
 
 

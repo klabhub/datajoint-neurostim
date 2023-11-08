@@ -32,10 +32,10 @@ function out = directionTuning(direction,response,parms,npEstimate)
 npAntiAmplitude  = npEstimate.tc(npEstimate.tcx==npEstimate.preferred+180 | npEstimate.tcx==npEstimate.preferred-180);
 fun = @ns.twoHumps;
 %% Fit a parametric (twoHumps) function
-bootfun = @(x,y) solve(fun,direction,response,npEstimate.min,npEstimate.preferred,npEstimate.peak-npEstimate.min,npAntiAmplitude);
+bootfun = @(x,y) solveDirTuning(fun,x,y,npEstimate.min,npEstimate.preferred,npEstimate.peak-npEstimate.min,npAntiAmplitude);
 bootOpts = statset;
 bootOpts.UseParallel = ~isempty(gcp("nocreate")); % Use parallel pool only if the user has started it.
-[bootEstimates]=bootstrp(parms.nrBoot,bootfun,npEstimates.tcx,signal,'Options',bootOpts);
+[bootEstimates]=bootstrp(parms.nrBoot,bootfun,direction(:)',response(:)','Options',bootOpts);
 % Determine preferred axis and circular standard deviation
 % Multiply by two in case the preferred swaps
 % between bootstrap sets (i.e. an orientation tuned
@@ -71,8 +71,8 @@ error(2) = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
 % confidence limits.
 ci(:,2) = mod(estimate(2) + error(2)*[-1 1]',360);
 
-fittedCurve = fun(uDirection,estimate);
-gof = corr(tuningCurve,fittedCurve,'type','Spearman');
+fittedCurve = fun(npEstimate.tcx,estimate);
+gof = corr(npEstimate.tc,fittedCurve,'type','Spearman');
 
 residuals = fun(direction,estimate)- spk;
 meanR = mean(residuals,"all","omitnan");
@@ -84,10 +84,10 @@ r= nan(1,parms.nrSplitHalves);
 for i=1:parms.nrSplitHalves
     [oneHalfTrials,otherHalfTrials] =resampleTrials(stimulusIx,false,0.5) ;
     % First half
-    firstHalfEstimate = sbx.Tuning.solve(direction(oneHalfTrials),spk(oneHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
-    otherHalfEstimate = sbx.Tuning.solve(direction(otherHalfTrials),spk(otherHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
-    tc1 = sbx.Tuning.twoHumps(uDirection,firstHalfEstimate);
-    tc2 = sbx.Tuning.twoHumps(uDirection,otherHalfEstimate);
+    firstHalfEstimate = solveDirTuning(direction(oneHalfTrials),spk(oneHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
+    otherHalfEstimate = solveDirTuning(direction(otherHalfTrials),spk(otherHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
+    tc1 = fun(npEstimate.tcx,firstHalfEstimate);
+    tc2 = fun(npEstimate.tcx,otherHalfEstimate);
     r(i) = corr(tc1,tc2);
 end
 splithalves  = mean(r);
@@ -107,7 +107,7 @@ out.residualZ = residualZ;
 end
 
 
-function estimate = solve(fun,direction,spk,npMin,npPreferred,npAmplitude,npAntiAmplitude)
+function estimate = solveDirTuning(fun,direction,spk,npMin,npPreferred,npAmplitude,npAntiAmplitude)
 % Use the optimization toolbox to do a nonlinear least squares
 % fit of the spiking data to the twoHumps function
 
