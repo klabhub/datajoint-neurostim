@@ -20,6 +20,10 @@ arguments (Repeating)
 end
 sessions  = ns.Session & tbl;
 allTpls=  [];
+% Turning off the longCondition warning 
+msgid = 'DataJoint:longCondition';
+stts = warning("query");
+warning("off",msgid)
 % Because roi are defined per session, loop over sessions
 for sess = fetch(sessions)'
     % Extract the relevant ROI
@@ -34,5 +38,5 @@ for sess = fetch(sessions)'
         allTpls = cat(1,allTpls,thisTpls);
     end
 end
-
 r =proj(tbl & allTpls); % Restrict the original table with the list of tpls collected above.
+warning(stts); % Restore warn state

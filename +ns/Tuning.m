@@ -140,7 +140,7 @@ classdef Tuning <dj.Computed
                 % specifically for the struct output of
                 % ns.directionTuning.m although other fits could follow the
                 % same format.
-                if isfield(tpl,'fit') 
+                if ~pv.average && isfield(tpl,'fit') 
                     % Show estimated fitted tuning curve
                     if pv.nrBootToShow >0 && isfield(tpl.fit,'bootparms')
                         % Show Bootstrap estimates
@@ -196,6 +196,9 @@ classdef Tuning <dj.Computed
             [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
 
             xValue= [conditions.value];
+            if iscell(xValue)
+                xValue = [xValue{:}];
+            end
             % Sort by x
             [xValue,ix] = sort(xValue);
             conditions =conditions(ix);
@@ -241,7 +244,7 @@ classdef Tuning <dj.Computed
                 'baselinesd',baselineStd);
 
             % If fun is specified; do a parametric fit using the specified function
-            if isfield(parms.fun)
+            if isfield(parms,'fun')
                 x = xValue(conditionIx);
                 y = spk(stayTrials);
                 estimate.fit = feval(fun,x,y,parms,estimate);
