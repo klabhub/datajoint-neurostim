@@ -74,21 +74,22 @@ ci(:,2) = mod(estimate(2) + error(2)*[-1 1]',360);
 fittedCurve = fun(npEstimate.tcx,estimate);
 gof = corr(npEstimate.tc,fittedCurve,'type','Spearman');
 
-residuals = fun(direction,estimate)- spk;
+residuals = fun(direction,estimate)- response;
 meanR = mean(residuals,"all","omitnan");
 stdR =  std(residuals,0,"all","omitnan");
 residualZ = abs(meanR./stdR);
 
 %% SplitHalves
 r= nan(1,parms.nrSplitHalves);
+[~,~,stimulusIx] = unique(direction);
 for i=1:parms.nrSplitHalves
     [oneHalfTrials,otherHalfTrials] =resampleTrials(stimulusIx,false,0.5) ;
     % First half
-    firstHalfEstimate = solveDirTuning(direction(oneHalfTrials),spk(oneHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
-    otherHalfEstimate = solveDirTuning(direction(otherHalfTrials),spk(otherHalfTrials),npMin,npPreferred,npAmplitude,npAntiAmplitude);
+    firstHalfEstimate = solveDirTuning(fun,direction(oneHalfTrials),response(oneHalfTrials),npEstimate.min,npEstimate.preferred,npEstimate.peak-npEstimate.min,npAntiAmplitude);
+    otherHalfEstimate = solveDirTuning(fun,direction(otherHalfTrials),response(otherHalfTrials),npEstimate.min,npEstimate.preferred,npEstimate.peak-npEstimate.min,npAntiAmplitude);
     tc1 = fun(npEstimate.tcx,firstHalfEstimate);
     tc2 = fun(npEstimate.tcx,otherHalfEstimate);
-    r(i) = corr(tc1,tc2);
+    r(i) = corr(tc1(:),tc2(:));
 end
 splithalves  = mean(r);
 
