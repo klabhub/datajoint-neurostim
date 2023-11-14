@@ -321,35 +321,7 @@ classdef Preprocessed < dj.Manual
                             % Using a system call may be more robust to
                             % different installs. To pass the ops and db dicst we save them
                             % to a temporary file.
-
-                            cfd = fileparts(mfilename('fullpath'));
-                            % The python tools are in the tools folder.
-                            % Temporarily go there to import  (full path
-                            % did not seem to work).
-                            toolsPath = fullfile(fileparts(cfd),'tools');
-                            here =pwd;
-                            cd(toolsPath);
-                            nssbx = py.importlib.import_module('nssbx_suite2p');
-                            cd (here)
-                            % Save the dicts to tempfiles
-                            optsFile= tempname;
-                            nssbx.save_dict_to_file(opts,optsFile)
-                            dbFile = tempname;
-                            nssbx.save_dict_to_file(db,dbFile)
-                            % The python file that will read these
-                            pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
-                            % Construct a batch/bash command.
-                            if ispc
-                                % The batch command activates conda, then
-                                % calls nssbx_suite2p.py to read the dicst
-                                % and then call suite2p.run_s2p
-                                cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
-                            else
-                                cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
-                            end
-
-                            system(cmd ,'-echo')
-
+                            runsuite2p(opts,db);
                         end
 
                         % Couldn't figure out how to convert stat.npy so
