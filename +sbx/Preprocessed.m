@@ -288,15 +288,15 @@ classdef Preprocessed < dj.Manual
                     if ~outFilesExist
                         % Create a dict with the folder information
                         if isempty(cell(opts{'fast_disk'}))
-                            % No fast disk specified, guessing that tempname will have better access speed.
+                            % No fast disk specified, guessing that temp will have better access speed.
                             % In the db, fast_disk has to be a string, not  a list.
-                            fastDisk = tempname;
+                            fastDisk = temp;
                         else
                             if opts{'delete_bin'}
                                 % Not keeping the bin file. Use a temp
                                 % subfolder in the specified fast_disk to
                                 % allow mutliple concurrent runs of suite2p
-                                fastDisk = tempname(string(opts{'fast_disk'}));
+                                fastDisk = temp(string(opts{'fast_disk'}));
                             else
                                 % Keeping the file, so assume that the user
                                 % had a reason to specify a specific
@@ -313,15 +313,12 @@ classdef Preprocessed < dj.Manual
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
                         conda = getenv('NS_CONDA');
                         if isempty(conda)
-                            % Pass to InProcess python to process
-                            py.suite2p.run_s2p(ops =opts,db=db);
-                        else
+                           error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
+                        end
                             % Calling python in-process can lead to problems
-                            % with library conflicts (not so much with simple dict calls).
-                            % Using a system call may be more robust to
+                            % with library conflicts. Using a system call seems more robust to
                             % different installs. To pass the ops and db dicst we save them
                             % to a temporary file.
-
                             cfd = fileparts(mfilename('fullpath'));
                             % The python tools are in the tools folder.
                             % Temporarily go there to import  (full path
@@ -332,9 +329,9 @@ classdef Preprocessed < dj.Manual
                             nssbx = py.importlib.import_module('nssbx_suite2p');
                             cd (here)
                             % Save the dicts to tempfiles
-                            optsFile= tempname;
+                            optsFile= temp;
                             nssbx.save_dict_to_file(opts,optsFile)
-                            dbFile = tempname;
+                            dbFile = temp;
                             nssbx.save_dict_to_file(db,dbFile)
                             % The python file that will read these
                             pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
@@ -347,10 +344,7 @@ classdef Preprocessed < dj.Manual
                             else
                                 cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
                             end
-
                             system(cmd ,'-echo')
-
-                        end
 
                         % Couldn't figure out how to convert stat.npy so
                         % save it as .mat (Not using save_mat to avoid
