@@ -8,11 +8,9 @@ function runsuite2p(opts,db,pv)
 arguments
     opts 
     db 
-    pv.singularity (1,1) string =""         % THe name of the singularity container to use
+    pv.singularity (1,1) string ="~/kBash/suite2p.sif"         % THe name of the singularity container to use
     pv.condaEnv (1,1) string =""            % The name of the conda environment to use
-    pv.condaInit (1,1) string =""            % A (bash) command to execute before activating the conda environment
 end
-% command a set of  parms defining how to run
 
 if canUseGPU
     % In case we really need to determine which gpu is availabel, something like this may work

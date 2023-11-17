@@ -26,5 +26,5 @@ unset __conda_setup
 # Now we can activate the suite2p environment
 conda activate suite2p
 # Run the python script
-#python $2 $3 $4
-python -m suite2p
+python $2 $3 $4
+#python -m suite2p
