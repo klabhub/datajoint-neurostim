@@ -250,14 +250,19 @@ classdef Preprocessed < dj.Manual
                     thisSession =(ns.Session & key);
                     allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
                     scale = [];
+                    nrPlanes = [];
                     for e=fetch(allExptThisSession)'
                         info = sbx.readInfoFile(e);
                         scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
+                        nrPlanes = [nrPlanes info.nrPlanes]; %#ok<AGROW>
                     end
-                    uScale = unique(scale,'rows');
+                    uScale = unique(scale,'rows');                    
                     assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                   
+                    nrPlanes = unique(nrPlanes);                    
+                    assert(size(nrPlanes,1) ==1,"Different number of planes across experiments in this session.");                                       
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
+                    opts{'nplanes'} = nrPlanes;
                     %replace parameters defined in the prep
                     %settings
                     fn= fieldnames(parms.ops);

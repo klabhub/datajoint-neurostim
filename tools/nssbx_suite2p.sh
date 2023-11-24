@@ -19,12 +19,8 @@ else
 fi
 unset __conda_setup
 
-# Because this runs in a fresh bash shell, we need to init the conda hook
-#eval "$(conda shell.bash hook)"
-#source "$1/etc/profile.d/conda.sh"
 
 # Now we can activate the suite2p environment
 conda activate suite2p
 # Run the python script
 python $2 $3 $4
-#python -m suite2p
