@@ -262,7 +262,7 @@ classdef Preprocessed < dj.Manual
                     assert(size(nrPlanes,1) ==1,"Different number of planes across experiments in this session.");                                       
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
-                    opts{'nplanes'} = nrPlanes;
+                    opts{'nplanes'} = int64(nrPlanes);
                     %replace parameters defined in the prep
                     %settings
                     fn= fieldnames(parms.ops);
@@ -356,8 +356,10 @@ classdef Preprocessed < dj.Manual
                         % duplicating all of the fluorescence data in F.mat
                         % and I don't want to delete the .npy files because
                         % they are useful to view in the suite2p gui.
-                        statFile = fullfile(sessionPath,resultsFolder,'plane0','stat.npy');
-                        npyToMat(statFile);
+                        for p=1:nrPlanes
+                            statFile = fullfile(sessionPath,resultsFolder,sprintf('plane%d',p-1),'stat.npy');
+                            npyToMat(statFile);
+                        end
 
                         fprintf('Completed at %s\n',datetime('now'));
                     else

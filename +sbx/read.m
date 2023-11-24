@@ -34,6 +34,7 @@ for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
     % Get some nrFrames from the info structure that sbx saves
      info = sbx.readInfoFile(exptThisSession);
     nrFrames  = info.nrFrames;
+    nrPlanes = info.nrPlanes;
     if strcmpi(exptThisSession.starttime,key.starttime)
         mdaq = proj(ns.C & 'ctag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
         assert(exists(mdaq),'%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)
@@ -49,9 +50,9 @@ for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
         %   dtStart = seconds(grabbingTime(isGrabbing)/1000)-laserOnTime(1); %#ok<NASGU> % Time between grabbing start and first TTL
         %   dtStop = seconds(grabbingTime(~isGrabbing)/1000)-laserOnTime(end); % Time between grabbing stop and last TTL
         % Sanity check
-        if nrFrames==nrTTL
+        if nrFrames==nrTTL/nrPlanes
             % OK
-        elseif nrFrames== nrTTL-1
+        elseif nrFrames== (nrTTL-1)/nrPlanes
             % 1 trigger without a
             % frame. Guessing it was the last.
             frameNsTime(1)=[];
@@ -71,8 +72,9 @@ end
 %% Read the NPY Output
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key,'folder'));
 planes = dir(fullfile(fldr,'plane*'));
-time = [frameNsTime(1) frameNsTime(end) numel(frameNsTime)];
+time = [frameNsTime(1) frameNsTime(end) round(numel(frameNsTime)/nrPlanes)];
 recordingInfo =sbx.readInfoFile(key);  % Store the info struct
+signal=[];
 for pl = 1:numel(planes)
     %% Read npy
     tic;
@@ -81,12 +83,13 @@ for pl = 1:numel(planes)
     if ~exist(thisFile,"file")
         error('File %s does not exist',thisFile);
     end
-    signal = single(py.numpy.load(thisFile,allow_pickle=true));
-    signal = signal(:,keepFrameIx)';
+    thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
+    thisSignal = thisSignal(:,keepFrameIx)';
+    signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
-
-    [nrFrames,nrROIs] = size(signal); %#ok<ASGLU>
-    channelInfo =  struct('nr',num2cell(1:nrROIs)');
-
+    
 end
+[nrFrames,nrROIs] = size(signal); %#ok<ASGLU>
+channelInfo =  struct('nr',num2cell(1:nrROIs)');
+ 
 end
