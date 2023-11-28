@@ -262,7 +262,8 @@ classdef Preprocessed < dj.Manual
                     assert(size(nrPlanes,1) ==1,"Different number of planes across experiments in this session.");                                       
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
-                    opts{'nplanes'} = int64(nrPlanes);
+                    opts{'nplanes'} = uint64(nrPlanes);
+                    opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
                     %replace parameters defined in the prep
                     %settings
                     fn= fieldnames(parms.ops);
@@ -369,15 +370,9 @@ classdef Preprocessed < dj.Manual
                     opts =py.numpy.load(opsFile,allow_pickle=true);
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
-                    fs = double(opts.item{'fs'});
-                    
+                    fs = double(opts.item{'fs'});                    
                     tpl = mergestruct(key,struct('prep',parms.prep,'img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);
-                    % Make the part table wth ROI info
-
-                    micPerPix = sqrt(sum(uScale.^2));
-                     
-                    make(sbx.PreprocessedRoi,ns.stripToPrimary(tbl,tpl),fullfile(sessionPath,resultsFolder),micPerPix)                   
+                    insert(tbl,tpl);                   
                 case 'caiman'
                     % TODO
                 otherwise

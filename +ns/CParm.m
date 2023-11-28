@@ -11,7 +11,7 @@ exclude=NULL : varchar(128)      # wildcard for filenames to exclude
 %}
 %
 % EXAMPLE
-% struct('tag','eeg','fun','ephys.intan.read',
+% struct('ctag','eeg','fun','ephys.intan.read',
 %           'description','EEG  preprocessing for Intan RHS files',
 %           'extension','.rhs','parms',struct('downsample',1000,'channel',1:32))
 % See ephys.intan.read to understand what 'parms' can contain.

@@ -31,7 +31,7 @@ thisSession =(ns.Session & key);
 allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
 nrFramesPrevious = 0;
 for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
-    % Get some nrFrames from the info structure that sbx saves
+    % Get the info structure that sbx saves
      info = sbx.readInfoFile(exptThisSession);
     nrFrames  = info.nrFrames;
     nrPlanes = info.nrPlanes;

@@ -236,7 +236,7 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
     nrTrials = [c.nrTrialsTotal];
     out = nrTrials < p.Results.minNrTrials;
     if any(out)
-        fprintf('Removing %d experiments (fewer than %d trials)',sum(out),p.Results.minNrTrials);
+        fprintf('Removing %d experiments (fewer than %d trials)\n',sum(out),p.Results.minNrTrials);
         meta(out) = [];
         c(out) =[];
         fullName(out) =[];
@@ -256,7 +256,8 @@ if nrExperiments ==0
     fprintf('No %sNeurostim files with matching paradigm and subject and at least %d trials found in %s\n',newStr, p.Results.minNrTrials, srcFolder);
     return;
 else
-    fprintf('Found %d matching Neurostim files \n',nrExperiments)
+    fprintf('Found %d matching Neurostim files: \n',nrExperiments)
+    fullName %#ok<NOPRT>
 end
 
 
