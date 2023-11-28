@@ -188,8 +188,12 @@ classdef Experiment  < dj.Manual
                 % Single parm, join values as columns
                if iscellstr(out)
                    out = out(:)';
-               elseif iscell(out)
+               elseif iscell(out) 
+                   if all(cellfun(@numel,out)==numel(out{1}))
                     out =cat(2,out{:});
+                   else
+                       return
+                   end
                end
                 if iscell(out) && ~iscellstr(out)
                     out = cell2mat(out);
