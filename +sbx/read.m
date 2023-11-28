@@ -1,7 +1,7 @@
 function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The key refers to an sbx file in an experiment.
 %  This function will preprocess the raw data  (for the whole session),
-% create a sbx.Preprocessed and sbx.PreprocessedRoi table and then
+% create a sbx.Preprocessed table and then
 % extract the relevant aspects to store in ns.C. Preprocessing is not
 % repeated if the Preprocessed data already exist. I.e., in a session
 % with multiple experiments, preprocessing is done when ns.C is populated
@@ -13,7 +13,10 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % .ops -  A struct with options passed to the toolboxes.
 % .prep -  A unique name to identify these preprocessing instructions.
 % .what - 'F','Fneu', or 'spks'
-
+%
+% To link  channels in ns.C with ROIs, run populate(sbx.Roi) after
+% populating the ns.C table.
+%
 if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     % The session has not been preprocessed. Do that first.
     make(sbx.Preprocessed,ns.stripToPrimary(sbx.Preprocessed,key),parms)
