@@ -221,7 +221,7 @@ classdef Tuning <dj.Computed
             stayTrials = ~isnan(conditionIx);
             conditionIx(~stayTrials) = [];
             pAnova = anovan(spk(stayTrials),conditionIx','display','off');
-
+            if isnan(pAnova);pAnova=1;end
 
             % Extract baseline (use only trials that are alos used for the
             % tuning).
@@ -247,6 +247,9 @@ classdef Tuning <dj.Computed
             if isfield(parms,'fun')
                 x = xValue(conditionIx);
                 y = spk(stayTrials);
+                out = isnan(y); % Remove trials with NaN estimates (happens for first trial sometimes)
+                x(out)=[];
+                y(out)=[];
                 estimate.fit = feval(parms.fun,x,y,parms,estimate);
             end
 
