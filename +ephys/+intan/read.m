@@ -59,7 +59,8 @@ ch = num2cell(1:nrChannels);
 % the clocks.
 prms  = get(ns.Experiment & key,{'cic','intanrhx'});
 % Extract the time in seconds, on the neurostim clock, when the trialBit was set high.
-trialStartTimeNeurostim  = prms.intanrhx.trialStartNsTime(find([true;diff(prms.intanrhx.trialStartTrial)>0])+1)/1000;
+trialHigh =find([true;diff(prms.intanrhx.trialStartTrial)>0])+1; 
+trialStartTimeNeurostim  = (prms.intanrhx.trialStartNsTime(trialHigh)- prms.intanrhx.secondsBeforeRead)/1000 ;
 nrNsTrials = numel(trialStartTimeNeurostim);
 % The neurostim intanrhx plugin names one digIn channel 'trial'
 trialChannel = strcmpi({hdr.digIn.custom_channel_name},'trial');
