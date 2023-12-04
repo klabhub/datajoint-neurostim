@@ -527,7 +527,11 @@ classdef C< dj.Computed
                     else
                         % Assume that this function has been called before and the
                         % layout has already been created.
-                        layout = pv.fig.Children;
+                        if isempty(pv.fig.Children)
+                            layout = tiledlayout('flow');
+                        else
+                            layout = pv.fig.Children;
+                        end
                         figure(pv.fig);
                     end
                     
@@ -553,6 +557,7 @@ classdef C< dj.Computed
                                 [pwr,freq] = pspectrum(y,time,'power',pv.options{:});
                                 [thisM,thisE] = pv.fun(pwr); % Average over trials
                                 thisX = freq;
+                                thisM = thisM.*freq;
                             case {"TIMECOURSE", "RASTER"}
                                 % Average over trials  in the condition
                                 [thisM,thisE] = pv.fun(y);
