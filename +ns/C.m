@@ -189,8 +189,9 @@ classdef C< dj.Computed
                 pv.interpolation {mustBeText} = 'linear'
                 pv.crossTrial (1,1) logical = false;
                 pv.align (1,:) double = []
+                pv.removeArtifacts (1,1) = true
             end
-
+           
             %% Collect data from dbase and check consistency
             sampleTime = fetch1(tbl ,'time');
             if numel(sampleTime)==3
@@ -203,7 +204,15 @@ classdef C< dj.Computed
             else
                 trials = intersect(pv.trial,allTrials);
             end
+            
+            
+            % trial time zero in NS for each trial
+            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
 
+            if ~pv.crossTrial && isinf(pv.stop)
+                % use maximum trial duration to setup the T table            
+                pv.stop = max(diff(trialStartTime(trials)));
+            end
             if isempty(pv.align)
                 pv.align = zeros(size(trials)); % Align to first frame
             elseif numel(pv.align)==1 % Singleton expansion
@@ -230,6 +239,45 @@ classdef C< dj.Computed
             end
             signal =double([channelTpl.signal]); % Signal as matrix
             [nrSamples,nrChannels] = size(signal);
+
+            %% Artifact removal
+            if pv.removeArtifacts
+                % Correction that applies to all channels
+                 aTbl = ns.Artifact&tbl;
+                 if exists(aTbl)
+                    exptArtifacts= fetch(aTbl,'trial','start','stop');          
+                    for tr=exptArtifacts.trial
+                        from = sampleTime>=trialStartTime(tr);
+                        if tr<nrAllTrials
+                            to = sampleTime<=trialStartTime(tr+1);
+                        else
+                            to = from;
+                        end
+                        signal(from & to,:)=NaN;
+                    end
+                    isArtifact = any(arrayfun(@(a,b) (sampleTime>=a & sampleTime<=b),exptArtifacts.start,exptArtifacts.stop,'UniformOutput',true),2);
+                    signal(isArtifact,:) = NaN;
+                 end
+                
+                % Artifacts found in individual channels
+                 acTbl =  (ns.ArtifactChannel & proj(aTbl ))& struct('channel',{channelTpl.channel});
+                 if exists(acTbl)
+                    channelArtifacts= fetch(acTbl,'trial','start','stop');     
+                    for ch= 1:nrChannels
+                        for tr=channelArtifacts(ch).trial
+                            from = sampleTime>=trialStartTime(tr);
+                            if tr<nrAllTrials
+                                to = sampleTime<=trialStartTime(tr+1);
+                            else
+                                to = from;
+                            end
+                        signal(from & to,ch)=NaN;
+                        end
+                        isArtifact = any(arrayfun(@(a,b) (sampleTime>=a & sampleTime<=b),channelArtifacts(ch).start,channelArtifacts(ch).stop,'UniformOutput',true),2);
+                        signal(isArtifact,ch) = NaN;
+                    end                                        
+                 end            
+            end
             % Fetch the preprocessing tag. The dimensions in the timetable
             % will be named after this.
             tag = fetch1(ns.CParm & tbl,'ctag');
@@ -245,9 +293,7 @@ classdef C< dj.Computed
                 nrTrials = numel(trials);
                 varNames = "Trial" + string(trials);
                 T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
-                % trial time zero in NS for each trial
-                trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-
+               
                 % Loop over trials to collect the relevant samples
                 trialOut =false(1,nrTrials);
 
@@ -258,6 +304,7 @@ classdef C< dj.Computed
                         continue;
                     end
                     thisTrial =trials(trCntr);
+                  
                     % Limits if crossTrial is allowed
                     startLimit =  trialStartTime(thisTrial) + pv.align(trCntr)+pv.start;
                     stopLimit =  trialStartTime(thisTrial) + pv.align(trCntr)+pv.stop;
@@ -419,6 +466,7 @@ classdef C< dj.Computed
                 channel   % A ns.CChannel or a CChannel based restriction
                 expt (1,1)
                 grouping = []
+                pv.removeArtifacts (1,1) = true
                 pv.trial = [] 
                 pv.fun (1,1) = @(x)(deal(mean(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
                 pv.name {mustBeText} = num2str(1:numel(grouping))
@@ -501,7 +549,7 @@ classdef C< dj.Computed
                     end
 
 
-                    [y,time] = align(cTbl&exptTpl,channel =channelRestriction, trial=trials{c},fetchOptions= fetchOptions,align = alignTime, crossTrial =pv.crossTrial,start=pv.start,stop=pv.stop,step=pv.step,interpolation =pv.interpolation);
+                    [y,time] = align(cTbl&exptTpl,removeArtifacts = pv.removeArtifacts, channel =channelRestriction, trial=trials{c},fetchOptions= fetchOptions,align = alignTime, crossTrial =pv.crossTrial,start=pv.start,stop=pv.stop,step=pv.step,interpolation =pv.interpolation);
                     if pv.averageOverChannels
                         % Average
                         y = mean(y,2,"omitnan"); % Average over rois
@@ -555,6 +603,8 @@ classdef C< dj.Computed
                                 end
                                 y(isnan(y)) =0;
                                 [pwr,freq] = pspectrum(y,time,'power',pv.options{:});
+                                [ft,freq] = fftReal(y,1./seconds(time(2)-time(1)));
+                                pwr = ft.*conj(ft);
                                 [thisM,thisE] = pv.fun(pwr); % Average over trials
                                 thisX = freq;
                                 thisM = thisM.*freq;
