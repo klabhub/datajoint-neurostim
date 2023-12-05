@@ -603,8 +603,8 @@ classdef C< dj.Computed
                                 end
                                 y(isnan(y)) =0;
                                 [pwr,freq] = pspectrum(y,time,'power',pv.options{:});
-                                [ft,freq] = fftReal(y,1./seconds(time(2)-time(1)));
-                                pwr = ft.*conj(ft);
+                                % [ft,freq] = fftReal(y,1./seconds(time(2)-time(1)));
+                                % pwr = ft.*conj(ft);
                                 [thisM,thisE] = pv.fun(pwr); % Average over trials
                                 thisX = freq;
                                 thisM = thisM.*freq;
