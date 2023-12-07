@@ -21,6 +21,9 @@ function [signal,time,channelInfo,recordingInfo] = readMdaq(key,parms)
 %           diodeHigh and diodeLow events in the mdaq plugin. These events
 %           can then be used to align data ( see ns.Continuous.get())
 %
+% .timeSync ; Struct passed to mdaq.readBin to synchronize the DAQ clock
+%               with the neurostim clock. See mdaq.readBin
+%
 % BK - Oct 2023
 arguments
     key % The key (ns.File and ns.ContinuousParm tuple)
@@ -37,7 +40,12 @@ filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 %% Read using a script
 tic
 load(strrep(filename,'.bin','.mat'),'c');
-T=  readBin(c.mdaq,file=filename);
+if isfield(parms,'timeSync')
+    ts = parms.timeSync;
+else
+    ts = struct([]); % Dont use event based timesync
+end
+T=  readBin(c.mdaq,file=filename,timeSync = ts);
 fprintf('Done in %d seconds.\n ',round(toc))
 
 [availableChannels,ix] = intersect(parms.channel,T.Properties.VariableNames);
