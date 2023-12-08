@@ -227,13 +227,13 @@ end
 if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
     % Read meta data from the content of the Neurostim files
     % tmp has the meta data, c the CIC objects which are passed to
-    % nsAddToDataJoint below
+    % nsAddToDataJoint below    
     for i=1:nrExperiments
         [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
-        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
+        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.        
     end
     meta  =tmpMeta;
-    nrTrials = [c.nrTrialsTotal];
+    nrTrials = [c.nrTrialsCompleted];
     out = nrTrials < p.Results.minNrTrials;
     if any(out)
         fprintf('Removing %d experiments (fewer than %d trials)\n',sum(out),p.Results.minNrTrials);
