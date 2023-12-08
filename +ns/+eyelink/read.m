@@ -99,7 +99,7 @@ if isfield(parms,'fillmissing')
 end
 %% Downsample
 if isfield(parms,'downsample')
-    R= ceil(parms.downsample/data.RECORDINGS(1).sample_rate);
+    R= ceil(data.RECORDINGS(1).sample_rate/parms.downsample);
     if R>1
         fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);        
         tic
@@ -130,7 +130,7 @@ channelInfo =struct('name',parms.channel,'nr',num2cell(1:nrChannels));
 recordingInfo= data.RECORDINGS(end);
 recordingInfo.header = data.HEADER;
 % Regular sampling so reduce time representation
-time = [time(1) time(end) nrSamples];
+time = double([time(1) time(end) nrSamples]);
 % Reduce storage (ns.C.align converts back to double
 signal  = single(signal);
 

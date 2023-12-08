@@ -146,7 +146,7 @@ classdef PluginParameter < dj.Part
         function encodeAndInsert(tbl,key)
             for i=1:numel(key)
                 meta = metaclass(key(i).property_value);
-                if ismember(meta.Name,{'cell'})
+                if ismember(meta.Name,{'cell','string'})
                           % Database cannot not store this value. Convert to byte stream, the user can
                           % get the value by using getArrayFromByteStream,at
                          % least in Matlab (see Experiment.get),
