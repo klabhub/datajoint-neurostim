@@ -6,12 +6,11 @@
 trial = NULL : longblob   # A vector of trials that are considered artifacts and should be removed from analysis
 start = NULL : longblob  # A vector of neurostim times that indicate the start of an artifact period
 stop  = NULL : longblob   # A vector of neurostim times that indicate the end of an artifact period
-%
+%}
 % This table is used by ns.C/align to remove trials or time periods. To
 % setup artifact detection, add an entry to ns.ArtifactParm that defines
 % the function that identifies the trials/timepoints containing artifacts.
-% 
-%}
+
 
 classdef Artifact < dj.Computed
     properties (Dependent)
@@ -23,8 +22,11 @@ classdef Artifact < dj.Computed
             % Restricted to ns.C tuples with the ctag specified in
             % ArtifactParm 
             allTpl = [];                       
-            for thisPrm= fetch(ns.ArtifactParm,'c')'
+            for thisPrm= fetch(ns.ArtifactParm,'c','paradigm')'
                 tbl = (ns.C*ns.CParm) & struct('ctag',thisPrm.c);    
+                if ~isempty(thisPrm.paradigm)
+                    tbl = tbl & (ns.Experiment & struct('paradigm',thisPrm.paradigm));
+                end
                 % Would like to concatenate this tbl with the next row but
                 % this does not work with the | operator. Instead, concatenate
                 % tuples of primary keys

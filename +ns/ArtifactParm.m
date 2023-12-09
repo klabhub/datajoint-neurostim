@@ -6,6 +6,7 @@ fun         : varchar(255)      # The user defined function that does the work.
 c           : varchar(32)       # The ctag of the data to which this applies. 
 description : varchar(1024)     # Short description
 parms       : longblob          # struct containing all parameters that the fun needs to do its job.
+paradigm   = NULL : longblob    # Cellstring of paradigms to which this artifact correction should be applied. Leave empty to apply to all paradigms
 %}
 %
 % EXAMPLE
@@ -31,7 +32,6 @@ parms       : longblob          # struct containing all parameters that the fun 
 % For an example, see ephys.artifactDetection.m
 % See Also ns.Artifact ns.ArtifactChannel ephys.artifactDetection
 % BK - December 2023
-
 classdef ArtifactParm < dj.Lookup
 
 end
