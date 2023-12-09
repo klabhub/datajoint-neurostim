@@ -121,6 +121,7 @@ classdef Experiment  < dj.Manual
                 pv.prm {mustBeText} = ""
                 pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
                 pv.atTrialTime (1,1) double = NaN
+                pv.trial (1,:) double = []
             end
             if ischar(plg)
                 plg = {plg};
@@ -169,7 +170,7 @@ classdef Experiment  < dj.Manual
                
                 if strlength(pv.prm) ~=0  %prm was specified  
                     % Single prm from a specified plugin,  at a specific time
-                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what);                    
+                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what,pv.trial);                    
                 else
                     % Everything
                     % Return struct with all info

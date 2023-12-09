@@ -1,4 +1,4 @@
-function out = attrialtime(props,propName,time,c,what)
+function out = attrialtime(props,propName,time,c,what,trial)
 % Given a struct with properties (as returned by ns.Experiment.get  or
 % nsPluginParameter.get, and a specific property, return the value of that
 % property at a certain time in each trial.
@@ -15,12 +15,18 @@ function out = attrialtime(props,propName,time,c,what)
 %               ns.Experiment.get)
 % what - 'data','trialtime','clocktime','trial': which aspect of the data
 %               to return.
+% trial - a vector of trial numbers for which to return the information.
+% Defaults to [], which means all trials.
+%
 % OUTPUT
-% values  = A cell array of values, one for each trial.
+% values  = A cell array of values, one for each requested trial.
 %
 % BK - Dec 2022.
-if nargin <5
-    what = 'data';
+if nargin <6
+    trial = [];
+    if nargin <5
+        what = 'data';
+    end
 end
 
 if isnan(time)
@@ -33,6 +39,10 @@ if isnan(time)
             out = props.([propName 'NsTime']);
         case 'trial'
             out = props.([propName 'Trial']);
+    end
+    if ~isempty(trial)
+        trialNrs = props.([propName 'Trial']);
+        out = out(ismember(trialNrs,trial));
     end
     return;
 end
@@ -118,4 +128,10 @@ switch what
     case 'trial'
         out = find(~isinf(eventNsTime)); % Trials in whcih the event actually ocurred
 end
+
+if ~isempty(trial)
+        trialNrs = find(~isinf(eventNsTime));
+        out = out(ismember(trialNrs,trial));
+end
+    
 end
