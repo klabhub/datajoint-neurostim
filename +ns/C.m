@@ -196,6 +196,7 @@ classdef C< dj.Computed
                 tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
                 pv.fetchOptions {mustBeText} = ''
                 pv.channel (1,:)  =[]   % The channel number (as a vector of double) or name (cellstr or string, char)
+                pv.fun (1,1) function_handle = @(x)(x)  % A function to apply to the data              
                 pv.trial (1,:) double = []
                 pv.start (1,1) double = 0
                 pv.stop  (1,1) double = inf
@@ -244,8 +245,8 @@ classdef C< dj.Computed
             elseif isnumeric(pv.channel)
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             elseif ischar(pv.channel) || isstring(pv.channel) ||iscellstr(pv.channel)
-                channelRestriction = struct('name',pv.channel);
-            elseif isstruct(pv.channel)
+                channelRestriction = struct('name',cellstr(pv.channel)');
+            else
                 channelRestriction = pv.channel;
             end
             tblChannel =ns.CChannel & proj(tbl) & channelRestriction;
@@ -295,6 +296,10 @@ classdef C< dj.Computed
                     end
                 end
             end
+
+            %Apply the fun to preprocess/modify the signal (e.g. abs()
+            signal  = pv.fun(signal);
+                    
             % Fetch the preprocessing tag. The dimensions in the timetable
             % will be named after this.
             tag = fetch1(ns.CParm & tbl,'ctag');
@@ -514,6 +519,7 @@ classdef C< dj.Computed
                 grouping = []
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
+                pv.fun = [] % A function to apply to the data obtained from ns.C
                 pv.average (1,1) = @(x)(deal(mean(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
                 pv.name {mustBeText} = num2str(1:numel(grouping))
                 pv.start (1,1) double = 0
@@ -541,7 +547,7 @@ classdef C< dj.Computed
             elseif isnumeric(channel)
                 channelRestriction = struct('channel',num2cell(channel(:))');
             elseif ischar(channel) || isstring(channel) ||iscellstr(channel)
-                channelRestriction = struct('name',channel);
+                channelRestriction = struct('name',cellstr(channel)');
             elseif isstruct(channel)
                 channelRestriction = channel;
             end
@@ -553,6 +559,7 @@ classdef C< dj.Computed
                 trials = grouping;
                 names = pv.name;
                 conditionOrder = 1:numel(grouping);
+                x = 1:numel(grouping);
             else
                 if isstring(grouping) || ischar(grouping)
                     groupingRestriction = struct('dimension',grouping);
@@ -583,7 +590,12 @@ classdef C< dj.Computed
 
             nrConditions = numel(trials);
             nrChannels = count(cTbl*(ns.CChannel & channelRestriction) & expt);
-            perTrial =cell(nrConditions,nrChannels);  % Collect per trial to return
+            % Collect per trial to return
+            if pv.averageOverChannels
+                perTrial =cell(nrConditions,1);  
+            else
+                perTrial =cell(nrConditions,nrChannels);  
+            end
             ctag = unique(string([fetch(cTbl&expt,'ctag').ctag]));
             assert(nrChannels >0,'No matching channels found. Nothing to plot.\n');
                 
@@ -618,7 +630,7 @@ classdef C< dj.Computed
                         alignTime = pv.align(trials{c});
                     end
 
-                    [y,time] = align(cTbl&exptTpl,removeArtifacts = pv.removeArtifacts, channel =channelRestriction, trial=trials{c},fetchOptions= fetchOptions,align = alignTime, crossTrial =pv.crossTrial,start=pv.start,stop=pv.stop,step=pv.step,interpolation =pv.interpolation);
+                    [y,time] = align(cTbl&exptTpl,fun =pv.fun,removeArtifacts = pv.removeArtifacts, channel =channelRestriction, trial=trials{c},fetchOptions= fetchOptions,align = alignTime, crossTrial =pv.crossTrial,start=pv.start,stop=pv.stop,step=pv.step,interpolation =pv.interpolation);
                     if pv.averageOverChannels
                         % Average
                         y = mean(y,3,"omitnan"); % Average over rois

@@ -42,7 +42,7 @@ classdef Dimension < dj.Manual
                 plg (1,:) {mustBeNonzeroLengthText}
                 prm (1,:) {mustBeNonzeroLengthText}
                 name (1,1) string 
-                
+                pv.fun (1,1) function_handle = @(x)(x) % Function handle to convert plg.prm into a number that defines the condition (default is to do nothing; the value determines the condition)
                 pv.restrict (1,:) cell = {} % Define only in this subset of trials by specifying a set of allowed values for a plugin parameter
                 pv.description (1,1) string ="" % A description to add to the table
                 pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and this dimension.           
@@ -97,6 +97,9 @@ classdef Dimension < dj.Manual
                         % experiment
                         break;
                     end
+                    % Transform the values using the user-specified
+                    % function
+                    prmValues = pv.fun(prmValues);                    
                     valStr= [valStr prefix+string(prmValues)]; %#ok<AGROW>
                     valTbl = addvars(valTbl,prmValues,'NewVariableNames',plg{i} + pvSEPARATOR + prm{i});
                 end
