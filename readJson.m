@@ -5,6 +5,7 @@ fid =fopen(file,'r');
 txt = fread(fid,inf,'*char');
 fclose(fid);
 thisJson = jsondecode(txt');
+if ~isempty(thisJson)
 fn = fieldnames(thisJson);
 for j=1:numel(thisJson)
     for i=1:numel(fn)
@@ -12,5 +13,6 @@ for j=1:numel(thisJson)
             thisJson(j).(fn{i}) = string(num2str(thisJson(j).(fn{i})));
         end
     end
+end
 end
 end

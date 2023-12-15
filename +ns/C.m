@@ -519,7 +519,7 @@ classdef C< dj.Computed
                 grouping = []
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
-                pv.fun = [] % A function to apply to the data obtained from ns.C
+                pv.fun = @(x)(x) % A function to apply to the data obtained from ns.C
                 pv.average (1,1) = @(x)(deal(mean(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
                 pv.name {mustBeText} = num2str(1:numel(grouping))
                 pv.start (1,1) double = 0

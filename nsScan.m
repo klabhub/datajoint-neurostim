@@ -227,10 +227,10 @@ end
 if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
     % Read meta data from the content of the Neurostim files
     % tmp has the meta data, c the CIC objects which are passed to
-    % nsAddToDataJoint below    
+    % nsAddToDataJoint below
     for i=1:nrExperiments
         [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
-        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.        
+        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
     end
     meta  =tmpMeta;
     nrTrials = [c.nrTrialsCompleted];
@@ -300,11 +300,8 @@ end
 
 % Convert char and cellstr to string
 tExperiment = struct2table(meta,'AsArray',true);
-for i=1:numel(tExperiment.Properties.VariableNames)
-    if iscellstr(tExperiment.(tExperiment.Properties.VariableNames{i})) || ischar(tExperiment.(tExperiment.Properties.VariableNames{i})) %#ok<ISCLSTR>
-        tExperiment.(tExperiment.Properties.VariableNames{i}) = string(tExperiment.(tExperiment.Properties.VariableNames{i}));
-    end
-end
+tExperiment = convertvars(tExperiment,@(x)(ischar(x) | iscellstr(x)),'string'); %#ok<ISCLSTR>
+
 % Store folder root and date in the properties so that we
 % can easily reconstruct filenames later
 tExperiment =addprop(tExperiment,{'root'},{'table'}) ;
@@ -326,7 +323,7 @@ if p.Results.readJson
     definitionFile = fullfile(p.Results.root,['session_definition' metaDefinitionTag '.json']);
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
-        isLocked.Session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
+        isLocked.session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
         sessionMetaFields = fieldnames(json.Fields);
         if any(ismember({'subject','session_date'},sessionMetaFields))
             error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
@@ -414,17 +411,21 @@ if p.Results.readJson
     metaDataFile =  fullfile(p.Results.root,'subject.json');
     if exist(metaDataFile,'file')
         thisJson = readJson(metaDataFile);
-        metaFieldsFromJson = fieldnames(thisJson);
-        thisJson = struct2table(thisJson);
-        nrMetaFields= numel(metaFieldsFromJson);
-        for i=1:nrSubjects
-            thisSubject = tSubject.subject(i)==thisJson.subject;
-            if any(thisSubject)
-                for j=1:nrMetaFields
-                    if ~ismember(metaFieldsFromJson{j},tSubject.Properties.VariableNames)
-                        tSubject =addvars(tSubject,emptyInit,'NewVariableNames',metaFieldsFromJson{j});
+        if isempty(thisJson)
+            fprintf(2,'The json file %s returned empty.\n',metaDataFile);
+        else
+            metaFieldsFromJson = fieldnames(thisJson);
+            thisJson = struct2table(thisJson);
+            nrMetaFields= numel(metaFieldsFromJson);
+            for i=1:nrSubjects
+                thisSubject = tSubject.subject(i)==thisJson.subject;
+                if any(thisSubject)
+                    for j=1:nrMetaFields
+                        if ~ismember(metaFieldsFromJson{j},tSubject.Properties.VariableNames)
+                            tSubject =addvars(tSubject,emptyInit,'NewVariableNames',metaFieldsFromJson{j});
+                        end
+                        tSubject{i,metaFieldsFromJson{j}} = thisJson{thisSubject,metaFieldsFromJson{j}};
                     end
-                    tSubject{i,metaFieldsFromJson{j}} = thisJson{thisSubject,metaFieldsFromJson{j}};
                 end
             end
         end
