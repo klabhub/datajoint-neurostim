@@ -106,7 +106,7 @@ p.parse(varargin{:});
 tExperiment = [];
 tSession = [];
 tSubject = [];
-
+isLocked= struct('experiment',false,'session',false,'subject',false);
 if ~isempty(p.Results.metaDefinitionTag) && p.Results.metaDefinitionTag(1)~='_'
     metaDefinitionTag = ['_' p.Results.metaDefinitionTag];
 else

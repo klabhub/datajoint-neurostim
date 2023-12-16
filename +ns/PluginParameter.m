@@ -144,6 +144,16 @@ classdef PluginParameter < dj.Part
     
     methods (Access=protected)
         function encodeAndInsert(tbl,key)
+            names = string({key.property_name});
+            if numel(unique(upper(names))) ~= numel(key)
+                % Two properties match case insensitively; that will cause
+                % problems in the MySql database. The one with lower case
+                % is renamed to X_lowercase
+                isDouble = (names==lower(names)) & sum(upper(names) == upper(names)')==2;
+                newName = char(names(isDouble) + "_lowercase");
+                fprintf(2,'Properties of %s match case insentitively. %s  renamed to %s\n',key(1).plugin_name,names(isDouble),newName)
+                key(isDouble).property_name = newName;
+            end
             for i=1:numel(key)
                 meta = metaclass(key(i).property_value);
                 if ismember(meta.Name,{'cell','string'})

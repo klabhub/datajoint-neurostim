@@ -345,7 +345,7 @@ classdef Experiment  < dj.Manual
             if actualNrTrialsStarted <1
                 % Cannot read some information in a file without trials..
                 % Just putting zeros.
-                fprintf('Skipping %s - no completed trials\n',file);
+                fprintf('Skipping %s - no completed trials\n',c.file);
                 tpl = struct('stimuli',0,'blocks',0,...
                     'conditions',0,'nrtrials',actualNrTrialsStarted,...
                     'matlab',c.matlabVersion,'ptb',ptbVersion,...
@@ -353,12 +353,12 @@ classdef Experiment  < dj.Manual
             else
                 % Pull the top level information to put in the tbl
                 if isempty(c.runNr)
-                    runNr = NaN;
+                    runNr =0;  % early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
                 else
                     runNr = c.runNr;
                 end
                 if isempty(c.seqNr)
-                    seqNr = NaN;
+                    seqNr = 0;% early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
                 else
                     seqNr = c.seqNr;
                 end
