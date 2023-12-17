@@ -101,6 +101,7 @@ p.addParameter('cicOnly',false,@islogical);
 p.addParameter('safeMode',true,@islogical);
 p.addParameter('metaDefinitionTag','',@ischar);
 p.addParameter('minNrTrials',0,@isnumeric);
+p.addParameter('verbose',true,@islogical); % show output on command line
 p.parse(varargin{:});
 
 tExperiment = [];
@@ -128,13 +129,17 @@ switch (p.Results.schedule)
         error('Unknown schedule %s',p.Results.schedule)
 end
 
-fprintf('Scanning %s for %s ...\n',srcFolder,strjoin(p.Results.paradigm,'/'))
+if p.Results.verbose
+    fprintf('Scanning %s for %s ...\n',srcFolder,strjoin(p.Results.paradigm,'/'))
+end
 
 % Find the files matching the wildcard
 dirInfo= dir(fullfile(srcFolder,'*.mat'));
 
 if isempty(dirInfo)
-    fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
+    if p.Results.verbose
+        fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
+    end
     return;
 end
 
@@ -158,7 +163,9 @@ meta =[ meta{~out}];
 dirInfo(out) =[];
 fullName(out) = [];
 if isempty(fullName)
-    fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
+    if p.Results.verbose
+        fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
+    end
     return;
 end
 
@@ -236,7 +243,9 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
     nrTrials = [c.nrTrialsCompleted];
     out = nrTrials < p.Results.minNrTrials;
     if any(out)
-        fprintf('Removing %d experiments (fewer than %d trials)\n',sum(out),p.Results.minNrTrials);
+        if p.Results.verbose
+            fprintf('Removing %d experiments (fewer than %d trials)\n',sum(out),p.Results.minNrTrials);
+        end
         meta(out) = [];
         c(out) =[];
         fullName(out) =[];
@@ -253,14 +262,31 @@ if nrExperiments ==0
     else
         newStr ='';
     end
-    fprintf('No %sNeurostim files with matching paradigm and subject and at least %d trials found in %s\n',newStr, p.Results.minNrTrials, srcFolder);
+    if p.Results.verbose
+        fprintf('No %sNeurostim files with matching paradigm and subject and at least %d trials found in %s\n',newStr, p.Results.minNrTrials, srcFolder);
+    end
     return;
 else
-    fprintf('Found %d matching Neurostim files: \n',nrExperiments)
-    fullName %#ok<NOPRT>
+    if p.Results.verbose
+        fprintf('Found %d matching Neurostim files: \n',nrExperiments)
+        fullName %#ok<NOPRT>
+    end
 end
 
-
+%% A Experiments
+tExperiment = struct2table(meta,'AsArray',true);
+tExperiment = convertvars(tExperiment,@(x)(ischar(x) | iscellstr(x)),'string'); %#ok<ISCLSTR>
+% Store folder root and date in the properties so that we
+% can easily reconstruct filenames later
+tExperiment =addprop(tExperiment,{'root'},{'table'}) ;
+tExperiment.Properties.CustomProperties.root = p.Results.root;
+if p.Results.readFileContents
+    tExperiment = addvars(tExperiment,c','NewVariableNames','cic');
+end
+% Assign a unique ID to each row, so that we can match up with the original values after the user resorts.
+tExperiment = addvars(tExperiment,strcat('#',string((1:nrExperiments)')),'NewVariableNames','id','before',1);
+tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','subject','paradigm'},'After',1);
+tExperiment.Properties.VariableDescriptions = ["","Date of the Session (yyyy-mm-dd: ISO 8601)","Neurostim file name","Start time of the experiment (hh:mm:ss)","bytes in the file","Unique Subject ID", "Paradigm name","Provenance information"];
 if p.Results.readJson
     %% Read Meta information definitions and data from JSON files.
     allMetaFromJson = [];
@@ -270,20 +296,28 @@ if p.Results.readJson
         json = readJson(definitionFile);
         isLocked.experiment = json.Locked =="1";
         experimentMetaFields = fieldnames(json.Fields);
+        experimentMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
         if any(ismember({'starttime'},experimentMetaFields))
             error('The experiment meta definition file %s should only define new meta properties, not ''starttime''',definitionFile);
         end
-        for i=1:numel(experimentMetaFields)
-            [meta.(experimentMetaFields{i})] = deal("");
-        end
-    elseif isempty(metaDefinitionTag)
+        nrExperimentMetaFields= numel(experimentMetaFields);       
+    elseif isempty(metaDefinitionTag) 
         % Use no meta definition
         isLocked.experiment = false;
+        nrExperimentMetaFields = 0;
     else
         error('Meta definition file %s not found',definitionFile)
     end
 
-    % Read associated JSON files (if they exist)   
+    emptyInit = repmat("",[height(tExperiment) 1]);
+    if nrExperimentMetaFields>0
+        emtpyInitFromDef = repmat({emptyInit},[1 nrExperimentMetaFields]);
+        tExperiment = addvars(tExperiment,emtpyInitFromDef{:},'NewVariableNames',experimentMetaFields);
+        tExperiment.Properties.VariableDescriptions(end-nrExperimentMetaFields+1:end) = experimentMetaDescription';
+    end
+
+
+    % Read associated JSON files (if they exist)
     for i=1:nrExperiments
         jsonFile= regexprep(fullName{i},'(\.mat$)','.json'); % Swap extension
         if exist(jsonFile,'file')
@@ -293,12 +327,12 @@ if p.Results.readJson
         end
         metaFieldsFromJson = fieldnames(thisJson);
         for j=1:numel(metaFieldsFromJson)
-            meta(i).(metaFieldsFromJson{j}) = thisJson.(metaFieldsFromJson{j});
+            tExperiment{i,metaFieldsFromJson{j}} = thisJson.(metaFieldsFromJson{j});
         end
         % If a definition file is used the default meta is "" but if this
         % is meta data read from a json file without a definition, then
         % every meta without a json will be initialized as []. Here we
-        % replace those with  "" 
+        % replace those with  ""
         % Collect all meta
         if isempty(allMetaFromJson)
             allMetaFromJson = string(metaFieldsFromJson);
@@ -309,34 +343,21 @@ if p.Results.readJson
     % Make sure undefined meta are ""
     for i=1:nrExperiments
         for m = allMetaFromJson'
-            if isempty(meta(i).(m))
-                meta(i).(m) = "";
+            if isempty(tExperiment(i,m))
+               tExperiment{i,m} = "";
             end
         end
     end
 
 end
-
-% Convert char and cellstr to string
-tExperiment = struct2table(meta,'AsArray',true);
-tExperiment = convertvars(tExperiment,@(x)(ischar(x) | iscellstr(x)),'string'); %#ok<ISCLSTR>
-
-% Store folder root and date in the properties so that we
-% can easily reconstruct filenames later
-tExperiment =addprop(tExperiment,{'root'},{'table'}) ;
-tExperiment.Properties.CustomProperties.root = p.Results.root;
-if p.Results.readFileContents
-    tExperiment = addvars(tExperiment,c','NewVariableNames','cic');
-end
 % Sort to get a consistent order
 tExperiment =  sortrows(tExperiment,{'starttime','subject','paradigm'},'ascend');
-% Assign a unique ID to each row, so that we can match up with the original values after the user resorts.
-tExperiment = addvars(tExperiment,strcat('#',string((1:nrExperiments)')),'NewVariableNames','id','before',1);
-tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','subject','paradigm'},'After',1);
+clear meta fullName %  These are sorted differently; prevent accidental use below.
 
 %% B. Session Meta Data
 % Retrieve definition and initialize table
 tSession = unique(tExperiment(:,{'session_date','subject'}));
+tSession.Properties.VariableDescriptions = ["Date of the Session (yyyy-mm-dd: ISO 8601)","Subject ID"];
 nrSessions = height(tSession);
 if p.Results.readJson
     definitionFile = fullfile(p.Results.root,['session_definition' metaDefinitionTag '.json']);
@@ -344,12 +365,13 @@ if p.Results.readJson
         json = readJson(definitionFile);
         isLocked.session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
         sessionMetaFields = fieldnames(json.Fields);
+        sessionMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
         if any(ismember({'subject','session_date'},sessionMetaFields))
             error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
         end
         nrSessionMetaFields= numel(sessionMetaFields);
     elseif isempty(metaDefinitionTag)
-        nrSessionMetaFields= 0;
+        nrSessionMetaFields= 0;        
     else
         error('Meta definition file %s not found',definitionFile)
     end
@@ -357,6 +379,7 @@ if p.Results.readJson
     if nrSessionMetaFields>0
         emtpyInitFromDef = repmat({emptyInit},[1 nrSessionMetaFields]);
         tSession = addvars(tSession,emtpyInitFromDef{:},'NewVariableNames',sessionMetaFields);
+        tSession.Properties.VariableDescriptions(end-nrSessionMetaFields+1:end) = sessionMetaDescription;
     end
 
     % See if there are any Session JSON files and put information in the table
@@ -406,6 +429,7 @@ tSession = movevars(tSession,{'session_date','subject'},'after',1);
 % in the Root folder.
 % Retrieve definition
 tSubject= unique(tSession(:,'subject'));
+tSubject.Properties.VariableDescriptions = "Unique Subject ID";
 nrSubjects = height(tSubject);
 if p.Results.readJson
     definitionFile = fullfile(p.Results.root,['subject_definition' metaDefinitionTag '.json']);
@@ -413,6 +437,7 @@ if p.Results.readJson
         json = readJson(definitionFile);
         isLocked.subject = json.Locked =="1"; % No new meta fields allowed according to _definition
         subjectMetaFields = fieldnames(json.Fields);
+        subjectMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));      
         if ismember('subject',subjectMetaFields)
             error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
         end
@@ -426,6 +451,7 @@ if p.Results.readJson
     if nrSubjectMetaFields>0
         emtpyInitFromDef = repmat({emptyInit},[1 nrSubjectMetaFields]);
         tSubject = addvars(tSubject,emtpyInitFromDef{:},'NewVariableNames',subjectMetaFields);
+        tSubject.Properties.VariableDescriptions(end-nrSubjectMetaFields+1:end) = subjectMetaDescription;
     end
     metaDataFile =  fullfile(p.Results.root,'subject.json');
     if exist(metaDataFile,'file')
