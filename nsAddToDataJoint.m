@@ -193,11 +193,13 @@ else
                 % delete/replace approach is too cumbersome (e.g., renaming one
                 % subject would delete all data associated with that subject)
                 fieldsToUpdate = setdiff(fieldnames(updateTpls),pkey)';
+                if ~isempty(fieldsToUpdate)
                 for tpl =updateTpls'
                     thisDj= djTbl & ns.stripToPrimary(djTbl,tpl);
                     for fld = fieldsToUpdate
                         update(thisDj,fld{1},tpl.(fld{1}));
                     end
+                end
                 end
             % else
             %     del(djTbl & ns.stripToPrimary(djTbl,updateTpls)); % Deletes tpl and associated meta

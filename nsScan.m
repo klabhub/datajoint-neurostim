@@ -263,6 +263,7 @@ end
 
 if p.Results.readJson
     %% Read Meta information definitions and data from JSON files.
+    allMetaFromJson = [];
     % Read the current meta definition for experiments
     definitionFile = fullfile(p.Results.root,['experiment_definition' metaDefinitionTag '.json']);
     if exist(definitionFile,'file')
@@ -282,7 +283,7 @@ if p.Results.readJson
         error('Meta definition file %s not found',definitionFile)
     end
 
-    % Read associated JSON files (if they exist)
+    % Read associated JSON files (if they exist)   
     for i=1:nrExperiments
         jsonFile= regexprep(fullName{i},'(\.mat$)','.json'); % Swap extension
         if exist(jsonFile,'file')
@@ -294,9 +295,27 @@ if p.Results.readJson
         for j=1:numel(metaFieldsFromJson)
             meta(i).(metaFieldsFromJson{j}) = thisJson.(metaFieldsFromJson{j});
         end
+        % If a definition file is used the default meta is "" but if this
+        % is meta data read from a json file without a definition, then
+        % every meta without a json will be initialized as []. Here we
+        % replace those with  "" 
+        % Collect all meta
+        if isempty(allMetaFromJson)
+            allMetaFromJson = string(metaFieldsFromJson);
+        else
+            allMetaFromJson = unique([allMetaFromJson;string(metaFieldsFromJson)]);
+        end
     end
-end
+    % Make sure undefined meta are ""
+    for i=1:nrExperiments
+        for m = allMetaFromJson'
+            if isempty(meta(i).(m))
+                meta(i).(m) = "";
+            end
+        end
+    end
 
+end
 
 % Convert char and cellstr to string
 tExperiment = struct2table(meta,'AsArray',true);
