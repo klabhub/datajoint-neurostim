@@ -287,8 +287,13 @@ end
 tExperiment = addvars(tExperiment,strcat('#',string((1:nrExperiments)')),'NewVariableNames','id','before',1);
 tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','subject','paradigm'},'After',1);
 metaDescriptions = ["","Date of the Session (yyyy-mm-dd: ISO 8601)","Neurostim file name","Start time of the experiment (hh:mm:ss)","bytes in the file","Unique Subject ID", "Paradigm name","Provenance information"];
-if p.Results.readFileContents 
-    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence" "CIC"]; %#ok<NASGU>
+if (p.Results.readFileContents || p.Results.minNrTrials >0)
+    %Already has information from the file contents (minNrTrial>0
+    %orreadFileCOntents =true)
+    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence"]; %#ok<NASGU>
+end
+if p.Results.readFileContents
+    metaDescriptions = [metaDescriptions "CIC"];
 end
 tExperiment.Properties.VariableDescriptions = metaDescriptions;
 if p.Results.readJson
