@@ -286,7 +286,11 @@ end
 % Assign a unique ID to each row, so that we can match up with the original values after the user resorts.
 tExperiment = addvars(tExperiment,strcat('#',string((1:nrExperiments)')),'NewVariableNames','id','before',1);
 tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','subject','paradigm'},'After',1);
-tExperiment.Properties.VariableDescriptions = ["","Date of the Session (yyyy-mm-dd: ISO 8601)","Neurostim file name","Start time of the experiment (hh:mm:ss)","bytes in the file","Unique Subject ID", "Paradigm name","Provenance information"];
+metaDescriptions = ["","Date of the Session (yyyy-mm-dd: ISO 8601)","Neurostim file name","Start time of the experiment (hh:mm:ss)","bytes in the file","Unique Subject ID", "Paradigm name","Provenance information"];
+if p.Results.readFileContents 
+    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence" "CIC"]; %#ok<NASGU>
+end
+tExperiment.Properties.VariableDescriptions = metaDescriptions;
 if p.Results.readJson
     %% Read Meta information definitions and data from JSON files.
     allMetaFromJson = [];
