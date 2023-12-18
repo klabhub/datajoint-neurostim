@@ -136,10 +136,22 @@ classdef File < dj.Imported
             % Returns all zeros ifthe file does not exist.
             mdLibrary = java.security.MessageDigest.getInstance('MD5');
             if exist(ff,"file")
-                fid = fopen(ff);
-                digest = dec2hex(typecast(mdLibrary.digest(fread(fid, inf, '*uint8')),'uint8'));
-                fclose(fid);
-                md5Hash = string(lower(digest(:)'));
+                d= dir(ff);
+                if d.bytes>1e9
+                    fprintf(2,"%s is bigger than 1 GB. Not computing MD5 checksum.\n",ff);
+                    md5Hash = string(repmat('0',[1 32]));
+                else
+                    fid = fopen(ff,'r');
+                    try
+                        digest = dec2hex(typecast(mdLibrary.digest(fread(fid, inf, '*uint8')),'uint8'));
+                        fclose(fid);
+                        md5Hash = string(lower(digest(:)'));
+                    catch me
+                        fclose(fid);
+                        fprintf(2,"MD5 failed on %s. (%s)\n",ff,me.message);
+                        md5Hash = string(repmat('0',[1 32]));
+                    end
+                end
             else
                 fprintf(2,"%s does not exist. Could not determine md5 hash\n",ff)
                 md5Hash = string(repmat('0',[1 32]));
