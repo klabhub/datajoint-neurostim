@@ -18,6 +18,7 @@ classdef File < dj.Imported
             arguments
                 tbl (1,1) ns.File
                 pv.bytes (1,1) logical = false
+                pv.checksum (1,1) logical = false
             end
 
             % Check whether files exist on the current file system
@@ -30,10 +31,10 @@ classdef File < dj.Imported
             filename =repmat("",[nrFiles 1]);
             T=table(filename ,exists);
             if pv.bytes
-                T =addvars(T,false(nrFiles,1),'VariableNames','bytes');
+                T =addvars(T,false(nrFiles,1),'newVariableNames','bytes');
             end
             if pv.checksum
-                T =addvars(T,false(nrFiles,1),'VariableNames','checksum');
+                T =addvars(T,false(nrFiles,1),'NewVariableNames','checksum');
             end
             fCntr=0;
             for f = tbl.fetch('bytes','checksum')'
@@ -50,7 +51,7 @@ classdef File < dj.Imported
 
                         else
                             d = dir(full);
-                            T.bytes(fCmtr) = f.bytes==d.bytes;
+                            T.bytes(fCntr) = f.bytes==d.bytes;
                         end
                     end
                     if pv.checksum
@@ -59,7 +60,7 @@ classdef File < dj.Imported
 
                         else
                             md5 = ns.File.checksum(full);
-                            T.bytes(fCmtr) = f.checksum==md5;
+                            T.checksum(fCntr) = string(f.checksum)==md5;
                         end
                     end
                 end
