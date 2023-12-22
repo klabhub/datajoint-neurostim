@@ -22,6 +22,8 @@ assert(numel(expandTo)<=1,'mergestruct can only merge singletons with one struct
 if any(~singleton)
     [varargin(singleton)] =cellfun(@(x) repmat(x,[expandTo 1]),varargin(singleton),'uni',false);
 end
+assert(all(diff(cellfun(@numel,varargin))==0),"Mismatched struct sizes");
+varargin = cellfun(@(x)(x(:)),varargin,'UniformOutput',false); % Make all column vector 
 % Extract fieldnames and values from each input struct
 fn = {};
 vals ={};

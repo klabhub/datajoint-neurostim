@@ -5,7 +5,7 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % files.
 %
 % MUAE:
-% see multiUnitAvtivityEnvelope for settings, but there is probably little 
+% see multiUnitAvtivityEnvelope for settings, but there is probably little
 %           reason to change those.
 % LFP
 % parms.designfilt ; these parameters are passed to designfilt and then used to
@@ -25,6 +25,8 @@ switch upper(parms.type)
     case {'EEG'}
         label = 'hi-res';
     case {'BREAKOUT'}
+    case {'DIGIN'}
+
 end
 
 %% Fetch the file to read (ns.C has already checked that it exists)
@@ -43,82 +45,7 @@ fprintf('Done in %d seconds.\n ',round(toc))
 
 entities = [hFile.Entity];
 
-%% Find relevant channels
-entityIx = [];
-for i=1:numel(entities)
-    if strcmpi(entities(i).EntityType,'Analog') 
-        thisChannel = extractAfter(entities(i).Label,label);
-        if ~isempty(thisChannel) && ismember(str2double(thisChannel),channels)
-            entityIx = [entityIx i]; %#ok<AGROW> 
-        end
-    end
-end
-nrChannels = numel(entityIx);
-fprintf('%d channels from this Array in this file\n',nrChannels)
-if nrChannels ==0
-    signal = []; time = [];channelInfo=[];
-    return;
-end
-assert(nrChannels==numel(channels),'Multiple channel matches?')
-nrSamples = unique([entities(entityIx).Count]);
-assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samples",label);
-
-
-%% Preprocess
-switch upper(parms.type)
-    case 'MUAE'
-        for i=1:nrChannels
-            [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
-            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
-        end
-        samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
-        rawTime = ((0:nrSamples-1)'/samplingRate);
-        nrSamplesInMuae = numel(downsample(rawTime,samplingRate/parms.targetHz));
-        signal = nan(nrSamplesInMuae,nrChannels);
-        % Read at least one channel at a time, but if maxMemory allows,
-        % read more (potentially to speed up processing).
-        memoryAvailable = parms.maxMemory; 
-        channelChunk = floor(memoryAvailable/(nrSamples*8/1e9))+1;
-        for i=1:channelChunk:nrChannels
-            tic
-            thisChunk = i:min(nrChannels,i+channelChunk-1);
-            fprintf('Reading RAW #%d to #%d: channel %d to %d from file ...',min(thisChunk),max(thisChunk),entities(entityIx(min(thisChunk))).ElectrodeID,entities(entityIx(max(thisChunk))).ElectrodeID)
-            [errCode, raw] = ns_GetAnalogDataBlock(hFile, entityIx(thisChunk), 1, nrSamples,'scale');
-            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
-            fprintf('Converting to MUAE ...')
-            [signal(:,thisChunk),timeRipple] = ephys.multiUnitActivityEnvelope(raw,rawTime,"parms",parms);
-            fprintf('Done in %d seconds.\n.',round(toc))
-        end        
-    case {'EEG','LFP'}
-        for i=1:nrChannels
-            [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
-            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
-        end
-        samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
-        timeRipple = (0:nrSamples-1)/samplingRate;        
-        tic
-        fprintf('Reading from file...')
-        [errCode, signal] = ns_GetAnalogDataBlock(hFile,  entityIx, 1, nrSamples,'scale');
-        if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
-        fprintf('Done in %d seconds.\n.',round(toc))    
-        %% Filtering
-        if isfield(parms,'designfilt') && ~isempty(parms.designfilt)
-            tic
-            fprintf('Applying filter (designfilt)... ')       
-            d = designfilt(parms.designfilt{:});
-            signal = filtfilt(d,signal);
-            fprintf('Done in %d seconds.\n.',round(toc))
-        end
-                   
-
-    case 'SPIKES'
-        error('Ripple preprocessing for %s has not been implemented yet.',parms.type)
-    otherwise 
-        error('Unknown Ripple preprocessing type %s.',parms.type)
-end
-
-
-%% Determine trial start events to  fill the trial mapper and convert nip time to NS time.
+%% Determine trial start events to convert nip time to NS time.
 % The Neurostim ripple plugin sets the digital out of the NIP and generates a trialStart event
 % We use this to synchronize the clocks
 prms  = get(ns.Experiment & key,{'cic','ripple'});
@@ -127,7 +54,7 @@ prms  = get(ns.Experiment & key,{'cic','ripple'});
 % high.
 trialStartTimeNeurostim  = prms.ripple.trialStartNsTime(find([true;diff(prms.ripple.trialStartTrial)>0])+1)/1000;
 % Find wich bit stored the trialStartEvent and get the time on the NIP
-bit = get(ns.Experiment & key,'ripple','prm','trialBit');
+bit = unique(get(ns.Experiment & key,'ripple','prm','trialBit','atTrialTime',0));
 eventIx  = find(ismember({entities.EntityType},'Event'));
 expression = ['\<SMA\s*' num2str(bit)];
 trialBitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
@@ -137,17 +64,147 @@ if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);en
 % msising, others happen more than once...). This function deals with those
 % and then returns the linear parameters that link the two clocks,
 clockParms = matchRiplleNeurostim(trialBitTime(:),trialBitValue(:),trialStartTimeNeurostim(:));
-% Use this to translate the time of the preprocessed samples (timeRipple)
-% to time on the neurostim clock.
-time =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime (in seconds)
 
+%%
+
+if strcmpi(parms.type,'DIGIN')
+    % Read digital bit inputs.
+    nrBits =numel(parms.channels);
+    signal = cell(1,nrBits);
+    time = cell(1,nrBits);
+    channelInfo=cell(nrBits,1);
+    recordingInfo=cell(nrBits,1);
+    for b= 1:nrBits
+        eventIx  = find(ismember({entities.EntityType},'Event'));
+        expression = ['\<SMA\s*' num2str(parms.channels(b))];
+        bitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
+        [errCode,rippleBitTime,bitValue] = ns_GetEventData(hFile, eventIx(bitEntityIx  ), 1:entities(eventIx(bitEntityIx  )).Count);
+        if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
+        signal{b} = bitValue';
+        time{b} =1000*polyval(clockParms,rippleBitTime);
+        if iscell(parms.name) 
+            thisName =parms.name{b};
+        elseif isstring(parms.name)
+            thisName =parms.name(b);
+        else
+            thisName =parms.name;
+        end
+        channelInfo{b} = struct('name',thisName,'nr',parms.channels(b));
+        recordingInfo{b} = struct;
+    end
+else
+    % An analog channel
+    %% Find relevant channels
+    entityIx = [];
+    for i=1:numel(entities)
+        if strcmpi(entities(i).EntityType,'Analog')
+            thisChannel = extractAfter(entities(i).Label,label);
+            if ~isempty(thisChannel) && ismember(str2double(thisChannel),parms.channels)
+                entityIx = [entityIx i]; %#ok<AGROW>
+            end
+        end
+    end
+    nrChannels = numel(entityIx);
+    fprintf('%d channels from this Array in this file\n',nrChannels)
+    if nrChannels ==0
+        signal = []; time = [];channelInfo=[];
+        return;
+    end
+    assert(nrChannels==numel(parms.channels),'Multiple channel matches?')
+    nrSamples = unique([entities(entityIx).Count]);
+    assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samples",label);
+
+
+    %% Preprocess
+    switch upper(parms.type)
+        case 'MUAE'
+            for i=1:nrChannels
+                [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
+                if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
+            end
+            samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
+            rawTime = ((0:nrSamples-1)'/samplingRate);
+            nrSamplesInMuae = numel(downsample(rawTime,samplingRate/parms.targetHz));
+            signal = nan(nrSamplesInMuae,nrChannels);
+            % Read at least one channel at a time, but if maxMemory allows,
+            % read more (potentially to speed up processing).
+            memoryAvailable = parms.maxMemory;
+            channelChunk = floor(memoryAvailable/(nrSamples*8/1e9))+1;
+            for i=1:channelChunk:nrChannels
+                tic
+                thisChunk = i:min(nrChannels,i+channelChunk-1);
+                fprintf('Reading RAW #%d to #%d: channel %d to %d from file ...',min(thisChunk),max(thisChunk),entities(entityIx(min(thisChunk))).ElectrodeID,entities(entityIx(max(thisChunk))).ElectrodeID)
+                [errCode, raw] = ns_GetAnalogDataBlock(hFile, entityIx(thisChunk), 1, nrSamples,'scale');
+                if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
+                fprintf('Converting to MUAE ...')
+                [signal(:,thisChunk),timeRipple] = ephys.multiUnitActivityEnvelope(raw,rawTime,"parms",parms);
+                fprintf('Done in %d seconds.\n.',round(toc))
+            end
+
+        case 'RAW'
+            for i=1:nrChannels
+                [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
+                if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
+            end
+            samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
+            timeRipple = ((0:nrSamples-1)'/samplingRate);
+            fprintf('Reading RAW channel %d to %d from file ...',entities(entityIx(1)).ElectrodeID,entities(entityIx(end)).ElectrodeID)
+            [errCode, signal] = ns_GetAnalogDataBlock(hFile, entityIx, 1, nrSamples,'scale');
+            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end            
+        case {'EEG','LFP'}
+            for i=1:nrChannels
+                [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
+                if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogInfo failed with %s', errCode);end
+            end
+            samplingRate = channelInfo(1).SampleRate;% All are  the same for sure.
+            timeRipple = (0:nrSamples-1)/samplingRate;
+            tic
+            fprintf('Reading from file...')
+            [errCode, signal] = ns_GetAnalogDataBlock(hFile,  entityIx, 1, nrSamples,'scale');
+            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
+            fprintf('Done in %d seconds.\n.',round(toc))
+            %% Filtering
+            if isfield(parms,'designfilt') && ~isempty(parms.designfilt)
+                tic
+                fprintf('Applying filter (designfilt)... ')
+                d = designfilt(parms.designfilt{:});
+                signal = filtfilt(d,signal);
+                fprintf('Done in %d seconds.\n.',round(toc))
+            end
+
+
+        case 'SPIKES'
+            error('Ripple preprocessing for %s has not been implemented yet.',parms.type)
+        otherwise
+            error('Unknown Ripple preprocessing type %s.',parms.type)
+    end
+    % Translate the time of the preprocessed samples (timeRipple)
+    % to time on the neurostim clock.
+    time =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime (in seconds)
+
+    recordingInfo = struct;  % nothing yet.
+    % Regualr sampling so reduce time representation and conver to ms.
+    time = [1000*time(1) 1000*time(end) nrSamples];
+    % Reduce storage (ns.C.align converts back to double
+    signal  = single(signal);
+    ch = num2cell(parms.channels);
+    [channelInfo.nr] = deal(ch{:});
+    % if strcmpi(parms.type,'RAW')
+    %     % Split the channels up to avoid sending too much data to the sql
+    %     % server at the same time and instead send one channel at a time
+    %     % (in ns.C)
+    %     signal = num2cell(signal,1);
+    %     time = repmat({time},[1 nrChannels]);
+    %     recordingInfo = repmat({recordingInfo},[1 nrChannels]);
+    %     tmp = cell(1,nrChannels);
+    %     for c=1:nrChannels
+    %         tmp{c} = channelInfo(c);
+    %     end
+    %     channelInfo = tmp;
+    % end
+end
 ns_CloseFile(hFile);
 
-recordingInfo = struct;  % nothing yet.
-% Regualr sampling so reduce time representation and conver to ms.
-time = [1000*time(1) 1000*time(end) nrSamples];
-% Reduce storage (ns.C.align converts back to double
-signal  = single(signal);
 end
 
 

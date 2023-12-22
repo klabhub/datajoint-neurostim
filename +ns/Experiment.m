@@ -188,11 +188,12 @@ classdef Experiment  < dj.Manual
             if strlength(pv.prm)~=0
                 % Single parm, join values as columns
                if iscellstr(out)
-                   out = out(:)';
+                   out = out(:)'; %trials as columns
                elseif iscell(out) 
                    if all(cellfun(@numel,out)==numel(out{1}))
-                    out =cat(2,out{:});
+                    out =cat(2,out{:}); %trials as columns
                    else
+                       out = out'; % For trials as columns
                        return
                    end
                end
