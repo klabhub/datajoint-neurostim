@@ -160,8 +160,8 @@ classdef C< dj.Computed
             dt = mode(diff(t));
         end
 
-        function varargout = plot(cTbl,channel, expt, grouping,pv)
-            % function out = plot(cTbl,channel, expt, grouping,pv)
+        function varargout = plot(cTbl,pv)
+            % function out = plot(cTbl,pv)
             % Plot time courses, spectra.
             %
             % Each channel will be shown as a
@@ -232,14 +232,13 @@ classdef C< dj.Computed
 
             arguments
                 cTbl (1,1) ns.C {mustHaveRows}
-                channel   % A ns.CChannel or a CChannel based restriction
-                expt (1,1)
-                grouping = []
+                pv.channel   = []  % A ns.CChannel or a CChannel based restriction                
+                pv.grouping = []
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
                 pv.fun = @(x)(x) % A function to apply to the data obtained from ns.C
                 pv.average (1,1) = @(x)(deal(median(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
-                pv.name {mustBeText} = num2str(1:numel(grouping))
+                pv.name {mustBeText} = ""
                 pv.start (1,1) double = 0
                 pv.stop (1,:) double =  inf
                 pv.step  (1,1) double = 0;
@@ -252,112 +251,26 @@ classdef C< dj.Computed
                 pv.fetchOptions {mustBeText} = ''
                 pv.prctileMax (1,1) double {mustBeInRange(pv.prctileMax,0,100)} = 95;
                 % Layout
-                pv.padding string = "tight";
+                pv.padding string = "compact";
                 pv.forceFig  = false
                 pv.useImage = false;
                 % Spectrum options
                 pv.pspectrum cell = {}; % Cell array of parameter value pairs passed to pspectrum
             end
-            exptTpl = fetch(ns.Experiment & expt);
-            % Convert the channel specification to a restriction
-            if isempty(channel)
-                channelRestriction = struct([]);
-            elseif isnumeric(channel)
-                channelRestriction = struct('channel',num2cell(channel(:))');
-            elseif ischar(channel) || isstring(channel) ||iscellstr(channel)
-                channelRestriction = struct('name',cellstr(channel)');
-            elseif isstruct(channel)
-                channelRestriction = channel;
-            end
+            
 
-            % Determine how to group the trials
-            if iscell(grouping)
-                % A cell array of trial numbers with user-specified
-                % groupins
-                trials = grouping;
-                names = pv.name;
-                conditionOrder = 1:numel(grouping);
-                x = 1:numel(grouping);
-            else
-                if isstring(grouping) || ischar(grouping)
-                    groupingRestriction = struct('dimension',grouping);
-                elseif isstruct(grouping)
-                    groupingRestriction  = grouping;
-                else
-                    error('Grouping must be a string or a struct')
-                end
-                % grouping identifies a dimension
-                conditions = (ns.Dimension & groupingRestriction & exptTpl) *ns.DimensionCondition;
-                if ~exists(conditions)
-                    fprintf('No conditions in dimension %s. Nothing to plot.\n',groupingRestriction.dimension);
-                    return
-                end
-                [trials,names,conditionX] = fetchn(conditions,'trials','name','value');
-                conditionX = cat(1,conditionX{:}); % value can have multiple columns; cat along conditions
-                conditionX = cell2mat(conditionX);
-                [x,conditionOrder] =sortrows(conditionX);
-            end
-
-            if ~isempty(pv.trial)
-                trials = cellfun(@(x) intersect(x,pv.trial),trials,'uni',false);
-            end
-            if pv.step==0
-                % Determine native step of ns.C
-                [~,pv.step] = sampleTime(cTbl &expt);
-            end
-
-            nrConditions = numel(trials);
-            nrChannels = count(cTbl*(ns.CChannel & channelRestriction) & expt);
-            % Collect per trial to return
-            if pv.averageOverChannels
-                perTrial =cell(nrConditions,1);
-            else
-                perTrial =cell(nrConditions,nrChannels);
-            end
-            ctag = unique(string([fetch(cTbl&expt,'ctag').ctag]));
-            assert(nrChannels >0,'No matching channels found. Nothing to plot.\n');
-
-            % Loop over Channels
-            [channelNr,channelName] = fetchn((cTbl&expt)*(ns.CChannel&channelRestriction),'channel','name');
-
+            [T,conditionValue,channelNr] = align(cTbl,channel=pv.channel,grouping=pv.grouping,trial=pv.trial, ...
+                            start=pv.start,stop=pv.stop,step=pv.step, interpolation = pv.interpolation,crossTrial =pv.crossTrial,...
+                            average=pv.average,averageOverChannels= pv.averageOverChannels, ...
+                            fun=pv.fun,removeArtifacts =pv.removeArtifacts ,...
+                            align = pv.align,fetchOptions = pv.fetchOptions);
+            nrChannels = numel(channelNr);
+            nrConditions= size(conditionValue,1);
+            exptTpl =fetch(ns.Experiment &cTbl);
+            ctag = fetch1(cTbl,'ctag');
             for channelCntr = 1:nrChannels
-                if isempty(channelName{channelCntr})
-                    thisChannelName= string(channelNr(channelCntr));
-                else
-                    thisChannelName =channelName{channelCntr};
-                end
-                % First, read the data for each condition and store this
-                % locally. Because this takes time and the same data may be
-                % used for multiple "mode"s, this saves time.
-                for c= conditionOrder(:)'
-                    % Loop over conditions in the order specified above
-                    if pv.averageOverChannels || any(contains(pv.mode,"COHERENCE"))
-                        % Fetch all channels at once
-                        fetchOptions = pv.fetchOptions;
-                    else
-                        % Pick the current channel (i.e a row in
-                        % cTbl&expt&channelRestriction  , use pv.fetchOptions
-                        % to force a sort order)
-                        fetchOptions = ['LIMIT 1 OFFSET '  num2str(channelCntr-1) ' ' pv.fetchOptions];
-                    end
-                    if isempty(pv.align)
-                        alignTime = zeros(size(trials{c})); % Align to first frame
-                    elseif numel(pv.align)==1 % Singleton expansion
-                        alignTime = repmat(pv.align,[1 numel(trials{c})]);
-                    else
-                        alignTime = pv.align(trials{c});
-                    end
-
-                    [y,time] = align(cTbl&exptTpl,fun =pv.fun,removeArtifacts = pv.removeArtifacts, channel =channelRestriction, trial=trials{c},fetchOptions= fetchOptions,align = alignTime, crossTrial =pv.crossTrial,start=pv.start,stop=pv.stop,step=pv.step,interpolation =pv.interpolation);
-                    if pv.averageOverChannels
-                        % Average
-                        y = mean(y,3,"omitnan"); % Average over rois
-                    end
-                    if isempty(y);continue;end
-                    % Store the per-trial data (used only by some modes)
-                    perTrial{c,channelCntr} = y;
-                end
-
+                thisChannelName= string(channelNr(channelCntr));
+                
                 % Now analyze the data for this channel
                 for mode= pv.mode
                     % Initialize the y-values, errors and time variables
@@ -377,15 +290,15 @@ classdef C< dj.Computed
                     else
                         layout  = hFig.Children;
                     end
-                    isax= isaxes(layout.Children);
-                    if channelCntr > sum(isax)
+                    hAx = findobj(layout,'Type','axes');                    
+                    if channelCntr > numel(hAx)
                         nexttile;
                     else
-                        axes(layout.Children(isax)) %#ok<LAXES>
+                        axes(hAx(1)) %#ok<LAXES>
                     end
-
-                    for c= conditionOrder(:)'
-                        y = perTrial{c,channelCntr};
+                    nrTrialsPerCondition =nan(1,nrConditions);
+                    for c= 1:nrConditions
+                        [y,time] = timetableToDouble(T{c});
                         % Post-process depending on mode
                         switch upper(mode)
                             case {"TOTAL","EVOKED"}
@@ -406,11 +319,16 @@ classdef C< dj.Computed
                                 [thisM,thisE] = pv.average(pwr); % Average over trials
                                 thisX = freq;
                                 thisM = thisM.*freq;
-                            case {"TIMECOURSE", "RASTER"}
+                            case "TIMECOURSE"
                                 % Average over trials  in the condition
                                 [thisM,thisE] = pv.average(y);
                                 thisX = time;
-                            case "COHERENCE"
+                            case "RASTER"
+                                thisM = y;
+                                nrTrialsPerCondition(c) = size(y,2);
+                                thisE =  [];
+                                thisX = time;
+                            case "COHERENCE"                                
                                 % TODO Determine coherence across channels
                                 y = y- mean(y,1,"omitnan"); % Remove mean
                                 y(isnan(y)) = 0; % Remove nans
@@ -456,20 +374,20 @@ classdef C< dj.Computed
                                 hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
                                 [hh.Color] =deal(h.Color);
                                 ylim([0 nrConditions+1])
-                                set(gca,'yTick',1:nrConditions,'yTickLabel',names(conditionOrder))
-                                xlabel 'Frequency (Hz)'
-                                h =legend(h,names(conditionOrder));
-                                h.Interpreter  = 'None';
+                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionValue)
+                                xlabel 'Frequency (Hz)'                                
                             end
                         case "RASTER"
                             % Using an image to show the time course.
-                            grandMax = max(cellfun(@(x) prctile(x(:),pv.prctileMax ),perTrial(:,channelCntr)));
-                            grandMin = min(cellfun(@(x) prctile(x(:),100-pv.prctileMax ),perTrial(:,channelCntr)));
+                            grandMax = prctile(abs(m(:)),pv.prctileMax );
+                            grandMin = prctile(abs(m(:)),100-pv.prctileMax );                          
                             nrX = numel(allX);
                             cmap = [hot(255);0 0 1];
                             I =[];
-                            for c=conditionOrder
-                                I = cat(2,I,perTrial{c,channelCntr},nan(nrX,1));
+                            trialsSoFar = 0;
+                            for c=1:nrConditions
+                                I = cat(2,I,m(:,trialsSoFar+(1:nrTrialsPerCondition(c))),nan(nrX,1));
+                                trialsSoFar = trialsSoFar+ nrTrialsPerCondition(c);
                             end
                             I = ((I-grandMin)./(grandMax-grandMin))';
                             % Clamp
@@ -480,10 +398,10 @@ classdef C< dj.Computed
                             nrTrials = size(I,1);
                             image(seconds(allX),1:nrTrials, I,'CDataMapping','direct');
                             colormap(cmap)
-                            nrTrialsPerCondition = cellfun(@(x) size(x,2),perTrial(:,channelCntr))+1;
-                            leftEdge = [0; cumsum(nrTrialsPerCondition(1:end-1))];
+                            axis xy
+                            leftEdge = [0 cumsum(nrTrialsPerCondition(1:end-1))];
                             middleOfCondition = leftEdge+nrTrialsPerCondition./2;
-                            set(gca,'yTick',middleOfCondition,'yTickLabel',names(conditionOrder))
+                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionValue)
                             if pv.padding=="tight"
                                 set(gca,'XTick',[]);
                             else
@@ -510,7 +428,7 @@ classdef C< dj.Computed
                             hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
                             [hh.Color] =deal(h.Color);
                             ylim([0 nrConditions+1])
-                            set(gca,'yTick',1:nrConditions,'yTickLabel',names(conditionOrder))
+                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionValue)
                             xlabel 'Time (s)'
                             ylabel 'Response per condition'
 
@@ -583,7 +501,7 @@ classdef C< dj.Computed
 
         end
 
-        function [varargout] = align(tbl,pv)
+        function [T,conditionValue,channelNr] = align(tbl,pv)
             % Function to retrieve trial-based and aligned preprocessed signals.
             %
             % A sample is assigned to a trial if it occurs after the first monitor frame
@@ -686,10 +604,12 @@ classdef C< dj.Computed
                 % groupins
                 trials = pv.grouping;
                 conditionOrder = 1:numel(pv.grouping);
-                x = 1:numel(pv.grouping);
+                conditionValue = 1:numel(pv.grouping);
+                conditionName = string(conditionValue);
             elseif isempty(pv.grouping)
                 trials= {1:exptTpl.nrtrials};% All as one group
-                x =1;
+                conditionValue =1;
+                conditionName = string(conditionValue);
                 conditionOrder =1;
             else
                 if isstring(pv.grouping) || ischar(pv.grouping)
@@ -705,10 +625,10 @@ classdef C< dj.Computed
                     fprintf('No conditions in dimension %s. Nothing to plot.\n',groupingRestriction.dimension);
                     return
                 end
-                [trials,names,conditionX] = fetchn(conditions,'trials','name','value');
+                [trials,conditionName,conditionX] = fetchn(conditions,'trials','name','value');
                 conditionX = cat(1,conditionX{:}); % value can have multiple columns; cat along conditions
                 conditionX = cell2mat(conditionX);
-                [x,conditionOrder] =sortrows(conditionX);
+                [conditionValue,conditionOrder] =sortrows(conditionX);
             end
             if ~isempty(pv.trial)
                 % Limit to the specified trials
@@ -727,13 +647,10 @@ classdef C< dj.Computed
 
             %% Initialize
             if pv.averageOverChannels
-                perTrial =cell(nrConditions,1);
+                tPerCondition =cell(nrConditions,1);
             else
-                perTrial =cell(nrConditions,nrChannels);
+                tPerCondition =cell(nrConditions,nrChannels);
             end
-
-            % Loop over Channels
-
 
 
             tblChannel =ns.CChannel & proj(tbl) & channelRestriction;
@@ -784,7 +701,7 @@ classdef C< dj.Computed
                 end
             end
 
-            %Apply the fun to preprocess/modify the signal (e.g. abs()
+            %Apply the fun to preprocess/modify the signal (e.g. abs())
             signal  = pv.fun(signal);
 
             % Fetch the preprocessing tag. The dimensions in the timetable
@@ -799,11 +716,11 @@ classdef C< dj.Computed
                     % Loop over conditions in the order specified above
 
                     if isempty(pv.align)
-                        alignTime = zeros(size(trials{c})); % Align to first frame
+                        alignTrialTime = zeros(size(trials{c})); % Align to first frame
                     elseif numel(pv.align)==1 % Singleton expansion
-                        alignTime = repmat(pv.align,[1 numel(trials{c})]);
+                        alignTrialTime = repmat(pv.align,[1 numel(trials{c})]);
                     elseif numel(pv.align) == exptTpl.nrtrials
-                        alignTime = pv.align(trials{c});
+                        alignTrialTime = pv.align(trials{c});
                     else
                         error('align can be empty , a singleton, or a vector with times for each trial in the experiment')
                     end
@@ -818,10 +735,10 @@ classdef C< dj.Computed
                     T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
 
                     % Loop over trials to collect the relevant samples
-                    trialOut =false(1,nrTrials);
-
+                    trialOut =false(1,nrTrials);   
+                    alignNsTime = nan(1,nrTrials);
                     for trCntr=1:nrTrials
-                        if isinf(alignTime(trCntr)) || isnan(alignTime(trCntr))
+                        if isinf(alignTrialTime(trCntr)) || isnan(alignTrialTime(trCntr))
                             fprintf('Align even did not occur in trial %d. Skipping trial.\n',trials{c}(trCntr))
                             trialOut(trCntr) = true;
                             continue;
@@ -829,11 +746,11 @@ classdef C< dj.Computed
                         thisTrial =trials{c}(trCntr);
 
                         % Limits if crossTrial is allowed
-                        startLimit =  trialStartTime(thisTrial) + alignTime(trCntr)+pv.start;
-                        stopLimit =  trialStartTime(thisTrial) + alignTime(trCntr)+pv.stop;
+                        startLimit =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.start;
+                        stopLimit =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.stop;
                         if ~pv.crossTrial
                             startLimit =  max(trialStartTime(thisTrial),startLimit); % No samples before trialStartTime(thisTrial)
-                            if thisTrial<nrAllTrials
+                            if thisTrial<exptTpl.nrtrials
                                 stopLimit = min(trialStartTime(thisTrial+1),stopLimit); % No sample after the start of next trial (last trial includes everything until the end of recording).
                             end
                         end
@@ -851,31 +768,26 @@ classdef C< dj.Computed
                         if ixLast<nrSamples
                             staySamples(ixLast+1) =true;
                         end
-
-                        trialTime = t(staySamples)-trialStartTime(thisTrial)- alignTime(trCntr); %Time in the trial
+                        alignNsTime(trCntr) = trialStartTime(thisTrial)+ alignTrialTime(trCntr);
+                        trialTime = t(staySamples)-alignNsTime(trCntr); %
                         thisT = timetable(milliseconds(trialTime),signal(staySamples,:)); % The table for this trial, at the original sampling rate.
                         % Now retime the table to the new time axis. Never extrapolation
                         thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
                         T.(varNames(trCntr)) = table2array(thisT);
                     end
-                    T(:,trialOut) = [];
-                    perTrial{c} =T;
+                    T(:,trialOut) = [];                   
+                    T= addprop(T,["alignTime" ],repmat("variable",[1 1]));
+                    T.Properties.CustomProperties.alignTime = alignNsTime;
+                    tPerCondition{c} =T;
                 end
 
             end
 
-
-
-            % Return as doubles or as timetable.
-            if nargout >=2
-                [varargout{1},varargout{2}] = timetableToDouble(T);
-                if nargout >2
-                    nsClockTime = trialMap.trialstart(~trialOut) + repmat(seconds(T.Time),[1 sum(~trialOut)]);
-                    varargout{3} = nsClockTime;
-                end
+            if nrConditions==1
+                % Only one condition requested, return the timetable.
+                T = tPerCondition{1};
             else
-                varargout{1} =T;
-                T.Properties.DimensionNames = {'TrialTime',tag};
+                T = tPerCondition;
             end
         end
     end
