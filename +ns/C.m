@@ -643,7 +643,9 @@ classdef C< dj.Computed
             arguments
                 tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
                 pv.fetchOptions {mustBeText} = ''
-                pv.channel (1,:)  =[]   % The channel number (as a vector of double) or name (cellstr or string, char)
+                pv.channel  =[]   %
+                pv.grouping = []
+                pv.averageOverChannels (1,1) logical =false
                 pv.fun (1,1) function_handle = @(x)(x)  % A function to apply to the data
                 pv.trial (1,:) double = []
                 pv.start (1,1) double = 0
@@ -655,48 +657,85 @@ classdef C< dj.Computed
                 pv.removeArtifacts (1,1) = true
             end
 
-            %% Collect data from dbase and check consistency
+            % Expt info.
+            exptTpl = fetch(ns.Experiment & tbl,'nrtrials');
+            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
             [t,dt] = sampleTime(tbl);
             if pv.step==0
                 pv.step = dt;
             end
-            nrAllTrials = fetch1(ns.Experiment*tbl,'nrtrials');
-            allTrials = 1:nrAllTrials;
-            if isempty(pv.trial)
-                trials = allTrials; % All trials
-            else
-                trials = intersect(pv.trial,allTrials);
-            end
 
-            % trial time zero in NS for each trial
-            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
 
-            if isinf(pv.stop)
-                if ~pv.crossTrial
-                    % use maximum trial duration to setup the T table
-                    pv.stop = max(diff(trialStartTime(trials)));
-                else
-                    error('''stop'' cannot be inf when crossTrial =true')
-                end
-            end
-            if isempty(pv.align)
-                pv.align = zeros(size(trials)); % Align to first frame
-            elseif numel(pv.align)==1 % Singleton expansion
-                pv.align = repmat(pv.align,[1 numel(trials)]);
-            else
-                assert(numel(pv.align)==numel(trials),'Each trial should have an align time ')
-            end
-            % Retrieve the signal for the requested channels in the entire experiment
-            % [nrSamples nrTrials]
+            %% Convert the channel specification to a restriction
             if isempty(pv.channel)
                 channelRestriction = struct([]);
             elseif isnumeric(pv.channel)
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             elseif ischar(pv.channel) || isstring(pv.channel) ||iscellstr(pv.channel)
-                channelRestriction = struct('name',cellstr(pv.channel)');
-            else
+                channelRestriction = struct('name',cellstr(channel)');
+            elseif isstruct(pv.channel)
                 channelRestriction = pv.channel;
             end
+            nrChannels = count(tbl*(ns.CChannel & channelRestriction) & exptTpl);
+            assert(nrChannels >0,'No matching channels found. Nothing to do.\n');
+            [channelNr,channelName] = fetchn((tbl&exptTpl)*(ns.CChannel&channelRestriction),'channel','name');
+
+            %% Group and select trials
+            if iscell(pv.grouping)
+                % A cell array of trial numbers with user-specified
+                % groupins
+                trials = pv.grouping;
+                conditionOrder = 1:numel(pv.grouping);
+                x = 1:numel(pv.grouping);
+            elseif isempty(pv.grouping)
+                trials= {1:exptTpl.nrtrials};% All as one group
+                x =1;
+                conditionOrder =1;
+            else
+                if isstring(pv.grouping) || ischar(pv.grouping)
+                    groupingRestriction = struct('dimension',pv.grouping);
+                elseif isstruct(pv.grouping)
+                    groupingRestriction  = pv.grouping;
+                else
+                    error('Grouping must be a string or a struct')
+                end
+                % grouping identifies a dimension
+                conditions = (ns.Dimension & groupingRestriction & exptTpl) *ns.DimensionCondition;
+                if ~exists(conditions)
+                    fprintf('No conditions in dimension %s. Nothing to plot.\n',groupingRestriction.dimension);
+                    return
+                end
+                [trials,names,conditionX] = fetchn(conditions,'trials','name','value');
+                conditionX = cat(1,conditionX{:}); % value can have multiple columns; cat along conditions
+                conditionX = cell2mat(conditionX);
+                [x,conditionOrder] =sortrows(conditionX);
+            end
+            if ~isempty(pv.trial)
+                % Limit to the specified trials
+                trials = cellfun(@(x) intersect(x,pv.trial),trials,'uni',false);
+            end
+            nrConditions = numel(trials);
+            if isinf(pv.stop)
+                if ~pv.crossTrial
+                    % use maximum trial duration to setup the T table
+                    pv.stop = max(diff(trialStartTime));
+                else
+                    error('''stop'' cannot be inf when crossTrial =true')
+                end
+            end
+
+
+            %% Initialize
+            if pv.averageOverChannels
+                perTrial =cell(nrConditions,1);
+            else
+                perTrial =cell(nrConditions,nrChannels);
+            end
+
+            % Loop over Channels
+
+
+
             tblChannel =ns.CChannel & proj(tbl) & channelRestriction;
             if ~isempty(pv.fetchOptions)
                 channelTpl = fetch(tblChannel,'signal',pv.fetchOptions);
@@ -749,64 +788,84 @@ classdef C< dj.Computed
             signal  = pv.fun(signal);
 
             % Fetch the preprocessing tag. The dimensions in the timetable
-            % will be named after this.
-            tag = fetch1(ns.CParm & tbl,'ctag');
+            % will be named after this.           
             %% Align
             if nrSamples==0||nrChannels==0
                 T= timetable; % Empty
             else
-                % Setup the new time axis for the results
-                newTimes = milliseconds(pv.start:pv.step:pv.stop)';
-                nrTimes  = numel(newTimes);
 
-                % Create a timetable with the activity per trial
-                nrTrials = numel(trials);
-                varNames = "Trial" + string(trials);
-                T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
+                % Read the data for each condition
+                for c= conditionOrder(:)'
+                    % Loop over conditions in the order specified above
 
-                % Loop over trials to collect the relevant samples
-                trialOut =false(1,nrTrials);
-
-                for trCntr=1:nrTrials
-                    if isinf(pv.align(trCntr)) || isnan(pv.align(trCntr))
-                        fprintf('Align even did not occur in trial %d. Skipping trial.\n',trials(trCntr))
-                        trialOut(trCntr) = true;
-                        continue;
+                    if isempty(pv.align)
+                        alignTime = zeros(size(trials{c})); % Align to first frame
+                    elseif numel(pv.align)==1 % Singleton expansion
+                        alignTime = repmat(pv.align,[1 numel(trials{c})]);
+                    elseif numel(pv.align) == exptTpl.nrtrials
+                        alignTime = pv.align(trials{c});
+                    else
+                        error('align can be empty , a singleton, or a vector with times for each trial in the experiment')
                     end
-                    thisTrial =trials(trCntr);
 
-                    % Limits if crossTrial is allowed
-                    startLimit =  trialStartTime(thisTrial) + pv.align(trCntr)+pv.start;
-                    stopLimit =  trialStartTime(thisTrial) + pv.align(trCntr)+pv.stop;
-                    if ~pv.crossTrial
-                        startLimit =  max(trialStartTime(thisTrial),startLimit); % No samples before trialStartTime(thisTrial)
-                        if thisTrial<nrAllTrials
-                            stopLimit = min(trialStartTime(thisTrial+1),stopLimit); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                    % Setup the new time axis for the results
+                    newTimes = milliseconds(pv.start:pv.step:pv.stop)';
+                    nrTimes  = numel(newTimes);
+
+                    % Create a timetable with the activity per trial
+                    nrTrials = numel(trials{c});
+                    varNames = "Trial" + string(trials{c});
+                    T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
+
+                    % Loop over trials to collect the relevant samples
+                    trialOut =false(1,nrTrials);
+
+                    for trCntr=1:nrTrials
+                        if isinf(alignTime(trCntr)) || isnan(alignTime(trCntr))
+                            fprintf('Align even did not occur in trial %d. Skipping trial.\n',trials{c}(trCntr))
+                            trialOut(trCntr) = true;
+                            continue;
                         end
-                    end
-                    staySamples = t >= startLimit & t < stopLimit;
+                        thisTrial =trials{c}(trCntr);
 
-                    % Unless the first stay sample is exactly at
-                    % trialstart, the first sample in the new table will be
-                    % NaN. To circumvent this, add one sample before (and
-                    % after) the range we identified.
-                    ixFirst = find(staySamples,1,'first');
-                    if ixFirst>1
-                        staySamples(ixFirst-1) =true;
-                    end
-                    ixLast= find(staySamples,1,'last');
-                    if ixLast<nrSamples
-                        staySamples(ixLast+1) =true;
-                    end
+                        % Limits if crossTrial is allowed
+                        startLimit =  trialStartTime(thisTrial) + alignTime(trCntr)+pv.start;
+                        stopLimit =  trialStartTime(thisTrial) + alignTime(trCntr)+pv.stop;
+                        if ~pv.crossTrial
+                            startLimit =  max(trialStartTime(thisTrial),startLimit); % No samples before trialStartTime(thisTrial)
+                            if thisTrial<nrAllTrials
+                                stopLimit = min(trialStartTime(thisTrial+1),stopLimit); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                            end
+                        end
+                        staySamples = t >= startLimit & t < stopLimit;
 
-                    trialTime = t(staySamples)-trialStartTime(thisTrial)- pv.align(trCntr); %Time in the trial
-                    thisT = timetable(milliseconds(trialTime),signal(staySamples,:)); % The table for this trial, at the original sampling rate.
-                    % Now retime the table to the new time axis. Never extrapolation
-                    thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
-                    T.(varNames(trCntr)) = table2array(thisT);
+                        % Unless the first stay sample is exactly at
+                        % trialstart, the first sample in the new table will be
+                        % NaN. To circumvent this, add one sample before (and
+                        % after) the range we identified.
+                        ixFirst = find(staySamples,1,'first');
+                        if ixFirst>1
+                            staySamples(ixFirst-1) =true;
+                        end
+                        ixLast= find(staySamples,1,'last');
+                        if ixLast<nrSamples
+                            staySamples(ixLast+1) =true;
+                        end
+
+                        trialTime = t(staySamples)-trialStartTime(thisTrial)- alignTime(trCntr); %Time in the trial
+                        thisT = timetable(milliseconds(trialTime),signal(staySamples,:)); % The table for this trial, at the original sampling rate.
+                        % Now retime the table to the new time axis. Never extrapolation
+                        thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
+                        T.(varNames(trCntr)) = table2array(thisT);
+                    end
+                    T(:,trialOut) = [];
+                    perTrial{c} =T;
                 end
-                T(:,trialOut) = [];
+
             end
+
+
+
             % Return as doubles or as timetable.
             if nargout >=2
                 [varargout{1},varargout{2}] = timetableToDouble(T);
