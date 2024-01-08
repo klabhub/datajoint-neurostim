@@ -590,7 +590,7 @@ classdef C< dj.Computed
             elseif isnumeric(pv.channel)
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             elseif ischar(pv.channel) || isstring(pv.channel) ||iscellstr(pv.channel)
-                channelRestriction = struct('name',cellstr(channel)');
+                channelRestriction = struct('name',cellstr(pv.channel)');
             elseif isstruct(pv.channel)
                 channelRestriction = pv.channel;
             end
