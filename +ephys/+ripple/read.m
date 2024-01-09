@@ -25,6 +25,7 @@ switch upper(parms.type)
     case {'EEG'}
         label = 'hi-res';
     case {'BREAKOUT'}
+        label = ''
     case {'DIGIN'}
 
 end
@@ -69,29 +70,15 @@ clockParms = matchRiplleNeurostim(trialBitTime(:),trialBitValue(:),trialStartTim
 
 if strcmpi(parms.type,'DIGIN')
     % Read digital bit inputs.
-    nrBits =numel(parms.channels);
-    signal = cell(1,nrBits);
-    time = cell(1,nrBits);
-    channelInfo=cell(nrBits,1);
-    recordingInfo=cell(nrBits,1);
-    for b= 1:nrBits
         eventIx  = find(ismember({entities.EntityType},'Event'));
-        expression = ['\<SMA\s*' num2str(parms.channels(b))];
+        expression = ['\<SMA\s*' num2str(parms.channel)];
         bitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
         [errCode,rippleBitTime,bitValue] = ns_GetEventData(hFile, eventIx(bitEntityIx  ), 1:entities(eventIx(bitEntityIx  )).Count);
         if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
-        signal{b} = bitValue';
-        time{b} =1000*polyval(clockParms,rippleBitTime);
-        if iscell(parms.name) 
-            thisName =parms.name{b};
-        elseif isstring(parms.name)
-            thisName =parms.name(b);
-        else
-            thisName =parms.name;
-        end
-        channelInfo{b} = struct('name',thisName,'nr',parms.channels(b));
-        recordingInfo{b} = struct;
-    end
+        signal = bitValue';
+        time =1000*polyval(clockParms,rippleBitTime);        
+        channelInfo = struct('name',parms.name,'nr',parms.channel);
+        recordingInfo = struct;    
 else
     % An analog channel
     %% Find relevant channels

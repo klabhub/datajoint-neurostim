@@ -604,7 +604,7 @@ classdef C< dj.Computed
                 % groupins
                 trials = pv.grouping;
                 conditionOrder = 1:numel(pv.grouping);
-                conditionValue = 1:numel(pv.grouping);
+                conditionValue = (1:numel(pv.grouping))';
                 conditionName = string(conditionValue);
             elseif isempty(pv.grouping)
                 trials= {1:exptTpl.nrtrials};% All as one group

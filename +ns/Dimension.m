@@ -35,6 +35,60 @@ description = NULL :varchar(1024)   #   A brief description
 %
 % See also ns.Tuning
 classdef Dimension < dj.Manual
+    methods (Access=public)
+        function [trials,values] = combine(d,dimNames)
+            % Factorial combination of multiple dimensions
+            % Returns a cell array with trial numbers that correspond ot
+            % the factorial combination of the dimension d with the
+            % dimensions whose names are specified as dimNames. 
+            %
+            % EXAMPLE
+            %   Create a single row table for the dimension current
+            %   dim = ns.Dimension & expt & 'dimension=''current'''                    
+            % Now cross this dimension with the 'stimChannel' dimension
+            %   trials= combine(dim,'stimChannel')
+            % For an experiment with 5 current levels and 2 stimulation
+            % channels this will return a 5x2 cell array where element
+            % (i,j) contains the trials in which the ith current was
+            % applied to the the jth channel.       
+            % The function also returns the values of each of the
+            % conditions, values(3,2) is a cell array with the value
+            % assigned to the third condition in the first dimension and
+            % the second condition in the second dimension. (i.e. it
+            % matches the layout of the trials output).
+            arguments
+                d (1,1) {mustHaveRows(d,1)}                
+            end
+            arguments (Repeating)
+                dimNames (1,1) string
+            end
+   
+            nrDims = 1+numel(dimNames);
+            dimTrials = cell(1,nrDims);
+            dimValue = cell(1,nrDims);
+            %  Get the info from the main dimension ; this determines the
+            %  experiment
+            [dimTrials{1},dimValue{1}]  = fetchn(d*ns.DimensionCondition,'trials','value');            
+            dTpl = fetch(d); % Only considering the same expt as d
+            for i=1:nrDims-1
+                dTpl.dimension = char(dimNames{i});
+                % Fetch each dimension 
+                [dimTrials{i+1},dimValue{i+1}]  = fetchn((ns.Dimension&dTpl)*ns.DimensionCondition,'trials','value');
+            end
+            % Check what we have
+            nrConditions = cellfun(@numel,dimTrials);
+            trials =cell(nrConditions);
+            values =cell(nrConditions);
+            subs = cell(1,nrDims);
+            % Use indexing/subscriptint to combine factorially across an arbitrary number of dimensions 
+            for i=1:prod(nrConditions)
+                [subs{:}] =ind2sub(nrConditions,i);
+                thisTrials = cellfun(@(d,r)(dimTrials{d}{r}),num2cell(1:nrDims),subs,'uni',false);                                
+                trials{i} = intersect(thisTrials{:});% Keep trials that occur in each dimension
+                values{i} = cellfun(@(d,r)(dimValue{d}{r}{1}),num2cell(1:nrDims),subs,'uni',false);                                
+            end
+        end
+    end
     methods (Static)
         function define(expt,plg,prm,name,pv)
             arguments
