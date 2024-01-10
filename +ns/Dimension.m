@@ -36,7 +36,7 @@ description = NULL :varchar(1024)   #   A brief description
 % See also ns.Tuning
 classdef Dimension < dj.Manual
     methods (Access=public)
-        function [trials,values] = combine(d,dimNames)
+        function [trials,values] = combine(d,dimension,restriction)
             % Factorial combination of multiple dimensions
             % Returns a cell array with trial numbers that correspond ot
             % the factorial combination of the dimension d with the
@@ -60,10 +60,11 @@ classdef Dimension < dj.Manual
                 d (1,1) {mustHaveRows(d,1)}                
             end
             arguments (Repeating)
-                dimNames (1,1) string
+                dimension (1,1) string
+                restriction (1,1) string
             end
    
-            nrDims = 1+numel(dimNames);
+            nrDims = 1+numel(dimension);
             dimTrials = cell(1,nrDims);
             dimValue = cell(1,nrDims);
             %  Get the info from the main dimension ; this determines the
@@ -71,9 +72,9 @@ classdef Dimension < dj.Manual
             [dimTrials{1},dimValue{1}]  = fetchn(d*ns.DimensionCondition,'trials','value');            
             dTpl = fetch(d); % Only considering the same expt as d
             for i=1:nrDims-1
-                dTpl.dimension = char(dimNames{i});
+                dTpl.dimension = char(dimension{i});
                 % Fetch each dimension 
-                [dimTrials{i+1},dimValue{i+1}]  = fetchn((ns.Dimension&dTpl)*ns.DimensionCondition,'trials','value');
+                [dimTrials{i+1},dimValue{i+1}]  = fetchn((ns.Dimension&dTpl)*(ns.DimensionCondition & restriction{i}),'trials','value');
             end
             % Check what we have
             nrConditions = cellfun(@numel,dimTrials);
@@ -87,6 +88,10 @@ classdef Dimension < dj.Manual
                 trials{i} = intersect(thisTrials{:});% Keep trials that occur in each dimension
                 values{i} = cellfun(@(d,r)(dimValue{d}{r}{1}),num2cell(1:nrDims),subs,'uni',false);                                
             end
+            out= cellfun(@isempty,trials,'uni',true);
+            rowOut = all(out,2:nrDims);
+            trials(rowOut,:) = [];
+            values(rowOut,:)=[];                
         end
     end
     methods (Static)

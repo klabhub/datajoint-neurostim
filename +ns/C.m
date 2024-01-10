@@ -73,15 +73,20 @@ classdef C< dj.Computed
     end
 
     methods
-        function [time,trial] = eventTrialTime(tbl,pv)
+        function [time,trial,value] = eventTrialTime(tbl,pv)
             arguments
                 tbl (1,1) ns.C
                 pv.mode (1,1) string {mustBeMember(pv.mode,["AFTER" "BEFORE" "NEAREST"])} = "AFTER"
+                pv.value  (1,:) double = NaN
             end
-            for tpl = fetch(tbl,'time','nrsamples')'
+            for tpl = fetch(tbl*ns.CChannel,'time','nrsamples','signal')'
                 zeroTime = get(ns.Experiment & tpl,'cic','prm','firstFrame','what','clocktime');
-
-                dt = tpl.time- zeroTime';
+                if ~isnan(pv.value(1))
+                    stay = ismember(tpl.signal,pv.value);
+                else
+                    stay = true(size(tpl.time));
+                end
+                dt = tpl.time(stay)- zeroTime';
                 modDt = dt;
                 if pv.mode =="NEAREST"
                     modDt = abs(modDt);
@@ -92,8 +97,9 @@ classdef C< dj.Computed
                 end
                 % For each event find the closest firstframe eventtime
                 [~,trial] = min(modDt,[],2);
-                ix = sub2ind(size(dt),(1:tpl.nrsamples)',trial);
+                ix = sub2ind(size(dt),(1:sum(stay))',trial);
                 time = dt(ix);
+                value =tpl.signal(stay);
             end
 
         end
@@ -265,6 +271,11 @@ classdef C< dj.Computed
                             fun=pv.fun,removeArtifacts =pv.removeArtifacts ,...
                             align = pv.align,fetchOptions = pv.fetchOptions);
             nrChannels = numel(channelNr);
+            if isa(T,"timetable");T={T};end
+            out= cellfun(@isempty,T);
+            T(out) = [];
+            conditionValue(out)=[];
+
             nrConditions= size(conditionValue,1);
             exptTpl =fetch(ns.Experiment &cTbl);
             ctag = fetch1(cTbl,'ctag');
@@ -297,7 +308,7 @@ classdef C< dj.Computed
                         axes(hAx(1)) %#ok<LAXES>
                     end
                     nrTrialsPerCondition =nan(1,nrConditions);
-                    for c= 1:nrConditions
+                    for c= 1:nrConditions                        
                         [y,time] = timetableToDouble(T{c});
                         % Post-process depending on mode
                         switch upper(mode)
@@ -399,8 +410,9 @@ classdef C< dj.Computed
                             image(seconds(allX),1:nrTrials, I,'CDataMapping','direct');
                             colormap(cmap)
                             axis xy
-                            leftEdge = [0 cumsum(nrTrialsPerCondition(1:end-1))];
-                            middleOfCondition = leftEdge+nrTrialsPerCondition./2;
+                            nrLinesPerCondition = nrTrialsPerCondition+1; % Marker to separate conditions
+                            leftEdge = [0 cumsum(nrLinesPerCondition(1:end-1))];
+                            middleOfCondition = leftEdge+nrLinesPerCondition./2;
                             set(gca,'yTick',middleOfCondition,'yTickLabel',conditionValue)
                             if pv.padding=="tight"
                                 set(gca,'XTick',[]);
@@ -440,12 +452,9 @@ classdef C< dj.Computed
                 title(sprintf('Channel: %s',thisChannelName))
             end
             if nargout>0
-                varargout{1} =perTrial;
+                varargout{1} =m;
                 if nargout>1
-                    varargout{2} = x;
-                    if nargout >2
-                        varargout{3} = allX;
-                    end
+                    varargout{2} = allX;                    
                 end
             end
         end

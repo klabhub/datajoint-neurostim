@@ -50,10 +50,12 @@ entities = [hFile.Entity];
 % The Neurostim ripple plugin sets the digital out of the NIP and generates a trialStart event
 % We use this to synchronize the clocks
 prms  = get(ns.Experiment & key,{'cic','ripple'});
-% The first event is the correct one.. (sic)
+% The second event in each trial is the one to keep
+keep = find([true;diff(prms.ripple.trialStartTrial)>0])+1;
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
-trialStartTimeNeurostim  = prms.ripple.trialStartNsTime(find([true;diff(prms.ripple.trialStartTrial)>0])+1)/1000;
+trialStartTimeNeurostim  = prms.ripple.trialStartNsTime(keep)/1000;% Seconds
+trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialStartTime(keep)/1000;% Seconds
 % Find wich bit stored the trialStartEvent and get the time on the NIP
 bit = unique(get(ns.Experiment & key,'ripple','prm','trialBit','atTrialTime',0));
 eventIx  = find(ismember({entities.EntityType},'Event'));
@@ -70,15 +72,15 @@ clockParms = matchRiplleNeurostim(trialBitTime(:),trialBitValue(:),trialStartTim
 
 if strcmpi(parms.type,'DIGIN')
     % Read digital bit inputs.
-        eventIx  = find(ismember({entities.EntityType},'Event'));
-        expression = ['\<SMA\s*' num2str(parms.channel)];
-        bitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
-        [errCode,rippleBitTime,bitValue] = ns_GetEventData(hFile, eventIx(bitEntityIx  ), 1:entities(eventIx(bitEntityIx  )).Count);
-        if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
-        signal = bitValue';
-        time =1000*polyval(clockParms,rippleBitTime);        
-        channelInfo = struct('name',parms.name,'nr',parms.channel);
-        recordingInfo = struct;    
+    eventIx  = find(ismember({entities.EntityType},'Event'));
+    expression = ['\<SMA\s*' num2str(parms.channel)];
+    bitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
+    [errCode,rippleBitTime,bitValue] = ns_GetEventData(hFile, eventIx(bitEntityIx  ), 1:entities(eventIx(bitEntityIx  )).Count);
+    if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
+    signal = bitValue';
+    time =1000*polyval(clockParms,rippleBitTime);
+    channelInfo = struct('name',parms.name,'nr',parms.channel);
+    recordingInfo = struct;
 else
     % An analog channel
     %% Find relevant channels
@@ -127,7 +129,6 @@ else
                 [signal(:,thisChunk),timeRipple] = ephys.multiUnitActivityEnvelope(raw,rawTime,"parms",parms);
                 fprintf('Done in %d seconds.\n.',round(toc))
             end
-
         case 'RAW'
             for i=1:nrChannels
                 [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
@@ -137,7 +138,7 @@ else
             timeRipple = ((0:nrSamples-1)'/samplingRate);
             fprintf('Reading RAW channel %d to %d from file ...',entities(entityIx(1)).ElectrodeID,entities(entityIx(end)).ElectrodeID)
             [errCode, signal] = ns_GetAnalogDataBlock(hFile, entityIx, 1, nrSamples,'scale');
-            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end            
+            if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
         case {'EEG','LFP'}
             for i=1:nrChannels
                 [errCode, channelInfo(i)] = ns_GetAnalogInfo(hFile, entityIx(i)); %#ok<AGROW>
@@ -150,16 +151,6 @@ else
             [errCode, signal] = ns_GetAnalogDataBlock(hFile,  entityIx, 1, nrSamples,'scale');
             if ~strcmpi(errCode,'ns_OK');error('ns_GetAnalogDataBlock failed with %s', errCode);end
             fprintf('Done in %d seconds.\n.',round(toc))
-            %% Filtering
-            if isfield(parms,'designfilt') && ~isempty(parms.designfilt)
-                tic
-                fprintf('Applying filter (designfilt)... ')
-                d = designfilt(parms.designfilt{:});
-                signal = filtfilt(d,signal);
-                fprintf('Done in %d seconds.\n.',round(toc))
-            end
-
-
         case 'SPIKES'
             error('Ripple preprocessing for %s has not been implemented yet.',parms.type)
         otherwise
@@ -170,25 +161,44 @@ else
     time =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime (in seconds)
 
     recordingInfo = struct;  % nothing yet.
-    % Regualr sampling so reduce time representation and conver to ms.
+
+
+    if isfield(parms,'downsample')
+        tic
+        fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);
+        R=  round(samplingRate/parms.downsample);
+        nrSamples = ceil(nrSamples/R);
+        tmp = nan(nrSamples,nrChannels);
+        for ch = 1:nrChannels
+            tmp(:,ch) =  decimate(signal(:,ch),R);
+        end
+        signal =tmp;
+        time = linspace(time(1),time(end),nrSamples)';
+        fprintf('Done in %d seconds.\n.',round(toc));
+        samplingRate = parms.downsample;
+
+    end
+
+    %% Notch, Bandpass,etc.
+    if isfield(parms,'designfilt')
+        fn = fieldnames(parms.designfilt);
+        for i=1:numel(fn)
+            tic;
+            fprintf('Applying filter (designfilt.%s)...',fn{i})
+            prms= parms.designfilt.(fn{i});
+            d = designfilt(prms{:},'SampleRate',samplingRate);
+            signal = filtfilt(d,signal);
+            fprintf('Done in %d seconds.\n.',round(toc))
+        end
+    end
+
+    % Regualr sampling so reduce time representation and convert to ms.
     time = [1000*time(1) 1000*time(end) nrSamples];
     % Reduce storage (ns.C.align converts back to double
     signal  = single(signal);
     ch = num2cell(parms.channels);
     [channelInfo.nr] = deal(ch{:});
-    % if strcmpi(parms.type,'RAW')
-    %     % Split the channels up to avoid sending too much data to the sql
-    %     % server at the same time and instead send one channel at a time
-    %     % (in ns.C)
-    %     signal = num2cell(signal,1);
-    %     time = repmat({time},[1 nrChannels]);
-    %     recordingInfo = repmat({recordingInfo},[1 nrChannels]);
-    %     tmp = cell(1,nrChannels);
-    %     for c=1:nrChannels
-    %         tmp{c} = channelInfo(c);
-    %     end
-    %     channelInfo = tmp;
-    % end
+
 end
 ns_CloseFile(hFile);
 
