@@ -240,6 +240,7 @@ classdef C< dj.Computed
                 cTbl (1,1) ns.C {mustHaveRows}
                 pv.channel   = []  % A ns.CChannel or a CChannel based restriction                
                 pv.grouping = []
+                pv.groupingName = {};
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
                 pv.fun = @(x)(x) % A function to apply to the data obtained from ns.C
@@ -265,7 +266,7 @@ classdef C< dj.Computed
             end
             
 
-            [T,conditionValue,channelNr] = align(cTbl,channel=pv.channel,grouping=pv.grouping,trial=pv.trial, ...
+            [T,conditionName,channelNr] = align(cTbl,channel=pv.channel,grouping=pv.grouping,trial=pv.trial, ...
                             start=pv.start,stop=pv.stop,step=pv.step, interpolation = pv.interpolation,crossTrial =pv.crossTrial,...
                             average=pv.average,averageOverChannels= pv.averageOverChannels, ...
                             fun=pv.fun,removeArtifacts =pv.removeArtifacts ,...
@@ -274,9 +275,13 @@ classdef C< dj.Computed
             if isa(T,"timetable");T={T};end
             out= cellfun(@isempty,T);
             T(out) = [];
-            conditionValue(out)=[];
+            conditionName(out)=[];
+            if ~isempty(pv.groupingName)
+                conditionName =pv.groupingName;
+            end
+                
 
-            nrConditions= size(conditionValue,1);
+            nrConditions= size(conditionName,1);
             exptTpl =fetch(ns.Experiment &cTbl);
             ctag = fetch1(cTbl,'ctag');
             for channelCntr = 1:nrChannels
@@ -385,7 +390,7 @@ classdef C< dj.Computed
                                 hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
                                 [hh.Color] =deal(h.Color);
                                 ylim([0 nrConditions+1])
-                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionValue)
+                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
                                 xlabel 'Frequency (Hz)'                                
                             end
                         case "RASTER"
@@ -413,7 +418,7 @@ classdef C< dj.Computed
                             nrLinesPerCondition = nrTrialsPerCondition+1; % Marker to separate conditions
                             leftEdge = [0 cumsum(nrLinesPerCondition(1:end-1))];
                             middleOfCondition = leftEdge+nrLinesPerCondition./2;
-                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionValue)
+                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionName)
                             if pv.padding=="tight"
                                 set(gca,'XTick',[]);
                             else
@@ -440,7 +445,7 @@ classdef C< dj.Computed
                             hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
                             [hh.Color] =deal(h.Color);
                             ylim([0 nrConditions+1])
-                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionValue)
+                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
                             xlabel 'Time (s)'
                             ylabel 'Response per condition'
 

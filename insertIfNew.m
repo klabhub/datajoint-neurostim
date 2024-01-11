@@ -3,10 +3,12 @@ function insertIfNew(tbl,tpl)
 
 arguments
     tbl (1,1) 
-    tpl (1,1) struct
+    tpl (:,:) struct
 end
 
-key = ns.stripToPrimary(tbl,tpl);
-if count(tbl&key)==0
-    insert(tbl,tpl)
+for i=1:numel(tpl)
+    key = ns.stripToPrimary(tbl,tpl(i));
+    if count(tbl&key)==0
+        insert(tbl,tpl(i))
+    end
 end
