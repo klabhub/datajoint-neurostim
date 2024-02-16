@@ -4,4 +4,5 @@ function T = fetchtable(varargin)
 
 tuples= fetch(varargin{:});
 T = struct2table(tuples,'AsArray',true);
+T= convertvars(T,@iscellstr,"string");
 end
