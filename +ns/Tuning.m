@@ -194,7 +194,7 @@ classdef Tuning <dj.Computed
             % Get the spikes for all trials (some may not be part of this
             % condition group)
             [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
-            spk =spk(1,:);
+            spk =spk{1,:};
             xValue= [conditions.value];
             if iscell(xValue)
                 xValue = [xValue{:}];
@@ -226,6 +226,7 @@ classdef Tuning <dj.Computed
             % Extract baseline (use only trials that are alos used for the
             % tuning).
             [spkBaseline,~] = align(ns.C&key,channel=key.channel,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation);
+            spkBaseline = spkBaseline{1,:};
             baseline = mean(spkBaseline(stayTrials),"all","omitnan");
             baselineStd = std(spkBaseline(stayTrials),0,"all","omitnan");
 
