@@ -1,4 +1,4 @@
-function pk = stripToPrimary(tbl,key)
+function key = stripToPrimary(tbl,key)
 % Based on a key struct that may have additional fields, strip all fields that are
 % not part of this tables primary key. 
 % INPUT
@@ -9,8 +9,9 @@ function pk = stripToPrimary(tbl,key)
 % pk - Struct with only keys that are primary key values.
 %
 pk  = tbl.primaryKey;
-[~,haveKeys] =intersect(pk,fieldnames(key));
-pk = pk(haveKeys);
-vals =cellfun(@(pv) (key.(pv)),pk,'uni',false);
-pk = cell2struct(vals',pk);
+notPK  =setdiff(fieldnames(key),pk);
+if ~isempty(notPK)
+    key = rmfield(key,notPK);
+end
+end
             

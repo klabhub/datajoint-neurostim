@@ -1,11 +1,11 @@
 %{
 # Subject information
-subject: varchar(50) # Code or number that identifies a subject 
+subject                     : varchar(50)                   # Code or number that identifies a subject
 ---
-sex = NULL : enum('M','F')          # biological sex
-gender = NULL : enum('M','F','N')  # gender 
-dob = NULL : date                   # date of birth (ISO 8601)
-species = NULL : enum('Human','Mouse','Macaque') # Species
+sex=null                    : enum('M','F')                 # biological sex
+gender=null                 : enum('M','F','N')             # gender
+dob=null                    : date                          # date of birth (ISO 8601)
+species=null                : varchar(50)                    # Species
 %}
 % BK  - April 2022
 classdef Subject < dj.Manual
