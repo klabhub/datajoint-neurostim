@@ -19,6 +19,6 @@ end
 % Combine and sort
 keyT =addvars(keyT,tablename,status,message,errfile, stack,timestamp);
 keyT = convertvars(keyT,@iscellstr,'string');
-keyT = movevars(keyT,["errfile","message"],"Before","starttime");
+keyT = movevars(keyT,["errfile","message"],"Before",1);
 keyT = sortrows(keyT,"timestamp","descend");
 end

@@ -64,11 +64,11 @@ classdef File < dj.Imported
                         end
                     end
                 end
-                if nargout==0
-                    groupcounts(T,"exists")
-                else
-                    out =T;
-                end
+            end
+            if nargout==0
+                groupcounts(T,"exists")
+            else
+                out =T;
             end
         end
 
@@ -134,7 +134,7 @@ classdef File < dj.Imported
     methods (Static)
         function md5Hash = checksum(ff)
             % Determine the MD5 checksum of a , using a JAVA library
-            % Returns all zeros ifthe file does not exist.
+            % Returns all zeros if the file does not exist.
             mdLibrary = java.security.MessageDigest.getInstance('MD5');
             if exist(ff,"file")
                 d= dir(ff);
