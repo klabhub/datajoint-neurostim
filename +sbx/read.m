@@ -22,18 +22,14 @@ if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     make(sbx.Preprocessed,ns.stripToPrimary(sbx.Preprocessed,key),parms)
 end
 
-
-
-
 % Read the npy results from the suit2p folder and store them in
 % the table.
-
-
 %% Determine nstime of each frame in this session
 thisSession =(ns.Session & key);
 allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+analyzeExptThisSession = allExptThisSession & (ns.ExperimentMeta &allExptThisSession & 'meta_name="analyze"' & 'NOT meta_value ="0"');
 nrFramesPrevious = 0;
-for exptThisSession = fetch(allExptThisSession,'ORDER BY starttime')'
+for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
     % Get the info structure that sbx saves
      info = sbx.readInfoFile(exptThisSession);
     nrFrames  = info.nrFrames;
