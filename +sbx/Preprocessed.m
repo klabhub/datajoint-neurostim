@@ -226,9 +226,16 @@ classdef Preprocessed < dj.Manual
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
-            dataFldr = file(ns.Experiment & (ns.File & 'extension=''.sbx''' & key));
-            dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
 
+            thisSession =(ns.Session & key);
+            if strcmpi(parms.toolbox,'suite2p')
+                allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+            else
+                error('NIY');
+            end
+            analyzeExptThisSession = allExptThisSession & (ns.ExperimentMeta &allExptThisSession & 'meta_name="analyze"' & 'NOT meta_value ="0"');                    
+            dataFldr = file(analyzeExptThisSession);
+            dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             
             % Check that all folders exist.
             noDir = cellfun(@(x)exist(x,'dir'),dataFldr)==0;
@@ -239,11 +246,9 @@ classdef Preprocessed < dj.Manual
             switch (parms.toolbox)
                 case 'suite2p'
                     % Check that each experiment used the same scaling
-                    thisSession =(ns.Session & key);
-                    allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
                     scale = [];
                     nrPlanes = [];
-                    for e=fetch(allExptThisSession)'
+                    for e=fetch(analyzeExptThisSession)'
                         info = sbx.readInfoFile(e);
                         scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
                         nrPlanes = [nrPlanes info.nrPlanes]; %#ok<AGROW>
