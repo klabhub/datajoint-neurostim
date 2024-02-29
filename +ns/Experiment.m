@@ -20,6 +20,35 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 
 classdef Experiment  < dj.Manual
     methods (Access = public)
+        function [ana,notAna] = analyze(tbl,pv)
+            % Return the subtable that is marked to be analyzed in the meta
+            % data. The optional second output argument is the table of
+            % experiments that will not be analyzed.
+            % Use strict = true to select only those experiments in which
+            % there is a "1"  entry for the meta value 'analyze', use
+            % strict = false to include experiments as long as they do not have 
+            % an analyze meta field that is "0"  (including undefined analyze meta fields).
+            arguments
+                tbl (1,1) ns.Experiment
+                pv.strict (1,1) logical = false; % Set to true to require an explicit analyze =1 setting
+            end
+            exptWithMetaAnalyze = tbl*ns.ExperimentMeta & proj(ns.ExperimentMeta & 'meta_name="analyze"');
+            
+            if pv.strict        
+                % Only use the ones explicitly set to "1" (default is
+                % analyze = false)
+                ana  =  tbl & proj(exptWithMetaAnalyze & 'meta_value ="1"') ;            
+            else
+                % Use the ones NOT set to 0 and the ones where analyze is
+                % not defined (i.e. default assumption is analyze=true)
+                exptWithout = tbl- proj(exptWithMetaAnalyze);
+                ana  =  tbl & (proj(exptWithMetaAnalyze & ('NOT meta_value ="0"')) | proj(exptWithout));
+            end
+            if nargout>1
+                notAna = tbl  -proj(ana);
+            end
+
+        end
         function v = folder(tbl,root)
             % Return the full path to the experiments in this table
             if nargin <2
