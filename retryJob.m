@@ -34,7 +34,7 @@ end
 try
     populate(feval(tpl.table_name),tpl.key);
     success=true;
-catch
+catch me
     me.message
     success=false;    
 end

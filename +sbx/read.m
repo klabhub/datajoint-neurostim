@@ -27,7 +27,7 @@ end
 %% Determine nstime of each frame in this session
 thisSession =(ns.Session & key);
 allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
-analyzeExptThisSession = allExptThisSession & (ns.ExperimentMeta &allExptThisSession & 'meta_name="analyze"' & 'NOT meta_value ="0"');
+analyzeExptThisSession = analyze(allExptThisSession,strict=false);
 nrFramesPrevious = 0;
 for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
     % Get the info structure that sbx saves

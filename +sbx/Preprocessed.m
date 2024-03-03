@@ -233,10 +233,9 @@ classdef Preprocessed < dj.Manual
             else
                 error('NIY');
             end
-            analyzeExptThisSession = allExptThisSession & (ns.ExperimentMeta &allExptThisSession & 'meta_name="analyze"' & 'NOT meta_value ="0"');                    
+            analyzeExptThisSession = analyze(allExptThisSession,strict=false);
             dataFldr = file(analyzeExptThisSession);
-            dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
-            
+            dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list            
             % Check that all folders exist.
             noDir = cellfun(@(x)exist(x,'dir'),dataFldr)==0;
             if any(noDir)
