@@ -112,7 +112,7 @@ classdef C< dj.Computed
             for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
                 % Loop over the rows in CParm
                 restrict  =struct('extension',thisPrm.extension);
-                tbl = ns.File & restrict;
+                tbl = (ns.File & analyze(ns.Experiment,"strict",false)) & restrict;
                 if ~isempty(thisPrm.include)
                     inc = strsplit(thisPrm.include,',');
                     for i=1:numel(inc)
@@ -866,6 +866,7 @@ classdef C< dj.Computed
             fprintf('Uploading to server ')
             for i=1:chunkSize:nrChannels
                 fprintf('.')
+                if mod(i,80)==0;fprintf('\n');end
                 thisChunk = i:min(nrChannels,i+chunkSize-1);
                 insert(ns.CChannel,channelsTpl(thisChunk));
             end

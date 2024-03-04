@@ -26,8 +26,14 @@ classdef Preprocessed < dj.Manual
     properties (Dependent)      
         ops
         stat
+        keySource
     end
     methods      
+        function v = get.keySource(tbl)
+            analyzeExpt = analyze(ns.Experiment ,strict=false);          
+            v = ns.Session & analyzeExpt;
+        end
+
         function v =  get.ops(tbl)
             % Retrieve the parameters used by suite2p
             keyCntr = 0;
