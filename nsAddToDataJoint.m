@@ -34,7 +34,7 @@ warnstate =warning('query');
 warning('off', 'DataJoint:longCondition');
 
 %% Add Subjects
-% Replace emppty dates with 0 date
+% Replace empty dates with 0 date
 if ismember('dob',tSubject.Properties.VariableNames)
     tSubject{tSubject.dob=="",'dob'} = "0000-00-00";
 end

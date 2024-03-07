@@ -215,7 +215,11 @@ if ~isempty(p.Results.paradigm)
     else
         paradigm =p.Results.paradigm;
     end
-    stay = stay & ismember(upper({meta.paradigm}),upper(paradigm));
+    pdmMatch = false(size(stay));
+    for pdm=1:numel(paradigm)
+        pdmMatch = pdmMatch | ~cellfun(@isempty, regexpi({meta.paradigm}, paradigm{pdm}));    
+    end
+    stay = stay & pdmMatch;
 end
 
 meta = meta(stay);

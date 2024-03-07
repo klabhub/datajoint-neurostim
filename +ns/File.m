@@ -29,7 +29,8 @@ classdef File < dj.Imported
             nrFiles = count(tbl);
             exists = false(nrFiles,1);
             filename =repmat("",[nrFiles 1]);
-            T=table(filename ,exists);
+            expt = repmat("",[nrFiles 1]);
+            T=table(filename ,exists,expt);
             if pv.bytes
                 T =addvars(T,false(nrFiles,1),'newVariableNames','bytes');
             end
@@ -39,8 +40,9 @@ classdef File < dj.Imported
             fCntr=0;
             for f = tbl.fetch('bytes','checksum')'
                 fCntr =fCntr+1;
-                fldr = folder(ns.Experiment &f);
+                fldr = folder(ns.Experiment &f);                
                 full = fullfile(fldr,f.filename);
+                T.expt(fCntr) = fetch(ns.Experiment &f);  
                 T.filename(fCntr)= full;
                 T.exists(fCntr)= exist(full,"file")==2;
                 if T.exists(fCntr)
