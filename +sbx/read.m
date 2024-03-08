@@ -17,6 +17,13 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % To link  channels in ns.C with ROIs, run populate(sbx.Roi) after
 % populating the ns.C table.
 %
+
+p = sbx.Preprocessed;
+ks = p.keySource;
+if ~exists(ks&key)
+    fprintf('No files to analyze in this session\n');
+    return;
+end
 if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     % The session has not been preprocessed. Do that first.
     make(sbx.Preprocessed,ns.stripToPrimary(sbx.Preprocessed,key),parms)
@@ -41,6 +48,9 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         laserOnIx = diff(laserOnTTL.signal)>0.5; % Transition from 0-1
         nstime = linspace(laserOnTTL.time(1),laserOnTTL.time(2),laserOnTTL.time(3));
         frameNsTime = nstime(laserOnIx);        % Time in ns time.
+
+        % There always appears to be 1 extraneous TTL at the start
+        frameNsTime(1) =[];
         nrTTL = numel(frameNsTime);
 
         % Determine the time when the scanbox was instructed to
@@ -48,17 +58,9 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         %   [isGrabbing,~,~,grabbingTime]= get(c.scanbox.prms.grabbing,'withDataOnly',true);
         %   dtStart = seconds(grabbingTime(isGrabbing)/1000)-laserOnTime(1); %#ok<NASGU> % Time between grabbing start and first TTL
         %   dtStop = seconds(grabbingTime(~isGrabbing)/1000)-laserOnTime(end); % Time between grabbing stop and last TTL
+        
         % Sanity check
-        if nrFrames==nrTTL/nrPlanes
-            % OK
-        elseif nrFrames== (nrTTL-1)/nrPlanes
-            % 1 trigger without a
-            % frame. Guessing it was the last.
-            frameNsTime(1)=[];
-            fprintf(2,'Removed 1 extraneous LaserOn TTL (first)\n')
-        else
-            error('Cannot map SBX frames to trials; TT-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
-        end
+        assert(nrFrames==floor(nrTTL/nrPlanes),'Cannot map SBX frames to trials; TT-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
         keepFrameIx = nrFramesPrevious+(1:nrFrames);
         break; % We have what we need; break the loop over experiments in this session
     else
@@ -71,7 +73,6 @@ end
 %% Read the NPY Output
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key,'folder'));
 planes = dir(fullfile(fldr,'plane*'));
-time = [frameNsTime(1) frameNsTime(end) round(numel(frameNsTime)/nrPlanes)];
 recordingInfo =sbx.readInfoFile(key);  % Store the info struct
 signal=[];
 for pl = 1:numel(planes)
@@ -89,6 +90,8 @@ for pl = 1:numel(planes)
     
 end
 [nrFrames,nrROIs] = size(signal); %#ok<ASGLU>
+time = [frameNsTime(1) frameNsTime(end) nrFrames];
+
 channelInfo =  struct('nr',num2cell(1:nrROIs)');
  
 end

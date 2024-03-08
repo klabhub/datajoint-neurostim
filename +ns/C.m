@@ -866,6 +866,7 @@ classdef C< dj.Computed
             fprintf('Uploading to server ')
             for i=1:chunkSize:nrChannels
                 fprintf('.')
+                if mod(i,80)==0;fprintf('\n');end
                 thisChunk = i:min(nrChannels,i+chunkSize-1);
                 insert(ns.CChannel,channelsTpl(thisChunk));
             end
