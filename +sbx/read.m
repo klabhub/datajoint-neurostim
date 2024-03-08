@@ -29,7 +29,7 @@ if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     make(sbx.Preprocessed,ns.stripToPrimary(sbx.Preprocessed,key),parms)
 end
 
-% Read the npy results from the suit2p folder and store them in
+% Read the npy results from the suite2p folder and store them in
 % the table.
 %% Determine nstime of each frame in this session
 thisSession =(ns.Session & key);
@@ -53,14 +53,17 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         frameNsTime(1) =[];
         nrTTL = numel(frameNsTime);
 
-        % Determine the time when the scanbox was instructed to
-        % start/stop grabbing.
-        %   [isGrabbing,~,~,grabbingTime]= get(c.scanbox.prms.grabbing,'withDataOnly',true);
-        %   dtStart = seconds(grabbingTime(isGrabbing)/1000)-laserOnTime(1); %#ok<NASGU> % Time between grabbing start and first TTL
-        %   dtStop = seconds(grabbingTime(~isGrabbing)/1000)-laserOnTime(end); % Time between grabbing stop and last TTL
-        
+           
         % Sanity check
-        assert(nrFrames==floor(nrTTL/nrPlanes),'Cannot map SBX frames to trials; TT-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
+        delta = nrFrames- floor(nrTTL/nrPlanes) ;
+        % Allow a slack of 3 ttls. TODO: make a prep parameter.
+        if delta >0 || delta <=-3
+           error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
+        else
+            % Assume there were additional extraneous TTLs at the start. 
+            frameNsTime=frameNsTime(-delta+1:end);
+        end
+
         keepFrameIx = nrFramesPrevious+(1:nrFrames);
         break; % We have what we need; break the loop over experiments in this session
     else

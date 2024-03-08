@@ -187,7 +187,6 @@ else
 
         if ~isempty(updateTpls)
             fprintf('Updating tuples in %s \n',djTblName);
-            %if true
                 % Update one tpl and one field at a time.
                 % In theory this could affect referential integrity, but the
                 % delete/replace approach is too cumbersome (e.g., renaming one
@@ -200,11 +199,7 @@ else
                         update(thisDj,fld{1},tpl.(fld{1}));
                     end
                 end
-                end
-            % else
-            %     del(djTbl & ns.stripToPrimary(djTbl,updateTpls)); % Deletes tpl and associated meta
-            %     insert(djTbl,updateTpls)
-            % end
+                end        
             fprintf('\t Done. %d updated tuples\n',numel(updateTpls))
         end
 
