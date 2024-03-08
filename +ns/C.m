@@ -111,8 +111,8 @@ classdef C< dj.Computed
             allTpl = [];
             for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
                 % Loop over the rows in CParm
-                restrict  =struct('extension',thisPrm.extension);
-                tbl = ns.File & restrict;
+                restrict  =struct('extension',thisPrm.extension);                
+                tbl = ns.File & restrict & analyze(ns.Experiment,strict=false); % Only files in experiments that should be analyzed
                 if ~isempty(thisPrm.include)
                     inc = strsplit(thisPrm.include,',');
                     for i=1:numel(inc)
