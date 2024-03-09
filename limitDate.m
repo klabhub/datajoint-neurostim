@@ -6,6 +6,7 @@ function str = limitDate(dt,schedule)
 % schedule - "d","m","y","w" to select the day, month, year, or week that
 %               the dt is part of.
 %           For "w" the week is defined as the preceding 7 days.
+%           "a"  - All times 
 % BK - Oct 2023.
 arguments
     dt (1,1) datetime
@@ -16,6 +17,10 @@ fmt = "yyyy-MM-dd";
 dt.Format = fmt;
 
 switch (schedule)
+    case "a"
+        % All 
+        startDate = datetime("1900-01-01");
+        stopDate = tdatetime("tomorrow");
     case "d"
         startDate = dt;
         stopDate = dt;

@@ -292,8 +292,12 @@ classdef Experiment  < dj.Manual
                     %Update each field. Potential for referential integrity
                     %loss (not in practice, though).
                      fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
+                     % The update could change the tbl (if defined as a
+                     % query that uses the fields to be updated), so use
+                     % the full ns.Experiment  with a key restriction
+                     % instead
                      for fld = fieldsToUpdate
-                        update(tbl&key,fld{1},thisTpl.(fld{1}))
+                        update(ns.Experiment &key,fld{1},thisTpl.(fld{1}))
                     end
                 end
 
