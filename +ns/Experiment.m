@@ -307,7 +307,7 @@ classdef Experiment  < dj.Manual
                 if exists(ns.Plugin & key)
                     del(ns.Plugin & key);
                 end
-                if max([thisC.prms.trial.log{:}])>1
+                if max([thisC.prms.trial.log{:}])>0
                     % re-add each plugin (pluginOrder includes stimuli)
                     plgsToAdd= [thisC.pluginOrder thisC];
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
