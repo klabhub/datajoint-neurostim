@@ -20,7 +20,7 @@ switch (schedule)
     case "a"
         % All 
         startDate = datetime("1900-01-01");
-        stopDate = tdatetime("tomorrow");
+        stopDate = datetime("tomorrow");
     case "d"
         startDate = dt;
         stopDate = dt;
