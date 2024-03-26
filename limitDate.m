@@ -10,7 +10,7 @@ function str = limitDate(dt,schedule)
 % BK - Oct 2023.
 arguments
     dt (1,1) datetime
-    schedule (1,1) string {mustBeMember(schedule,["d" "m" "y" "w"])}
+    schedule (1,1) string {mustBeMember(schedule,["a" "d" "m" "y" "w"])}
 end
 
 fmt = "yyyy-MM-dd";

@@ -140,7 +140,10 @@ classdef File < dj.Imported
             mdLibrary = java.security.MessageDigest.getInstance('MD5');
             if exist(ff,"file")
                 d= dir(ff);
-                if d.bytes>1e9
+                if numel(d)>1 
+                    fprintf(2,"%s is a folder. Not computing MD5 checksum.\n",ff);
+                    md5Hash = string(repmat('0',[1 32]));
+                elseif d.bytes>1e9
                     fprintf(2,"%s is bigger than 1 GB. Not computing MD5 checksum.\n",ff);
                     md5Hash = string(repmat('0',[1 32]));
                 else
