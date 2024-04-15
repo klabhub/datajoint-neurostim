@@ -5,8 +5,7 @@ arguments
     key (1,1) struct
     which (1,1) string {mustBeMember(which,["BEFORE" "AFTER" "NEAREST"])} = "NEAREST"    
 end
-
-if numel(mffInfo)==1
+if  numel(mffInfo)<=1
     % A single file found - we'll use that
     pick = mffInfo;
 else

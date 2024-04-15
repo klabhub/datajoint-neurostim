@@ -3,57 +3,50 @@ function addFiles(tbl)
 arguments
     tbl (1,1) ns.Experiment
 end
-tbl = tbl - (ns.File & 'extension=".mff"');
+tbl = tbl - (ns.File & 'extension=".mff"') & 'not paradigm ="ZCheck"';
 for key = fetch(tbl)'
     fldr = folder(ns.Experiment &key);
 
     %% Find candidate MFF files
-    egiFilesDir = dir(fullfile(fldr,'*.mff'));
-
-    % Naming convention
-    match = regexp({egiFilesDir.name},[key.subject '\.(?<pdm>\w+)_(?<day>\d{8,8})_(?<time>\d{6,6})\.mff'],'names');
-   
-   
+    mffFilesDir = dir(fullfile(fldr,'*.mff'));
+    % Naming convention - limit to files for the same subject
+    match = regexp({mffFilesDir.name},[key.subject '\.(?<pdm>\w+)_(?<day>\d{8,8})_(?<time>\d{6,6})\.mff'],'names');
     stay = ~cellfun(@isempty,match);
-    oddMff = egiFilesDir(~stay);
+    oddMff = mffFilesDir(~stay);
     % Warn about mff files that do not match the convention...
     for i=1:numel(oddMff)
         fprintf(['File ' fullfile(fldr,oddMff(i).name) ' does not match the NS conventions for MFF file naming.\n'])
     end
-
+    % Keep only files for this subject
     mffInfo  = [match{stay}]'; % Make struct array
-    dirInfo = egiFilesDir(stay); % Files that match the NS convention
+    mffFilesDir(~stay)= [] ; 
+    % Copy the meta information from the file name to the mffInfo
     for i=1:numel(mffInfo)
-        fn = fieldnames(dirInfo);
+        fn = fieldnames(mffFilesDir);
         nrFields= numel(fn);
         for j=1:nrFields
-            mffInfo(i).(fn{j}) = dirInfo(i).(fn{j});
+            mffInfo(i).(fn{j}) = mffFilesDir(i).(fn{j});
         end
     end
-
-    % Select only MFF with same  paradigm, and day
+    % Sanity check - same day only 
     stay = datetime(key.session_date,"InputFormat","uuuu-MM-dd")==datetime({mffInfo.day}',"InputFormat","uuuuMMdd");
     if ~any(stay)
         fprintf('No date matches in mff files.\n');
     end
     mffInfo = mffInfo(stay);
-
+    % Select same paradigm name as the core MFF file
     samePdm= strcmpi(fetch1(ns.Experiment &key,'paradigm'),{mffInfo.pdm}');
     if ~any(samePdm)
         fprintf('No paradigm matches in mff files. \n');
     end
-    keepMff = ephys.egi.pickOne(mffInfo(samePdm),key,'NEAREST'); % We have now identified a file for reading
-    keepMff.isdir = false; % MFF are tagged as dirs (they are zipped dirs), but ns.File will skip those. Tag as not dir.
-    updateWithFiles(ns.File,key,keepMff);
-    
-    mffFilename = fullfile(keepMff.folder,keepMff.name);
+    % Pick the core MFF file associated with this experiment
+    coreMff = ephys.egi.pickOne(mffInfo(samePdm),key,'NEAREST'); % We have now identified a file for reading
+    coreMff.isdir = false; % MFF are tagged as dirs (they are zipped dirs), but ns.File will skip those. Tag as not dir.
+   
 
     %% Impedance check files    
-    % An impedance check file should have the same subject, but paradigm
-    % should be zcheck
-    [~, mffs.subject, ~] = fileparts(mffFilename);
-    mffs.subject = mffs.subject(1:3);
-    stay = ismember({mffInfo.subject},key.subject) & ismember({mffInfo.pdm},'zcheck');       
+    % An impedance check file should have zcheck as the paradigm name
+    stay = ismember({mffInfo.pdm},'zcheck');       
     zMff = mffInfo(stay);
     [~, zcheckFileOrder]= sort({zMff.time});
     zMff = zMff(zcheckFileOrder);
@@ -69,8 +62,8 @@ for key = fetch(tbl)'
     end
     zMff(~hasImpedanceInfo) = [];
 
-    zBeforeFile = pickOne(zMff,key,'BEFORE');
-    zAfterFile = pickOne(zMff,key,'AFTER');
+    zBeforeFile = ephys.egi.pickOne(zMff,key,'BEFORE');
+    zAfterFile = ephys.egi.pickOne(zMff,key,'AFTER');
    	
     %make sure that zBeforeFile and and zAfterfFile are not the same
     if strcmpi(zBeforeFile,zAfterFile)
@@ -88,9 +81,9 @@ for key = fetch(tbl)'
     
     coordinatesFileDir = dir(fullfile(fldr,[key.subject '.coordinates.sfp']));
     
-    if ~isempty(coordinatesFileDir) && ~isempty(gpsFileDir)
+    if isempty(coordinatesFileDir) && ~isempty(gpsFileDir)
         fprintf('The GPS file has not been solved yet - no coordinates file\n');
-    elseif ~isempty(coordinatesFileDir) && isempty(gpsFile)
+    elseif ~isempty(coordinatesFileDir) && isempty(gpsFileDir)
         fprintf('The GPS file does not exist. Standard template will be used for source modeling.\n');            
     end
     
@@ -98,16 +91,20 @@ for key = fetch(tbl)'
     %excluded by visual expection
     flaggedElectrodesDir = dir(fullfile(fldr,[key.subject '.badElectrodes.xlsx']));
     
-    if ~isempty(flaggedElectrodesDir)
+    if isempty(flaggedElectrodesDir)
       	fprintf('No electrodes were flagged as problematic through visual inspection\n');   
     end
     
 
     %% Combine files, check what is already there, add the rest.
+    relatedFilesDir = catstruct(1,coreMff,zBeforeFile,zAfterFile,gpsFileDir,coordinatesFileDir,flaggedElectrodesDir);
+      
+    fnames= struct('filename',{relatedFilesDir.name});
+    filesInDJ= ns.File & key & fnames;
+    if exists(filesInDJ)
+        [~,ix]= setdiff(fnames,{fetch(filesInDJ,'filename').filename});
+        relatedFilesDir = relatedFilesDir(ix);
 
-      updateWithFiles(ns.File,key,gpsFileDir);
-
-
-
+    end
 end
 end
