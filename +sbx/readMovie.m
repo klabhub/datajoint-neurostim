@@ -80,7 +80,7 @@ fprintf('Z-score of the variation in frameduration is %.2f\n',z)
 actualFrameRate = 1000./mFrameDuration;
 recordingInfo = struct('nrFrames',movie.NumFrames,'videoFormat',movie.VideoFormat,'width',movie.Width,'height',movie.height,'framerate',actualFrameRate);
 
-SLACKFRAMES = 3; % Allow this many missing frames
+SLACKFRAMES = 2; % Allow this many missing frames
 nrMissing =(movie.NumFrames-nrTriggers);
 assert(abs(nrMissing)<SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
 if nrMissing >0
