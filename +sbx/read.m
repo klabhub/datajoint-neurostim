@@ -74,7 +74,7 @@ end
 
 
 %% Read the NPY Output
-fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key,'folder'));
+fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 planes = dir(fullfile(fldr,'plane*'));
 recordingInfo =sbx.readInfoFile(key);  % Store the info struct
 signal=[];

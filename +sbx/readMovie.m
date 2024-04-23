@@ -82,7 +82,7 @@ recordingInfo = struct('nrFrames',movie.NumFrames,'videoFormat',movie.VideoForma
 
 SLACKFRAMES = 2; % Allow this many missing frames
 nrMissing =(movie.NumFrames-nrTriggers);
-assert(abs(nrMissing)<SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
+assert(abs(nrMissing)<=SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
 if nrMissing >0
     % Add triggers at the end
     fprintf('Adding %d missing triggers at the end of the movie\n',nrMissing)
