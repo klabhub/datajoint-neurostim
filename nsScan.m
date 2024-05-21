@@ -89,7 +89,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 % EXAMPLES
 % Scan for new files for a list of paradigms  according to a schedule
 % nsScan('date',date,'schedule',schedule,'paradigm',paradigms, ...
-%                    'readFileContents',true,'addToDataJoint',true,'sa%feMode',false, ...
+%                    'readFileContents',true,'addToDataJoint',true,'safeMode',false, ...
 %                    'newOnly',newOnly,'minNrTrials',minNrTrials);
 %
 % Update JSON data for existing data  (After adding manual info to the JSON
@@ -235,7 +235,7 @@ if ~isempty(p.Results.paradigm)
     end
     pdmMatch = false(size(stay));
     for pdm=1:numel(paradigm)
-        pdmMatch = pdmMatch | ~cellfun(@isempty, regexpi({meta.paradigm}, paradigm{pdm}));    
+        pdmMatch = pdmMatch | ~cellfun(@isempty, regexpi({meta.paradigm}, paradigm{pdm}));
     end
     stay = stay & pdmMatch;
 end
@@ -244,22 +244,24 @@ meta = meta(stay);
 fullName=fullName(stay);
 nrExperiments = numel(meta);
 
-if p.Results.jsonOnly
-    % Update json based meta information for existing files only
-    stay = false(1,nrExperiments);
-    for i=1:nrExperiments
-        stay(i) = exists(ns.Experiment & meta(i));
-    end    
-elseif p.Results.newOnly
-    % Ignore experiments that are already in datajoin
-    stay = true(1,nrExperiments);
-    for i=1:numel(meta)
-        stay(i) = ~exists(ns.Experiment & meta(i));
-    end    
+if p.Results.newOnly || p.Results.jsonOnly
+    if p.Results.jsonOnly
+        % Update json based meta information for existing files only
+        stay = false(1,nrExperiments);
+        for i=1:nrExperiments
+            stay(i) = exists(ns.Experiment & meta(i));
+        end
+    elseif p.Results.newOnly
+        % Ignore experiments that are already in datajoint
+        stay = true(1,nrExperiments);
+        for i=1:numel(meta)
+            stay(i) = ~exists(ns.Experiment & meta(i));
+        end
+    end
+    meta = meta(stay);
+    fullName=fullName(stay);
+    nrExperiments = numel(meta);
 end
-meta = meta(stay);
-fullName=fullName(stay);
-nrExperiments = numel(meta);
 
 if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)  && ~p.Results.jsonOnly
     % Read meta data from the content of the Neurostim files
@@ -338,8 +340,8 @@ if p.Results.readJson || p.Results.jsonOnly
         if any(ismember({'starttime'},experimentMetaFields))
             error('The experiment meta definition file %s should only define new meta properties, not ''starttime''',definitionFile);
         end
-        nrExperimentMetaFields= numel(experimentMetaFields);       
-    elseif isempty(metaDefinitionTag) 
+        nrExperimentMetaFields= numel(experimentMetaFields);
+    elseif isempty(metaDefinitionTag)
         % Use no meta definition
         isLocked.experiment = false;
         nrExperimentMetaFields = 0;
@@ -382,7 +384,7 @@ if p.Results.readJson || p.Results.jsonOnly
     for i=1:nrExperiments
         for m = allMetaFromJson'
             if isempty(tExperiment(i,m))
-               tExperiment{i,m} = "";
+                tExperiment{i,m} = "";
             end
         end
     end
@@ -409,7 +411,7 @@ if p.Results.readJson || p.Results.jsonOnly
         end
         nrSessionMetaFields= numel(sessionMetaFields);
     elseif isempty(metaDefinitionTag)
-        nrSessionMetaFields= 0;        
+        nrSessionMetaFields= 0;
     else
         error('Meta definition file %s not found',definitionFile)
     end
@@ -475,7 +477,7 @@ if p.Results.readJson || p.Results.jsonOnly
         json = readJson(definitionFile);
         isLocked.subject = json.Locked =="1"; % No new meta fields allowed according to _definition
         subjectMetaFields = fieldnames(json.Fields);
-        subjectMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));      
+        subjectMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
         if ismember('subject',subjectMetaFields)
             error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
         end
@@ -520,7 +522,7 @@ tSubject = addvars(tSubject,strcat('#',string((1:nrSubjects)')),'NewVariableName
 tSubject = movevars(tSubject,{'subject'},'after',1);
 
 if p.Results.addToDataJoint
-    if ismember('cic',tExperiment.Properties.VariableNames) 
+    if ismember('cic',tExperiment.Properties.VariableNames)
         cic = tExperiment.cic;
         tExperiment = removevars(tExperiment,'cic');
     else

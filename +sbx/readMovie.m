@@ -117,7 +117,7 @@ elseif contains(filename,'_eye')
             if startsWith(parms.method,'DLC','IgnoreCase',true)
                 % Any method that starts with DLC is processed with
                 % DLC to allow DLC model comparisons.
-                [x,y,a,quality] =sbxDlc(mvFile, parms);
+                [x,y,a,quality] =sbxDlc(movie, parms);
             else
                 error('Unknown method %s ',parms.method);
             end
