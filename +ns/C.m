@@ -460,6 +460,9 @@ classdef C< dj.Computed
                 varargout{1} =m;
                 if nargout>1
                     varargout{2} = allX;                    
+                    if nargout >2
+                        varargout{3} = time;                    
+                    end
                 end
             end
         end

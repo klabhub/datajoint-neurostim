@@ -26,6 +26,7 @@ p.addParameter('populateFile',true,@islogical)
 p.addParameter('dryrun',false,@islogical)
 p.addParameter('cic',[]); % A vector of cic objects. One per row of the experiment table.
 p.addParameter('newOnly',true)
+p.addParameter('existingOnly',false)
 p.parse(varargin{:});
 
 currentSafeMode= dj.config('safemode');
@@ -39,17 +40,17 @@ if ismember('dob',tSubject.Properties.VariableNames)
     tSubject{tSubject.dob=="",'dob'} = "0000-00-00";
 end
 tSubject= removevars(tSubject,'id');
-insertNewTuples(tSubject,ns.Subject,p.Results.dryrun);
+insertNewTuples(tSubject,ns.Subject,p.Results.dryrun,p.Results.newOnly,p.Results.existingOnly);
 
 %% Add Sessions
 
 tSession= removevars(tSession,'id');
-insertNewTuples(tSession,ns.Session,p.Results.dryrun);
+insertNewTuples(tSession,ns.Session,p.Results.dryrun,p.Results.newOnly,p.Results.existingOnly);
 
 %% Add Experiments
 tExperiment = removevars(tExperiment,'id');
-[newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun,~p.Results.newOnly);
-if  ~p.Results.dryrun && ~isempty(newExpts) 
+[newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun,p.Results.newOnly,p.Results.existingOnly);
+if  ~p.Results.dryrun && ~isempty(newExpts)
     if ~isempty(p.Results.cic)
         updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows));
     end
@@ -64,7 +65,7 @@ warning(warnstate);
 
 
 end
-function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun,forceUpdate)
+function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun,newOnly,existingOnly)
 % Given a table read from a folder and a table (Relvar) from the Datajoint
 % databse, determin which tuples are new and the meta data associated with
 % those new tuples and insert those in the Datajoint tables.
@@ -74,13 +75,12 @@ function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun,fo
 %               This is a Matlab table.
 % djTbl - dj.Relvar with the information already in the database.
 % dryrun - Set to true to do a dryrun
-% newOnly = Set to false to force updating all experiments.
+% newOnly = Set to true to skip existing entries and only add new tuples.
+% existingOnly - Set to true to skip new entrie and only update existing (meta) data
 % OUTPUT
 % tpl  - Tuples with new information
 % metaTpl - Tuples with new meta information.
-if nargin<4
-    forceUpdate =false;
-end
+
 %% Determine whether there are entries that are not yet in the database
 newTpls = [];
 updateTpls = [];
@@ -124,13 +124,13 @@ for row=1:height(tbl)
         newTpls = cat(1,newTpls,thisTblTpl);
         newTplsRows = cat(1,newTplsRows,row);
         if nrMeta>0
-            newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);       
+            newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
         end
     else
         % Existing tuple.
         % Check whether the new one is different from the
         % existing one
-        if forceUpdate
+        if ~newOnly
             updateTpls = cat(1,updateTpls, thisTblTpl);
             newTplsRows = cat(1,newTplsRows,row);
             % The update will remove meta data, so add those as new as well
@@ -139,18 +139,18 @@ for row=1:height(tbl)
             end
         elseif exists(djTbl & table2struct(tbl(row,tblFields))) && nrMeta>0
             % Tpls are the same, check if the meta information is different.
-            fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);             
+            fromDbase = ns.getMeta(djTbl & dbTpl,metaFields);
             fromDbase = convertvars(fromDbase,1:width(fromDbase),"string"); % Match the "" format of the tbl
-            if isempty(fromDbase) 
+            if isempty(fromDbase) && ~existingOnly
                 % Everything is new
                 newMetaTpls= cat(1,newMetaTpls,thisMetaTpl);
-            elseif  ~isempty(setdiff(cat(2,pkey,metaFields),fromDbase.Properties.VariableNames)) 
+            elseif  ~isempty(setdiff(cat(2,pkey,metaFields),fromDbase.Properties.VariableNames))
                 % Some newly defined meta fields. Update all
                 updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl);
             else
-                % Same meta fields, potentially different values                
-                [~,ix] = setdiff(tbl(row,cat(2,pkey,metaFields)),fromDbase);
-                updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl(ix));                
+                % Same meta fields, potentially different values
+                [~,ix] = setdiff(tbl{row,metaFields},fromDbase{:,metaFields});
+                updateMetaTpls= cat(1,updateMetaTpls,thisMetaTpl(ix));
             end
         else % tpls are not the same
             %Add to the updateTpls array
@@ -179,35 +179,39 @@ else
     % commiting the del.
     try
         fprintf('Updating DataJoint for %s ...\n',djTblName)
-        if ~isempty(newTpls)
+        if ~isempty(newTpls) && ~existingOnly
             fprintf('Adding new tuples to %s \n',djTblName)
             insert(djTbl,newTpls);
             fprintf('\t Done. %d new tuples \n',numel(newTpls))
         end
 
+        % Updates are allowed evein if metaUpdateOnly is true (for meta
+        % data from filename etc.)
         if ~isempty(updateTpls)
             fprintf('Updating tuples in %s \n',djTblName);
-                % Update one tpl and one field at a time.
-                % In theory this could affect referential integrity, but the
-                % delete/replace approach is too cumbersome (e.g., renaming one
-                % subject would delete all data associated with that subject)
-                fieldsToUpdate = setdiff(fieldnames(updateTpls),pkey)';
-                if ~isempty(fieldsToUpdate)
+            % Update one tpl and one field at a time.
+            % In theory this could affect referential integrity, but the
+            % delete/replace approach is too cumbersome (e.g., renaming one
+            % subject would delete all data associated with that subject)
+            fieldsToUpdate = setdiff(fieldnames(updateTpls),pkey)';
+            if ~isempty(fieldsToUpdate)
                 for tpl =updateTpls'
                     thisDj= djTbl & ns.stripToPrimary(djTbl,tpl);
                     for fld = fieldsToUpdate
                         update(thisDj,fld{1},tpl.(fld{1}));
                     end
                 end
-                end        
+            end
             fprintf('\t Done. %d updated tuples\n',numel(updateTpls))
         end
 
-        if ~isempty(newMetaTpls)
+        if ~isempty(newMetaTpls) && ~existingOnly
             fprintf('Adding new Meta tuples in %s \n',djMetaTblName)
             insert(djMetaTbl,newMetaTpls);
             fprintf('\t Done. %d new tuples\n',numel(newMetaTpls))
         end
+
+
         if ~isempty(updateMetaTpls)
             fprintf('Updating Meta tuples in %s \n',djMetaTblName)
             % Because the collection of meta data could have changed, we delete
