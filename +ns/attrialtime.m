@@ -22,26 +22,29 @@ function out = attrialtime(props,propName,time,c,what,trial)
 % values  = A cell array of values, one for each requested trial.
 %
 % BK - Dec 2022.
-if nargin <6
-    trial = [];
-    if nargin <5
-        what = 'data';
-    end
-end
+arguments
+    props struct
+    propName (1,1) string
+    time (1,1) double
+    c (1,1) struct
+    what (1,1) string = "data"
+    trial (1,:) double =[]
+end 
 
-if isnan(time)
+if isnan(time)  || numel(props.(propName))==1
+    % Single value, for all     
     switch what
-        case 'data'
+        case "data"
             out = props.(propName);
-        case 'trialtime'
-            out = props.([propName 'Time']);
+        case "trialtime'"
+            out = props.(propName +"Time");
         case 'clocktime'
-            out = props.([propName 'NsTime']);
+            out = props.(propName + "NsTime");
         case 'trial'
-            out = props.([propName 'Trial']);
+            out = props.(propName +"Trial");
     end
     if ~isempty(trial)
-        trialNrs = props.([propName 'Trial']);
+        trialNrs = props.(propName +"Trial");
         out = out(ismember(trialNrs,trial));
     end
     return;
@@ -50,19 +53,19 @@ end
 nrTrials  = max(c.trial);
 
 allEventValues = props.(propName);
-if isfield(props,[propName 'Trial'])
-    allEventTrials = props.([propName 'Trial']);
+if isfield(props,propName +"Trial")
+    allEventTrials = props.(propName +"Trial");
 else
     allEventTrials =1;
 end
-if isfield(props,[propName 'Time'])
-    allEventTimes  = props.([propName 'Time']);
+if isfield(props,propName +"Time")
+    allEventTimes  = props.(propName +"Time");
 else
     allEventTimes = -inf;
 end
 
-if isfield(props,[propName 'NsTime'])
-    allEventNsTimes  = props.([propName 'NsTime']);
+if isfield(props,propName +"NsTime")
+    allEventNsTimes  = props.(propName +"NsTime");
 else
     allEventNsTimes = -inf;
 end
@@ -89,7 +92,7 @@ for e=1:numel(allEventTrials)
         eventNsTime(trgTrials) = currentNsTime;
     end
     % Next trial or same trial, update until atTrialTime reached.
-    currentTrial = allEventTrials(e);
+    currentTrial = allEventTrials(e);    
     currentTime = allEventTimes(e);
     currentNsTime = allEventNsTimes(e);
     if iscell(allEventValues)
@@ -119,13 +122,13 @@ if currentTrial~=nrTrials
 end
 
 switch what
-    case 'data'
+    case "data"
         out = data ;
-    case 'trialtime'
+    case "trialtime"
         out = eventTime;
-    case 'clocktime'
+    case "clocktime"
         out = eventNsTime;
-    case 'trial'
+    case "trial"
         out = find(~isinf(eventNsTime)); % Trials in whcih the event actually ocurred
 end
 

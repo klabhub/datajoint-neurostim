@@ -23,6 +23,10 @@ classdef Roi < dj.Computed
         end
     end
     methods  (Access=public)
+        function nwbRoot = nwb(tbl,nwbRoot)
+            % Add to NWB root
+            
+        end
         function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.

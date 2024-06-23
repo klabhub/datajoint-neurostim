@@ -147,7 +147,7 @@ classdef Experiment  < dj.Manual
             arguments
                 tbl (1,1) ns.Experiment {mustHaveRows}
                 plg {mustBeText} =  {''}
-                pv.prm {mustBeText} = ""
+                pv.prm {mustBeText} = ''
                 pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
                 pv.atTrialTime (1,1) double = NaN
                 pv.trial (1,:) double = []

@@ -1,4 +1,4 @@
-%{
+%{  
 # A class representing a Neurostim parameter/property
 -> ns.Plugin
 property_name : varchar(25)     # The name of the neurostim.parameter
@@ -24,6 +24,14 @@ classdef PluginParameter < dj.Part
         master = ns.Plugin;  % Part  table for the plugin
     end
     methods (Access=public)
+        function nwbRoot = nwb(tbl,nwbRoot)
+            %Export to NWB format.
+            for tpl = fetch(tbl,'*')'
+                name = sprintf('%s_%s',tpl.plugin_name,tpl.property_name);
+                ts =  types.core.TimeSeries('data',tpl.property_value,'data_continuity','step','timestamps',tpl.property_nstime/1000);          
+                nwbRoot.stimulus_presentation.set(name,ts);
+            end
+        end
         function addNew(tbl,key,name,value,type,trialTime,trial,nsTime,replace)
             arguments
                 tbl (1,1) ns.PluginParameter
@@ -155,9 +163,8 @@ classdef PluginParameter < dj.Part
                 fprintf(2,'Properties of %s match case insentitively. %s  renamed to %s\n',key(1).plugin_name,names(isDouble),newName)
                 key(isDouble).property_name = newName;
             end
-            for i=1:numel(key)
-                meta = metaclass(key(i).property_value);
-                if ismember(meta.Name,{'cell','string'})
+            for i=1:numel(key)                
+                if ~(isnumeric(key(i).property_value) || isstruct(key(i).property_value) || ischar(key(i).property_value))
                           % Database cannot not store this value. Convert to byte stream, the user can
                           % get the value by using getArrayFromByteStream,at
                          % least in Matlab (see Experiment.get),

@@ -122,9 +122,9 @@ p.addParameter('verbose',true,@islogical); % show output on command line
 
 p.parse(varargin{:});
 
-tExperiment = [];
-tSession = [];
-tSubject = [];
+tExperiment = table;
+tSession = table;
+tSubject = table;
 isLocked= struct('experiment',false,'session',false,'subject',false);
 if ~isempty(p.Results.metaDefinitionTag) && p.Results.metaDefinitionTag(1)~='_'
     metaDefinitionTag = ['_' p.Results.metaDefinitionTag];
@@ -143,6 +143,24 @@ switch (p.Results.schedule)
     case 'd'
         % Inside the day folder
         srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy/MM/dd')));
+    case 'a'
+        % All year folders below the root  
+        % Find the year folders
+        yearFolders = dir(p.Results.root);
+        stay = regexp({yearFolders.name},'^\d{4}$','once');
+        yearFolders(cellfun(@isempty,stay)) = [];
+        tSubject =table;
+        tSession = table;
+        tExperiment =table;
+        % Then a recursive call to this function for each year.
+        for yr = 1:numel(yearFolders)
+            year = yearFolders(yr).name;
+            [thisTSubject,thisTSession,thisTExperiment,isLocked] = nsScan(varargin{:},'schedule','y','date',[year '-01-01']);
+            tSubject = [tSubject;thisTSubject]; %#ok<AGROW>
+            tSession = [tSession;thisTSession];%#ok<AGROW>
+            tExperiment = [tExperiment;thisTExperiment];%#ok<AGROW>
+        end
+        return
     otherwise
         error('Unknown schedule %s',p.Results.schedule)
 end
@@ -267,11 +285,21 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
     % Read meta data from the content of the Neurostim files
     % tmp has the meta data, c the CIC objects which are passed to
     % nsAddToDataJoint below
+    out =false(1,nrExperiments);
+
     for i=1:nrExperiments
-        [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
-        tmpMeta(i) = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
+        try
+            [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
+            tmpMeta{i} = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
+        catch
+            out(i)=true;
+            tmpMeta{i}= [];
+            c(i)= neurostim.cic;
+        end
     end
-    meta  =tmpMeta;
+    meta  =[tmpMeta{~out}];
+    c = c(~out);
+
     nrTrials = [c.nrTrialsCompleted];
     out = nrTrials < p.Results.minNrTrials;
     if any(out)
@@ -280,9 +308,9 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
         end
         meta(out) = [];
         c(out) =[];
-        fullName(out) =[];
-        nrExperiments = numel(meta);
+        fullName(out) =[];      
     end
+    nrExperiments = numel(meta);
 else
     c= [];
 end

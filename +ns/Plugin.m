@@ -16,7 +16,10 @@ classdef Plugin < dj.Manual
             insert(self,key);
             make(ns.PluginParameter,key,plg.prms);   
            
-        end   
+        end 
+
+
+        
     end
 end
 
