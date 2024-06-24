@@ -26,18 +26,18 @@ classdef Experiment  < dj.Manual
             % experiments that will not be analyzed.
             % Use strict = true to select only those experiments in which
             % there is a "1"  entry for the meta value 'analyze', use
-            % strict = false to include experiments as long as they do not have 
+            % strict = false to include experiments as long as they do not have
             % an analyze meta field that is "0"  (including undefined analyze meta fields).
             arguments
                 tbl (1,1) ns.Experiment
                 pv.strict (1,1) logical = false; % Set to true to require an explicit analyze =1 setting
             end
             exptWithMetaAnalyze = tbl*ns.ExperimentMeta & proj(ns.ExperimentMeta & 'meta_name="analyze"');
-            
-            if pv.strict        
+
+            if pv.strict
                 % Only use the ones explicitly set to "1" (default is
                 % analyze = false)
-                ana  =  tbl & proj(exptWithMetaAnalyze & 'meta_value ="1"') ;            
+                ana  =  tbl & proj(exptWithMetaAnalyze & 'meta_value ="1"') ;
             else
                 % Use the ones NOT set to 0 and the ones where analyze is
                 % not defined (i.e. default assumption is analyze=true)
@@ -104,6 +104,103 @@ classdef Experiment  < dj.Manual
                 obj = p.Results.fun(thisFile);
             end
         end
+
+        function nwbRoot = nwbExport(expt,pv)
+            % Create Neurodata without Borders objects for each experiment in a
+            % ns.Experiment table.
+            %
+            % folder = Folder where the data files will be saved. By default this is
+            % empty, which will create and return the NwbFile objects, but not save
+            % them.
+            % tz  - TimeZone to use for session_Start_time and
+            % timestamps_reference_time ["local"]
+            % general -  A struct with fields named after the general_ properties of the
+            % NwbFile object that use free form text to describe meta data.
+            % The allowable names depend on the NWM file schema.  By default this is empty.
+            %
+            %
+            % EXAMPLE
+            %  general = struct('lab',"KLab",'Insitution',"Rutgers University - Newark")
+            %
+            % The columns of the ns.Subject table are always included, to include ns.SubjectMeta
+            % data as well, provide a dictionary that maps the names of the meta data
+            % to names in the NWB subject schema.
+            %
+            % subjectMeta =dictionary('strain','strain;')
+            %
+            % Datajoint Tables (classes) with a nwb member function will be called
+            % automatically to add their contribution to the nwb object.  The nwb
+            % member takes the table as its first input, the root of the nwb object
+            % as its second, adnd the pv struct from this function as its third.
+            %  Prototype: nwb(dj.Relvar,NwbFile,struct)
+            % see ns.Subject for an example
+            %
+            % createNwb(ns.Experiment ,general=general, subjectMeta= subjectMeta,
+            %                               folder = "c:/temp");
+            % BK - 2023,2024
+            arguments
+                expt (1,1) ns.Experiment
+                pv.packages (1,:)= ""
+                pv.folder (1,1) = ""
+                pv.tz (1,1) string = "local"
+                pv.general (1,1) struct = struct();
+                pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([]));
+            end
+
+            assert(~isempty(which('NwbFile')),'This function depends on the matnwb package. Install it from github and add it to the Matlab path');
+
+            classesWithNwb =nwbFind("ns.Subject",pv.packages);
+
+            for e = fetch(expt,'*')'
+                % Loop over experiments (NWB refers to this as a "session", NS uses session to refer to all experiments for
+                % a subject on a given day)
+                uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
+                % The start time of the experiment:  (note that this is not
+                % exactly the same as the timestapmps_reference_time;the
+                % former is based on a call to now, while the latter is a
+                % call to GetSecs that is executed a few lines later in the
+                % constructor of cic.
+                startTime = datetime([e.session_date 'T' e.starttime],'TimeZone',pv.tz);
+
+                nwbRoot = NwbFile(...
+                    'session_description',sprintf('%s',e.paradigm ),...
+                    'identifier',char(java.util.UUID.randomUUID().toString()),...
+                    'session_start_time', startTime,...
+                    'timestamps_reference_time',startTime, ...
+                    'general_session_id', uniqueExperimentName);
+
+
+
+                %% General properties (specified in the call to this function)
+                fn = fieldnames(pv.general);
+                for i=1:numel(fn)
+                    prop = "general_" + fn{i};
+                    try
+                        nwbRoot.(prop) = pv.general.(fn{i});
+                    catch
+                        fprintf(2,"Property %s does not exist in the NWB schema. Ignored. \n", prop );
+                    end
+                end
+
+
+                %% Export all tables that have nwb functionality
+                for cls=classesWithNwb
+                    tbl = feval(cls) & e;
+                    nwb(tbl,nwbRoot,pv);
+                end
+
+
+                %% Export to file
+                if pv.folder~=""
+                    assert(exist(pv.folder,"dir"),"Folder %s does not exist.",pv.folder);
+                    fname = fullfile(pv.folder,[strrep(uniqueExperimentName,':','') '.nwb']);
+                    nwbExport(nwbRoot,fname);
+                end
+
+            end
+        end
+
+
         function [out,filename] = get(tbl,plg,pv)
             % function [out,filename] = get(o,varargin)
             % Retrieve all information on a specific plugin in an experiment
@@ -118,7 +215,7 @@ classdef Experiment  < dj.Manual
             % 'prm' -  Specify a single parameter to retrieve
             % 'what' - What is it about the single parameter you want to
             % retrieve.
-            %       'data' : the value 
+            %       'data' : the value
             %       'trialtime' : the trial time at which the parameter was
             %       set (0= firstFrame in the trial)
             %       'clocktime' : the time on the neurostim clock when the
@@ -188,18 +285,18 @@ classdef Experiment  < dj.Manual
                     end
                     v.(plgName) = get(parms);
                 end
-                
+
                 notFound = ~isfield(v,plg);
                 if any(notFound)
                     fprintf('This experiment (%s:%s/%s@%s) did not use the %s plugin(s) or the plugin does not have the reuqested parameter.\n',exptKey.paradigm,exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'));
                     out{exptCntr} = [];
-                    continue; % Next experiment 
+                    continue; % Next experiment
                 end
 
-               
-                if strlength(pv.prm) ~=0  %prm was specified  
+
+                if strlength(pv.prm) ~=0  %prm was specified
                     % Single prm from a specified plugin,  at a specific time
-                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what,pv.trial);                    
+                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what,pv.trial);
                 else
                     % Everything
                     % Return struct with all info
@@ -216,16 +313,16 @@ classdef Experiment  < dj.Manual
 
             if strlength(pv.prm)~=0
                 % Single parm, join values as columns
-               if iscellstr(out)
-                   out = out(:)'; %trials as columns
-               elseif iscell(out) 
-                   if all(cellfun(@numel,out)==numel(out{1}))
-                    out =cat(2,out{:}); %trials as columns
-                   else
-                       out = out'; % For trials as columns
-                       return
-                   end
-               end
+                if iscellstr(out)
+                    out = out(:)'; %trials as columns
+                elseif iscell(out)
+                    if all(cellfun(@numel,out)==numel(out{1}))
+                        out =cat(2,out{:}); %trials as columns
+                    else
+                        out = out'; % For trials as columns
+                        return
+                    end
+                end
                 if iscell(out) && ~iscellstr(out)
                     out = cell2mat(out);
                 end
@@ -275,7 +372,7 @@ classdef Experiment  < dj.Manual
                     % Cic was passed check that it matches, then add
                     % contents. The order of the tbl is not guaranteed, so make sure
                     % to matchup with the correct cic.
-                    cicUID = string(datetime({cic.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({cic.file})+".mat"; %#ok<DATST>
+                    cicUID = string(datetime({cic.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({cic.file})+".mat"; 
                     stay = cicUID==string([key.session_date key.file]);
                     thisC = cic(stay);
                     thisTpl = ns.Experiment.tplFromCic(thisC);
@@ -291,12 +388,12 @@ classdef Experiment  < dj.Manual
                 else
                     %Update each field. Potential for referential integrity
                     %loss (not in practice, though).
-                     fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
-                     % The update could change the tbl (if defined as a
-                     % query that uses the fields to be updated), so use
-                     % the full ns.Experiment  with a key restriction
-                     % instead
-                     for fld = fieldsToUpdate
+                    fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
+                    % The update could change the tbl (if defined as a
+                    % query that uses the fields to be updated), so use
+                    % the full ns.Experiment  with a key restriction
+                    % instead
+                    for fld = fieldsToUpdate
                         update(ns.Experiment &key,fld{1},thisTpl.(fld{1}))
                     end
                 end

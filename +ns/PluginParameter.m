@@ -1,4 +1,4 @@
-%{  
+%{
 # A class representing a Neurostim parameter/property
 -> ns.Plugin
 property_name : varchar(25)     # The name of the neurostim.parameter
@@ -23,15 +23,9 @@ classdef PluginParameter < dj.Part
     properties (SetAccess = protected)
         master = ns.Plugin;  % Part  table for the plugin
     end
+
+
     methods (Access=public)
-        function nwbRoot = nwb(tbl,nwbRoot)
-            %Export to NWB format.
-            for tpl = fetch(tbl,'*')'
-                name = sprintf('%s_%s',tpl.plugin_name,tpl.property_name);
-                ts =  types.core.TimeSeries('data',tpl.property_value,'data_continuity','step','timestamps',tpl.property_nstime/1000);          
-                nwbRoot.stimulus_presentation.set(name,ts);
-            end
-        end
         function addNew(tbl,key,name,value,type,trialTime,trial,nsTime,replace)
             arguments
                 tbl (1,1) ns.PluginParameter
@@ -54,7 +48,7 @@ classdef PluginParameter < dj.Part
             key.property_type = type;
             key.property_time = trialTime;
             key.property_trial = trial;
-            key.property_nstime = nsTime;            
+            key.property_nstime = nsTime;
             encodeAndInsert(tbl,key)
 
         end
@@ -67,7 +61,7 @@ classdef PluginParameter < dj.Part
 
             prmNames = fieldnames(prms);
             nrPrms = numel(prmNames);
-            key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part 
+            key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part
             fprintf('Adding %d parameters for %s plugin\n',nrPrms,key(1).plugin_name);
             for i=1:nrPrms
                 thisPrm = prms.(prmNames{i});
@@ -84,13 +78,13 @@ classdef PluginParameter < dj.Part
                     % Store all values, plus the time at which the event
                     % occurred.
                     type = 'Event';
-                    [value,trial,time,nsTime] =get(thisPrm,'matrixIfPossible',true); %neurostim.parameter.get
+                    [value,trial,time,nsTime] =get(thisPrm,'matrixIfPossible',true,'cellstrAsString',true,'removeFirstEmpty',true); %neurostim.parameter.get
                 else
                     % One value per trial : parameter
                     % Some could be single key presses. So filling in across trials is not always right.
                     % So pull all values,just like events.
                     type = 'Parameter';
-                    [value,trial,time,nsTime] = get(thisPrm,'matrixIfPossible',true);
+                    [value,trial,time,nsTime] = get(thisPrm,'matrixIfPossible',true,'cellstrAsString',true,'removeFirstEmpty',true);
                 end
 
 
@@ -105,7 +99,7 @@ classdef PluginParameter < dj.Part
                 % were really constant so that we can store a single value
                 % for the experiment (i.e. Global type).
                 if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
-                    if iscellstr(value) %#ok<ISCLSTR>
+                    if iscellstr(value) || isstring(value) s
                         uValue=  unique(value);
                         if size(uValue,1)==1
                             uValue= uValue{1}; % Get rid of cell
@@ -150,7 +144,7 @@ classdef PluginParameter < dj.Part
 
     end
 
-    
+
     methods (Access=protected)
         function encodeAndInsert(tbl,key)
             names = string({key.property_name});
@@ -163,22 +157,27 @@ classdef PluginParameter < dj.Part
                 fprintf(2,'Properties of %s match case insentitively. %s  renamed to %s\n',key(1).plugin_name,names(isDouble),newName)
                 key(isDouble).property_name = newName;
             end
-            for i=1:numel(key)                
+            for i=1:numel(key)
                 if ~(isnumeric(key(i).property_value) || isstruct(key(i).property_value) || ischar(key(i).property_value))
-                          % Database cannot not store this value. Convert to byte stream, the user can
-                          % get the value by using getArrayFromByteStream,at
-                         % least in Matlab (see Experiment.get),
-                          key(i).property_value = getByteStreamFromArray(key(i).property_value);
-                          key(i).property_type = 'ByteStream';
+                    % Database cannot not store this value. Convert to byte stream, the user can
+                    % get the value by using getArrayFromByteStream,at
+                    % least in Matlab (see Experiment.get),
+                    key(i).property_value = getByteStreamFromArray(key(i).property_value);
+                    key(i).property_type = 'ByteStream';
                 end
             end
             insert(tbl,key)
         end
     end
-    
+
     methods (Access= public)
 
-        function v = get(tbl)
+        function v = get(tbl,nwbRoot,plgName)
+            arguments
+                tbl (1,1) ns.PluginParameter
+                nwbRoot   = []
+                plgName (1,:) char =''
+            end
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
@@ -202,22 +201,23 @@ classdef PluginParameter < dj.Part
 
             %Bytestream - can contain objects, coded as bytes.
             % Decode here.
-            [vals,names,times,nsTimes,trials,types] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
+            [vals,names,times,nsTimes,trials,parmTypes] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
             for j=1:numel(names)
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
-                    name = [names{j} '2'];
+                    names{j} = [names{j} '2'];
                     if ~ismember(oldName,warnedAlready)
                         warnedAlready = cat(2,warnedAlready,{oldName});
-                        warnNoTrace('%s already defined; renamed to %s',oldName,name);
+                        warnNoTrace('%s already defined; renamed to %s',oldName,names{j});
                     end
                     % This happes because block and
                     % blockTrial are both cic properties. Unlikely to
                     % happen anywhere else.
-                else
-                    name = names{j};
                 end
-                if strcmpi(types(j),'ByteStream')
+
+
+                name = names{j};
+                if strcmpi(parmTypes(j),'ByteStream')
                     v.(name) =getArrayFromByteStream(vals{j});
                 else
                     v.(name) =vals{j};
@@ -225,6 +225,35 @@ classdef PluginParameter < dj.Part
                 v.([name 'Time']) = times{j};
                 v.([name 'NsTime']) = nsTimes{j};
                 v.([name 'Trial']) = trials{j};
+            end
+
+            if ~isempty(nwbRoot)
+                % Determine when cic was constructedby finding the first
+                % entry in nstime for the trial property.
+                tpl=fetch(ns.PluginParameter  & (ns.Experiment &tbl) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
+                timeZero  = tpl.property_nstime(1);
+                for j=1:numel(names)
+                    name =names{j};
+                    data= v.(name);
+                    if ~(isnumeric(data) || islogical(data))
+                        fprintf('Skipping %s in %s (non numeric data)\n',name,plgName);
+                    else
+                        timestamps = v.([name 'NsTime']);
+                        if isempty(timestamps)
+                            timestamps =0; %Global property-pretend it was set at t=0.
+                        else
+                            % Align time stamps to the first GetSecs
+                            % call,convert to seconds
+                            timestamps =(timestamps-timeZero)/1000;
+                        end
+                        if size(data,1)== size(timestamps,1)
+                            ts =  types.core.TimeSeries('data',data','data_continuity','step','timestamps',timestamps,'data_unit','notspecified');
+                            nwbRoot.stimulus_presentation.set(sprintf('%s_%s',plgName ,name),ts);
+                        else
+                            fprintf('Skipping %s (mismatched timestamps)\n',name);
+                        end
+                    end
+                end
             end
         end
     end
