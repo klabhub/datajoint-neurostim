@@ -247,7 +247,8 @@ classdef PluginParameter < dj.Part
                             timestamps =(timestamps-timeZero)/1000;
                         end
                         if size(data,1)== size(timestamps,1)
-                            ts =  types.core.TimeSeries('data',data','data_continuity','step','timestamps',timestamps,'data_unit','notspecified');
+                            description = sprintf('%s property in %s plugin %d entries',name,plgName,size(data,1));
+                            ts =  types.core.TimeSeries('description',description, 'data',data','data_continuity','step','timestamps',timestamps,'data_unit','notspecified');
                             nwbRoot.stimulus_presentation.set(sprintf('%s_%s',plgName ,name),ts);
                         else
                             fprintf('Skipping %s (mismatched timestamps)\n',name);

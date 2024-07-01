@@ -13,7 +13,16 @@ checksum = NULL : char(32) # MD5 Hash checksum
 classdef File < dj.Imported
 
     methods (Access = public)
-
+        function nwb(tbl,nwbRoot,pv)
+            for tpl = fetch(tbl,'*')'
+                switch tpl.extension
+                    case '.sbx'
+                        sbx.nwbRawData(tpl,nwbRoot,pv)
+                     otherwise
+                        % Not implemented.
+                end
+            end
+        end
         function out = checkExists(tbl,pv)
             arguments
                 tbl (1,1) ns.File

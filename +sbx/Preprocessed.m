@@ -384,23 +384,7 @@ classdef Preprocessed < dj.Manual
 
         end
 
-        function nwbTrgt = nwb(tbl,nwbTrgt,file)
-            % Function that reads an sbx data file, and adds it to the nwbTrgt (an
-            % instance of NwbFile). This is meant to be called automatically from
-            % createNwb,by providing the input raw =dictionary("sbx",@sbx.nwb)
-            %
-            arguments
-                tbl (1,1) sbx.Preprocessed
-                nwbTrgt (1,1) NwbFile
-                file (1,1) string
-            end
-
-            device = types.core.Device('name', 'Scanbox','manufacturer','xxx','description','fromfile');
-            optical_channel = types.core.OpticalChannel( ...
-                'description', 'description', ...
-                'emission_lambda', 500.);
-
-        end
+       
     end
     methods (Static)
 

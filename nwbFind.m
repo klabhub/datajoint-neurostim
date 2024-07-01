@@ -30,5 +30,5 @@ end
 children=cls.children;
 for ch=1:numel(children)
     childName =  string(dj.conn().tableToClass(children{ch}));
-    className = [className findNwb(childName)]; %#ok<AGROW>
+    className = [className nwbFind(childName)]; %#ok<AGROW>
 end

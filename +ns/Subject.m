@@ -15,7 +15,7 @@ classdef Subject < dj.Manual
             arguments
                 tbl (1,1) ns.Subject {mustHaveRows(tbl,1)} %  A single row in this table
                 nwbRoot (1,1) NwbFile  % The root element 
-                pv (1,1) struct % THe struct of pv pairs set in ns.Experiment/nwbExport
+                pv (1,1) struct % The struct of pv pairs set in ns.Experiment/nwbExport
             end
             % Return the table as a NWB type. 
             tpl =fetch(tbl,'*');
@@ -37,7 +37,8 @@ classdef Subject < dj.Manual
                 'subject_id', tpl.subject, ...
                 'date_of_birth',datetime(tpl.dob,"TimeZone",pv.tz,"Format","uuuu-MM-dd ZZZZ","InputFormat","uuuu-MM-dd"),...
                 'species', char(species), ...
-                'sex', char(sex));
+                'sex', char(sex), ...
+                'description',tpl.subject);
             
             %Loop over the subject meta dictionary
             for m = pv.subjectMeta.keys
