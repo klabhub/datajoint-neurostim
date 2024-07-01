@@ -154,12 +154,20 @@ classdef Experiment  < dj.Manual
             %           nwbExport(ns.Experiment ,general=general, subjectMeta= subjectMeta,
             %                               folder = "c:/temp",
             %                           condaEnvironment = "nwb",
-            %                           dandiSet = 10000,
+            %                           dandiSet = "10000",
             %                           dandiUpload = true,
             %                           dandiStaging = false);
             % will check NWB validation, then dandi validation against
             % dandiset 10000 and then try to upload to dandiarchive.org.
             % See https://www.dandiarchive.org/handbook/13_upload/
+            %
+            %  force can be set tot true to regenrate NWB fies, or false to
+            %  skip files that already exist. 
+            % NOTE - if you switch between the staging archive and the real
+            % archive, make sure to delete the folder named after the
+            % dandiset number (otherwise the dandi validator will think you
+            % have multiple files with the same name). Using force will do
+            % this for you (but also recreate the nwb files).
             % BK - 2023,2024
             arguments
                 expt (1,1) ns.Experiment % The table of experiments
@@ -169,7 +177,7 @@ classdef Experiment  < dj.Manual
                 pv.tz (1,1) string = "local"   % Time zone (used for data collection and subject dob)
                 pv.general (1,1) struct = struct();  % NWB general structure
                 pv.condaEnvironment (1,:) char  = ''  % The name of conda environment that can call dandi and nwbinspector
-                pv.dandiSet (1,1) double {mustBeInteger} = 0  % The dandiset this is part of.
+                pv.dandiSet (1,1) string = ""    % The dandiset this is part of.
                 pv.dandiUpload (1,1) logical = false  % Set to true to upload to dandiarchive
                 pv.dandiStaging (1,1) logical = true % Use the dandi-staging site instead of the "real" site
                 pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties 
@@ -195,8 +203,9 @@ classdef Experiment  < dj.Manual
                 uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
                 fname = fullfile(pv.folder,[strrep(uniqueExperimentName,':','') '.nwb']);                
                 if exist(fname,'file')
-                    [~,f]=fileparts(fname)
-                    fprintf('%s.nwb already exists, skipping.\n',f)
+                    [~,f]=fileparts(fname);
+                    fprintf('%s.nwb already exists, skipping.\n',f);
+                    continue;
                 end
                     % The start time of the experiment:  (note that this is not
                 % exactly the same as the timestamps_reference_time;the
@@ -256,26 +265,28 @@ classdef Experiment  < dj.Manual
                 fprintf('**** Running nwbinspector...\n');
                 inspect = sprintf('cd %s && nwbinspector --config dandi .',pv.folder);
                 status =  system(wrap(inspect,pv.condaEnvironment),'-echo');
-                if status == 0 && pv.dandiSet >0
+                if status == 0 && pv.dandiSet ~=""
                     % Dandi validation for  a specfied dataset
                     if pv.dandiStaging
                         url = 'api-staging.dandiarchive.org/api';
                     else
-                        url = 'api.dandiarchive.org/api';
+                        url = 'dandiarchive.org';
                     end
-                    dandiFolder = fullfile(pv.folder,string(pv.dandiSet));
+                    dandiFolder = fullfile(pv.folder,pv.dandiSet);
                     if ~exist(dandiFolder,"dir")
                         mkdir(dandiFolder);
+                    end
+
                         % Dwownload the yaml file.
                         fprintf('**** Downloading dandiset yaml file ...\n');
-                        dandiDownload  = sprintf('cd %s && dandi download --download dandiset.yaml https://%s/dandiset/%d/draft/',pv.folder,url,pv.dandiSet);
+                        dandiDownload  = sprintf('cd %s && dandi download --download dandiset.yaml https://%s/dandiset/%s/draft/',pv.folder,url,pv.dandiSet);
                         status =  system(wrap(dandiDownload  ,pv.condaEnvironment),'-echo');
                         if status~=0
                             fprintf(2,'dandi download failed. See above for command line output.\n')
                         end
-                    end
+                    
 
-                    fprintf('**** Organizing and validating dandiset %d ...\n',pv.dandiSet);
+                    fprintf('**** Organizing and validating dandiset %s ...\n',pv.dandiSet);
                     % Force session_id in the name of the file as otherwise
                     % dandi tries to rename the file to subject.nwb and
                     % when later sessions are added, they get random
@@ -289,8 +300,8 @@ classdef Experiment  < dj.Manual
                         else
                             opt = '-i dandi';
                         end
-                        fprintf('**** Uploading dandiset %d ...\n',pv.dandiSet); tic;
-                        upload  = sprintf('cd %s && dandi upload %s%',dandiFolder,opt,pv.dandiSet);
+                        fprintf('**** Uploading dandiset %s ...\n',pv.dandiSet); tic;
+                        upload  = sprintf('cd %s && dandi upload %s .',dandiFolder,opt);
                         [status,stdout] =  system(wrap(upload  ,pv.condaEnvironment));
                         if status==0
                             fprintf('*** Upload complete (%s)\n',seconds(toc));
