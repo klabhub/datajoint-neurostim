@@ -37,7 +37,7 @@ ff = strrep(fullfile(folder(ns.Experiment & fileTpl),fileTpl.filename),'.sbx',''
 
 if getParms(pv.passthrough.sbx,'meanOnly',true)
     % Instead of the raw data, store only the mean image. 
-    data = types.untyped.DataPipe(permute(fetch1(sbx.Preprocessed & fileTpl,'img'),[3 1 2])); % Compress for consistencey with raw image data.
+    data = types.untyped.DataPipe('data',permute(fetch1(sbx.Preprocessed & fileTpl,'img'),[3 1 2])); % Compress for consistencey with raw image data.
 else
     % Read the raw image data. This works, but the compression (an nwb save
     % time) seems to take forever nd for a 30GB file needs more thatn 100GB
