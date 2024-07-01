@@ -9,16 +9,16 @@ arguments
 end
 
 % Unless a package has already been used in a session, children are limited
-% to the ns package. Force loading all packages (TODO : figure out how to
-% determine all packages in the database schema)
-if packages ~=""
-    currentPackages=dj.conn().packages.keys;
-    for p=packages
-        if ismember(p,currentPackages);continu;end
-        dbase = dj.conn().schemas.keys;
-        dj.Schema(dj.conn,p,dbase{1});
+% to the ns package. Force loading all requested packages (TODO : figure out how to
+% determine all packages in the database schema and load all of those by default)
+ret = dj.ERD();
+if packages~=""
+    for package = packages
+        obj = dj.ERD(feval(package + ".getSchema"));
+        ret = ret + obj;
     end
 end
+
 className = string([]);
 cls = feval(top);
 m = metaclass(cls);
