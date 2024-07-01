@@ -22,7 +22,26 @@ if strcmpi(className ,'ns.Subject')
     % Read the single json
     jsonFile  =fullfile(getenv("NS_ROOT"),'subject.json');
     allJson = readJson(jsonFile);
+   % dob,sex,and species are stored in the main table (not SubjectMeta).
+   % Handle them as updates here. 
+    for j =1:numel(allJson)
+        key = tbl & struct('subject',allJson(j).subject);
+        if exists(key)        
+            if allJson(j).dob==""
+                update(key,'dob',[]);            
+            else
+                update(key,'dob',char(allJson(j).dob));            
+            end
+            if allJson(j).sex==""
+                update(key,'sex','u');
+            else
+                update(key,'sex',allJson(j).sex);
+            end            
+            update(key,'species',char(allJson(j).species));            
+        end
+    end
 end
+
 dj.conn().startTransaction
 try
     if pv.dryrun
@@ -33,14 +52,14 @@ try
         delQuick(metaTbl);
     end
     % Loop over the table to read the json files and construct an array of tpls
-    for key  = fetch(tbl)'
+    for key  = fetch(tbl)'  
         switch (className)
             case 'ns.Subject'
                 thisJson = allJson([allJson.subject]==key.subject);
                 if isempty(thisJson)
                     fprintf("No metadata found in %s for %s \n ",jsonFile, key.subject)
-                else
-                    thisJson = rmfield(thisJson,'subject');
+                else                    
+                    thisJson = rmfield(thisJson,{'subject','dob','species','sex'}); % These fields are stored in the ns.Subject table and have been updated above
                 end
             case 'ns.Session'
                 jsonFile  =fullfile(folder(ns.Session&key),[key.subject '.json']);
@@ -69,10 +88,11 @@ try
         else
             % In with the new
             insert(metaTbl,tpl)
-        end
+        end       
     else
         fprintf('No relevant meta data found. \n')
     end
+    
 catch me
     fprintf(2,'An error occurred. Cancelling the transaction. No changes have been made. (%s)\n',me.message)
     dj.conn().cancelTransaction
