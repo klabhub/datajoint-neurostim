@@ -79,7 +79,7 @@ classdef Roi < dj.Computed
                 'description',cTpl.ctag);
 
             fluorescence = types.core.Fluorescence();
-            fluorescence.roiresponseseries.set('RoiResponseSeries',roiResponseSeries)
+            fluorescence.roiresponseseries.set('RoiResponseSeries',roiResponseSeries);
             ophys.nwbdatainterface.set('Fluorescence',fluorescence);
         end
 

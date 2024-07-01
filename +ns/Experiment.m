@@ -198,6 +198,7 @@ classdef Experiment  < dj.Manual
                 end
             end        
             for e = fetch(expt,'*')'
+                try
                 % Loop over experiments (NWB refers to this as a "session", NS uses session to refer to all experiments for
                 % a subject on a given day)
                 uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
@@ -256,7 +257,10 @@ classdef Experiment  < dj.Manual
                                
                 fprintf('Exporting %s ...\n',fname); tic;
                 nwbExport(nwbRoot,fname);
-                fprintf('Export complete (%s)\n',seconds(toc));                
+                fprintf('Export complete (%s)\n',seconds(toc));     
+                catch me
+                    fprintf(2,"Failed on %s (%s).\n",fname,me.message)
+                end
             end
 
             % Validate the local folder
