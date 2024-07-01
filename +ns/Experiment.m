@@ -162,12 +162,14 @@ classdef Experiment  < dj.Manual
             % See https://www.dandiarchive.org/handbook/13_upload/
             %
             %  force can be set tot true to regenrate NWB fies, or false to
-            %  skip files that already exist. 
+            %  skip files that already exist.
+            %
             % NOTE - if you switch between the staging archive and the real
             % archive, make sure to delete the folder named after the
             % dandiset number (otherwise the dandi validator will think you
             % have multiple files with the same name). Using force will do
             % this for you (but also recreate the nwb files).
+            %
             % BK - 2023,2024
             arguments
                 expt (1,1) ns.Experiment % The table of experiments
@@ -180,7 +182,7 @@ classdef Experiment  < dj.Manual
                 pv.dandiSet (1,1) string = ""    % The dandiset this is part of.
                 pv.dandiUpload (1,1) logical = false  % Set to true to upload to dandiarchive
                 pv.dandiStaging (1,1) logical = true % Use the dandi-staging site instead of the "real" site
-                pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties 
+                pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties
                 pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example
             end
 
@@ -188,7 +190,7 @@ classdef Experiment  < dj.Manual
             % Find all classes that have the nwb member function
             classesWithNwb =nwbFind("ns.Subject",pv.packages);
 
-           % Create the local export folder
+            % Create the local export folder
             if exist(pv.folder,"dir") &&  pv.force
                 [success,message] = rmdir(pv.folder,'s');
                 if success
@@ -196,68 +198,68 @@ classdef Experiment  < dj.Manual
                 else
                     error('Failed to delete the folder %s (%s)',pv.folder,message);
                 end
-            end        
+            end
             for e = fetch(expt,'*')'
                 try
-                % Loop over experiments (NWB refers to this as a "session", NS uses session to refer to all experiments for
-                % a subject on a given day)
-                uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
-                fname = fullfile(pv.folder,[strrep(uniqueExperimentName,':','') '.nwb']);                
-                if exist(fname,'file')
-                    [~,f]=fileparts(fname);
-                    fprintf('%s.nwb already exists, skipping.\n',f);
-                    continue;
-                end
-                    % The start time of the experiment:  (note that this is not
-                % exactly the same as the timestamps_reference_time;the
-                % former is based on a call to now, while the latter is a
-                % call to GetSecs that is executed a few lines later in the
-                % constructor of cic. Microseconds difference.
-                % Time ==0 is defined as the start of the first trial.
-                startTime = datetime([e.session_date 'T' e.starttime],'TimeZone',pv.tz);
-                nwbRoot = NwbFile(...
-                    'session_description',sprintf('%s',e.paradigm ),...
-                    'identifier',char(java.util.UUID.randomUUID().toString()),...
-                    'session_start_time', startTime,...
-                    'timestamps_reference_time',startTime, ...
-                    'general_session_id', uniqueExperimentName);
-
-                %% General properties (specified in the call to this function)
-                fn = fieldnames(pv.general);
-                for i=1:numel(fn)
-                    prop = "general_" + fn{i};
-                    try
-                        nwbRoot.(prop) = pv.general.(fn{i});
-                    catch
-                        fprintf(2,"Property %s does not exist in the NWB schema. Ignored. \n", prop );
+                    % Loop over experiments (NWB refers to this as a "session", NS uses session to refer to all experiments for
+                    % a subject on a given day)
+                    uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
+                    fname = fullfile(pv.folder,[strrep(uniqueExperimentName,':','') '.nwb']);
+                    if exist(fname,'file')
+                        [~,f]=fileparts(fname);
+                        fprintf('%s.nwb already exists, skipping.\n',f);
+                        continue;
                     end
-                end
-                if ~ismember('experiment_description',fn)
-                    % Unless the user has given a description already, use
-                    % the paradigm name as the experiment description
-                    nwbRoot.general_experiment_description = e.paradigm;
-                end
+                    % The start time of the experiment:  (note that this is not
+                    % exactly the same as the timestamps_reference_time;the
+                    % former is based on a call to now, while the latter is a
+                    % call to GetSecs that is executed a few lines later in the
+                    % constructor of cic. Microseconds difference.
+                    % Time ==0 is defined as the start of the first trial.
+                    startTime = datetime([e.session_date 'T' e.starttime],'TimeZone',pv.tz);
+                    nwbRoot = NwbFile(...
+                        'session_description',sprintf('%s',e.paradigm ),...
+                        'identifier',char(java.util.UUID.randomUUID().toString()),...
+                        'session_start_time', startTime,...
+                        'timestamps_reference_time',startTime, ...
+                        'general_session_id', uniqueExperimentName);
 
-                %% Trials
-                nwbRoot.intervals_trials = types.core.TimeIntervals('colnames',{'start_time','stop_time'},'description','Trial timing data');
-                start= get(expt & e,'cic','prm','trial','what','clocktime','attrialtime',inf);
-                start = (start-start(1))/1000;
-                stop = [start(2:end)-eps ;start(end)+max(diff(start))];
-                for i=1:numel(start)
-                    nwbRoot.intervals_trials.addRow('start_time',start(i),'stop_time',stop(i));
-                end
+                    %% General properties (specified in the call to this function)
+                    fn = fieldnames(pv.general);
+                    for i=1:numel(fn)
+                        prop = "general_" + fn{i};
+                        try
+                            nwbRoot.(prop) = pv.general.(fn{i});
+                        catch
+                            fprintf(2,"Property %s does not exist in the NWB schema. Ignored. \n", prop );
+                        end
+                    end
+                    if ~ismember('experiment_description',fn)
+                        % Unless the user has given a description already, use
+                        % the paradigm name as the experiment description
+                        nwbRoot.general_experiment_description = e.paradigm;
+                    end
 
-                %% Export all tables that have nwb functionality
-                for cls=classesWithNwb
-                    tbl = feval(cls) & e;
-                    nwb(tbl,nwbRoot,pv);
-                end
+                    %% Trials
+                    nwbRoot.intervals_trials = types.core.TimeIntervals('colnames',{'start_time','stop_time'},'description','Trial timing data');
+                    start= get(expt & e,'cic','prm','trial','what','clocktime','attrialtime',inf);
+                    start = (start-start(1))/1000;
+                    stop = [start(2:end)-eps ;start(end)+max(diff(start))];
+                    for i=1:numel(start)
+                        nwbRoot.intervals_trials.addRow('start_time',start(i),'stop_time',stop(i));
+                    end
 
-                %% Export to file                
-                               
-                fprintf('Exporting %s ...\n',fname); tic;
-                nwbExport(nwbRoot,fname);
-                fprintf('Export complete (%s)\n',seconds(toc));     
+                    %% Export all tables that have nwb functionality
+                    for cls=classesWithNwb
+                        tbl = feval(cls) & e;
+                        nwb(tbl,nwbRoot,pv);
+                    end
+
+                    %% Export to file
+
+                    fprintf('Exporting %s ...\n',fname); tic;
+                    nwbExport(nwbRoot,fname);
+                    fprintf('Export complete (%s)\n',seconds(toc));
                 catch me
                     fprintf(2,"Failed on %s (%s).\n",fname,me.message)
                 end
@@ -277,18 +279,21 @@ classdef Experiment  < dj.Manual
                         url = 'dandiarchive.org';
                     end
                     dandiFolder = fullfile(pv.folder,pv.dandiSet);
-                    if ~exist(dandiFolder,"dir")
-                        mkdir(dandiFolder);
+                    % Remove existing sub folder that contains symlinks to the
+                    % nwb files previously stored. Then validate fresh (without
+                    % this dandi validation fails as it thinks some of the
+                    % symlinks are files with the same identifiers).
+                    if exist(dandiFolder,"dir")
+                        rmdir(dandiFolder,'s')
                     end
-
-                        % Dwownload the yaml file.
-                        fprintf('**** Downloading dandiset yaml file ...\n');
-                        dandiDownload  = sprintf('cd %s && dandi download --download dandiset.yaml https://%s/dandiset/%s/draft/',pv.folder,url,pv.dandiSet);
-                        status =  system(wrap(dandiDownload  ,pv.condaEnvironment),'-echo');
-                        if status~=0
-                            fprintf(2,'dandi download failed. See above for command line output.\n')
-                        end
-                    
+                    mkdir(dandiFolder);
+                    % Download the yaml file.
+                    fprintf('**** Downloading dandiset yaml file ...\n');
+                    dandiDownload  = sprintf('cd %s && dandi download --download dandiset.yaml https://%s/dandiset/%s/draft/',pv.folder,url,pv.dandiSet);
+                    status =  system(wrap(dandiDownload  ,pv.condaEnvironment),'-echo');
+                    if status~=0
+                        fprintf(2,'dandi download failed. See above for command line output.\n')
+                    end
 
                     fprintf('**** Organizing and validating dandiset %s ...\n',pv.dandiSet);
                     % Force session_id in the name of the file as otherwise
