@@ -99,7 +99,7 @@ classdef PluginParameter < dj.Part
                 % were really constant so that we can store a single value
                 % for the experiment (i.e. Global type).
                 if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
-                    if iscellstr(value) || isstring(value) s
+                    if iscellstr(value) || isstring(value) 
                         uValue=  unique(value);
                         if size(uValue,1)==1
                             uValue= uValue{1}; % Get rid of cell
