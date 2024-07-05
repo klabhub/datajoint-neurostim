@@ -45,7 +45,8 @@ classdef Experiment  < dj.Manual
                 ana  =  tbl & (proj(exptWithMetaAnalyze & ('NOT meta_value ="0"')) | proj(exptWithout));
             end
             if nargout>1
-                notAna = tbl  -proj(ana);
+                notAna = tbl  -fetch(ana);
+                %notAna = tbl & fetch(notAna);
             end
 
         end
@@ -393,6 +394,7 @@ classdef Experiment  < dj.Manual
                 pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
                 pv.atTrialTime (1,1) double = NaN
                 pv.trial (1,:) double = []
+                pv.fetchOptions = 'ORDER BY session_date';
             end
             if ischar(plg)
                 plg = {plg};
@@ -404,7 +406,7 @@ classdef Experiment  < dj.Manual
             out = cell(numel(ix),1);
             filename = cell(numel(ix),1);
             exptCntr =0;
-            for exptKey=tbl.fetch('paradigm')'
+            for exptKey=tbl.fetch('paradigm',pv.fetchOptions)'
                 exptCntr = exptCntr + 1;
                 filename{exptCntr} = fetch1(tbl &exptKey,'file');
                 if nrPlugins==0

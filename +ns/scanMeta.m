@@ -49,7 +49,7 @@ try
     else
         % Delete the old meta table - everything is stored in JSON which will
         % be read below
-        delQuick(metaTbl);
+        delQuick(metaTbl &tbl);
     end
     % Loop over the table to read the json files and construct an array of tpls
     for key  = fetch(tbl)'  
