@@ -285,20 +285,21 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
     % Read meta data from the content of the Neurostim files
     % tmp has the meta data, c the CIC objects which are passed to
     % nsAddToDataJoint below
+    c = cell(1,nrExperiments);
+    tmpMeta = cell(1,nrExperiments);
     out =false(1,nrExperiments);
 
     for i=1:nrExperiments
         try
-            [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
+            [tmp,c{i}] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
             tmpMeta{i} = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
         catch
             out(i)=true;
-            tmpMeta{i}= [];
-            c(i)= neurostim.cic;
         end
     end
     meta  =[tmpMeta{~out}];
-    c = c(~out);
+    c = [c{~out}];
+    
 
     nrTrials = [c.nrTrialsCompleted];
     out = nrTrials < p.Results.minNrTrials;
