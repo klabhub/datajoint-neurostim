@@ -105,7 +105,6 @@ classdef Experiment  < dj.Manual
                 obj = p.Results.fun(thisFile);
             end
         end
-
         function nwbExport(expt,pv)
             % Create Neurodata without Borders objects for each experiment in a
             % ns.Experiment table.
@@ -345,8 +344,6 @@ classdef Experiment  < dj.Manual
 
 
         end
-
-
         function [out,filename] = get(tbl,plg,pv)
             % function [out,filename] = get(o,varargin)
             % Retrieve all information on a specific plugin in an experiment
@@ -477,8 +474,6 @@ classdef Experiment  < dj.Manual
 
 
         end
-
-
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
@@ -575,7 +570,6 @@ classdef Experiment  < dj.Manual
             s  = load(filename,'c');
             o=s.c;
         end
-
         function [tpl,c] = readCicContents(tpl,pv)
             % This is called by nsScan to read the contents of a neurostim
             % output file and extract some meta data to store in DataJoint
@@ -607,7 +601,6 @@ classdef Experiment  < dj.Manual
 
             tpl = ns.Experiment.tplFromCic(c);
         end
-
         function tpl = tplFromCic(c)
             % Construct a tpl from a CIC object
             arguments
@@ -648,6 +641,5 @@ classdef Experiment  < dj.Manual
             key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
             tpl  =mergestruct(key,tpl);
         end
-
     end
 end

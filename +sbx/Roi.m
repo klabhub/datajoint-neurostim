@@ -82,8 +82,6 @@ classdef Roi < dj.Computed
             fluorescence.roiresponseseries.set('RoiResponseSeries',roiResponseSeries);
             ophys.nwbdatainterface.set('Fluorescence',fluorescence);
         end
-
-
         function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.

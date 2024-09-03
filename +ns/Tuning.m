@@ -1,5 +1,5 @@
 %{
-# A tuning curve: signal averageds computed channel for each ns.Dimension
+# A tuning curve: signal averaged computed channel for each ns.Dimension
 -> ns.CChannel
 -> ns.TuningParm
 -> ns.Dimension
