@@ -31,7 +31,7 @@ driftKey.ctag = driftTag;
 
 
 %% Fetch data and let spikeML do the work
-[F,channel] = fetchn(ns.CChannel & srcKey,'signal','channel','LIMIT 1');
+[F,channel] = fetchn(ns.CChannel & srcKey,'signal','channel');
 [t,dt] = sampleTime(srcC);
 nrSamples = numel(t);
 dt = dt/1000;% ms -> s
@@ -93,15 +93,12 @@ end
 
 %% drift - drift of the F signal at each sample - add to separate ns.C row
 % Create tuples and insert.
-% Use a transaction because if something goes wrong here, none of the
-% associated spiking data will be stored.
-c= dj.conn;
-c.startTransaction;
 driftTpl = mergestruct(driftKey,...
     struct('time',time, ...
     'nrsamples',nrSamples,...
     'info',''));
 insertIfNew(ns.C,driftTpl);
+
 
 % Create tpl and insert
 driftChannelTpl = mergestruct(driftKey,...
@@ -109,6 +106,6 @@ driftChannelTpl = mergestruct(driftKey,...
     'channel',num2cell(channel),...
     'name','drift'));
 insert(ns.CChannel,driftChannelTpl);
-c.commitTransaction;
+
 
 end
