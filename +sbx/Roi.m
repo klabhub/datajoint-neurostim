@@ -82,8 +82,6 @@ classdef Roi < dj.Computed
             fluorescence.roiresponseseries.set('RoiResponseSeries',roiResponseSeries);
             ophys.nwbdatainterface.set('Fluorescence',fluorescence);
         end
-
-
         function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.
@@ -102,6 +100,10 @@ classdef Roi < dj.Computed
             % showImg  - Set to true to show the mean Ca image as a
             %               background [true]
             % colormap - Colormap to use  [hot]
+            % pix - Set to true to use the actual ROI pixels (instead of a
+            % circle)  [false]
+            % alpha - Transparency [0.5]
+            % alphaThreshold - 0
             %
             % OUTPUT
             %    hScatter - Handle to the scatter object
@@ -145,10 +147,13 @@ classdef Roi < dj.Computed
 
             %% Setup color
             if isempty(pv.color)
-                % Use the z-scored rate as the color of the cells
+                % Use the z-scored spike rate as the color of the cells
+                signal  = fetchn(ns.CChannel & 'ctag="spikes"' & roi,'signal');
+                m  = cellfun(@(x) mean(x,"omitmissing"),signal);
+                sd = cellfun(@(x) std(x,0,1,"omitmissing"),signal);
                 z = m./sd;
                 pv.color = z;
-                pv.colorLabel = 'rate (Z)';
+                pv.colorLabel = 'spike rate (Z)';
             end
             % Clamp to the limits
             if isempty(pv.clim)
@@ -177,7 +182,7 @@ classdef Roi < dj.Computed
                 alpha   = zeros(RI.ImageSize);
                 prep = sbx.Preprocessed & roi;
                 stat =  prep.stat; % Reads the stat.npy file
-                assert(~isempty(stat),'Stat file not loaded. Cannot use pix=true');
+                assert(~isempty(stat),'Stat file not loaded. (is NS_ROOT set correctly?) Cannot use pix=true');
 
                 rCntr  =0;
                 % Scale to the full colormap

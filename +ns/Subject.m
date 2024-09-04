@@ -8,7 +8,6 @@ species = NULL : varchar(100)      # Species
 %}
 % BK  - April 2022
 classdef Subject < dj.Manual
-
     methods (Access = ?ns.Experiment)
         function subject = nwb(tbl,nwbRoot,pv)      
             % nwb export function, called from ns.Experiment nwbExport.      

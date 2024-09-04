@@ -825,8 +825,8 @@ classdef C< dj.Computed
 
             % Get the specified preprocessing parms
             prepParms = fetch(ns.CParm & key,'*');
-            % Call the prep function
 
+            % Call the prep function
             [signal,time,channelInfo,recordingInfo] = feval(prepParms.fun,key,prepParms.parms);
             [nrSamples,nrChannels] = size(signal);
 
