@@ -1,50 +1,55 @@
-function info = readInfoFile(expt)
+function out = readInfoFile(expt)
 % Given an expt tuple, read and return the info struct from the sbx .mat output file.
 if isa(expt,'ns.Experiment')
     expt = fetch(expt);
 end
-sbxFile = ((ns.File & expt) & 'extension=''.sbx''');
-fname = fetch1(sbxFile & expt,'filename');
-fldr = folder(ns.Experiment & expt);
-ff =fldr + fname(1:end-3) + 'mat';
-if exist(ff,'file')
-    load(ff ,'info'); % Get the info struct
-else
-    error('Could not load sbx info struct. File %s not found',strrep(ff,'\','/'))
+
+% Loop over experiments
+for e=1:numel(expt)
+    sbxFile = ((ns.File & expt(e)) & 'extension=''.sbx''');
+    fname = fetch1(sbxFile & expt(e),'filename');
+    fldr = folder(ns.Experiment & expt(e));
+    ff =fldr + fname(1:end-3) + 'mat';
+    if exist(ff,'file')
+        load(ff ,'info'); % Get the info struct
+    else
+        error('Could not load sbx info struct. File %s not found',strrep(ff,'\','/'))
+    end
+
+
+    switch info.scanbox_version
+        case 3
+            info.xscale = info.dxcal;
+            info.yscale = info.dycal;
+
+            % % Calibration contains curvefit objects, which mym does not like.
+            % Remove/replace
+            info.calibration.formulaX = formula(info.calibration.fx);
+            info.calibration.formulaY = formula(info.calibration.fy);
+            info.calibration.parmsX = [info.calibration.fx.a info.calibration.fx.b info.calibration.fx.c info.calibration.fx.d];
+            info.calibration.parmsY = [info.calibration.fy.a info.calibration.fy.b info.calibration.fy.c info.calibration.fy.d];
+            info.calibration = rmfield(info.calibration,'fx');
+            info.calibration = rmfield(info.calibration,'fy');        %
+        otherwise
+            cal = info.calibration(info.config.magnification);
+            info.xscale = 1./cal.x;
+            info.yscale = 1./cal.y;
+    end
+
+    % Determine the number of planes  from the optotune settings.
+    if isfield(info,'otwave')
+        nrPlanes = max(1,numel(info.otwave));
+    elseif isnan(info.otparam(3))
+        nrPlanes = 1 ;
+    else
+        nrPlanes = info.otparam(3);
+    end
+    nrChannels = numel(info.channels);
+    % 2 bytes per pixel.
+    dirInfo = dir(fullfile(fldr,fname));
+    info.nrFrames = dirInfo.bytes./prod(info.sz)/nrChannels/nrPlanes/2;
+    info.nrPlanes  = nrPlanes;
+
+    out(e) = info;
 end
-
-
-switch info.scanbox_version
-    case 3
-        info.xscale = info.dxcal;
-        info.yscale = info.dycal;
-
-        % % Calibration contains curvefit objects, which mym does not like.
-        % Remove/replace
-        info.calibration.formulaX = formula(info.calibration.fx);
-        info.calibration.formulaY = formula(info.calibration.fy);
-        info.calibration.parmsX = [info.calibration.fx.a info.calibration.fx.b info.calibration.fx.c info.calibration.fx.d];
-        info.calibration.parmsY = [info.calibration.fy.a info.calibration.fy.b info.calibration.fy.c info.calibration.fy.d];
-        info.calibration = rmfield(info.calibration,'fx');
-        info.calibration = rmfield(info.calibration,'fy');        %
-    otherwise
-        cal = info.calibration(info.config.magnification);
-        info.xscale = 1./cal.x;
-        info.yscale = 1./cal.y;
-end
-
-% Determine the number of planes  from the optotune settings.
-if isfield(info,'otwave')
-    nrPlanes = max(1,numel(info.otwave));
-elseif isnan(info.otparam(3))
-    nrPlanes = 1 ;
-else
-    nrPlanes = info.otparam(3);
-end
-nrChannels = numel(info.channels);
-% 2 bytes per pixel.
-dirInfo = dir(fullfile(fldr,fname));
-info.nrFrames = dirInfo.bytes./prod(info.sz)/nrChannels/nrPlanes/2;
-info.nrPlanes  = nrPlanes;
-
 end

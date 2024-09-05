@@ -253,15 +253,24 @@ classdef Preprocessed < dj.Manual
                     % Check that each experiment used the same scaling
                     scale = [];
                     nrPlanes = [];
+                    depth = [];
                     for e=fetch(analyzeExptThisSession)'
                         info = sbx.readInfoFile(e);
                         scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
                         nrPlanes = [nrPlanes info.nrPlanes]; %#ok<AGROW>
+                        depth  = [depth info.config.knobby.pos.z]; %#ok<AGROW>
                     end
                     uScale = unique(scale,'rows');
-                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
+                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                    
                     nrPlanes = unique(nrPlanes);
-                    assert(size(nrPlanes,1) ==1,"Different number of planes across experiments in this session.");
+                    assert(isscalar(nrPlanes),"Different number of planes across experiments in this session.");                    
+                    % Scanning the same animal at different depths requires
+                    % running preprocessing separately for all experiments
+                    % at that depth. Not implemented yet, probably best
+                    % done by assigning a different plane number to the
+                    % different depths.
+                    assert(isscalar(unique(depth)),"Experiments in this session were recorded at different depths. Not implemented yet.");
+                    
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
                     opts{'nplanes'} = uint64(nrPlanes);
