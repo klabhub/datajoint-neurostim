@@ -250,16 +250,16 @@ classdef Preprocessed < dj.Manual
             end
             switch (parms.toolbox)
                 case 'suite2p'
-                    if pyenv().Status=="Loaded"
+                   %% if pyenv().Status=="Loaded"
                         % Already loaded. Hope that this python is set up
                         % to run suite2p,
-                    else
+                   %% else
                         conda = getenv('NS_CONDA');
                         if isempty(conda)
                             error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
                         end
                         pyenv(Version = fullfile(conda,'envs/suite2p/bin/python3'));   
-                    end
+                    %% end
 
                     % Check that each experiment used the same scaling
                     scale = [];
