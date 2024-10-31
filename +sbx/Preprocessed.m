@@ -250,6 +250,17 @@ classdef Preprocessed < dj.Manual
             end
             switch (parms.toolbox)
                 case 'suite2p'
+                    if pyenv().Status=="Loaded"
+                        % Already loaded. Hope that this python is set up
+                        % to run suite2p,
+                    else
+                        conda = getenv('NS_CONDA');
+                        if isempty(conda)
+                            error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
+                        end
+                        pyenv(Version = fullfile(conda,'envs/suite2p/bin/python3'));   
+                    end
+
                     % Check that each experiment used the same scaling
                     scale = [];
                     nrPlanes = [];
@@ -271,6 +282,9 @@ classdef Preprocessed < dj.Manual
                     % different depths.
                     assert(isscalar(unique(depth)),"Experiments in this session were recorded at different depths. Not implemented yet.");
                     
+
+
+
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
                     opts{'nplanes'} = uint64(nrPlanes);
@@ -328,10 +342,7 @@ classdef Preprocessed < dj.Manual
                             'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
 
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-                        conda = getenv('NS_CONDA');
-                        if isempty(conda)
-                            error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
-                        end
+                       
                         % Calling python in-process can lead to problems
                         % with library conflicts. Using a system call seems more robust to
                         % different installs. To pass the ops and db dicst we save them

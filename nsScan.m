@@ -292,6 +292,7 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
             [tmp,c(i)] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
             tmpMeta{i} = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
         catch
+            lasterr
             out(i)=true;
             tmpMeta{i}= [];
             c(i)= neurostim.cic;
