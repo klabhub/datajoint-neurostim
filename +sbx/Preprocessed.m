@@ -1,7 +1,7 @@
 %{
 # A complete preprocessed data set of the SBX data obtained in a single session.
 -> ns.Session
-prep  : varchar(255)        # A unique name for this set of preprocessing parameters
+-> sbx.PreprocessedParm     # Preprocessing parameters
 ---
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
@@ -11,27 +11,24 @@ xscale : float              # Scale factor of xpixels (micron/pixel)
 yscale : float              # Scale factor of ypixels  (micron/pixels)
 %}
 %
-% If the environment variable NS_CONDA is set to point to a conda
-% installation, then the preprocessing runs OutOfProcess (i.e. using a
-% system call to start Python outside Matlab). Otherwise, the Python calls
-% are done InProcess, using the PythonEnvironment that is linked to Matlab.
-% (This latter option is faster to startup, but runs the risk of
-% conflicting libraries).
+% Calls to python require If environment variable NS_CONDA to point to a conda
+% installation. Python will run OutOfProcess (i.e. using a
+% system call to start Python outside Matlab). 
 %
-% With suite2p preprocessing, the fast_disk option can be set in PrepParms,
+% With suite2p preprocessing, the fast_disk option can be set in PreprocessedParms,
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
-classdef Preprocessed < dj.Manual
+classdef Preprocessed < dj.Computed
     properties (Dependent)
         ops
         stat
         keySource
     end
     methods
-        function v = get.keySource(tbl)
+        function v = get.keySource(tbl) %#ok<MANU>
             analyzeExpt = analyze(ns.Experiment ,strict=false);
-            v = ns.Session & analyzeExpt;
+            v = (ns.Session & analyzeExpt)*sbx.PreprocessedParm;
         end
 
         function v =  get.ops(tbl)
@@ -48,7 +45,7 @@ classdef Preprocessed < dj.Manual
                     v{keyCntr} = [];
                 end
             end
-            if numel(v)==1
+            if isscalar(v)
                 v =v{1};
             end
 
@@ -69,7 +66,7 @@ classdef Preprocessed < dj.Manual
                     v{keyCntr} = [];
                 end
             end
-            if numel(v)==1
+            if isscalar(v)
                 v =v{1};
             end
         end
@@ -221,14 +218,15 @@ classdef Preprocessed < dj.Manual
             end
         end
     end
-    methods (Access=public)
+    methods (Access=protected)
 
-        function make(tbl,key,parms)
+        function makeTuples(tbl,key)
             sessionPath=unique(folder(ns.Experiment & key));
+            parms = fetch1(sbx.PreprocessedParm & key,'parms');
             % Set the output folder to be
             % subject.suite2p.preprocessing
             % in the session folder
-            resultsFolder = [key.subject '.' parms.toolbox '.' parms.prep];
+            resultsFolder = [key.subject '.' parms.toolbox '.' key.prep];
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
@@ -393,7 +391,7 @@ classdef Preprocessed < dj.Manual
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
-                    tpl = mergestruct(key,struct('prep',parms.prep,'img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
+                    tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
                     insert(tbl,tpl);
                 case 'caiman'
                     % TODO
