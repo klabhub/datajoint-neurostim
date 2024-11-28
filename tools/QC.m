@@ -1,10 +1,14 @@
 %% Various QC queries
 
 %% Plugin parameter type/storage
+% Fixed issues in mousetDCS -  11/28/2024.
 % Check consistency of property_type across experiments (e.g., a plugin
 % parameter that is sometimes stored as a bytestream and in other
 % experiments as a parameter. Such differences cause problems in the user
 % code.
+% Note that some parameters can be global or parameter in different
+% experiments, and an occasional bytestream is also unavoidable, if the
+% parameter stores differnt sized vectors. 
 T = fetchtable(ns.PluginParameter,'property_name','plugin_name','property_type');
 % Check same type across experiments
 G = groupsummary(T,["plugin_name" "property_name" ],"numunique","property_type");
