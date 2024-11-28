@@ -68,11 +68,11 @@ classdef PluginParameter < dj.Part
                 time =[];
                 trial =[];
                 nsTime = [];
-                if thisPrm.cntr==1
+                if thisPrm.cntr==1 || ( thisPrm.cntr ==2 && isempty(thisPrm.log{1}))
                     % Single value: global property
                     % Easy: store only this value
                     type = 'Global';
-                    value =thisPrm.value;
+                    value =thisPrm.value;                
                 elseif thisPrm.changesInTrial
                     % Changes within a trial : event
                     % Store all values, plus the time at which the event
@@ -99,11 +99,14 @@ classdef PluginParameter < dj.Part
                 % were really constant so that we can store a single value
                 % for the experiment (i.e. Global type).
                 if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
-                    if iscellstr(value) || isstring(value) 
+                    if ischar(value)
+                        uValue = value;
+                    elseif iscellstr(value) || isstring(value) 
                         uValue=  unique(value);
-                        if size(uValue,1)==1
-                            uValue= uValue{1}; % Get rid of cell
-                        end
+                        if isscalar(uValue) && iscellstr(value) %#ok<ISCLSTR>
+                                uValue= uValue{1}; % Get rid of cell                            
+                        end               
+                        uValue = char(uValue);
                     elseif ismatrix(value)
                         uValue =unique(value);
                         % Dont do this: some events have nan values and only store the
@@ -115,7 +118,7 @@ classdef PluginParameter < dj.Part
                     else % it is something >2D
                         uValue = nan(2,1); % Just a flag to skip the next part
                     end
-                    if size(uValue,1)==1
+                    if ischar(uValue) || size(uValue,1)==1
                         % Really only one value
                         value = uValue;
                         type = 'Global';
@@ -158,6 +161,9 @@ classdef PluginParameter < dj.Part
                 key(isDouble).property_name = newName;
             end
             for i=1:numel(key)
+                if islogical(key(i).property_value)
+                    key(i).property_value = double(key(i).property_value);
+                end
                 if ~(isnumeric(key(i).property_value) || isstruct(key(i).property_value) || ischar(key(i).property_value))
                     % Database cannot not store this value. Convert to byte stream, the user can
                     % get the value by using getArrayFromByteStream,at

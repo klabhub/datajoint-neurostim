@@ -495,11 +495,21 @@ classdef Experiment  < dj.Manual
                 pv.pedantic (1,1) logical = false
             end
             tic;
-            fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
             % Run all
             keyCntr = 0;
             pkey = tbl.primaryKey;
 
+            if ~isempty(cic)
+                % Restrict the tbl to the rows that correspond to these
+                % cics                
+                for cicCntr = 1:numel(cic)
+                    restrict(cicCntr) = ns.Experiment.tplFromCic(cic(cicCntr));
+                end
+                tbl = tbl & restrict;
+            end
+            
+            fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
+         
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
                 if isempty(cic)
@@ -518,7 +528,7 @@ classdef Experiment  < dj.Manual
                     stay = cicUID==string([key.session_date key.file]);
                     thisC = cic(stay);
                     thisTpl = ns.Experiment.tplFromCic(thisC);
-                    thisTpl =mergestruct(key,thisTpl); % Errors if thisC does not belong to this key.
+                    thisTpl =mergestruct(key,thisTpl); % Errors if this Cic does not belong to this key.
                 end
 
                 % Remove current Experiment tuple

@@ -1,4 +1,4 @@
-function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
+function [tSubject,tSession,tExperiment,isLocked] = nsScan(pv)
 % This function scans filenames in (and around) the folder corresponding
 % to a certain date under a given root folder and creates meta data tables
 % for the subjects, sessions, and experiments found in those folders.
@@ -47,6 +47,8 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %
 % paradigm = Cell array or char of paradigms to include. Leave empty to include
 %               all. Paradigms are matched case-insensitively. [{}]
+%                A better way to define which paradigms to include is to
+%                use the ns.Paradigm table. 
 % subject = Cell array or char of subjects to include. Leave empty to include all.
 %               Subjects are matched case insensitivelly. [{}].
 % folderFun -  Function, provided by the user, to handle special folders.
@@ -99,82 +101,79 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(varargin)
 %                    'jsonOnly',true);
 
 % BK - Jan 2023
-
-p = inputParser;
-p.addParameter('root', getenv('NS_ROOT'));
-p.addParameter('date',datetime('now'));
-p.addParameter('schedule','d');
-p.addParameter('readJson',true);
-p.addParameter('paradigm',{});
-p.addParameter('subject',{});
-p.addParameter('excludeSubject',{'0'});
-p.addParameter('folderFun','');
-p.addParameter('addToDataJoint',false,@islogical)
-p.addParameter('newOnly',false,@islogical);
-p.addParameter('jsonOnly',false,@islogical);
-p.addParameter('readFileContents',false,@islogical)
-p.addParameter('populateFile',true,@islogical)
-p.addParameter('cicOnly',false,@islogical);
-p.addParameter('safeMode',true,@islogical);
-p.addParameter('metaDefinitionTag','',@ischar);
-p.addParameter('minNrTrials',0,@isnumeric);
-p.addParameter('verbose',true,@islogical); % show output on command line
-
-p.parse(varargin{:});
+arguments
+    pv.root (1,1) string = getenv('NS_ROOT')
+    pv.date (1,1) datetime = datetime('now')
+    pv.schedule (1,1) string = "d"
+    pv.readJson (1,1) logical = true
+    pv.paradigm (1,:) string = ""
+    pv.subject (1,:) string =""
+    pv.excludeSubject (1,:) string = "0"
+    pv.folderFun = []
+    pv.addToDatajoint (1,1) logical = false
+    pv.newOnly (1,1) logical = false
+    pv.jsonOnly (1,1) logical = false
+    pv.readFileContents (1,1) logical = false
+    pv.populateFile (1,1) logical = true
+pv.cicOnly (1,1) logical = false
+pv.safeMode (1,1) logical = true
+pv.metaDefinitionTag (1,1) string = ""
+pv.minNrTrials (1,:) double = 1
+pv.verbose (1,1) logical = true
+end
 
 tExperiment = table;
 tSession = table;
 tSubject = table;
 isLocked= struct('experiment',false,'session',false,'subject',false);
-if ~isempty(p.Results.metaDefinitionTag) && p.Results.metaDefinitionTag(1)~='_'
-    metaDefinitionTag = ['_' p.Results.metaDefinitionTag];
-else
-    metaDefinitionTag  = ''; % Use global default definition
+if pv.metaDefinitionTag~="" &&  ~startsWith(pv.metaDefinitionTag,"_")
+    pv.metaDefinitionTag = "_" + pv.metaDefinitionTag;
 end
 
 %% A. Find relevant files
-switch (p.Results.schedule)
-    case 'y'
+switch (pv.schedule)
+    case "y"
         % Allow more than one folder below year
-        srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy')),'**');
-    case 'm'
+        srcFolder = fullfile(pv.root,char(datetime(pv.date,'Format','yyyy')),'**');
+    case "m"
         % Exactly one folder below month
-        srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy/MM')),'**');
-    case 'd'
+        srcFolder = fullfile(pv.root,char(datetime(pv.date,'Format','yyyy/MM')),'**');
+    case "d"
         % Inside the day folder
-        srcFolder = fullfile(p.Results.root,char(datetime(p.Results.date,'Format','yyyy/MM/dd')));
-    case 'a'
+        srcFolder = fullfile(pv.root,char(datetime(pv.date,'Format','yyyy/MM/dd')));
+    case "a"
         % All year folders below the root  
         % Find the year folders
-        yearFolders = dir(p.Results.root);
+        yearFolders = dir(pv.root);
         stay = regexp({yearFolders.name},'^\d{4}$','once');
         yearFolders(cellfun(@isempty,stay)) = [];
         tSubject =table;
         tSession = table;
         tExperiment =table;
         % Then a recursive call to this function for each year.
+        args = namedargs2cell(pv);
         for yr = 1:numel(yearFolders)
             year = yearFolders(yr).name;
-            [thisTSubject,thisTSession,thisTExperiment,isLocked] = nsScan(varargin{:},'schedule','y','date',[year '-01-01']);
+            [thisTSubject,thisTSession,thisTExperiment,isLocked] = nsScan(args{:},'schedule','y','date',[year '-01-01']);
             tSubject = [tSubject;thisTSubject]; %#ok<AGROW>
             tSession = [tSession;thisTSession];%#ok<AGROW>
             tExperiment = [tExperiment;thisTExperiment];%#ok<AGROW>
         end
         return
     otherwise
-        error('Unknown schedule %s',p.Results.schedule)
+        error('Unknown schedule %s',pv.schedule)
 end
 
-if p.Results.verbose
-    fprintf('Scanning %s for %s ...\n',srcFolder,strjoin(p.Results.paradigm,'/'))
+if pv.verbose
+    fprintf('Scanning %s ...\n',srcFolder)
 end
 
 % Find the files matching the wildcard
 dirInfo= dir(fullfile(srcFolder,'*.mat'));
 
 if isempty(dirInfo)
-    if p.Results.verbose
-        fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
+    if pv.verbose
+        fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder,pv.root);
     end
     return;
 end
@@ -187,9 +186,9 @@ else
     fs = filesep;
 end
 if ispc
-    root = strrep(p.Results.root,'/','\');
+    root = strrep(pv.root,'/','\');
 else
-    root = p.Results.root;
+    root = pv.root;
 end
 pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\.mat$']);
 meta = regexp(fullName,pattern,'names');
@@ -199,8 +198,8 @@ meta =[ meta{~out}];
 dirInfo(out) =[];
 fullName(out) = [];
 if isempty(fullName)
-    if p.Results.verbose
-        fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder,p.Results.root);
+    if pv.verbose
+        fprintf('No Neurostim data files found in (%s)\n. Is the root folder (%s ) correct? \n',srcFolder,pv.root);
     end
     return;
 end
@@ -218,7 +217,7 @@ session_dates = deal(strrep({meta.session_date},filesep,'-'));  % Match ISO form
 starttimes = cellfun(@(x)([x(1:2) ':' x(3:4) ':' x(5:6)]),{meta.starttime},'uni',false);
 [meta.starttime] = deal(starttimes{:}); % Match the  HH:MM:SS format of DJ
 
-if ~isempty(p.Results.folderFun)
+if ~isempty(pv.folderFun)
     % Special handling of sub folders. Not usually needed, but see nsScanDicomFolder
     % for an example of how to include DICOM MRI data folders.
     % Note that all files in one of these folders (i.e. those returned by
@@ -226,50 +225,64 @@ if ~isempty(p.Results.folderFun)
     folders= dir(fullfile(srcFolder,'*')); %
     folders(~[folders.isdir])=[];  % Remove non folders
     folderFullName = strcat({folders.folder}',filesep,{folders.name}');
-    metaFromFolderFun = p.Results.folderFun(folderFullName);
+    metaFromFolderFun = pv.folderFun(folderFullName);
     if ~isempty(metaFromFolderFun)
         meta = catstruct(2,meta,metaFromFolderFun);
     end
 end
 
-% Select on subject/paradigm if not empty
+% include specific subjects (or all if pv.subject== "")
 stay = true(size(meta));
-if ~isempty(p.Results.subject)
-    if ischar(p.Results.subject)
-        subject = {p.Results.subject};
+if pv.subject ~=""
+    stay = stay &  ismember(upper({meta.subject}),upper(pv.subject));
+end
+% exclude a specific subject
+stay = stay &  ~ismember({meta.subject},pv.excludeSubject);
+% include based on paradigm
+if pv.paradigm==""
+    % Select on the basis of the ns.Paradigm table
+    [pv.paradigm,pv.minNrTrials,from,to]= fetchn(ns.Paradigm,'name','mintrials','from','to');
+    pv.paradigm= upper(string(pv.paradigm));
+else
+    % Use the specified list of paradigms to select
+    pv.paradigm = upper(pv.paradigm);
+    if isscalar(pv.minNrTrials)
+        pv.minNrTrials = pv.minNrTrials*ones(size(pv.paradigm));
     else
-        subject =p.Results.subject;
+        assert(numel(pv.minNrTrials)==numel(pv.paradigm),"minNrTrials should match the paradigms (or be a scalar)");       
     end
-    stay = stay &  ismember(upper({meta.subject}),upper(subject));
+    from = cell(size(pv.paradigm));
+    to = cell(size(pv.paradigm));
+end
+if ~isempty(pv.paradigm)
+% Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to 
+pdmMatch = false(size(stay));
+for pdm=1:numel(pv.paradigm)
+    thisMatch = ~cellfun(@isempty, regexpi({meta.paradigm},pv.paradigm{pdm}));
+    if ~isempty(from{pdm})
+        thisMatch =thisMatch &  cellfun(@(x) x>=from(pdm),{meta.session_date});
+    end
+    if ~isempty(to{pdm})
+        thisMatch =thisMatch &  cellfun(@(x) x<=to(pdm),{meta.session_date});
+    end
+    pdmMatch = pdmMatch | thisMatch;
+end
+stay = stay & pdmMatch;
 end
 
-stay = stay &  ~ismember({meta.subject},p.Results.excludeSubject);
-
-if ~isempty(p.Results.paradigm)
-    if ischar(p.Results.paradigm)
-        paradigm = {p.Results.paradigm};
-    else
-        paradigm =p.Results.paradigm;
-    end
-    pdmMatch = false(size(stay));
-    for pdm=1:numel(paradigm)
-        pdmMatch = pdmMatch | ~cellfun(@isempty, regexpi({meta.paradigm}, paradigm{pdm}));
-    end
-    stay = stay & pdmMatch;
-end
 
 meta = meta(stay);
 fullName=fullName(stay);
 nrExperiments = numel(meta);
 
-if p.Results.newOnly || p.Results.jsonOnly
-    if p.Results.jsonOnly
+if pv.newOnly || pv.jsonOnly
+    if pv.jsonOnly
         % Update json based meta information for existing files only
         stay = false(1,nrExperiments);
         for i=1:nrExperiments
             stay(i) = exists(ns.Experiment & meta(i));
         end
-    elseif p.Results.newOnly
+    elseif pv.newOnly
         % Ignore experiments that are already in datajoint
         stay = true(1,nrExperiments);
         for i=1:numel(meta)
@@ -281,7 +294,7 @@ if p.Results.newOnly || p.Results.jsonOnly
     nrExperiments = numel(meta);
 end
 
-if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)  && ~p.Results.jsonOnly
+if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.jsonOnly
     % Read meta data from the content of the Neurostim files
     % tmp has the meta data, c the CIC objects which are passed to
     % nsAddToDataJoint below
@@ -291,44 +304,39 @@ if  nrExperiments> 0 && (p.Results.readFileContents || p.Results.minNrTrials >0)
 
     for i=1:nrExperiments
         try
-            [tmp,c{i}] = ns.Experiment.readCicContents(meta(i),'root',p.Results.root);    %#ok<AGROW>
-            tmpMeta{i} = mergestruct(meta(i),tmp); %#ok<AGROW> % Merge to keep json/provenance meta.
+            [tmp,c{i}] = ns.Experiment.readCicContents(meta(i),'root',pv.root);    
+            tmpMeta{i} = mergestruct(meta(i),tmp); % Merge to keep json/provenance meta.
         catch
+            if pv.verbose
+                fprintf(2,'Failed to read %s. Skipping\n',meta(i).file);
+            end
             lasterr
             out(i)=true;
+        end
+        % Find which minium number of trials to apply (paradigm dependent)
+        thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
+        % Remove if too few trials
+        tooFew = c{i}.nrTrialsCompleted < thisMinNrTrials;
+        if tooFew && pv.verbose
+            fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
+            out(i) =true;
         end
     end
     meta  =[tmpMeta{~out}];
     c = [c{~out}];
-    
-
-    nrTrials = [c.nrTrialsCompleted];
-    out = nrTrials < p.Results.minNrTrials;
-    if any(out)
-        if p.Results.verbose
-            fprintf('Removing %d experiments (fewer than %d trials)\n',sum(out),p.Results.minNrTrials);
-        end
-        meta(out) = [];
-        c(out) =[];
-        fullName(out) =[];      
-    end
+    fullName(out) =[];      
     nrExperiments = numel(meta);
 else
     c= [];
 end
 
 if nrExperiments ==0
-    if p.Results.newOnly
-        newStr= 'new ';
-    else
-        newStr ='';
-    end
-    if p.Results.verbose
-        fprintf('No %sNeurostim files with matching paradigm and subject and at least %d trials found in %s\n',newStr, p.Results.minNrTrials, srcFolder);
+    if pv.verbose
+        fprintf('No relevant files found in %s\n',srcFolder);
     end
     return;
 else
-    if p.Results.verbose
+    if pv.verbose
         fprintf('Found %d matching Neurostim files: \n',nrExperiments)
         fullName %#ok<NOPRT>
     end
@@ -340,28 +348,28 @@ tExperiment = convertvars(tExperiment,@(x)(ischar(x) | iscellstr(x)),'string'); 
 % Store folder root and date in the properties so that we
 % can easily reconstruct filenames later
 tExperiment =addprop(tExperiment,{'root'},{'table'}) ;
-tExperiment.Properties.CustomProperties.root = p.Results.root;
-if p.Results.readFileContents
+tExperiment.Properties.CustomProperties.root = pv.root;
+if pv.readFileContents
     tExperiment = addvars(tExperiment,c','NewVariableNames','cic');
 end
 % Assign a unique ID to each row, so that we can match up with the original values after the user resorts.
 tExperiment = addvars(tExperiment,strcat('#',string((1:nrExperiments)')),'NewVariableNames','id','before',1);
 tExperiment = movevars(tExperiment,{'session_date','file','starttime','bytes','subject','paradigm'},'After',1);
 metaDescriptions = ["","Date of the Session (yyyy-mm-dd: ISO 8601)","Neurostim file name","Start time of the experiment (hh:mm:ss)","bytes in the file","Unique Subject ID", "Paradigm name","Provenance information"];
-if (p.Results.readFileContents || p.Results.minNrTrials >0)
+if (pv.readFileContents || any(pv.minNrTrials >1))
     %Already has information from the file contents (minNrTrial>0
     %orreadFileCOntents =true)
-    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence"]; %#ok<NASGU>
+    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence"]; 
 end
-if p.Results.readFileContents
+if pv.readFileContents
     metaDescriptions = [metaDescriptions "CIC"];
 end
 tExperiment.Properties.VariableDescriptions = metaDescriptions;
-if p.Results.readJson || p.Results.jsonOnly
+if pv.readJson || pv.jsonOnly
     %% Read Meta information definitions and data from JSON files.
     allMetaFromJson = [];
     % Read the current meta definition for experiments
-    definitionFile = fullfile(p.Results.root,['experiment_definition' metaDefinitionTag '.json']);
+    definitionFile = fullfile(pv.root,"experiment_definition" +  pv.metaDefinitionTag + ".json");
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.experiment = json.Locked =="1";
@@ -371,7 +379,7 @@ if p.Results.readJson || p.Results.jsonOnly
             error('The experiment meta definition file %s should only define new meta properties, not ''starttime''',definitionFile);
         end
         nrExperimentMetaFields= numel(experimentMetaFields);
-    elseif isempty(metaDefinitionTag)
+    elseif pv.metaDefinitionTag==""
         % Use no meta definition
         isLocked.experiment = false;
         nrExperimentMetaFields = 0;
@@ -429,8 +437,8 @@ clear meta fullName %  These are sorted differently; prevent accidental use belo
 tSession = unique(tExperiment(:,{'session_date','subject'}));
 tSession.Properties.VariableDescriptions = ["Date of the Session (yyyy-mm-dd: ISO 8601)","Subject ID"];
 nrSessions = height(tSession);
-if p.Results.readJson || p.Results.jsonOnly
-    definitionFile = fullfile(p.Results.root,['session_definition' metaDefinitionTag '.json']);
+if pv.readJson || pv.jsonOnly
+    definitionFile = fullfile(pv.root,"session_definition"+ pv.metaDefinitionTag +".json");
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
@@ -440,7 +448,7 @@ if p.Results.readJson || p.Results.jsonOnly
             error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
         end
         nrSessionMetaFields= numel(sessionMetaFields);
-    elseif isempty(metaDefinitionTag)
+    elseif pv.metaDefinitionTag==""
         nrSessionMetaFields= 0;
     else
         error('Meta definition file %s not found',definitionFile)
@@ -455,13 +463,13 @@ if p.Results.readJson || p.Results.jsonOnly
     % See if there are any Session JSON files and put information in the table
     for i=1:nrSessions
         if nrSessions==1
-            sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".json");
+            sessionJsonFile = fullfile(pv.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".json");
             % Check to see if there are any .txt session notes (subjectNr.txt)
-            txtFile = fullfile(p.Results.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".txt");
+            txtFile = fullfile(pv.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".txt");
         else
-            sessionJsonFile = fullfile(p.Results.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i} '.json']);
+            sessionJsonFile = fullfile(pv.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i} '.json']);
             % Check to see if there are any .txt session notes (subjectNr.txt)
-            txtFile = fullfile(p.Results.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i}  '.txt']);
+            txtFile = fullfile(pv.root,strrep(tSession.session_date{i},'-',filesep),[tSession.subject{i}  '.txt']);
         end
 
         if exist(sessionJsonFile,'file')
@@ -501,8 +509,8 @@ tSession = movevars(tSession,{'session_date','subject'},'after',1);
 tSubject= unique(tSession(:,'subject'));
 tSubject.Properties.VariableDescriptions = "Unique Subject ID";
 nrSubjects = height(tSubject);
-if p.Results.readJson || p.Results.jsonOnly
-    definitionFile = fullfile(p.Results.root,['subject_definition' metaDefinitionTag '.json']);
+if pv.readJson || pv.jsonOnly
+    definitionFile = fullfile(pv.root,"subject_definition" +  pv.metaDefinitionTag + ".json");
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
         isLocked.subject = json.Locked =="1"; % No new meta fields allowed according to _definition
@@ -512,7 +520,7 @@ if p.Results.readJson || p.Results.jsonOnly
             error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
         end
         nrSubjectMetaFields= numel(subjectMetaFields);
-    elseif isempty(metaDefinitionTag)
+    elseif metaDefinitionTag==""
         nrSubjectMetaFields= 0;
     else
         error('Meta definition file %s not found',definitionFile)
@@ -523,7 +531,7 @@ if p.Results.readJson || p.Results.jsonOnly
         tSubject = addvars(tSubject,emtpyInitFromDef{:},'NewVariableNames',subjectMetaFields);
         tSubject.Properties.VariableDescriptions(end-nrSubjectMetaFields+1:end) = subjectMetaDescription;
     end
-    metaDataFile =  fullfile(p.Results.root,'subject.json');
+    metaDataFile =  fullfile(pv.root,'subject.json');
     if exist(metaDataFile,'file')
         thisJson = readJson(metaDataFile);
         if isempty(thisJson)
@@ -551,14 +559,14 @@ tSubject= sortrows(tSubject,{'subject'},'ascend');
 tSubject = addvars(tSubject,strcat('#',string((1:nrSubjects)')),'NewVariableNames','id','before',1);
 tSubject = movevars(tSubject,{'subject'},'after',1);
 
-if p.Results.addToDataJoint
+if pv.addToDatajoint
     if ismember('cic',tExperiment.Properties.VariableNames)
         cic = tExperiment.cic;
         tExperiment = removevars(tExperiment,'cic');
     else
         cic =[];
     end
-    nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',p.Results.safeMode, ...
-        'root',p.Results.root,'populateFile',p.Results.populateFile, ...
-        'newOnly',p.Results.newOnly  && ~p.Results.jsonOnly);
+    nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',pv.safeMode, ...
+        'root',pv.root,'populateFile',pv.populateFile, ...
+        'newOnly',pv.newOnly  && ~pv.jsonOnly);
 end
