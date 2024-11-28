@@ -23,6 +23,8 @@ classdef PluginParameter < dj.Part
     properties (SetAccess = protected)
         master = ns.Plugin;  % Part  table for the plugin
     end
+
+
     methods (Access=public)
         function addNew(tbl,key,name,value,type,trialTime,trial,nsTime,replace)
             arguments
@@ -46,7 +48,7 @@ classdef PluginParameter < dj.Part
             key.property_type = type;
             key.property_time = trialTime;
             key.property_trial = trial;
-            key.property_nstime = nsTime;            
+            key.property_nstime = nsTime;
             encodeAndInsert(tbl,key)
 
         end
@@ -59,30 +61,30 @@ classdef PluginParameter < dj.Part
 
             prmNames = fieldnames(prms);
             nrPrms = numel(prmNames);
-            key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part 
+            key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part
             fprintf('Adding %d parameters for %s plugin\n',nrPrms,key(1).plugin_name);
             for i=1:nrPrms
                 thisPrm = prms.(prmNames{i});
                 time =[];
                 trial =[];
                 nsTime = [];
-                if thisPrm.cntr==1
+                if thisPrm.cntr==1 || ( thisPrm.cntr ==2 && isempty(thisPrm.log{1}))
                     % Single value: global property
                     % Easy: store only this value
                     type = 'Global';
-                    value =thisPrm.value;
+                    value =thisPrm.value;                
                 elseif thisPrm.changesInTrial
                     % Changes within a trial : event
                     % Store all values, plus the time at which the event
                     % occurred.
                     type = 'Event';
-                    [value,trial,time,nsTime] =get(thisPrm,'matrixIfPossible',true); %neurostim.parameter.get
+                    [value,trial,time,nsTime] =get(thisPrm,'matrixIfPossible',true,'cellstrAsString',true,'removeFirstEmpty',true); %neurostim.parameter.get
                 else
                     % One value per trial : parameter
                     % Some could be single key presses. So filling in across trials is not always right.
                     % So pull all values,just like events.
                     type = 'Parameter';
-                    [value,trial,time,nsTime] = get(thisPrm,'matrixIfPossible',true);
+                    [value,trial,time,nsTime] = get(thisPrm,'matrixIfPossible',true,'cellstrAsString',true,'removeFirstEmpty',true);
                 end
 
 
@@ -97,11 +99,14 @@ classdef PluginParameter < dj.Part
                 % were really constant so that we can store a single value
                 % for the experiment (i.e. Global type).
                 if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
-                    if iscellstr(value) %#ok<ISCLSTR>
+                    if ischar(value)
+                        uValue = value;
+                    elseif iscellstr(value) || isstring(value) 
                         uValue=  unique(value);
-                        if size(uValue,1)==1
-                            uValue= uValue{1}; % Get rid of cell
-                        end
+                        if isscalar(uValue) && iscellstr(value) %#ok<ISCLSTR>
+                                uValue= uValue{1}; % Get rid of cell                            
+                        end               
+                        uValue = char(uValue);
                     elseif ismatrix(value)
                         uValue =unique(value);
                         % Dont do this: some events have nan values and only store the
@@ -113,7 +118,7 @@ classdef PluginParameter < dj.Part
                     else % it is something >2D
                         uValue = nan(2,1); % Just a flag to skip the next part
                     end
-                    if size(uValue,1)==1
+                    if ischar(uValue) || size(uValue,1)==1
                         % Really only one value
                         value = uValue;
                         type = 'Global';
@@ -142,7 +147,7 @@ classdef PluginParameter < dj.Part
 
     end
 
-    
+
     methods (Access=protected)
         function encodeAndInsert(tbl,key)
             names = string({key.property_name});
@@ -156,22 +161,29 @@ classdef PluginParameter < dj.Part
                 key(isDouble).property_name = newName;
             end
             for i=1:numel(key)
-                meta = metaclass(key(i).property_value);
-                if ismember(meta.Name,{'cell','string'})
-                          % Database cannot not store this value. Convert to byte stream, the user can
-                          % get the value by using getArrayFromByteStream,at
-                         % least in Matlab (see Experiment.get),
-                          key(i).property_value = getByteStreamFromArray(key(i).property_value);
-                          key(i).property_type = 'ByteStream';
+                if islogical(key(i).property_value)
+                    key(i).property_value = double(key(i).property_value);
+                end
+                if ~(isnumeric(key(i).property_value) || isstruct(key(i).property_value) || ischar(key(i).property_value))
+                    % Database cannot not store this value. Convert to byte stream, the user can
+                    % get the value by using getArrayFromByteStream,at
+                    % least in Matlab (see Experiment.get),
+                    key(i).property_value = getByteStreamFromArray(key(i).property_value);
+                    key(i).property_type = 'ByteStream';
                 end
             end
             insert(tbl,key)
         end
     end
-    
+
     methods (Access= public)
 
-        function v = get(tbl)
+        function v = get(tbl,nwbRoot,plgName)
+            arguments
+                tbl (1,1) ns.PluginParameter
+                nwbRoot   = []
+                plgName (1,:) char =''
+            end
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
@@ -195,22 +207,23 @@ classdef PluginParameter < dj.Part
 
             %Bytestream - can contain objects, coded as bytes.
             % Decode here.
-            [vals,names,times,nsTimes,trials,types] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
+            [vals,names,times,nsTimes,trials,parmTypes] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
             for j=1:numel(names)
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
-                    name = [names{j} '2'];
+                    names{j} = [names{j} '2'];
                     if ~ismember(oldName,warnedAlready)
                         warnedAlready = cat(2,warnedAlready,{oldName});
-                        warnNoTrace('%s already defined; renamed to %s',oldName,name);
+                        warnNoTrace('%s already defined; renamed to %s',oldName,names{j});
                     end
                     % This happes because block and
                     % blockTrial are both cic properties. Unlikely to
                     % happen anywhere else.
-                else
-                    name = names{j};
                 end
-                if strcmpi(types(j),'ByteStream')
+
+
+                name = names{j};
+                if strcmpi(parmTypes(j),'ByteStream')
                     v.(name) =getArrayFromByteStream(vals{j});
                 else
                     v.(name) =vals{j};
@@ -218,6 +231,36 @@ classdef PluginParameter < dj.Part
                 v.([name 'Time']) = times{j};
                 v.([name 'NsTime']) = nsTimes{j};
                 v.([name 'Trial']) = trials{j};
+            end
+
+            if ~isempty(nwbRoot)
+                % Determine when cic was constructedby finding the first
+                % entry in nstime for the trial property.
+                tpl=fetch(ns.PluginParameter  & (ns.Experiment &tbl) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
+                timeZero  = tpl.property_nstime(1);
+                for j=1:numel(names)
+                    name =names{j};
+                    data= v.(name);
+                    if ~(isnumeric(data) || islogical(data))
+                        fprintf('Skipping %s in %s (non numeric data)\n',name,plgName);
+                    else
+                        timestamps = v.([name 'NsTime']);
+                        if isempty(timestamps)
+                            timestamps =0; %Global property-pretend it was set at t=0.
+                        else
+                            % Align time stamps to the first GetSecs
+                            % call,convert to seconds
+                            timestamps =(timestamps-timeZero)/1000;
+                        end
+                        if size(data,1)== size(timestamps,1)
+                            description = sprintf('%s property in %s plugin %d entries',name,plgName,size(data,1));
+                            ts =  types.core.TimeSeries('description',description, 'data',data','data_continuity','step','timestamps',timestamps,'data_unit','notspecified');
+                            nwbRoot.stimulus_presentation.set(sprintf('%s_%s',plgName ,name),ts);
+                        else
+                            fprintf('Skipping %s (mismatched timestamps)\n',name);
+                        end
+                    end
+                end
             end
         end
     end

@@ -1,7 +1,7 @@
 %{
 # A complete preprocessed data set of the SBX data obtained in a single session.
 -> ns.Session
-prep  : varchar(255)        # A unique name for this set of preprocessing parameters
+-> sbx.PreprocessedParm     # Preprocessing parameters
 ---
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
@@ -11,27 +11,24 @@ xscale : float              # Scale factor of xpixels (micron/pixel)
 yscale : float              # Scale factor of ypixels  (micron/pixels)
 %}
 %
-% If the environment variable NS_CONDA is set to point to a conda
-% installation, then the preprocessing runs OutOfProcess (i.e. using a
-% system call to start Python outside Matlab). Otherwise, the Python calls
-% are done InProcess, using the PythonEnvironment that is linked to Matlab.
-% (This latter option is faster to startup, but runs the risk of
-% conflicting libraries).
+% Calls to python require If environment variable NS_CONDA to point to a conda
+% installation. Python will run OutOfProcess (i.e. using a
+% system call to start Python outside Matlab). 
 %
-% With suite2p preprocessing, the fast_disk option can be set in PrepParms,
+% With suite2p preprocessing, the fast_disk option can be set in PreprocessedParms,
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
-classdef Preprocessed < dj.Manual
-    properties (Dependent)      
+classdef Preprocessed < dj.Computed
+    properties (Dependent)
         ops
         stat
         keySource
     end
-    methods      
-        function v = get.keySource(tbl)
-            analyzeExpt = analyze(ns.Experiment ,strict=false);          
-            v = ns.Session & analyzeExpt;
+    methods
+        function v = get.keySource(tbl) %#ok<MANU>
+            analyzeExpt = analyze(ns.Experiment ,strict=false);
+            v = (ns.Session & analyzeExpt)*sbx.PreprocessedParm;
         end
 
         function v =  get.ops(tbl)
@@ -39,7 +36,7 @@ classdef Preprocessed < dj.Manual
             keyCntr = 0;
             for key =fetch(tbl,'*')'
                 keyCntr = keyCntr+1;
-                sessionPath=unique(folder(ns.Experiment & key));                
+                sessionPath=unique(folder(ns.Experiment & key));
                 resultsFile =fullfile(sessionPath,key.folder,'plane0','ops.npy');
                 if exist(resultsFile,"file")
                     v{keyCntr} =   py.numpy.load(resultsFile,allow_pickle=true); %#ok<AGROW>
@@ -48,7 +45,7 @@ classdef Preprocessed < dj.Manual
                     v{keyCntr} = [];
                 end
             end
-            if numel(v)==1
+            if isscalar(v)
                 v =v{1};
             end
 
@@ -59,7 +56,7 @@ classdef Preprocessed < dj.Manual
             keyCntr = 0;
             for key =fetch(tbl,'*')
                 keyCntr = keyCntr+1;
-                sessionPath=unique(folder(ns.Experiment & key));               
+                sessionPath=unique(folder(ns.Experiment & key));
                 resultsFile =fullfile(sessionPath,key.folder,'plane0','stat.mat');
                 if exist(resultsFile,"file")
                     load(resultsFile,'stat');
@@ -69,19 +66,19 @@ classdef Preprocessed < dj.Manual
                     v{keyCntr} = [];
                 end
             end
-            if numel(v)==1
+            if isscalar(v)
                 v =v{1};
             end
         end
 
     end
-    methods (Access=public)        
-        function openGui(tbl)            
+    methods (Access=public)
+        function openGui(tbl)
             % Open the preprocessed data in the relevant gui (suite2p)
             % I have not found a way to load the stat.npy
             % file into suite2p from the command line (or to change its
             % working directory), but the gui will open with its working directory
-            % set to the relevant folder so that the user can rapdily select the stat.npy 
+            % set to the relevant folder so that the user can rapdily select the stat.npy
             % from the gui.
             conda = getenv('NS_CONDA');
             if isempty(conda)
@@ -99,12 +96,12 @@ classdef Preprocessed < dj.Manual
                             error('File not found %s',statsFile);
                         end
                         if ispc
-                        drive = extractBefore(statsFile,':');
-                        condaCmd = sprintf('cd "%s" & %s: & suite2p',fileparts(statsFile),drive);
-                        cmd = sprintf('%s/Scripts/activate.bat %s & %s &',strrep(conda,'\','/'),env,condaCmd);
+                            drive = extractBefore(statsFile,':');
+                            condaCmd = sprintf('cd "%s" & %s: & suite2p',fileparts(statsFile),drive);
+                            cmd = sprintf('%s/Scripts/activate.bat %s & %s &',strrep(conda,'\','/'),env,condaCmd);
                         else
                             error('Not implemented yet')
-                        end 
+                        end
                     otherwise
                         error('Not implemented yet')
                 end
@@ -112,17 +109,17 @@ classdef Preprocessed < dj.Manual
 
             fprintf('Starting the external %s gui\n',tpl.toolbox)
             system(cmd ,'-echo');
-            
+
         end
         function [nu,sd,normalized] = shotNoise(tbl,expt,pv)
             % Estimate the shotnoise in the session by randomly sampling a
-            % number of ROIs, extract Fluorescence and Neuropil in a time 
+            % number of ROIs, extract Fluorescence and Neuropil in a time
             % window in the trial with spontaneous activity and then
             % calling dFOverF.m
             %
             % INPUT
             % start - window start (in seconds relative to the start of the trial)
-            % stop - window stop 
+            % stop - window stop
             % percentile  - Which percentile to use as the F0
             % nrRoi - How many ROI to sample
             % minPCell - Sampl only ROIs with pCell larger than this.
@@ -143,10 +140,10 @@ classdef Preprocessed < dj.Manual
                 expt (1,1) ns.Experiment
                 pv.start (1,1)
                 pv.stop (1,1)
-                pv.percentile (1,1) double {mustBeInRange(pv.percentile,0,100)} = 8;                     
+                pv.percentile (1,1) double {mustBeInRange(pv.percentile,0,100)} = 8;
                 pv.nrRoi (1,1) double = 10
                 pv.minPCell (1,1) double = 0.75
-                pv.minRadius (1,1) double = 5 
+                pv.minRadius (1,1) double = 5
             end
             sessionCntr = 0;
             nrSessions = count(tbl);
@@ -159,9 +156,9 @@ classdef Preprocessed < dj.Manual
                 nrRoisInSession(sessionCntr) = count(thisRoi);
                 thisSessionRoi = [fetch(thisRoi,'roi').roi];
                 pickRoi = randperm(nrRoisInSession(sessionCntr),pv.nrRoi);
-                selectedRoi = struct('roi',num2cell(thisSessionRoi(pickRoi)));                           
+                selectedRoi = struct('roi',num2cell(thisSessionRoi(pickRoi)));
                 tF  = get(thisRoi &  selectedRoi,expt, modality='fluorescence',start = pv.start ,stop=pv.stop);
-                tNeuropil  = get(thisRoi & selectedRoi,expt, modality='neuropil',start = pv.start ,stop=pv.stop);                        
+                tNeuropil  = get(thisRoi & selectedRoi,expt, modality='neuropil',start = pv.start ,stop=pv.stop);
                 [~,nu(sessionCntr,:)] =  sbx.dFOverF(tF,tNeuropil,[pv.start pv.stop],percentile = pv.percentile);
             end
             sd = std(nu,0,2,"omitnan"); % Std across rois
@@ -169,7 +166,7 @@ classdef Preprocessed < dj.Manual
             %https://gcamp6f.com/2021/10/04/large-scale-calcium-imaging-noise-levels/
             % What is "good" also depends on the number of rois recorded simultaneously
             % log(nu) = -1 + 0.5*log(n) looks like the best case in the graphs of
-            % Rupprecht et al. 
+            % Rupprecht et al.
             normalized = log10(nu)/(-1+0.5*log10(nrRoisInSession)); % 1 =good, lower is better.
         end
 
@@ -219,16 +216,17 @@ classdef Preprocessed < dj.Manual
                         fprintf('Not implemented yet')
                 end
             end
-        end      
+        end
     end
-    methods (Access=public)
+    methods (Access=protected)
 
-        function make(tbl,key,parms)
-            sessionPath=unique(folder(ns.Experiment & key));            
+        function makeTuples(tbl,key)
+            sessionPath=unique(folder(ns.Experiment & key));
+            parms = fetch1(sbx.PreprocessedParm & key,'parms');
             % Set the output folder to be
             % subject.suite2p.preprocessing
             % in the session folder
-            resultsFolder = [key.subject '.' parms.toolbox '.' parms.prep];
+            resultsFolder = [key.subject '.' parms.toolbox '.' key.prep];
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
@@ -241,7 +239,7 @@ classdef Preprocessed < dj.Manual
             end
             analyzeExptThisSession = analyze(allExptThisSession,strict=false);
             dataFldr = file(analyzeExptThisSession);
-            dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list            
+            dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
             noDir = cellfun(@(x)exist(x,'dir'),dataFldr)==0;
             if any(noDir)
@@ -250,18 +248,41 @@ classdef Preprocessed < dj.Manual
             end
             switch (parms.toolbox)
                 case 'suite2p'
+                   %% if pyenv().Status=="Loaded"
+                        % Already loaded. Hope that this python is set up
+                        % to run suite2p,
+                   %% else
+                        conda = getenv('NS_CONDA');
+                        if isempty(conda)
+                            error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
+                        end
+                        pyenv(Version = fullfile(conda,'envs/suite2p/bin/python3'));   
+                    %% end
+
                     % Check that each experiment used the same scaling
                     scale = [];
                     nrPlanes = [];
+                    depth = [];
                     for e=fetch(analyzeExptThisSession)'
                         info = sbx.readInfoFile(e);
                         scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
                         nrPlanes = [nrPlanes info.nrPlanes]; %#ok<AGROW>
+                        depth  = [depth info.config.knobby.pos.z]; %#ok<AGROW>
                     end
-                    uScale = unique(scale,'rows');                    
-                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                   
-                    nrPlanes = unique(nrPlanes);                    
-                    assert(size(nrPlanes,1) ==1,"Different number of planes across experiments in this session.");                                       
+                    uScale = unique(scale,'rows');
+                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                    
+                    nrPlanes = unique(nrPlanes);
+                    assert(isscalar(nrPlanes),"Different number of planes across experiments in this session.");                    
+                    % Scanning the same animal at different depths requires
+                    % running preprocessing separately for all experiments
+                    % at that depth. Not implemented yet, probably best
+                    % done by assigning a different plane number to the
+                    % different depths.
+                    assert(isscalar(unique(depth)),"Experiments in this session were recorded at different depths. Not implemented yet.");
+                    
+
+
+
                     opts = py.suite2p.default_ops();
                     opts{'input_format'} = "sbx";
                     opts{'nplanes'} = uint64(nrPlanes);
@@ -319,40 +340,37 @@ classdef Preprocessed < dj.Manual
                             'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
 
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-                        conda = getenv('NS_CONDA');
-                        if isempty(conda)
-                           error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
+                       
+                        % Calling python in-process can lead to problems
+                        % with library conflicts. Using a system call seems more robust to
+                        % different installs. To pass the ops and db dicst we save them
+                        % to a temporary file.
+                        cfd = fileparts(mfilename('fullpath'));
+                        % The python tools are in the tools folder.
+                        % Temporarily go there to import  (full path
+                        % did not seem to work).
+                        toolsPath = fullfile(fileparts(cfd),'tools');
+                        here =pwd;
+                        cd(toolsPath);
+                        nssbx = py.importlib.import_module('nssbx_suite2p');
+                        cd (here)
+                        % Save the dicts to tempfiles
+                        optsFile= temp;
+                        nssbx.save_dict_to_file(opts,optsFile)
+                        dbFile = temp;
+                        nssbx.save_dict_to_file(db,dbFile)
+                        % The python file that will read these
+                        pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
+                        % Construct a batch/bash command.
+                        if ispc
+                            % The batch command activates conda, then
+                            % calls nssbx_suite2p.py to read the dicst
+                            % and then call suite2p.run_s2p
+                            cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
+                        else
+                            cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
                         end
-                            % Calling python in-process can lead to problems
-                            % with library conflicts. Using a system call seems more robust to
-                            % different installs. To pass the ops and db dicst we save them
-                            % to a temporary file.
-                            cfd = fileparts(mfilename('fullpath'));
-                            % The python tools are in the tools folder.
-                            % Temporarily go there to import  (full path
-                            % did not seem to work).
-                            toolsPath = fullfile(fileparts(cfd),'tools');
-                            here =pwd;
-                            cd(toolsPath);
-                            nssbx = py.importlib.import_module('nssbx_suite2p');
-                            cd (here)
-                            % Save the dicts to tempfiles
-                            optsFile= temp;
-                            nssbx.save_dict_to_file(opts,optsFile)
-                            dbFile = temp;
-                            nssbx.save_dict_to_file(db,dbFile)
-                            % The python file that will read these
-                            pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
-                            % Construct a batch/bash command.
-                            if ispc
-                                % The batch command activates conda, then
-                                % calls nssbx_suite2p.py to read the dicst
-                                % and then call suite2p.run_s2p
-                                cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
-                            else
-                                cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
-                            end
-                            system(cmd ,'-echo')
+                        system(cmd ,'-echo')
 
                         % Couldn't figure out how to convert stat.npy so
                         % save it as .mat (Not using save_mat to avoid
@@ -372,9 +390,9 @@ classdef Preprocessed < dj.Manual
                     opts =py.numpy.load(opsFile,allow_pickle=true);
                     img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
                     N = double(opts.item{'nframes'});
-                    fs = double(opts.item{'fs'});                    
-                    tpl = mergestruct(key,struct('prep',parms.prep,'img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);                   
+                    fs = double(opts.item{'fs'});
+                    tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
+                    insert(tbl,tpl);
                 case 'caiman'
                     % TODO
                 otherwise
@@ -383,6 +401,8 @@ classdef Preprocessed < dj.Manual
 
 
         end
+
+       
     end
     methods (Static)
 

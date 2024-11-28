@@ -26,11 +26,11 @@ elseif ischar(meta)
     meta = {meta};
 end
 % Loop over meta fields to add
-T = fetchtable(tbl);
+T = fetchtable(tbl,'*');
 for i=1:numel(meta)
-    thisMetaT= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');
-    thisMetaT = addvars(thisMetaT,thisMetaT.meta_value,'NewVariableNames',meta{i});  
+    thisMetaT= fetchtable(metaTable &tbl & struct('meta_name',meta{i}),'meta_value');    
     if ~isempty(thisMetaT)
+        thisMetaT = addvars(thisMetaT,thisMetaT.meta_value,'NewVariableNames',meta{i});  
         T = outerjoin(T,thisMetaT,'MergeKeys',true,'RightVariables',setdiff(thisMetaT.Properties.VariableNames,{'meta_name','meta_value'}));    
     end
 end

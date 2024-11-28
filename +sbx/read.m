@@ -1,17 +1,14 @@
 function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The key refers to an sbx file in an experiment.
-%  This function will preprocess the raw data  (for the whole session),
-% create a sbx.Preprocessed table and then
-% extract the relevant aspects to store in ns.C. Preprocessing is not
-% repeated if the Preprocessed data already exist. I.e., in a session
-% with multiple experiments, preprocessing is done when ns.C is populated
-% for the first experiment and subsequent calls to populate read the
-% output files and add relevant content to ns.C.
+%  This function will first check that preprocessed data exist for 
+% the parms.prep preprocessing instructions (Which should match a row in 
+% sbx.PreprocessedParm. An error is generated if no preprocessed data exist.
+% If the preprocessed data exist, this funciton extracts (from files on disk) 
+% the relevant aspects to store in ns.C. 
 %
 % The parms struct contains the following fields
-% .toolbox - 'suite2p', or 'caiman'
-% .ops -  A struct with options passed to the toolboxes.
-% .prep -  A unique name to identify these preprocessing instructions.
+% .prep -  A unique name to identify the preprocessing instructions (= a
+% row in sbx.PreprocessedParm)
 % .what - 'F','Fneu', or 'spks'
 %
 % To link  channels in ns.C with ROIs, run populate(sbx.Roi) after
@@ -26,7 +23,7 @@ if ~exists(ks&key)
 end
 if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     % The session has not been preprocessed. Do that first.
-    make(sbx.Preprocessed,ns.stripToPrimary(sbx.Preprocessed,key),parms)
+    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);    
 end
 
 % Read the npy results from the suite2p folder and store them in

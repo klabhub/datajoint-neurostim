@@ -6,8 +6,7 @@ session_date: date  #Recording date (ISO 8601)
 %}
 % BK - April 2022
 classdef Session < dj.Manual
-    methods (Access=public)
-        
+    methods (Access=public)        
         function v = folder(tbl)
              data = fetch(tbl,'session_date');
              dates = cellfun(@(x) datestr((x),'YYYY/mm/DD'),{data.session_date},'UniformOutput',false); %#ok<DATST>

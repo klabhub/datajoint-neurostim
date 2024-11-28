@@ -49,6 +49,10 @@ nrsamples: int          # Number of samples/frames across the experiment
 %
 % recordingInfo - General (channel non-specific) info on the recording.
 %
+% Note that you can also add rows to this table that depend on other rows
+% in this table. TFor this, use the ns.processC as the 'fun' (see
+% ns.processC for instructions, and sbx.spikeML for an example).
+% 
 % EXAMPLE:
 % Several read functions have been implemented.
 % ephys.intan.read  - Read and Preprocess Intan data
@@ -182,7 +186,6 @@ classdef C< dj.Computed
             % match with CChannel.channel, a string to match with
             % CChannel.name or any restriction on the CChannel table.
             %
-            % expt - A single ns.Experiment (tuple or table)
             %
             % grouping- Specify how trials should be grouped into conditions:
             %               []  - All trials are considered a single
@@ -244,7 +247,7 @@ classdef C< dj.Computed
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
                 pv.fun = @(x)(x) % A function to apply to the data obtained from ns.C
-                pv.average (1,1) = @(x)(deal(median(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
+                pv.average (1,1) = @(x)(deal(mean(x,2,"omitnan"),std(x,0,2,"omitnan")./sqrt(sum(~isnan(x),2))));
                 pv.name {mustBeText} = ""
                 pv.start (1,1) double = 0
                 pv.stop (1,:) double =  inf
@@ -315,6 +318,7 @@ classdef C< dj.Computed
                     nrTrialsPerCondition =nan(1,nrConditions);
                     for c= 1:nrConditions                        
                         [y,time] = timetableToDouble(T{c});
+                        y = y(:,:,channelCntr);
                         % Post-process depending on mode
                         switch upper(mode)
                             case {"TOTAL","EVOKED"}
@@ -441,6 +445,7 @@ classdef C< dj.Computed
                             m = m + repmat(1:nrConditions,[nrX 1]);
                             [h,hErr] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
                             hold on
+                            
                             % Show "zero" line
                             hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
                             [hh.Color] =deal(h.Color);
@@ -461,7 +466,10 @@ classdef C< dj.Computed
                 if nargout>1
                     varargout{2} = allX;                    
                     if nargout >2
-                        varargout{3} = time;                    
+                        varargout{3} = time;     
+                        if nargout >3
+                            varargout{4} =conditionName;
+                        end
                     end
                 end
             end
@@ -557,15 +565,10 @@ classdef C< dj.Computed
             %               call.(For instance 'LIMIT 1')
             %
             % OUTPUT
-            %  [v,t]  = t: time in milliseconds since first frame event,
-            %           v: Matrix with [nrTimePoints nrTrials nrChannels]
-            % Alternatively, when only a single output is requested:
             % T     = timetable with each column a trial. Time is in seconds
             %           relative to the first frame of the trial.
-            %          Channels are along the columns of the rows of the
-            %           elements of the table. The Time dimension will be
-            %           named TrialTime  and the data dimension named after
-            %               the preprocessing tag.
+            %          Channels are along the columns of the
+            %           elements of the table. 
             %
             % EXAMPLE
             % T= align(ns.C & 'ctag=''eeg''',channel=2,align=
@@ -663,12 +666,8 @@ classdef C< dj.Computed
 
 
             %% Initialize
-            if pv.averageOverChannels
-                tPerCondition =cell(nrConditions,1);
-            else
-                tPerCondition =cell(nrConditions,nrChannels);
-            end
-
+            tPerCondition =cell(nrConditions,1);
+            
 
             tblChannel =ns.CChannel & proj(tbl) & channelRestriction;
             if ~isempty(pv.fetchOptions)
@@ -721,8 +720,7 @@ classdef C< dj.Computed
             %Apply the fun to preprocess/modify the signal (e.g. abs())
             signal  = pv.fun(signal);
 
-            % Fetch the preprocessing tag. The dimensions in the timetable
-            % will be named after this.           
+          
             %% Align
             if nrSamples==0||nrChannels==0
                 T= timetable; % Empty
@@ -804,6 +802,7 @@ classdef C< dj.Computed
                 % Only one condition requested, return the timetable.
                 T = tPerCondition{1};
             else
+                % Return the cell array of timetables
                 T = tPerCondition;
             end
         end
@@ -832,8 +831,8 @@ classdef C< dj.Computed
 
             % Get the specified preprocessing parms
             prepParms = fetch(ns.CParm & key,'*');
-            % Call the prep function
 
+            % Call the prep function
             [signal,time,channelInfo,recordingInfo] = feval(prepParms.fun,key,prepParms.parms);
             [nrSamples,nrChannels] = size(signal);
 

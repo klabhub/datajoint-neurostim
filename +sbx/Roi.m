@@ -23,6 +23,65 @@ classdef Roi < dj.Computed
         end
     end
     methods  (Access=public)
+        function nwbRoot = nwb(tbl,nwbRoot,pv)
+            % Add to NWB root
+            % Read the masks
+            prep = sbx.Preprocessed & tbl; %
+            assert(count(prep)==1,"More than one preprocessed set.NIY");
+            stat =  prep.stat; % Reads the stat.npy file
+            assert(~isempty(stat),'Stat file not found.');
+            info = sbx.readInfoFile(ns.Experiment &tbl);
+            nrRoi = count(tbl);
+            masks =zeros([fliplr(info.sz) nrRoi]);
+            % Loop over the roi, setting pixels in the mask to 1.
+            for r=1:nrRoi
+                x =stat(r).xpix;
+                y = stat(r).ypix;
+                roi = r*ones(1,stat(r).npix);
+                ix= sub2ind(size(masks),x,y,roi);
+                masks(ix) =1;
+            end
+            % Add to a plane segmentation
+            imgPlane = get(nwbRoot.general_optophysiology,'imaging_plane');
+            planeSegmentation = types.core.PlaneSegmentation(...
+                'colnames',{'image_mask'}, ...
+                'description','Segmented by ', ...
+                'imaging_plane',types.untyped.SoftLink(imgPlane),...
+                'image_mask',types.hdmf_common.VectorData('data',masks,'description','roi masks'));
+
+            imgSegmentation  = types.core.ImageSegmentation();
+            imgSegmentation.planesegmentation.set('PlaneSegmentation',planeSegmentation);
+
+            ophys = types.core.ProcessingModule('description','Optophysiology');
+            ophys.nwbdatainterface.set('ImageSegmentation',imgSegmentation);
+            nwbRoot.processing.set('ophys',ophys);
+
+            % Collect the signals from the nsCChannel table
+            signal = fetchn(ns.CChannel&tbl,'signal');
+            signal = cat(2,signal{:})'; %[nrRoi nrFrames]
+            signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoi 1]);
+            cTpl = fetch(ns.C&tbl,'time','ctag');
+            assert(numel(cTpl.time)==3,'Time not regularly sampled?');
+            nstime =fetch1(ns.PluginParameter  & (ns.Experiment &tbl) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
+            timeZero  = nstime(1);% Start of first trial =0
+            startTime = (cTpl.time(1)-timeZero)/1000; % Align and convert to seconds
+            sampleRate = 1000*cTpl.time(3)./(cTpl.time(2)-cTpl.time(1)); % Hertz
+            roiTableRegion = types.hdmf_common.DynamicTableRegion( ...
+                'table',types.untyped.ObjectView(planeSegmentation), ...
+                'description','all rois', ...
+                'data',(0:nrRoi-1)');
+            roiResponseSeries = types.core.RoiResponseSeries  ( ...
+                'rois',roiTableRegion, ...
+                'data',signal, ...
+                'data_unit','spk/s', ...
+                'starting_time',startTime, ...
+                'starting_time_rate',sampleRate, ...
+                'description',cTpl.ctag);
+
+            fluorescence = types.core.Fluorescence();
+            fluorescence.roiresponseseries.set('RoiResponseSeries',roiResponseSeries);
+            ophys.nwbdatainterface.set('Fluorescence',fluorescence);
+        end
         function [hData] = plotSpatial(roi,pv)
             % Show properties of ROIs in a spatial layout matching that
             % used in suite2p.
@@ -41,6 +100,10 @@ classdef Roi < dj.Computed
             % showImg  - Set to true to show the mean Ca image as a
             %               background [true]
             % colormap - Colormap to use  [hot]
+            % pix - Set to true to use the actual ROI pixels (instead of a
+            % circle)  [false]
+            % alpha - Transparency [0.5]
+            % alphaThreshold - 0
             %
             % OUTPUT
             %    hScatter - Handle to the scatter object
@@ -84,10 +147,13 @@ classdef Roi < dj.Computed
 
             %% Setup color
             if isempty(pv.color)
-                % Use the z-scored rate as the color of the cells
+                % Use the z-scored spike rate as the color of the cells
+                signal  = fetchn(ns.CChannel & 'ctag="spikes"' & roi,'signal');
+                m  = cellfun(@(x) mean(x,"omitmissing"),signal);
+                sd = cellfun(@(x) std(x,0,1,"omitmissing"),signal);
                 z = m./sd;
                 pv.color = z;
-                pv.colorLabel = 'rate (Z)';
+                pv.colorLabel = 'spike rate (Z)';
             end
             % Clamp to the limits
             if isempty(pv.clim)
@@ -116,8 +182,8 @@ classdef Roi < dj.Computed
                 alpha   = zeros(RI.ImageSize);
                 prep = sbx.Preprocessed & roi;
                 stat =  prep.stat; % Reads the stat.npy file
-                assert(~isempty(stat),'Stat file not loaded. Cannot use pix=true');
-                
+                assert(~isempty(stat),'Stat file not loaded. (is NS_ROOT set correctly?) Cannot use pix=true');
+
                 rCntr  =0;
                 % Scale to the full colormap
                 scaled  = (pv.color-min(pv.color))./(max(pv.color)-min(pv.color));
