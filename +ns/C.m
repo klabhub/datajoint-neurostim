@@ -435,8 +435,8 @@ classdef C< dj.Computed
                         case "TIMECOURSE"
                             %% One time series line perCondition , spaced vertically.
                             % Scale each condition to the grandMax
-                            grandMax = prctile(abs(m(:)),pv.prctileMax );
-                            grandMin = prctile(abs(m(:)),100-pv.prctileMax );
+                            grandMax = prctile(m(:),pv.prctileMax );
+                            grandMin = prctile(m(:),100-pv.prctileMax );
                             m = (m-grandMin)./(grandMax-grandMin);
                             e = e./(grandMax-grandMin);
                             % Add the conditionNr so that each m column has a mean of
@@ -448,7 +448,9 @@ classdef C< dj.Computed
                             
                             % Show "zero" line
                             hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
+                            if ~isempty(properties(h))
                             [hh.Color] =deal(h.Color);
+                            end
                             ylim([0 nrConditions+1])
                             set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
                             xlabel 'Time (s)'
@@ -823,7 +825,7 @@ classdef C< dj.Computed
                 % Fetch the file to read
                 filename = fullfile(folder(ns.Experiment &key),fetch1(qry,'filename'));
             end
-            if exist(filename,'file') && ~exist(filename,'dir')
+            if exist(filename,'file') || exist(filename,'dir')
                 fprintf('Reading %s\n',filename);
             else
                 error('File %s does not exist. Cannot create C',filename);

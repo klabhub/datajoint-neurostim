@@ -57,10 +57,11 @@ classdef PluginParameter < dj.Part
     methods (Access= ?ns.Plugin)
         function make(tbl,key,prms)
             % Called from ns.Plugin to fill the parameter values
-            if isempty(key);return;end
-
             prmNames = fieldnames(prms);
             nrPrms = numel(prmNames);
+
+            if isempty(key) || nrPrms ==0 ;return;end
+
             key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part
             fprintf('Adding %d parameters for %s plugin\n',nrPrms,key(1).plugin_name);
             for i=1:nrPrms

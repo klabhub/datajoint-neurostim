@@ -25,7 +25,7 @@ switch upper(parms.type)
     case {'EEG'}
         label = 'hi-res';
     case {'BREAKOUT'}
-        label = ''
+        label = '';
     case {'DIGIN'}
 
 end
@@ -101,7 +101,7 @@ else
     end
     assert(nrChannels==numel(parms.channels),'Multiple channel matches?')
     nrSamples = unique([entities(entityIx).Count]);
-    assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samples",label);
+    assert(isscalar(nrSamples),"The code assumes all %s have the same number of samples",label);
 
 
     %% Preprocess

@@ -155,6 +155,9 @@ classdef File < dj.Imported
                 elseif d.bytes>1e9
                     fprintf(2,"%s is bigger than 1 GB. Not computing MD5 checksum.\n",ff);
                     md5Hash = string(repmat('0',[1 32]));
+                elseif d.bytes ==0
+                    fprintf(2,"%s is 0B. Not computing MD5 checksum.\n",ff);
+                    md5Hash = string(repmat('0',[1 32]));                    
                 else
                     fid = fopen(ff,'r');
                     try
