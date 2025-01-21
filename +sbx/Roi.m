@@ -23,6 +23,11 @@ classdef Roi < dj.Computed
         end
     end
     methods  (Access=public)
+
+        function o = Roi(varargin)
+            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
+             o@dj.Computed(varargin{:});
+        end
         function nwbRoot = nwb(tbl,nwbRoot,pv)
             % Add to NWB root
             % Read the masks

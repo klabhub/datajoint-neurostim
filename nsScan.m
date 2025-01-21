@@ -48,7 +48,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(pv)
 % paradigm = Cell array or char of paradigms to include. Leave empty to include
 %               all. Paradigms are matched case-insensitively. [{}]
 %                A better way to define which paradigms to include is to
-%                use the ns.Paradigm table. 
+%                use the ns.Paradigm table.
 % subject = Cell array or char of subjects to include. Leave empty to include all.
 %               Subjects are matched case insensitivelly. [{}].
 % folderFun -  Function, provided by the user, to handle special folders.
@@ -115,11 +115,12 @@ arguments
     pv.jsonOnly (1,1) logical = false
     pv.readFileContents (1,1) logical = false
     pv.populateFile (1,1) logical = true
-pv.cicOnly (1,1) logical = false
-pv.safeMode (1,1) logical = true
-pv.metaDefinitionTag (1,1) string = ""
-pv.minNrTrials (1,:) double = 1
-pv.verbose (1,1) logical = true
+    pv.cicOnly (1,1) logical = false
+    pv.safeMode (1,1) logical = true
+    pv.metaDefinitionTag (1,1) string = ""
+    pv.minNrTrials (1,:) double = 1
+    pv.verbose (1,1) logical = true
+    pv.fileType (1,1) string = "*.mat"
 end
 
 tExperiment = table;
@@ -142,7 +143,7 @@ switch (pv.schedule)
         % Inside the day folder
         srcFolder = fullfile(pv.root,char(datetime(pv.date,'Format','yyyy/MM/dd')));
     case "a"
-        % All year folders below the root  
+        % All year folders below the root
         % Find the year folders
         yearFolders = dir(pv.root);
         stay = regexp({yearFolders.name},'^\d{4}$','once');
@@ -169,15 +170,15 @@ if pv.verbose
 end
 
 % Find the files matching the wildcard
-dirInfo= dir(fullfile(srcFolder,'*.mat'));
+dirInfo= dir(fullfile(srcFolder,pv.fileType));
 
 if isempty(dirInfo)
     if pv.verbose
-        fprintf('No .mat files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',srcFolder,pv.root);
+        fprintf('No %s files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',pv.fileType,srcFolder,pv.root);
     end
     return;
 end
-
+[~,~,fileExtension]= fileparts(dirInfo(1).name);
 % Select files matching Neurostim format filename
 fullName = fullfile({dirInfo.folder}',{dirInfo.name}');
 if strcmpi(filesep','\')
@@ -190,7 +191,7 @@ if ispc
 else
     root = pv.root;
 end
-pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\.mat$']);
+pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\' fileExtension]);
 meta = regexp(fullName,pattern,'names');
 % Prune those file that did not match
 out = cellfun(@isempty,meta);
@@ -249,25 +250,25 @@ else
     if isscalar(pv.minNrTrials)
         pv.minNrTrials = pv.minNrTrials*ones(size(pv.paradigm));
     else
-        assert(numel(pv.minNrTrials)==numel(pv.paradigm),"minNrTrials should match the paradigms (or be a scalar)");       
+        assert(numel(pv.minNrTrials)==numel(pv.paradigm),"minNrTrials should match the paradigms (or be a scalar)");
     end
     from = cell(size(pv.paradigm));
     to = cell(size(pv.paradigm));
 end
 if ~isempty(pv.paradigm)
-% Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to 
-pdmMatch = false(size(stay));
-for pdm=1:numel(pv.paradigm)
-    thisMatch = ~cellfun(@isempty, regexpi({meta.paradigm},pv.paradigm{pdm}));
-    if ~isempty(from{pdm})
-        thisMatch =thisMatch &  cellfun(@(x) x>=from(pdm),{meta.session_date});
+    % Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to
+    pdmMatch = false(size(stay));
+    for pdm=1:numel(pv.paradigm)
+        thisMatch = ~cellfun(@isempty, regexpi({meta.paradigm},pv.paradigm{pdm}));
+        if ~isempty(from{pdm})
+            thisMatch =thisMatch &  cellfun(@(x) x>=from(pdm),{meta.session_date});
+        end
+        if ~isempty(to{pdm})
+            thisMatch =thisMatch &  cellfun(@(x) x<=to(pdm),{meta.session_date});
+        end
+        pdmMatch = pdmMatch | thisMatch;
     end
-    if ~isempty(to{pdm})
-        thisMatch =thisMatch &  cellfun(@(x) x<=to(pdm),{meta.session_date});
-    end
-    pdmMatch = pdmMatch | thisMatch;
-end
-stay = stay & pdmMatch;
+    stay = stay & pdmMatch;
 end
 
 
@@ -304,7 +305,7 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
 
     for i=1:nrExperiments
         try
-            [tmp,c{i}] = ns.Experiment.readCicContents(meta(i),'root',pv.root);    
+            [tmp,c{i}] = ns.Experiment.readCicContents(meta(i),'root',pv.root);
             tmpMeta{i} = mergestruct(meta(i),tmp); % Merge to keep json/provenance meta.
         catch
             if pv.verbose
@@ -324,7 +325,7 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
     end
     meta  =[tmpMeta{~out}];
     c = [c{~out}];
-    fullName(out) =[];      
+    fullName(out) =[];
     nrExperiments = numel(meta);
 else
     c= [];
@@ -359,7 +360,7 @@ metaDescriptions = ["","Date of the Session (yyyy-mm-dd: ISO 8601)","Neurostim f
 if (pv.readFileContents || any(pv.minNrTrials >1))
     %Already has information from the file contents (minNrTrial>0
     %orreadFileCOntents =true)
-    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence"]; 
+    metaDescriptions = [metaDescriptions "Number of stimuli used" "Number of blocks" "Number of conditions" "Number of trials completed" "Matlab Version" "PTB Version" "NS version" "Run" "Sequence"];
 end
 if pv.readFileContents
     metaDescriptions = [metaDescriptions "CIC"];
@@ -397,7 +398,7 @@ if pv.readJson || pv.jsonOnly
 
     % Read associated JSON files (if they exist)
     for i=1:nrExperiments
-        jsonFile= regexprep(fullName{i},'(\.mat$)','.json'); % Swap extension
+        jsonFile= regexprep(fullName{i},['(\' fileExtension '$)'],'.json'); % Swap extension
         if exist(jsonFile,'file')
             thisJson = readJson(jsonFile);
         else
@@ -520,7 +521,7 @@ if pv.readJson || pv.jsonOnly
             error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
         end
         nrSubjectMetaFields= numel(subjectMetaFields);
-    elseif metaDefinitionTag==""
+    elseif pv.metaDefinitionTag==""
         nrSubjectMetaFields= 0;
     else
         error('Meta definition file %s not found',definitionFile)
