@@ -162,34 +162,10 @@ else
 
     recordingInfo = struct;  % nothing yet.
 
-
-    if isfield(parms,'downsample')
-        tic
-        fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);
-        R=  round(samplingRate/parms.downsample);
-        nrSamples = ceil(nrSamples/R);
-        tmp = nan(nrSamples,nrChannels);
-        for ch = 1:nrChannels
-            tmp(:,ch) =  decimate(signal(:,ch),R);
-        end
-        signal =tmp;
-        time = linspace(time(1),time(end),nrSamples)';
-        fprintf('Done in %d seconds.\n.',round(toc));
-        samplingRate = parms.downsample;
-
-    end
-
-    %% Notch, Bandpass,etc.
-    if isfield(parms,'designfilt')
-        fn = fieldnames(parms.designfilt);
-        for i=1:numel(fn)
-            tic;
-            fprintf('Applying filter (designfilt.%s)...',fn{i})
-            prms= parms.designfilt.(fn{i});
-            d = designfilt(prms{:},'SampleRate',samplingRate);
-            signal = filtfilt(d,signal);
-            fprintf('Done in %d seconds.\n.',round(toc))
-        end
+    
+    %% Preprocess
+    if isfield(parms,'downsample') || isfield(parms,'designfilt')
+        [signal,time] = filterC(signal,time,parms);
     end
 
     % Regualr sampling so reduce time representation and convert to ms.
