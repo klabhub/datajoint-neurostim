@@ -863,23 +863,9 @@ classdef C< dj.Computed
                     end
                 end
             end
-
+            
             % Chunking the inserts to avoid overloading the server
-            chunkSize = 1; % This should probably be user configurable (e.g., NS_MAXUPLOAD)
-            tic;
-            fprintf('Uploading to server ')
-            for i=1:chunkSize:nrChannels
-                fprintf('.')
-                if mod(i,80)==0;fprintf('\n');end
-                thisChunk = i:min(nrChannels,i+chunkSize-1);
-                insert(ns.CChannel,channelsTpl(thisChunk));
-            end
-            fprintf('Done in %d seconds.\n.',round(toc))
-
+            chunkedInsert(ns.CChannel,channelsTpl);                       
         end
     end
-
-
-
-
 end
