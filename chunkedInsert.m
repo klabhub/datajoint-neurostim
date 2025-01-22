@@ -2,8 +2,7 @@ function chunkedInsert(tbl,tpl)
 % Insert the struct array of tpls into datajoint table tbl.
 % The number of tpls is chosen to send approximately NS_BYTESPERINSERT
 % at a time. This value is read from the environment
-% (getenv("NS_BYTESPERINSERT")) or defaults to 5e6 B.
-
+% (getenv("NS_BYTESPERINSERT")) or defaults to 5e6 bytes.
 
 bytesPerInsert = getenv("NS_BYTESPERINSERT");
 if isempty(bytesPerInsert)

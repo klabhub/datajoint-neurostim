@@ -31,16 +31,16 @@ arguments
     trial (1,:) double =[]
 end 
 
-if isnan(time)  || numel(props.(propName))==1
+if isnan(time)  || isscalar(props.(propName))
     % Single value, for all     
     switch what
         case "data"
             out = props.(propName);
-        case "trialtime'"
+        case "trialtime"            
             out = props.(propName +"Time");
-        case 'clocktime'
+        case "clocktime"
             out = props.(propName + "NsTime");
-        case 'trial'
+        case "trial"
             out = props.(propName +"Trial");
     end
     if ~isempty(trial)

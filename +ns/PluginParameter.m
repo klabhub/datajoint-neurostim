@@ -66,14 +66,14 @@ classdef PluginParameter < dj.Part
             fprintf('Adding %d parameters for %s plugin\n',nrPrms,key(1).plugin_name);
             for i=1:nrPrms
                 thisPrm = prms.(prmNames{i});
-                time =[];
-                trial =[];
-                nsTime = [];
                 if thisPrm.cntr==1 || ( thisPrm.cntr ==2 && isempty(thisPrm.log{1}))
                     % Single value: global property
                     % Easy: store only this value
                     type = 'Global';
-                    value =thisPrm.value;                
+                    value =thisPrm.value;  
+                    nsTime = thisPrm.time(end);
+                    trial = 1;
+                    time = -inf;
                 elseif thisPrm.changesInTrial
                     % Changes within a trial : event
                     % Store all values, plus the time at which the event
@@ -123,8 +123,6 @@ classdef PluginParameter < dj.Part
                         % Really only one value
                         value = uValue;
                         type = 'Global';
-                        time = [];
-                        nsTime = [];
                     end
                 end
 
@@ -191,12 +189,21 @@ classdef PluginParameter < dj.Part
             persistent warnedAlready
             if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.
-            [vals,names] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name');
+            [vals,names,nsTimes] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name','property_nstime');
+            % Create the struct with name/value
             glbl = cell(1,2*numel(names));
             [glbl{1:2:end}] =deal(names{:});
             [glbl{2:2:end}] = deal(vals{:});
             v  = struct(glbl{:});
-
+            % And add the parmNsTime field for globals as well. Not usually
+            % needed, except for a 1 trial experiment (to define
+            % firstFrameNsTime for alignment)
+            names= strcat(names,'NsTime');
+            vals = nsTimes;
+            glbl = cell(1,2*numel(names));
+            [glbl{1:2:end}] =deal(names{:});
+            [glbl{2:2:end}] = deal(vals{:});
+            v= orderfields(mergestruct(v,struct(glbl{:})));
             %% Now the parms that change
             % Parameters - they do not change within a trial. The
             % output struct will have a vector/cell with one value for
