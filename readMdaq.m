@@ -59,33 +59,9 @@ time = seconds(T.nsTime);
 signal = T{:,parms.channel};
 [nrSamples,nrChannels] = size(signal);
 sampleRate = get(c.mdaq.prms.samplerate);
-%% Downsample first
-if isfield(parms,'downsample')
-    tic
-    fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);
-    R=  round(sampleRate/parms.downsample);
-    nrSamples = ceil(nrSamples/R);
-    tmp = nan(nrSamples,nrChannels);
-    for ch = 1:nrChannels
-        tmp(:,ch) =  decimate(signal(:,ch),R);
-    end
-    signal =tmp;
-    time = linspace(time(1),time(end),nrSamples)';
-    fprintf('Done in %d seconds.\n.',round(toc));
-    sampleRate = parms.downsample;
-end
-%% Notch, Bandpass,etc.
-if isfield(parms,'designfilt')
-    fn = fieldnames(parms.designfilt);
-    for i=1:numel(fn)
-        tic;
-        fprintf('Applying filter (designfilt.%s)...',fn{i})
-        prms= parms.designfilt.(fn{i});
-        d = designfilt(prms{:},'SampleRate',sampleRate);
-        signal = filtfilt(d,signal);
-        fprintf('Done in %d seconds.\n.',round(toc))
-    end
-end
+
+%% Filter
+[signal,time] = ns.CFilter(signal,time,parms);
 
 %% Create an event for digital ins
 if isfield(parms,'asEvent')

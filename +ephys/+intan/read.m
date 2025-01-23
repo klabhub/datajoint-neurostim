@@ -85,11 +85,10 @@ end
 time  = polyval(clockParms,data.time);
 
 
-%% Preprocess
-if isfield(parms,'downsample') || isfield(parms,'designfilt')
-    [signal,time] = ns.filterC(signal,time,parms);
-end
+%% Filter
+[signal,time] = ns.CFilter(signal,time,parms);
 
+%% Package output
 recordingInfo = mergestruct(hdr.frequency,hdr.stim);
 % Regular sampling so reduce time representation and change to ms.
 time = [1000*time(1) 1000*time(end) nrSamples];

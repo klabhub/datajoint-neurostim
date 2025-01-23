@@ -163,11 +163,9 @@ else
     recordingInfo = struct;  % nothing yet.
 
     
-    %% Preprocess
-    if isfield(parms,'downsample') || isfield(parms,'designfilt')
-        [signal,time] = filterC(signal,time,parms);
-    end
-
+    %% Filter
+    [signal,time] = ns.CFilter(signal,time,parms);
+    %% Package output
     % Regualr sampling so reduce time representation and convert to ms.
     time = [1000*time(1) 1000*time(end) nrSamples];
     % Reduce storage (ns.C.align converts back to double

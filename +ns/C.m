@@ -399,8 +399,8 @@ classdef C< dj.Computed
                             end
                         case "RASTER"
                             % Using an image to show the time course.
-                            grandMax = prctile(abs(m(:)),pv.prctileMax );
-                            grandMin = prctile(abs(m(:)),100-pv.prctileMax );                          
+                            grandMax = prctile(m(:),pv.prctileMax );
+                            grandMin = prctile(m(:),100-pv.prctileMax );                          
                             nrX = numel(allX);
                             cmap = [hot(255);0 0 1];
                             I =[];
@@ -658,9 +658,14 @@ classdef C< dj.Computed
             end
             nrConditions = numel(trials);
             if isinf(pv.stop)
-                if ~pv.crossTrial
-                    % use maximum trial duration to setup the T table
-                    pv.stop = max(diff(trialStartTime));
+                if ~pv.crossTrial                    
+                    if isscalar(trialStartTime)
+                        % Single trial  - use all of it
+                        pv.stop  = get(ns.Experiment & tbl, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime')-trialStartTime;
+                    else
+                        % Multiple trial limit to maximum trial duration to setup the T table
+                        pv.stop = max(diff(trialStartTime));
+                    end
                 else
                     error('''stop'' cannot be inf when crossTrial =true')
                 end
@@ -734,7 +739,7 @@ classdef C< dj.Computed
 
                     if isempty(pv.align)
                         alignTrialTime = zeros(size(trials{c})); % Align to first frame
-                    elseif numel(pv.align)==1 % Singleton expansion
+                    elseif isscalar(pv.align) % Singleton expansion
                         alignTrialTime = repmat(pv.align,[1 numel(trials{c})]);
                     elseif numel(pv.align) == exptTpl.nrtrials
                         alignTrialTime = pv.align(trials{c});
@@ -794,7 +799,7 @@ classdef C< dj.Computed
                     end
                     T(:,trialOut) = [];                   
                     T= addprop(T,["alignTime" ],repmat("variable",[1 1]));
-                    T.Properties.CustomProperties.alignTime = alignNsTime;
+                    T.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
                     tPerCondition{c} =T;
                 end
 

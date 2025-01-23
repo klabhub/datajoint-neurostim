@@ -3,11 +3,13 @@ function addFiles(tbl)
 arguments
     tbl (1,1) ns.Experiment
 end
+
+% Process only the experiments that do not have MFF files associated
+% already and skip "experiments" that do only impedance checking.
 tbl = tbl - (ns.File & 'extension=".mff"') & 'not paradigm ="ZCheck"';
-
-BEGINTIME = 0;
-EGIEVENT_SAMPLINGRATE =1000;
-
+if ~exists(tbl)
+    fprintf('No EGI files need to be added.\n');
+end
 for key = fetch(tbl)'
     % Loop over the table of experiments
     fldr = folder(ns.Experiment &key);
@@ -21,7 +23,11 @@ for key = fetch(tbl)'
         % partially, need to check inside the file (for the BREC event) to
         % determine whether an MFF file belongs to a NS file. 
         % (import events can be called multiple times because of this).
-        evts = mff_importevents(fullfile(candidateMff(f).folder,candidateMff(f).name), BEGINTIME, EGIEVENT_SAMPLINGRATE); % from time =0 with 1Khz sampling rate
+        % Read all events, but assume a sampling rate of 1kHz, which could
+        % be incorrect. Because we only use the BREC event (and not its
+        % timing) this is ok. When reading the signal (ephys.egi.read) we
+        % extract the actual sampling rate from the EGI bin file.
+        evts = mff_importevents(fullfile(candidateMff(f).folder,candidateMff(f).name), 0, 1000); % from time =0 with 1Khz sampling rate
         brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event  
         egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '.' pdm '\.\d{6,6}'],'match');  
         assert(~isempty(egiProducingNsFile),'This MFF file has an incorrectly formatted NS file in its BREC',candidateMff(f).name);
