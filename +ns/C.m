@@ -689,14 +689,15 @@ classdef C< dj.Computed
             if pv.removeArtifacts
                 % Correction that applies to all channels
                 aTbl = ns.Artifact&tbl;
+                nrTrials = numel(trialStartTime);
                 if exists(aTbl)
                     exptArtifacts= fetch(aTbl,'trial','start','stop');
                     for tr=exptArtifacts.trial
                         from = t>=trialStartTime(tr)-dt;
-                        if tr<nrAllTrials
+                        if tr<nrTrials
                             to = t<=trialStartTime(tr+1)+dt;
                         else
-                            to = from;
+                            to = from;  % Last trial - exclude to the end of the recording
                         end
                         signal(from & to,:)=NaN;
                     end
@@ -711,7 +712,7 @@ classdef C< dj.Computed
                     for ch= 1:nrChannels
                         for tr=channelArtifacts(ch).trial
                             from = t>=trialStartTime(tr)-dt;
-                            if tr<nrAllTrials
+                            if tr<nrTrials
                                 to = t<=trialStartTime(tr+1)+dt;
                             else
                                 to = from;
