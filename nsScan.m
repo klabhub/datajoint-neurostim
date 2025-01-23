@@ -186,12 +186,10 @@ if strcmpi(filesep','\')
 else
     fs = filesep;
 end
-if ispc
-    root = strrep(pv.root,'/','\');
-else
-    root = pv.root;
-end
-pattern = strcat(strrep(root,'\',fs),[fs '?'], ['(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\' fileExtension]);
+% The first part of the pattern should be thre root. But on some HPC
+% systems searching in one location returns files from a different location
+% Hence we allow the initial match to anything \w\d/.
+pattern = ['[\w\d' fs ']*(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\' fileExtension];
 meta = regexp(fullName,pattern,'names');
 % Prune those file that did not match
 out = cellfun(@isempty,meta);
