@@ -86,7 +86,7 @@ else
 end
 
 
-signal =MFF.data';
+signal =double(MFF.data');
 time = trialStartTimeNeurostim(1)/1000+(0:size(signal,1)-1)/MFF.srate;
 %% Preprocess if requested
 % Apply filtering
