@@ -1,9 +1,17 @@
-function addFiles(tbl)
+function failed = addFiles(tbl)
 % Given a table of ns.Experiment, populate ns.File with associated EGI files.
+% If this fails on any of the experimtns in the tbl, their tpls are
+% returned in failed.
 arguments
     tbl (1,1) ns.Experiment
 end
-
+failed = [];
+if ~ispc
+    % This ***may*** not work well on a linux system. Not clear whether that
+    % could be fixed in the Java code, or that this is a big vs. small
+    % endian issue. 
+    fprintf(2,"I found that mmf_importinfon sometimes cannot read info1.xml files (with impedance values) on Linux systems, when it works fine on Windows.\n Running on this machine may fail.")
+end
 % Process only the experiments that do not have MFF files associated
 % already and skip "experiments" that do only impedance checking.
 tbl = tbl - (ns.File & 'extension=".mff"') & 'not paradigm ="ZCheck"';
@@ -17,16 +25,17 @@ for key = fetch(tbl)'
     pdm = fetch1(ns.Experiment &key,'paradigm');
     %% Find the core MFF file linked to this experiment
     candidateMff= dir(fullfile(fldr,[key.subject '.' pdm  '_*.mff']));
-    coreMff = struct;
+    coreMff = struct([]);
     for f=1:numel(candidateMff)
         % Because the EGI mff files only follow the NS convention
         % partially, need to check inside the file (for the BREC event) to
         % determine whether an MFF file belongs to a NS file. 
-        % (import events can be called multiple times because of this).
+        % (files may be read multiple times because of this).
         % Read all events, but assume a sampling rate of 1kHz, which could
         % be incorrect. Because we only use the BREC event (and not its
         % timing) this is ok. When reading the signal (ephys.egi.read) we
         % extract the actual sampling rate from the EGI bin file.
+        try
         evts = mff_importevents(fullfile(candidateMff(f).folder,candidateMff(f).name), 0, 1000); % from time =0 with 1Khz sampling rate
         brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event  
         egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '.' pdm '\.\d{6,6}'],'match');  
@@ -37,9 +46,15 @@ for key = fetch(tbl)'
             fprintf('Matching Neurostim file %s with EGI file %s\n',nsFile,egiProducingNsFile{1})
             break;
         end
+        catch me
+            fprintf(2,"Could not read events from %s\n",fullfile(candidateMff(f).folder,candidateMff(f).name))
+        end
     end
     % If no core MFF can be linked, something is wrong (corrupted folder)
-    assert(~isempty(coreMff),'No MFF file found for %s in %s',nsFile,fldr);
+    if isempty(coreMff)
+        fprintf(2,'No MFF file found for %s in %s',nsFile,fldr);
+        failed = [failed;key];
+    else
     
     %% Related Impedance check files (before and after)
     % An impedance check file should have zcheck as the paradigm name
@@ -109,9 +124,10 @@ for key = fetch(tbl)'
     
   
     %% Combine files, check what is already there.
-    relatedFiles = catstruct(1,coreMff,zBeforeFile,zAfterFile,gpsFileDir,coordinatesFileDir,flaggedElectrodes);      
-    out = cellfun(@isempty,{relatedFiles.name}); %Remove files that are not found 
+    relatedFiles  = {coreMff,zBeforeFile,zAfterFile,gpsFileDir,coordinatesFileDir,flaggedElectrodes};
+    out = cellfun(@isempty,relatedFiles); %Remove files that are not found 
     relatedFiles(out) =[];
+    relatedFiles = catstruct(1,relatedFiles{:});      
     filesInDJ= ns.File & key & struct('filename',{relatedFiles.name});
     if exists(filesInDJ)
         [~,ix]= setdiff({relatedFiles.name},{fetch(filesInDJ,'filename').filename});
@@ -129,5 +145,7 @@ for key = fetch(tbl)'
         [relatedFiles.isdir] = deal(false); % MFF are tagged as dirs (they are zipped dirs), but ns.File will skip those. Tag as not dir.
         updateWithFiles(ns.File,key, relatedFiles);
     end
+    end
 end
+
 end

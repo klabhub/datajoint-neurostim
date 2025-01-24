@@ -88,6 +88,10 @@ end
 
 signal =MFF.data';
 time = trialStartTimeNeurostim(1)/1000+(0:size(signal,1)-1)/MFF.srate;
+% keep only data up until the end of the last trial.
+stay = time <= prms.cic.trialStopTimeNsTime(end)/1000;
+signal = signal(stay,:);
+time = time(stay);
 %% Preprocess if requested
 % Apply filtering
 [signal,time] = ns.CFilter(signal,time,parms);

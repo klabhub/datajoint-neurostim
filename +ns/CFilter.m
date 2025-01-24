@@ -43,7 +43,7 @@ for f=fn
                 R=  parms.decimate{1}; % First input to decimate is the R factor
                 targetRate =  sampleRate/R;
             end
-            fprintf('Downsampling to %.0f Hz (decimate)...',targetRate);                        
+            fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',sampleRate,targetRate);                        
             nrSamples = ceil(nrSamples/R);
             tmp = nan(nrSamples,nrChannels);
             for ch = 1:nrChannels
