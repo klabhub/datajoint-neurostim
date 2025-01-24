@@ -20,6 +20,47 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 
 classdef Experiment  < dj.Manual
     methods (Access = public)
+
+        function whatIs(tbl,pv)
+            % Pass an experiment table to get an overview of the paradigms
+            % in the table, the plugins they use, and (if requested by setting
+            % showParameters =true)  the plugin parameters.
+            % 
+            % Each parameter is shown as a hyperlink. CLicking on it will
+            % retrieve the parameter value (using ns.Experiment/get) for
+            % the experiment with the mnost trials
+            arguments
+                tbl ns.Experiment {mustHaveRows(tbl)}
+                pv.showParameters (1,1) logical =false % 
+                pv.showPlugins (1,1) logical = true
+            end
+            pdms = unique(fetchtable(tbl,'paradigm').paradigm);
+            rnge = @(t,c) (sprintf('%d:%d',min(t.(c)),max(t.(c))));
+            if ~pv.showParameters
+                % Header
+                neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));                 
+            end
+            for pdm = pdms' 
+                T = fetchtable(tbl & struct('paradigm',pdm),'*','ORDER BY nrtrials DESC');
+                if pv.showParameters
+                    % Header
+                    neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));                 
+                end
+                fprintf('%-25s  %-3d \t %-10s \t %-10s \t %-10s \t %-10s \n',pdm,height(T), ...
+                                rnge(T,'conditions'),...
+                                rnge(T,'nrtrials'),...
+                                rnge(T,'run'),...
+                                rnge(T,'seq'));
+                if pv.showPlugins && ~pv.showParameters
+                    plgs = fetch(ns.Plugin &   table2struct(T(1,:)));
+                    fprintf('\tPlugins:'); 
+                    fprintf(2,'%s\n',strjoin({plgs.plugin_name}))                    
+                end
+                if pv.showParameters
+                    whatIs(ns.Plugin &   table2struct(T(1,:)));
+                end
+            end
+        end
         function [ana,notAna] = analyze(tbl,pv)
             % Return the subtable that is marked to be analyzed in the meta
             % data. The optional second output argument is the table of
@@ -345,7 +386,7 @@ classdef Experiment  < dj.Manual
 
         end
         function [out,filename] = get(tbl,plg,pv)
-            % function [out,filename] = get(o,varargin)
+            % function [out,filename] = get(tbl,plg,pv)
             % Retrieve all information on a specific plugin in an experiment
             %
             % INPUT
