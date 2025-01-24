@@ -21,6 +21,8 @@ classdef Plugin < dj.Manual
         function whatIs(tbl)
             % Function to show the parameters for each plugin in the table.
             % Includes links to retrieve the parameter values.
+            expt= fetch(tbl,'subject','session_date','starttime','LIMIT 1');
+            fprintf("PluginParameter values are taken from %s:%s:%s\n",expt.subject,expt.session_date,expt.starttime)
             for plg = fetch(tbl)'
                 fprintf(2,'\t%s:\n',plg.plugin_name)
                 for tp=["Global" "Parameter" "Event" "Bytestream"]
