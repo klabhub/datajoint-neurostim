@@ -119,7 +119,7 @@ classdef PluginParameter < dj.Part
                     else % it is something >2D
                         uValue = nan(2,1); % Just a flag to skip the next part
                     end
-                    if ischar(uValue) || size(uValue,1)==1
+                    if  size(uValue,1)==1
                         % Really only one value
                         value = uValue;
                         type = 'Global';

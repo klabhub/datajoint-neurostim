@@ -254,6 +254,7 @@ classdef C< dj.Computed
                 pv.step  (1,1) double = 0;
                 pv.align (1,:) double = []
                 pv.interpolation {mustBeText} = 'nearest';
+                pv.baseline (1,2) double = [NaN NaN] 
 
                 pv.averageOverChannels (1,1)  logical = false;
                 pv.mode (1,:) {mustBeMember(pv.mode,["COHERENCE", "RASTER", "TIMECOURSE","EVOKED","TOTAL"])} = "TIMECOURSE"
@@ -270,7 +271,7 @@ classdef C< dj.Computed
 
 
             [T,conditionName,channelNr] = align(cTbl,channel=pv.channel,grouping=pv.grouping,trial=pv.trial, ...
-                start=pv.start,stop=pv.stop,step=pv.step, interpolation = pv.interpolation,crossTrial =pv.crossTrial,...
+                start=pv.start,stop=pv.stop,step=pv.step, baseline = pv.baseline,interpolation = pv.interpolation,crossTrial =pv.crossTrial,...
                 average=pv.average,averageOverChannels= pv.averageOverChannels, ...
                 fun=pv.fun,removeArtifacts =pv.removeArtifacts ,...
                 align = pv.align,fetchOptions = pv.fetchOptions);
@@ -318,7 +319,7 @@ classdef C< dj.Computed
                     nrTrialsPerCondition =nan(1,nrConditions);
                     for c= 1:nrConditions
                         [y,time] = timetableToDouble(T{c});
-                        y = y(:,:,channelCntr);
+                        y = y(:,:,channelCntr);                       
                         % Post-process depending on mode
                         switch upper(mode)
                             case {"TOTAL","EVOKED"}
@@ -328,14 +329,7 @@ classdef C< dj.Computed
                                     y = median(y,2,"omitnan");
                                 end
                                 y(isnan(y)) =0;
-                                % fb = cwtfilterbank("SamplingFrequency",1000./pv.step,"SignalLength",size(y,1))
-                                % for tr = 1:size(y,2)
-                                %     s(:,:,tr) =cwt(y(:,tr),fb);
-                                % end
-
                                 [pwr,freq] = pspectrum(y,time,'power',pv.pspectrum{:});
-                                % [ft,freq] = fftReal(y,1./seconds(time(2)-time(1)));
-                                % pwr = ft.*conj(ft);
                                 [thisM,thisE] = pv.average(pwr); % Average over trials
                                 thisX = freq;
                                 thisM = thisM.*freq;
@@ -561,7 +555,10 @@ classdef C< dj.Computed
             % default this is the time at which the first monitor frame
             % became visible. By specifying the time of an event (e.g.,
             % stimulus onset), the data can be aligned to that event.
-            %
+            % baseline - The start and end of a window defining the
+            %            baseline. If specified, the output is
+            %            baseline-corrected by removing the average in
+            %            this window, per trial. [ NaN NaN]
             % interpolation -  enum('nearest','linear','spline','pchip','makima')
             %               Interpolation method; see timetable/synchronize. ['nearest']
             %
@@ -598,12 +595,13 @@ classdef C< dj.Computed
                 pv.start (1,1) double = 0
                 pv.stop  (1,1) double = inf
                 pv.step (1,1) double  = 0;
+                pv.baseline (1,2) double = [NaN NaN] 
                 pv.interpolation {mustBeText} = 'nearest'
                 pv.crossTrial (1,1) logical = false;
                 pv.align (1,:) double = []
                 pv.removeArtifacts (1,1) = true
             end
-
+            doBaselineCorrection = ~any(isnan(pv.baseline));
             % Expt info.
             exptTpl = fetch(ns.Experiment & tbl,'nrtrials');
             trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
@@ -699,7 +697,10 @@ classdef C< dj.Computed
                 nrTrials = numel(trialStartTime);
                 if exists(aTbl)
                     exptArtifacts= fetch(aTbl,'trial','start','stop');
-                    for tr=exptArtifacts.trial
+                    for art = 1:numel(exptArtifacts)
+                        fprintf('Removing %d trials based on %s artifacts.\n',numel(exptArtifacts(art).trial),exptArtifacts(art).atag);
+
+                    for tr=exptArtifacts(art).trial
                         from = t>=trialStartTime(tr)-dt;
                         if tr<nrTrials
                             to = t<=trialStartTime(tr+1)+dt;
@@ -708,16 +709,18 @@ classdef C< dj.Computed
                         end
                         signal(from & to,:)=NaN;
                     end
-                    isArtifact = any(arrayfun(@(a,b) (t>=a-dt & t<=b+dt),exptArtifacts.start,exptArtifacts.stop,'UniformOutput',true),2);
+                    isArtifact = any(arrayfun(@(a,b) (t>=a-dt & t<=b+dt),exptArtifacts(art).start,exptArtifacts(art).stop,'UniformOutput',true),2);
                     signal(isArtifact,:) = NaN;
+                    end
                 end
 
                 % Artifacts found in individual channels
                 acTbl =  (ns.ArtifactChannel & proj(aTbl ))& struct('channel',{channelTpl.channel});
                 if exists(acTbl)
-                    channelArtifacts= fetch(acTbl,'trial','start','stop');
-                    for ch= 1:numel(channelArtifacts)
+                    channelArtifacts= fetch(acTbl,'trial','start','stop');                      
+                    for ch= 1:numel(channelArtifacts)                        
                         thisChannel = channelNr == channelArtifacts(ch).channel;
+                        fprintf('Removing %d trials from channel %d based on %s artifacts.\n',numel(channelArtifacts(ch).trial),channelNr,channelArtifacts(ch).atag);
                         if isempty(channelArtifacts(ch).trial)
                             % trial not defined means all trials
                             signal(:,thisChannel) = NaN;
@@ -782,15 +785,25 @@ classdef C< dj.Computed
                         thisTrial =trials{c}(trCntr);
 
                         % Limits if crossTrial is allowed
-                        startLimit =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.start;
-                        stopLimit =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.stop;
+                        start =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.start;
+                        stop =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.stop;
+                        if doBaselineCorrection
+                            baseStart =trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.baseline(1);
+                            baseStop = trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.baseline(2);
+                        end
                         if ~pv.crossTrial
-                            startLimit =  max(trialStartTime(thisTrial),startLimit); % No samples before trialStartTime(thisTrial)
+                            start =  max(trialStartTime(thisTrial),start); % No samples before trialStartTime(thisTrial)
                             if thisTrial<exptTpl.nrtrials
-                                stopLimit = min(trialStartTime(thisTrial+1),stopLimit); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                                stop = min(trialStartTime(thisTrial+1),stop); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                            end
+                            if doBaselineCorrection
+                                baseStart  = max(trialStartTime(thisTrial),baseStart); % No samples before trialStartTime(thisTrial)
+                                if thisTrial<exptTpl.nrtrials
+                                    baseStop  = min(trialStartTime(thisTrial+1),baseStop); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                                end
                             end
                         end
-                        staySamples = t >= startLimit & t < stopLimit;
+                        staySamples = t >= start & t < stop;
 
                         % Unless the first stay sample is exactly at
                         % trialstart, the first sample in the new table will be
@@ -806,7 +819,12 @@ classdef C< dj.Computed
                         end
                         alignNsTime(trCntr) = trialStartTime(thisTrial)+ alignTrialTime(trCntr);
                         trialTime = t(staySamples)-alignNsTime(trCntr); %
-                        thisT = timetable(milliseconds(trialTime),signal(staySamples,:)); % The table for this trial, at the original sampling rate.
+                        if doBaselineCorrection
+                            baseline = mean(signal(t>=baseStart & t<baseStop,:),1,"omitmissing");
+                        else
+                            baseline  = 0;
+                        end
+                        thisT = timetable(milliseconds(trialTime),signal(staySamples,:)-baseline); % The table for this trial, at the original sampling rate.
                         % Now retime the table to the new time axis. Never extrapolation
                         thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
                         T.(varNames(trCntr)) = table2array(thisT);

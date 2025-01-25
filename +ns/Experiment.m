@@ -385,6 +385,44 @@ classdef Experiment  < dj.Manual
 
 
         end
+
+        function showBehavior(tbl,behavior,pv)
+            arguments 
+                tbl (1,1) ns.Experiment {mustHaveRows}
+                behavior (1,1) string 
+                pv.trial (1,:) = [] % List of trials to include [] means all.
+            end
+
+            tiledlayout('flow')
+            for tpl = fetch(tbl)'
+                nexttile
+            prms = get(tbl &tpl,behavior);
+            state = prms.(behavior).state;
+            trial  = prms.(behavior).stateTrial;
+            trialTime = prms.(behavior).stateTime;
+            if isempty(pv.trial)
+                keepTrial= true(size(trial));
+            else
+                keepTrial =ismember(trial,pv.trial);
+            end
+            out = state=="" | ~keepTrial;
+            state(out) =[];
+            trial(out) =[];
+            trialTime(out) = [];
+            [uStates,~,stateNumber]  = unique(state,'stable');
+            nrStates= numel(uStates);
+            
+            x = trial + trialTime/max(trialTime);
+            y = stateNumber;
+            %x = [x [x(2:end);x(end)]]';
+            %y = [stateNumber stateNumber]';
+            plot(x(:),y(:))
+            xlabel 'Trial'
+            ylabel 'State'
+            set(gca,'YTick',1:nrStates,'YTickLabel',uStates)
+            title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
+            end
+        end
         function [out,filename] = get(tbl,plg,pv)
             % function [out,filename] = get(tbl,plg,pv)
             % Retrieve all information on a specific plugin in an experiment
@@ -491,7 +529,7 @@ classdef Experiment  < dj.Manual
 
             % Convenience; remove the wrappping cell if it only a single
             % experiment was queried.
-            if numel(ix)==1
+            if isscalar(ix)
                 out = out{1}; % Single column
                 filename=filename{1};
             end
@@ -598,8 +636,9 @@ classdef Experiment  < dj.Manual
                     del(ns.Plugin & key);
                 end
                 if max([thisC.prms.trial.log{:}])>0
-                    % re-add each plugin (pluginOrder includes stimuli)
-                    plgsToAdd= [thisC.pluginOrder thisC];
+                    % re-add each plugin (pluginOrder includes stimuli and behaviors),
+                    % cic
+                    plgsToAdd= [thisC.pluginOrder thisC ];
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
                     for plg = plgsToAdd
                         try
