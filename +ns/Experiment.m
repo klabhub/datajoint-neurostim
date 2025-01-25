@@ -21,7 +21,7 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 classdef Experiment  < dj.Manual
     methods (Access = public)
 
-        function whatIs(tbl,pv)
+        function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
             % showParameters =true)  the plugin parameters.
@@ -57,7 +57,7 @@ classdef Experiment  < dj.Manual
                     fprintf(2,'%s\n',strjoin({plgs.plugin_name}))                    
                 end
                 if pv.showParameters
-                    whatIs(ns.Plugin &   table2struct(T(1,:)));
+                    what(ns.Plugin &   table2struct(T(1,:)));
                 end
             end
         end

@@ -18,7 +18,7 @@ classdef Plugin < dj.Manual
 
         end
 
-        function whatIs(tbl)
+        function what(tbl)
             % Function to show the parameters for each plugin in the table.
             % Includes links to retrieve the parameter values.
             expt= fetch(tbl,'subject','session_date','starttime','LIMIT 1');
