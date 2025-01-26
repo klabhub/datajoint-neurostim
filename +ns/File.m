@@ -101,7 +101,11 @@ classdef File < dj.Imported
                 % Remove the part of the path that points to the folder
                 % with the neurostim file, but keep subfolders deeper than
                 % that (for most files relFolder will be '').
-                relFolder = strrep(linkedFiles(f).folder,pth,'');
+                % (This first matches the y\m\d pattern, then extracts what
+                % is after that. This works even when a search in /projects
+                % returns a file in a (mapped/linked) /projectsn folder as
+                % it does on Amarel)
+                relFolder = extractAfter(linkedFiles(f).folder,extractAfter(pth,strlength(pth)-11));
                 filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
                 qry = mergestruct(key,struct('filename',filename));
                 thisFile = ns.File & qry;
