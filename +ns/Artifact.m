@@ -3,7 +3,7 @@
 -> ns.C
 -> ns.ArtifactParm
 --- 
-trial = NULL : longblob   # A vector of trials that are considered artifacts and should be removed from analysis
+trial = NULL : longblob   # A vector of trials that are considered artifacts
 start = NULL : longblob  # A vector of neurostim times that indicate the start of an artifact period
 stop  = NULL : longblob   # A vector of neurostim times that indicate the end of an artifact period
 %}

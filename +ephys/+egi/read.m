@@ -80,12 +80,14 @@ assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trial
 % Determine clock drift, and the offset between the first trial start event
 % in neurostim and in EGI.
 brecTimeEgi  = datetime(brec.begintime(1:26),'InputFormat','uuuu-MM-dd''T''HH:mm:ss.SSSSSS');
-if numel(trialStartTimeNeurostim)>10
+if numel(trialStartTimeNeurostim)>1
     clockParms = polyfit(seconds(trialStartTimeEgi-brecTimeEgi),trialStartTimeNeurostim,1);
-    fprintf(['Average Clock drift is ' num2str((clockParms(1)-1000)) ' ms/ms and the offset is ' num2str(clockParms(2)) ' ms \n' ]);
+    fprintf(['Average Clock drift is ' num2str((clockParms(1)-1000)) ' ms/s and the offset is ' num2str(clockParms(2)) ' ms \n' ]);
 else
-    fprintf('Not enough trials to check clock drift.\n');      
-    clockParms = [1 0]; % Assming zero drift, zero offset
+    fprintf('Single trial; assuming zero clock drift.\n');     
+    % Assume that the trialStartTimeEgi and trialStartTimeNeurostim refer
+    % to the same time and that there is no clock drift.
+    clockParms = [1000 trialStartTimeNeurostim]; % Assming zero drift, zero offset
 end
 
 % EGI samples events regularly, starting from the BREC event 

@@ -3,8 +3,7 @@
 -> ns.Artifact
 channel : int # The channel that has the artifact
 ---
-trial = NULL :      longblob   # A vector of trials that are considered
-artifacts and should be removed from analysis. If left empty, ns.C/align will assume this applies to all trials  and remove the entire electrode from analysis.
+trial = NULL :      longblob   # A vector of trials that are considered artifacts and should be removed from analysis. If left empty, ns.C/align will assume this applies to all trials  and remove the entire electrode from analysis.
 start = NULL : longblob  # A vector of neurostim times that indicate the start of an artifact period
 stop = NULL  : longblob   # A vector of neurostim times that indicate the end of an artifact period
 %}
