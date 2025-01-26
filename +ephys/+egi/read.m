@@ -33,6 +33,7 @@ mffFilename = strrep(fullfile(folder(ns.Experiment &key),key.filename),'\','/');
 %% Read the raw signals from the mff.
 fprintf("Start reading from " +  mffFilename + "...")
 MFF = mff_import(char(mffFilename)); 
+[nrChannels,nrSamples] = size(MFF.data);
 fprintf('Done.\n');
 
 %% Read events
@@ -54,18 +55,12 @@ trial =num2cell(trial);
 MFF.event(1).trial=NaN;
 [MFF.event.trial]=deal(trial{:});
 
-firstTrialStartTimeEgi = MFF.event(strcmpi(code,'BTRL') & [MFF.event.trial]==1).begintime;
-firstTrialStartTimeEgi  = datetime(firstTrialStartTimeEgi(:,1:26),'InputFormat','uuuu-MM-dd''T''HH:mm:ss.SSSSSS');
-
-% trialTime = str2num(fillmissing(char(tcpEvents.mffkey_TTIM),'constant',['-Inf' fillInSpaces])); %#ok<ST2NM> % We place all events without neurostim trial time at -inf trial time.
-% data    = egiTime(isTcp); % Seconds since start of file.
 % Determine the time of all events (on the EGI clock)
 egiTime = char(MFF.event.begintime);
 egiTime = datetime(egiTime(:,1:26),'InputFormat','uuuu-MM-dd''T''HH:mm:ss.SSSSSS');
 egiTime =num2cell(egiTime);
 MFF.event(1).time = NaT;
 [MFF.event.time] = deal(egiTime{:});
-
 source= {MFF.event.sourcedevice};
 % Split DIN (diode) and TCP (Neurostim) events
 isDin = strncmpi(code,'DIN',3);
@@ -84,21 +79,17 @@ trialStartTimeEgi = [MFF.event(strcmpi(code,'BTRL')).time];
 assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
 % Determine clock drift, and the offset between the first trial start event
 % in neurostim and in EGI.
+brecTimeEgi  = datetime(brec.begintime(1:26),'InputFormat','uuuu-MM-dd''T''HH:mm:ss.SSSSSS');
 if numel(trialStartTimeNeurostim)>10
-    clockParms = polyfit(1000*seconds(trialStartTimeEgi-trialStartTimeEgi(1)),(trialStartTimeNeurostim-trialStartTimeNeurostim(1)),1);
-    fprintf(['Average Clock drift is ' num2str((clockParms(1)-1)) ' ms/ms and the offset is ' num2str(clockParms(2)) ' ms \n' ]);
+    clockParms = polyfit(seconds(trialStartTimeEgi-brecTimeEgi),trialStartTimeNeurostim,1);
+    fprintf(['Average Clock drift is ' num2str((clockParms(1)-1000)) ' ms/ms and the offset is ' num2str(clockParms(2)) ' ms \n' ]);
 else
     fprintf('Not enough trials to check clock drift.\n');      
     clockParms = [1 0]; % Assming zero drift, zero offset
 end
 
 % EGI samples events regularly, starting from the BREC event 
-egiTime = (0:size(MFF.data,2)-1)/(MFF.srate/1000);
-% We need to add the offset between the beginning of recording (i.e. the time
-% of the first sample in MFF.data on the neurostim clock.) and the
-% beginning of the trial in NS.
-firstSampleNsTime = prms.egi.eventCodeNsTime(prms.egi.eventCode=="BREC" & prms.egi.eventCodeTrial==1);
-clockParms = clockParms + [0 firstSampleNsTime]; 
+egiTime = (0:nrSamples-1)/MFF.srate;
 neurostimTime = polyval(clockParms,egiTime);
 % keep only from the start of the first until the end of the last trial.
 stay = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialStopTimeNsTime(end);
@@ -109,8 +100,8 @@ neurostimTime = neurostimTime(stay);
 % Apply filtering - time in seconds to allow Hz units for filters
 [signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
 %% Package output
-% Regular sampling
-neurostimTime = [neurostimTime(1) neurostimTime(end) numel(neurostimTime)];
+% Regular sampling - stored in ms
+neurostimTime = [1000*neurostimTime(1) 1000*neurostimTime(end) numel(neurostimTime)];
 signal = single(signal); % Save space -will be converted back to double on read.
 channelInfo  = MFF.chanlocs';
 channelInfo(1).nr =NaN;

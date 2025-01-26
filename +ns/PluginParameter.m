@@ -220,7 +220,7 @@ classdef PluginParameter < dj.Part
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
                     names{j} = [names{j} '2'];
-                    if ~ismember(oldName,warnedAlready)
+                    if ~ismember(oldName,warnedAlready) && ~strcmpi(oldName,"blockTrial")
                         warnedAlready = cat(2,warnedAlready,{oldName});
                         warnNoTrace('%s already defined; renamed to %s',oldName,names{j});
                     end
