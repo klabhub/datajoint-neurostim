@@ -105,7 +105,8 @@ classdef File < dj.Imported
                 % is after that. This works even when a search in /projects
                 % returns a file in a (mapped/linked) /projectsn folder as
                 % it does on Amarel)
-                relFolder = extractAfter(linkedFiles(f).folder,extractAfter(pth,strlength(pth)-11));
+                ymd = strrep(key.session_date,'-',filesep);
+                relFolder = extractAfter(linkedFiles(f).folder,ymd);
                 filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
                 qry = mergestruct(key,struct('filename',filename));
                 thisFile = ns.File & qry;
