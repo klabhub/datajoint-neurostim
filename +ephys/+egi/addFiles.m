@@ -19,6 +19,7 @@ if ~exists(tbl)
     fprintf('No EGI files need to be added.\n');
 end
 for key = fetch(tbl)'
+    try 
     % Loop over the table of experiments
     fldr = folder(ns.Experiment &key);
     [~,nsFile] = fileparts(file(ns.Experiment & key));
@@ -145,6 +146,10 @@ for key = fetch(tbl)'
         [relatedFiles.isdir] = deal(false); % MFF are tagged as dirs (they are zipped dirs), but ns.File will skip those. Tag as not dir.
         updateWithFiles(ns.File,key, relatedFiles);
     end
+    end
+    catch me        
+        fprintf(2,"%s \n",me.message)
+        fprintf(2,"Skipping. ")
     end
 end
 
