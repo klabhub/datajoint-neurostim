@@ -263,8 +263,8 @@ classdef C< dj.Computed
                 pv.forceFig  = false
                 pv.useImage = false;
                 % Spectrum options
-                pv.pspectrum cell = {}; % Cell array of parameter value pairs passed to pspectrum
-                pv.decibel (1,1) logical  = false ;% Define pv.baseline and set to true to determine power ratios in [start stop] compared to baseline
+                pv.pspectrum = {}; % Cell array of parameter value pairs passed to pspectrum , or a function_handle for a function that computes the spectrum from the signal and time vector.
+                pv.decibel (1,1) logical  = false ;% Define pv.baseline and set to true to determine power ratios in [start stop] compared to baseline                
             end
 
 
@@ -305,7 +305,7 @@ classdef C< dj.Computed
                 thisChannelName= string(channelNr(channelCntr));
 
                 % Now analyze the data for this channel
-                for mode= pv.mode
+                for plotMode= pv.mode
                     % Initialize the y-values, errors and time variables
                     m = [];  % Average over trial
                     e = [];
@@ -315,7 +315,7 @@ classdef C< dj.Computed
                     else
                         uid = "";
                     end
-                    hFig = figByName(sprintf('%s (%s) -S:%s on %s@%s %s',mode,ctag,exptTpl.subject ,exptTpl.session_date ,exptTpl.starttime,uid));
+                    hFig = figByName(sprintf('%s (%s) -S:%s on %s@%s %s',plotMode,ctag,exptTpl.subject ,exptTpl.session_date ,exptTpl.starttime,uid));
                     if channelCntr==1
                         clf;
                         layout = tiledlayout('flow');
@@ -334,7 +334,7 @@ classdef C< dj.Computed
                         [y,time] = timetableToDouble(T{c});
                         y = y(:,:,channelCntr);                       
                         % Post-process depending on mode
-                        switch upper(mode)
+                        switch upper(plotMode)
                             case {"TOTAL","EVOKED"}
                                 % TOTAL or EVOKED Power
                                 y = y-average(y,1);  % Remove mean
@@ -342,26 +342,44 @@ classdef C< dj.Computed
                                     y = average(y,2); % Average over trials
                                 end
                                 y(isnan(y)) =0;
-                                [pwr,freq] = pspectrum(y,time,'power',pv.pspectrum{:});
+                                if isa(pv.pspectrum,'function_handle')
+                                    % User supplied spectral estimation
+                                    [pwr,freq] = pv.pspectrum(y,time);
+                                    if size(pwr,1) ==1
+                                        pwr = pwr';
+                                        freq =freq';
+                                    end
+                                else
+                                    [pwr,freq] = pspectrum(y,time,'power',pv.pspectrum{:});
+                                end
+                                
                                 if pv.decibel 
                                     % Determine ratio between [start stop]
                                     % window and baseline in decibel
                                     [b,bTime] = timetableToDouble(B{c});
                                     b = b(:,:,channelCntr);
                                     b = b -average(b,1);
-                                    if upper(pv.mode) =="EVOKED"
-                                        b = average(b,2); % Average over trials
-                                    end
                                     b(isnan(b)) =0;
-                                    [basePwr,bFreq] = pspectrum(b,bTime,'power',pv.pspectrum{:});
-                                    assert(all(bFreq==freq),'Baseline window has different frequency estimates');
-                                    pwr = 10*log10(pwr./basePwr);
+                                    if isa(pv.pspectrum,'function_handle')
+                                        [basePwr,baseFreq] = pv.pspectrum(b,bTime);
+                                         if size(basePwr,1) ==1
+                                                basePwr = basePwr';
+                                                baseFreq =baseFreq';
+                                        end
+                                    else
+                                       [basePwr,baseFreq] = pspectrum(b,bTime,'power',pv.pspectrum{:});
+                                    end
+                                    assert(all(baseFreq==freq),'Baseline window has different frequency estimates');
+                                    basePwr = average(basePwr,2); % Average over trials
+                                    pwr = 10*log10(pwr./basePwr); % Divide 
                                 end
                                 % Average over trials
                                 thisM = average(pwr,2);
                                 thisE  = error(pwr,2);
                                 thisX = freq;
-                                thisM = thisM.*freq;
+                                if ~pv.decibel
+                                   thisM = thisM.*freq;
+                                end
                             case "TIMECOURSE"
                                 % Average over trials  in the condition
                                 thisM = average(y,2);
@@ -392,7 +410,7 @@ classdef C< dj.Computed
 
                     %% Visualize per channel
                     nrX = numel(allX);
-                    switch upper(mode)
+                    switch upper(plotMode)
                         case {"TOTAL","EVOKED"}
                             grandMax = prctile(abs(m(:)),pv.prctileMax );
                             grandMin = prctile(abs(m(:)),100-pv.prctileMax );
@@ -484,7 +502,7 @@ classdef C< dj.Computed
 
                     end
                 end
-                if pv.averageOverChannels || mode=="COHERENCE"
+                if pv.averageOverChannels || plotMode=="COHERENCE"
                     break; %done
                 end
                 title(sprintf('Channel: %s',thisChannelName))

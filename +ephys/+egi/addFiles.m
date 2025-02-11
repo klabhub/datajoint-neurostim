@@ -6,12 +6,6 @@ arguments
     tbl (1,1) ns.Experiment
 end
 failed = [];
-if ~ispc
-    % This ***may*** not work well on a linux system. Not clear whether that
-    % could be fixed in the Java code, or that this is a big vs. small
-    % endian issue. 
-    fprintf(2,"I found that mmf_importinfon sometimes cannot read info1.xml files (with impedance values) on Linux systems, when it works fine on Windows.\n Running on this machine may fail.")
-end
 % Process only the experiments that do not have MFF files associated
 % already and skip "experiments" that do only impedance checking.
 tbl = tbl - (ns.File & 'extension=".mff"') & 'not paradigm ="ZCheck"';
@@ -38,8 +32,9 @@ for key = fetch(tbl)'
         % extract the actual sampling rate from the EGI bin file.
         try
         evts = mff_importevents(fullfile(candidateMff(f).folder,candidateMff(f).name), 0, 1000); % from time =0 with 1Khz sampling rate
-        brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event  
-        egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '.' pdm '\.\d{6,6}'],'match');  
+        brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event with the ns file name
+        brec = brec(1); % Sometimes there is a duplicate (with the same filename)
+        egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '\.' pdm '\.\d{6,6}'],'match');  
         assert(~isempty(egiProducingNsFile),'This MFF file has an incorrectly formatted NS file in its BREC',candidateMff(f).name);
         if contains(nsFile,egiProducingNsFile{1})
             % Match found - no need to continue.
@@ -48,13 +43,14 @@ for key = fetch(tbl)'
             break;
         end
         catch me
+            me.message  
             fprintf(2,"Could not read events from %s\n",fullfile(candidateMff(f).folder,candidateMff(f).name))
         end
     end
     % If no core MFF can be linked, something is wrong (corrupted folder)
     if isempty(coreMff)
         fprintf(2,'No MFF file found for %s in %s',nsFile,fldr);
-        failed = [failed;key];
+        failed = [failed;key]; %#ok<AGROW>
     else
     
     %% Related Impedance check files (before and after)
