@@ -52,8 +52,8 @@ for key = fetch(tbl)'
     end
     % If no core MFF can be linked, something is wrong (corrupted folder)
     if isempty(coreMff)
-        fprintf(2,'No MFF file found for %s in %s',nsFile,fldr);
-        failed = [failed;key];
+        fprintf(2,'No MFF file found for %s in %s\n',nsFile,fldr);
+        failed = [failed;key]; %#ok<AGROW>
     else
     
     %% Related Impedance check files (before and after)
