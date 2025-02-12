@@ -105,7 +105,8 @@ classdef File < dj.Imported
                 % is after that. This works even when a search in /projects
                 % returns a file in a (mapped/linked) /projectsn folder as
                 % it does on Amarel)
-                relFolder = extractAfter(linkedFiles(f).folder,extractAfter(pth,strlength(pth)-11));
+                ymd = strrep(key.session_date,'-',filesep);
+                relFolder = extractAfter(linkedFiles(f).folder,ymd);
                 filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
                 qry = mergestruct(key,struct('filename',filename));
                 thisFile = ns.File & qry;
@@ -154,13 +155,13 @@ classdef File < dj.Imported
             if exist(ff,"file")
                 d= dir(ff);
                 if numel(d)>1 
-                    fprintf(2,"%s is a folder. Not computing MD5 checksum.\n",ff);
+                    % Folder silent ignore. fprintf(2,"%s is a folder. Not computing MD5 checksum.\n",ff);
                     md5Hash = string(repmat('0',[1 32]));
                 elseif d.bytes>1e9
                     fprintf(2,"%s is bigger than 1 GB. Not computing MD5 checksum.\n",ff);
                     md5Hash = string(repmat('0',[1 32]));
                 elseif d.bytes ==0
-                    fprintf(2,"%s is 0B. Not computing MD5 checksum.\n",ff);
+                    % Silent ignore. fprintf(2,"%s is 0B. Not computing MD5 checksum.\n",ff);
                     md5Hash = string(repmat('0',[1 32]));                    
                 else
                     fid = fopen(ff,'r');
