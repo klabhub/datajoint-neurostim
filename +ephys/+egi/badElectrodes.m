@@ -22,6 +22,9 @@ if exists(file)
     ff= fullfile(fldr,fn);
     if exist(ff,'file')
         T = readtable(ff);
+        if isempty(T)
+            fprintf(2,'File (%s) found but table is empty in  %s\n',fn,fldr)
+        end
     else
         fprintf(2,'File (%s) not found in folder %s\n',fn,fldr)
     end
