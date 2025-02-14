@@ -16,6 +16,7 @@ end
 expt =(ns.Experiment & C);
 file = (ns.File & expt) & struct('extension',parms.extension) & ['filename LIKE "%' char(parms.filename) '%"'];
 fldr = folder(expt);
+T=table;
 if exists(file) 
     fn = fetch1(file,'filename');
     ff= fullfile(fldr,fn);
@@ -27,9 +28,15 @@ if exists(file)
 else
     fprintf('No %s for %s',parms.filename,fldr)
 end
-badElectrodes = T{:,1};
+
 perExpt = struct('start',[],'stop',[],'trial',[]); % Nothing applicable to all channels
-perChannel =struct('start',[],'stop',[],'trial',[],'channel',num2cell(badElectrodes));
+if isempty(T)
+    perChannel =struct('start',[],'stop',[],'trial',[],'channel',[]);
+else
+    perChannel =struct('start',[],'stop',[],'trial',[],'channel',num2cell(T{:,1}));
+end   
+
+end
 
 
 
