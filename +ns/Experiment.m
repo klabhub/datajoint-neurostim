@@ -656,7 +656,7 @@ classdef Experiment  < dj.Manual
     methods (Static)
         function o = load(filename)
             % Default method to open a Neurostim data file (a .mat file
-            % containing a CIC class object in the variable 'c'
+            % containing a CIC class object in the variable 'c'            
             s  = load(filename,'c');
             o=s.c;
         end
