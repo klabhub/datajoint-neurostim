@@ -572,7 +572,7 @@ classdef C< dj.Computed
 
         end
 
-        function [T,conditionValue,channelNr,B] = align(tbl,pv)
+        function [T,conditionName,channelNr,B] = align(tbl,pv)
             % Function to retrieve trial-based and aligned preprocessed signals.
             %
             % A sample is assigned to a trial if it occurs after the first monitor frame
