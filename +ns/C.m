@@ -315,7 +315,7 @@ classdef C< dj.Computed
                     else
                         uid = "";
                     end
-                    hFig = figByName(sprintf('%s (%s) -S:%s on %s@%s %s',plotMode,ctag,exptTpl.subject ,exptTpl.session_date ,exptTpl.starttime,uid));
+                    hFig = figByName(sprintf('%s (%s) -S:%s on %s@%s %s',plotMode,ctag,exptTpl.subject ,exptTpl.session_date ,exptTpl.starttime,uid));                    
                     if channelCntr==1
                         clf;
                         layout = tiledlayout('flow');
@@ -438,7 +438,7 @@ classdef C< dj.Computed
                                     [hh.Color] =deal(h.Color);
                                 end
                                 ylim([0 nrConditions+1])
-                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
+                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                                 xlabel 'Frequency (Hz)'
                             end
                         case "RASTER"
@@ -466,7 +466,7 @@ classdef C< dj.Computed
                             nrLinesPerCondition = nrTrialsPerCondition+1; % Marker to separate conditions
                             leftEdge = [0 cumsum(nrLinesPerCondition(1:end-1))];
                             middleOfCondition = leftEdge+nrLinesPerCondition./2;
-                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionName)
+                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                             if pv.padding=="tight"
                                 set(gca,'XTick',[]);
                             else
@@ -496,7 +496,7 @@ classdef C< dj.Computed
                                 [hh.Color] =deal(h.Color);
                             end
                             ylim([0 nrConditions+1])
-                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
+                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                             xlabel 'Time (s)'
                             ylabel 'Response per condition'
 

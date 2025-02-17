@@ -9,7 +9,7 @@ if isempty(bytesPerInsert)
     bytesPerInsert = 5e6; % 5MB default chunk
 end
 totalMem =whos("tpl").bytes;
-chunkSize = floor(totalMem/bytesPerInsert); 
+chunkSize = max(1,floor(totalMem/bytesPerInsert));  % At least 1 tpl at a time
 tic;
 nrTpls = numel(tpl);
 fprintf('Uploading to server ')

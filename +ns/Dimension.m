@@ -161,11 +161,11 @@ classdef Dimension < dj.Manual
                         prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime)';
                         prmTrials = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what','trial');                    
                     end
-                    assert(numel(prmTrials)==numel(allTrials) && all(prmTrials==allTrials),'Parameter %s must be defined in all trials to use it to define a dimension. ',prm{i})
-                    if isempty(prmValues)
+                    if isempty(prmValues) ||  numel(prmTrials)~=numel(allTrials)  || ~all(prmTrials==allTrials)
                         % This experiment did not use the plugin; error in
                         % the condition specification, skip to the next
                         % experiment
+                        fprintf(2,'Failed to define dimension (%s:%s) for %s on %s at %s \n',plg{i},prm{i},exptTpl(e).subject,exptTpl(e).session_date,exptTpl(e).starttime);
                         break;
                     end
                     % Transform the values using the user-specified
