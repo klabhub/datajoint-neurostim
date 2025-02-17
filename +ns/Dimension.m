@@ -96,6 +96,8 @@ classdef Dimension < dj.Manual
     end
     methods (Static)
         function define(expt,plg,prm,name,pv)
+            % Define a dimension ( a set of conditions) based on the values
+            % of a parameter in a plugin. 
             arguments
                 expt (1,1) ns.Experiment
                 plg (1,:) {mustBeNonzeroLengthText}
@@ -107,7 +109,7 @@ classdef Dimension < dj.Manual
                 pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and this dimension.
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
-
+                pv.atTrialTime (1,1) = 0 % By default a dimension is defined by the parameter value at the start of the trial. Set this to Inf to use the value at the end of the trial (or any other trial time).
             end
             if ~exists(expt)
                 fprintf('Empty experiment table; no dimensions addded.\n')
@@ -149,7 +151,7 @@ classdef Dimension < dj.Manual
                             prefix = string(plg{i}(1:pv.left)) +pvSEPARATOR +string(prm{i}(1:pv.left)) +pvSEPARATOR;
                         end
                     end
-                    prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',0)';
+                    prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime)';
                     if isempty(prmValues)
                         % This experiment did not use the plugin; error in
                         % the condition specification, skip to the next
@@ -185,7 +187,7 @@ classdef Dimension < dj.Manual
                 valStr = fillmissing(valStr,"constant","unknown");
                 if ~isempty(pv.restrict)
                     % Determine which trials meet the specified condition
-                    restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{1},'prm',pv.restrict{2}, 'atTrialTime',0)';
+                    restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{1},'prm',pv.restrict{2}, 'atTrialTime',pv.atTrialTime)';
                     stay = ismember(restrictValue,pv.restrict{3});
                     valStr =valStr(stay,:);
                     stayTrials = find(stay);
