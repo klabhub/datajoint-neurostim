@@ -136,41 +136,38 @@ signal  = single(signal);
 
 %% Parse events to add as plugin parameter
 
+% Currently only startBlink, but could be extended with other events.
 startBlink = data.FEVENT([data.FEVENT.type]==3);
 startBlinkTime = polyval(clockParms,double([startBlink.sttime]))';
 trialStartTime = get(ns.Experiment & key,'cic','prm','firstFrame','what','clocktime');
 nrBlinks = numel(startBlink);
 startBlinkTrial = nan(nrBlinks,1);
-
+% Assign to trial
 for b= 1:nrBlinks 
-    tmp = find(trialStartTime < startBlinkTime(b),1,'first');
+    tmp = find(trialStartTime > startBlinkTime(b),1,'first');
     if isempty(tmp)
-        startBlinkTrial(b)= 1;
+        startBlinkTrial(b)= nrTrials;
     else
-        startBlinkTrial(b) =tmp;
+        startBlinkTrial(b) =max(1,tmp-1);
     end
 end
 startBlinkTrialTime = startBlinkTime- trialStartTime(startBlinkTrial);
-
-
+% Create tpl and insert, pretendingthis is a regular plugin.
 plgTpl= fetch(ns.Experiment &key);
 plgTpl.plugin_name ="edf";
- prmTpl  = plgTpl;   
- prmTpl.property_name = "startblink";
- if exists(ns.Plugin & plgTpl)
+prmTpl  = plgTpl;   
+prmTpl.property_name = "startBlink";
+if exists(ns.Plugin & plgTpl)
     delQuick(ns.PluginParameter &prmTpl);
     delQuick(ns.Plugin&plgTpl);
 end
+prmTpl.property_value = [];
+prmTpl.property_time = startBlinkTrialTime; 
+prmTpl.property_nstime = startBlinkTime;
+prmTpl.property_trial = startBlinkTrial;
+prmTpl.property_type = 'Event';
 
-
- prmTpl.property_value = [];
- prmTpl.property_time = startBlinkTrialTime; 
- prmTpl.property_nstime = startBlinkTime;
- prmTpl.property_trial = startBlinkTrial;
- prmTpl.property_type = 'Event';
-
-
- insert(ns.Plugin,plgTpl);
- insert(ns.PluginParameter,prmTpl)
+insert(ns.Plugin,plgTpl);
+insert(ns.PluginParameter,prmTpl)
 
 end

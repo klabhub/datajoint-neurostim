@@ -53,7 +53,7 @@ if any(ismember(definedMethods,perExptMethods))
     end
 end
 
-
+perChannel = [];
 %% Pupil based
 if ismember("PUPIL",definedMethods)
     % Uses:
@@ -62,9 +62,12 @@ if ismember("PUPIL",definedMethods)
     % pupil.blink.pre  - samples before blink to set to NaN
     % pupil.blink.post - samples after blink to set to NaN
     if isfield(parms.pupil,'blink')
-
-        blinkTime = get(ns.Experiment & C,'edf','prm','startblink','what','trialtime');
-        blinkTrial = get(ns.Experiment & C,'edf','prm','startblink','what', 'trial');
+        blinkTime = get(ns.Experiment & C,'edf','prm','startBlink','what','clocktime');
+        if ~isempty(blinkTime)
+            perChannel.channel  = fetch1(ns.CChannel & C & 'name="pa"','channel');
+            perChannel.start = blinkTime - parms.pupil.blink.pre;
+            perChannel.stop = blinkTime + parms.pupil.blink.post;
+        end
     end
     if isfield(parms.pupil,'frac')
         [area,~] = align(C,channel = 'pa', removeArtifacts =false,crossTrial =false,start=parms.start,stop=parms.stop,interpolation="nearest");
@@ -82,9 +85,6 @@ perExpt.start=[];
 perExpt.stop = [];
 perExpt.trial = find(isArtifactTrial);
 
-
-% No per channel artifacts:
-perChannel = [] ;
 
 
 
