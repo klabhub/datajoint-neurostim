@@ -25,8 +25,8 @@ end
 % .start - signal window start (relative to firstframe)
 % .stop  - signal window stop (relative to firstframe, inf is end of trial)
 
-perExptMehods = "SYNC";
-perChannelMethods = ["HASNAN" "ZSCORE" "AMPLITUDE"];
+perExptMehods = "sync";
+perChannelMethods = ["hasnan" "zscore" "amplitude"];
 
 %% Get the signals per trial
 time = fetch1(C,'time');
@@ -36,7 +36,8 @@ else
     step =median(diff(time));
 end
 %Pull signal at the sampling rate
-[signal,t] = align(C,removeArtifacts =false,crossTrial =false,start=parms.start,stop=parms.stop,step=step,interpolation="nearest");
+signal = align(C,removeArtifacts =false,crossTrial =false,start=parms.start,stop=parms.stop,step=step,interpolation="nearest");
+signal = timetableToDouble(signal);
 trialStartTime = get(ns.Experiment & C, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
 trialStopTime= get(ns.Experiment & C,'cic','prm','trialStopTime','what','clocktime');
 trialDuration = diff([trialStartTime;trialStopTime(end)])';
@@ -44,9 +45,13 @@ trialDuration = diff([trialStartTime;trialStopTime(end)])';
 
 %% Detect artifacts that apply to all channels
 isArtifactTrial = false(1,nrTrials);
-for m = intersect(upper(string(fieldnames(parms))),perExptMehods)'
+for m = intersect(string(fieldnames(parms)),perExptMehods)'
     switch upper(m)
         case 'SYNC'           
+            TRIALSNEEDED  =10;
+            if nrTrials<TRIALSNEEDED  
+                fprintf(2,'Artifact detection based on SYNC needs at least %d trials to get an estimate of normal synchrony.Skipped. \n',TRIALSNEEDED )
+            end
             nrChannelsInSync = numel(parms.sync.channel);
              r = nan(nrChannelsInSync,nrChannelsInSync,nrTrials);
              for tr=1:nrTrials               
@@ -75,25 +80,29 @@ signal(:,isArtifactTrial,:) =NaN;  % Per-electrode artifact detection will ignor
 %% Detect artifacts per channel
 % Modes are applied in the order of specification. 
 isArtifactTrial = false(nrTrials,nrChannels);
-for m = intersect(upper(string(fieldnames(parms))),perChannelMethods)'
+for m = intersect(string(fieldnames(parms)),perChannelMethods)'
     switch upper(m)
         case 'HASNAN'
-             nrSamplesInTrial =  round(trialDuration/step)+1;
-             padding =  nrSamples -nrSamplesInTrial;
-             nrNan = squeeze(sum(isnan(signal),1))-repmat(padding',[1 nrChannels] );
-             ix = find(nrNan./repmat(nrSamplesInTrial',[1 nrChannels]) > parms.hasnan.frac);      
+             out = mean(isnan(signal),1) > parms.hasnan.frac;                  
         case 'ZSCORE'            
              z = (signal-repmat(mean(signal,2,"omitnan"),[1 nrTrials 1]))./repmat(std(signal,0,2,"omitnan"),[1 nrTrials 1]);
              outlier = abs(z)>parms.zscore.z;
-             fraction = squeeze(mean(outlier,1,"omitnan")); % Average over samples 
-             ix = find(fraction>parms.zscore.frac);
+             fraction = mean(outlier,1,"omitnan"); % Average over samples 
+             out = fraction>parms.zscore.frac;            
         case 'AMPLITUDE'
              isTooHigh= abs(signal)>parms.amplitude.absmax;
-             fraction = squeeze(mean(isTooHigh,1,"omitnan")); 
-             [ix] = find(fraction>parms.amplitude.frac);
-             signal(:,ix)= NaN;  % Don't include these trials in subsequent methods
+             fraction = mean(isTooHigh,1,"omitnan");
+             out = fraction>parms.amplitude.frac;            
         otherwise
             error('Unknown artifact detection method %s\m',m)  
+    end
+
+    ix = find(reshape(out,nrTrials,nrChannels));
+    if isfield(parms.(m),'remove') && parms.(m).remove
+        % Remove these artifacts from signal so that they are ignored in
+        % the subsequent steps. Defaults to no, user can set with 
+        % parms.amplitude.remove = true
+        signal(:,ix) =NaN;
     end
     fprintf('%d channel artifact trials found by %s\n',numel(ix),m);    
     isArtifactTrial(ix)= true;
@@ -105,7 +114,7 @@ end
 % These algorithms only identify artifact trials, not time periods.
 % Return empty for start/stop
 trials  =cellfun(@(x)(find(x)'),num2cell(isArtifactTrial,1),'uni',false);
-channelsWithArtifacts = any(isArtifactTrial);
+channelsWithArtifacts = any(isArtifactTrial,1);
 perChannel =struct('start',[],'stop',[],'trial',trials(channelsWithArtifacts)','channel',num2cell(find(channelsWithArtifacts),1)');
 
 

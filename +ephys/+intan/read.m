@@ -85,39 +85,10 @@ end
 time  = polyval(clockParms,data.time);
 
 
-%% Preprocess
+%% Filter
+[signal,time] = ns.CFilter(signal,time,parms);
 
-%% Downsample first
-if isfield(parms,'downsample')
-    tic
-    fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);
-    R=  round(hdr.frequency.amplifier_sample_rate/parms.downsample);
-    nrSamples = ceil(nrSamples/R);
-    tmp = nan(nrSamples,nrChannels);
-    for ch = 1:nrChannels
-        tmp(:,ch) =  decimate(signal(:,ch),R);
-    end
-    signal =tmp;
-    time = linspace(time(1),time(end),nrSamples)';
-    fprintf('Done in %d seconds.\n.',round(toc));
-    sampleRate = parms.downsample;
-else
-    sampleRate = hdr.frequency.amplifier_sample_rate;
-end
-%% Notch, Bandpass,etc.
-if isfield(parms,'designfilt')
-    fn = fieldnames(parms.designfilt);
-    for i=1:numel(fn)
-        tic;
-        fprintf('Applying filter (designfilt.%s)...',fn{i})
-        prms= parms.designfilt.(fn{i});
-        d = designfilt(prms{:},'SampleRate',sampleRate);
-        signal = filtfilt(d,signal);
-        fprintf('Done in %d seconds.\n.',round(toc))
-    end
-end
-
-
+%% Package output
 recordingInfo = mergestruct(hdr.frequency,hdr.stim);
 % Regular sampling so reduce time representation and change to ms.
 time = [1000*time(1) 1000*time(end) nrSamples];

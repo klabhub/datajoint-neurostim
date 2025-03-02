@@ -7,7 +7,7 @@ function out = attrialtime(props,propName,time,c,what,trial)
 % trial n, it shoudl have the value it got in trial n-1.
 %
 % INPUT
-% props - struct with properties , as returned by one ofthe get functions.
+% props - struct with properties , as returned by one of the get functions.
 % propName - The name of the property that shoudl be returned.
 % time - The time (relative to the trial start) at which the property
 %           should be determined. Use Inf for 'at the end of the trial'.
@@ -31,16 +31,16 @@ arguments
     trial (1,:) double =[]
 end 
 
-if isnan(time)  || numel(props.(propName))==1
+if isnan(time)  || isscalar(props.(propName))
     % Single value, for all     
     switch what
         case "data"
             out = props.(propName);
-        case "trialtime'"
+        case "trialtime"            
             out = props.(propName +"Time");
-        case 'clocktime'
+        case "clocktime"
             out = props.(propName + "NsTime");
-        case 'trial'
+        case "trial"
             out = props.(propName +"Trial");
     end
     if ~isempty(trial)
@@ -104,8 +104,9 @@ for e=1:numel(allEventTrials)
         data{currentTrial} = currentValue;
         eventTime (currentTrial) = currentTime;
         eventNsTime(currentTrial) = currentNsTime;
-    else
-        % Event occurred after the atTrialTime; use the value from the
+    elseif isnan(eventTime(currentTrial))
+        % The current event occurred after the atTrialTime and
+        % there was no event in the current trial; use the value from the
         % previous trial
         if currentTrial >1
             data{currentTrial} = data{currentTrial-1};

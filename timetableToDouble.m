@@ -8,7 +8,7 @@ end
 [nrTimePoints, nrTrials] = size(T);
 if nrTimePoints>0
     nrChannels = numel(T{1,1});
-    v = permute(double(reshape(T.Variables,[nrTimePoints nrChannels nrTrials])),[1 3 2]);
+    v = permute(reshape(T.Variables,[nrTimePoints nrChannels nrTrials]),[1 3 2]);
     t = T.Time;
 else
     v=[];

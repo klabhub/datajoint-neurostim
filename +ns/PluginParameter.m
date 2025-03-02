@@ -57,22 +57,23 @@ classdef PluginParameter < dj.Part
     methods (Access= ?ns.Plugin)
         function make(tbl,key,prms)
             % Called from ns.Plugin to fill the parameter values
-            if isempty(key);return;end
-
             prmNames = fieldnames(prms);
             nrPrms = numel(prmNames);
+
+            if isempty(key) || nrPrms ==0 ;return;end
+
             key = repmat(key,[1 nrPrms]); % replicate the plugin pkey part
             fprintf('Adding %d parameters for %s plugin\n',nrPrms,key(1).plugin_name);
             for i=1:nrPrms
                 thisPrm = prms.(prmNames{i});
-                time =[];
-                trial =[];
-                nsTime = [];
                 if thisPrm.cntr==1 || ( thisPrm.cntr ==2 && isempty(thisPrm.log{1}))
                     % Single value: global property
                     % Easy: store only this value
                     type = 'Global';
-                    value =thisPrm.value;                
+                    value =thisPrm.value;  
+                    nsTime = thisPrm.time(end);
+                    trial = 1;
+                    time = -inf;
                 elseif thisPrm.changesInTrial
                     % Changes within a trial : event
                     % Store all values, plus the time at which the event
@@ -118,12 +119,10 @@ classdef PluginParameter < dj.Part
                     else % it is something >2D
                         uValue = nan(2,1); % Just a flag to skip the next part
                     end
-                    if ischar(uValue) || size(uValue,1)==1
+                    if  size(uValue,1)==1
                         % Really only one value
                         value = uValue;
                         type = 'Global';
-                        time = [];
-                        nsTime = [];
                     end
                 end
 
@@ -190,12 +189,21 @@ classdef PluginParameter < dj.Part
             persistent warnedAlready
             if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.
-            [vals,names] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name');
+            [vals,names,nsTimes] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name','property_nstime');
+            % Create the struct with name/value
             glbl = cell(1,2*numel(names));
             [glbl{1:2:end}] =deal(names{:});
             [glbl{2:2:end}] = deal(vals{:});
             v  = struct(glbl{:});
-
+            % And add the parmNsTime field for globals as well. Not usually
+            % needed, except for a 1 trial experiment (to define
+            % firstFrameNsTime for alignment)
+            names= strcat(names,'NsTime');
+            vals = nsTimes;
+            glbl = cell(1,2*numel(names));
+            [glbl{1:2:end}] =deal(names{:});
+            [glbl{2:2:end}] = deal(vals{:});
+            v= orderfields(mergestruct(v,struct(glbl{:})));
             %% Now the parms that change
             % Parameters - they do not change within a trial. The
             % output struct will have a vector/cell with one value for
@@ -212,7 +220,7 @@ classdef PluginParameter < dj.Part
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
                     names{j} = [names{j} '2'];
-                    if ~ismember(oldName,warnedAlready)
+                    if ~ismember(oldName,warnedAlready) && ~strcmpi(oldName,"blockTrial")
                         warnedAlready = cat(2,warnedAlready,{oldName});
                         warnNoTrace('%s already defined; renamed to %s',oldName,names{j});
                     end

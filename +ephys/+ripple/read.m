@@ -25,7 +25,7 @@ switch upper(parms.type)
     case {'EEG'}
         label = 'hi-res';
     case {'BREAKOUT'}
-        label = ''
+        label = '';
     case {'DIGIN'}
 
 end
@@ -101,7 +101,7 @@ else
     end
     assert(nrChannels==numel(parms.channels),'Multiple channel matches?')
     nrSamples = unique([entities(entityIx).Count]);
-    assert(numel(nrSamples)==1,"The code assumes all %s have the same number of samples",label);
+    assert(isscalar(nrSamples),"The code assumes all %s have the same number of samples",label);
 
 
     %% Preprocess
@@ -162,36 +162,10 @@ else
 
     recordingInfo = struct;  % nothing yet.
 
-
-    if isfield(parms,'downsample')
-        tic
-        fprintf('Downsampling to %.0f Hz (decimate)...',parms.downsample);
-        R=  round(samplingRate/parms.downsample);
-        nrSamples = ceil(nrSamples/R);
-        tmp = nan(nrSamples,nrChannels);
-        for ch = 1:nrChannels
-            tmp(:,ch) =  decimate(signal(:,ch),R);
-        end
-        signal =tmp;
-        time = linspace(time(1),time(end),nrSamples)';
-        fprintf('Done in %d seconds.\n.',round(toc));
-        samplingRate = parms.downsample;
-
-    end
-
-    %% Notch, Bandpass,etc.
-    if isfield(parms,'designfilt')
-        fn = fieldnames(parms.designfilt);
-        for i=1:numel(fn)
-            tic;
-            fprintf('Applying filter (designfilt.%s)...',fn{i})
-            prms= parms.designfilt.(fn{i});
-            d = designfilt(prms{:},'SampleRate',samplingRate);
-            signal = filtfilt(d,signal);
-            fprintf('Done in %d seconds.\n.',round(toc))
-        end
-    end
-
+    
+    %% Filter
+    [signal,time] = ns.CFilter(signal,time,parms);
+    %% Package output
     % Regualr sampling so reduce time representation and convert to ms.
     time = [1000*time(1) 1000*time(end) nrSamples];
     % Reduce storage (ns.C.align converts back to double
