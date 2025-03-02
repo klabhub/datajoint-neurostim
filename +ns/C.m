@@ -50,7 +50,7 @@ nrsamples: int          # Number of samples/frames across the experiment
 % recordingInfo - General (channel non-specific) info on the recording.
 %
 % Note that you can also add rows to this table that depend on other rows
-% in this table. TFor this, use the ns.processC as the 'fun' (see
+% in this table. For this, use the ns.processC as the 'fun' (see
 % ns.processC for instructions, and sbx.spikeML for an example).
 %
 % EXAMPLE:
@@ -111,7 +111,7 @@ classdef C< dj.Computed
         function v = get.keySource(~)
             % Restricted to files with the extenstion specified in CParm
             % and the include/exclude specs in CParm.
-            % This seems cumbersome, but I coudl not get a simpler join to work
+            % This seems cumbersome, but I could not get a simpler join to work
             allTpl = [];
             for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
                 % Loop over the rows in CParm

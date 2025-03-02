@@ -89,7 +89,7 @@ for pl = 1:numel(planes)
     fprintf('Done in %s.\n',seconds(toc))
     
 end
-[nrFrames,nrROIs] = size(signal); %#ok<ASGLU>
+[nrFrames,nrROIs] = size(signal); 
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 
 channelInfo =  struct('nr',num2cell(1:nrROIs)');

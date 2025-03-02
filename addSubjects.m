@@ -12,10 +12,11 @@ if isstring(newSubjects)
     
     if ismember("KLabNumber", newSubjects.Properties.VariableNames)
         % Export from KLab data base.
-        newSubjects = renamevars(newSubjects,["KLabNumber" "DateOfBirth" "Gender"],["subject" "dob" "sex"]);
+        newSubjects = renamevars(newSubjects,["KLabNumber" "DateOfBirth" "Gender" "Handedness"],["subject" "dob" "sex" "handedness"]);
         newSubjects = addvars(newSubjects,repmat("Homo sapiens",height(newSubjects),1),'NewVariableNames','species');
-        newSubjects.dob = datetime(newSubjects.dob,"Format","uuuu-MM-dd")
+        newSubjects.dob = datetime(newSubjects.dob,"Format","uuuu-MM-dd");
         newSubjects  =convertvars(newSubjects,1:width(newSubjects),"string");
+        [newSubjects{newSubjects.handedness=="","handedness"}] = deal("Unknown");
     end
 end
 
@@ -30,7 +31,8 @@ if any(newDup)
     % Check full row match
     dupsOld = currentSubjects(oldDup(oldDup~=0),:);
     dupsNew = newSubjects(newDup,:);
-    mismatch = ~ismember(dupsNew,dupsOld);
+    matchingVars = intersect(dupsOld.Properties.VariableNames,dupsNew.Properties.VariableNames);
+    mismatch = ~ismember(dupsNew(:,matchingVars),dupsOld(:,matchingVars));
     if any(mismatch)        
         for i=find(mismatch)
             fprintf('Old: ' ) 
@@ -40,13 +42,25 @@ if any(newDup)
             fprintf('\n');
         end
         error('Mismatched entries')
-    else
-        newSubjects = newSubjects(~newDup,:);
-    end
+    end   
 end
 
-%%
-mergedSubjects= [currentSubjects;newSubjects];
+% Merge new information on existing subjects
+newVars = setdiff(newSubjects.Properties.VariableNames,currentSubjects.Properties.VariableNames);
+mergedSubjects = innerjoin(currentSubjects,newSubjects(newDup,:),"Keys","subject","RightVariables",newVars);
+% add completely new subjects
+mergedSubjects= [mergedSubjects;newSubjects(~newDup,:)];
+% And put a default value for the new information in the current subjects
+% that were not updated
+updateCurrent = currentSubjects(oldDup==0,:);
+if ~isempty(updateCurrent)
+for i=1:numel(newVars)   
+    updateCurrent = addvars(updateCurrent,repmat("",height(updateCurrent),1),'NewVariableNames',newVars{i});
+end
+mergedSubjects = [mergedSubject;updateCurrent];
+end
+
+
 
 if pv.save
     json = table2struct(mergedSubjects);
