@@ -180,5 +180,6 @@ driftChannelTpl = mergestruct(driftKey,...
     'name',"drift"));
 insert(ns.CChannel,driftChannelTpl);
 
-
+% The spikes are returened to the calling function (ns.C/makeTuples) and
+% inserted there.
 end
