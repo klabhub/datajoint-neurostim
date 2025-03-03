@@ -8,7 +8,7 @@ signal : longblob
 
 classdef EpochChannel < dj.Part
 
-    properties
+    properties (SetAccess = protected)
 
         master = ns.Epoch
 

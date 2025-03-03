@@ -39,15 +39,15 @@ classdef Epoch < dj.Computed
 
             [t, ~] = tbl.get_sampling_times(ns.C & key);
 
-            t_export = Timer().start("Exporting data from ns.CChannel...\n");
+            t_export = gen.Timer().start("Exporting data from ns.CChannel...\n");
 
             signal = fetch(ns.CChannel & exp_tbl, 'signal');
             channels = fetch(ns.CChannel & exp_tbl, 'channel');
 
             t_export.stop("\tExporting is complete.");
-            t_export.duration;
+            t_export.report();
 
-            t_sgm = Timer().start("Now segmenting...\n");
+            t_sgm = gen.Timer().start("Now segmenting...\n");
 
             sts = ns.SegmentedTimeSeries(t, abs_onsets(trials), parms.pv.epoch_win, horzcat(signal(:).signal)');
             sts.make();
@@ -58,9 +58,9 @@ classdef Epoch < dj.Computed
             ep = sts.epochs;
 
             t_sgm.stop("\t\tSegmentation complete.");
-            t_sgm.duration;
+            t_sgm.report();
 
-            t_sub = Timer().start("\tNow submitting\n");
+            t_sub = gen.Timer().start("\tNow submitting\n");
 
             epoch_tpl = mergestruct(key, struct( ...
                     event_onset = rel_onsets...
@@ -75,7 +75,8 @@ classdef Epoch < dj.Computed
             insert(ns.Epoch, epoch_tpl);
             chunkedInsert(ns.EpochChannel, cepoch_tpl)
 
-            t_sgm.stop("\t\tSubmission is complete.\n");
+            t_sub.stop("\t\tSubmission is complete.\n");
+            t_sub.report();
            
         end
 
