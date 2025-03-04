@@ -89,9 +89,10 @@ for pl = 1:numel(planes)
     fprintf('Done in %s.\n',seconds(toc))
     
 end
-[nrFrames,nrROIs] = size(signal); %#ok<ASGLU>
+[nrFrames,nrROIs] = size(signal); 
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
-
+% Note that ROI are numbered across planes. This is matched in
+% sbx.PreprocessedRoi to allow inner joins with CChannel.
+% (see example in sxb.PreprocessedRoi/plotSpatial)
 channelInfo =  struct('nr',num2cell(1:nrROIs)');
- 
 end
