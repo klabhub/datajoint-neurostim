@@ -26,6 +26,7 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
     properties (Access = private)
 
         isBaseline = false
+        isDetrend = false
 
     end
 
@@ -113,9 +114,15 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
 
             ep = self.raw_epochs;
 
+            if self.isDetrend
+
+                ep = self.detrend_(ep,3);
+
+            end
+
             if self.isBaseline
                 
-                ep = ep - mean(self.extract_timepoints(ep, self.timepoints, self.baseline_window), 3);
+                ep = ep - mean(self.extract_timepoints(ep, self.timepoints, self.baseline_window), 3, 'omitnan');
 
             end
 
@@ -162,9 +169,14 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
 
         end
 
+        function detrend(self)
+
+            self.isDetrend = true;
+        end
+
     end
 
-    methods (Static)
+    methods (Static, Access = protected)
 
         function [iOnsets, iStarts, iEnds] = segment_indices(t, t_onsets, t_win)
             
@@ -215,6 +227,29 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
             % Extracts data at given time points
             isT = (t_win(1) <= t) & (t_win(2) >= t);
             s = ep(:, :, isT);
+
+        end
+
+        function A = detrend_(A, dim)
+
+            % A: Input array
+    
+            % Get the number of dimensions
+            n_dims = ndims(A);
+            if n_dims == 2, A = detrend(A); return; end
+        
+            % Create the permutation order
+            perm_order = 1:n_dims;
+            perm_order([dim, n_dims]) = perm_order([n_dims, dim]);
+        
+            % Permute the array
+            A = permute(A, perm_order);
+        
+            % Detrend along the last dimension
+            A = detrend(A);
+        
+            % Permute back to the original order
+            A = permute(A, perm_order);
 
         end
     end
