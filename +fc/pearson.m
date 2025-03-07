@@ -20,7 +20,7 @@ arguments
 end
 
 if isfield(parms,'align')
-    % Use the ns.C/align function to retrieve specific 
+    % Use the ns.C/align function to retrieve specific
     % signals from the CChannels.
     args =namedargs2cell(parms.align);  % All parms members are passed to align
     allC =ns.C &channels;
@@ -29,7 +29,7 @@ if isfield(parms,'align')
     p = [];
     for thisC= fetch(allC)'
         % Loop over rows in C ; they correspond to experiments
-        [T,~,channel] = align(allC & thisC ,'channel',proj(channels &thisC), args{:});
+        [T,~,channelInMatrix] = align(allC & thisC ,'channel',proj(channels &thisC), args{:});
         X= timetableToDouble(T);
         X =permute(X,[1 3 2]);
         [~,nrChannels,nrTrials] =size(X);
@@ -56,17 +56,19 @@ else
     % defined in channelInMatrix
     [fc,p,rl, ru] = corrcoef(X);
     err = ru-rl;
-    % Extract unique values; below the diagonal
-    nrChannels = size(fc,1);
-    ix=  reshape(1:(nrChannels*nrChannels),nrChannels,nrChannels);
-    ix = tril(ix,-1);
-    ix(ix==0) =[];
-    fc=fc(ix);
-    p= p(ix);
-    err = err(ix);
-    [src,trg] =meshgrid(channelInMatrix,channelInMatrix);
-    src = src(ix);
-    trg = trg(ix);
+
 end
+
+% Extract unique values; below the diagonal
+nrChannels = size(fc,1);
+ix=  reshape(1:(nrChannels*nrChannels),nrChannels,nrChannels);
+ix = tril(ix,-1);
+ix(ix==0) =[];
+fc=fc(ix);
+p= p(ix);
+err = err(ix);
+[src,trg] =meshgrid(channelInMatrix,channelInMatrix);
+src = src(ix);
+trg = trg(ix);
 
 end
