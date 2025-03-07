@@ -31,7 +31,7 @@ arguments
     trial (1,:) double =[]
 end 
 
-if isnan(time)  || isscalar(props.(propName))
+if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
     % Single value, for all     
     switch what
         case "data"
@@ -43,7 +43,7 @@ if isnan(time)  || isscalar(props.(propName))
         case "trial"
             out = props.(propName +"Trial");
     end
-    if ~isempty(trial)
+    if ~isempty(trial) && isfield(props,propName +"Trial")
         trialNrs = props.(propName +"Trial");
         out = out(ismember(trialNrs,trial));
     end

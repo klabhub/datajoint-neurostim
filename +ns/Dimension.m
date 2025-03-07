@@ -96,6 +96,8 @@ classdef Dimension < dj.Manual
     end
     methods (Static)
         function define(expt,plg,prm,name,pv)
+            % Define a dimension ( a set of conditions) based on the values
+            % of a parameter in a plugin. 
             arguments
                 expt (1,1) ns.Experiment
                 plg (1,:) {mustBeNonzeroLengthText}
@@ -107,7 +109,8 @@ classdef Dimension < dj.Manual
                 pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and this dimension.
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
-
+                pv.atTrialTime (1,1) = 0 % By default a dimension is defined by the parameter value at the start of the trial. Set this to Inf to use the value at the end of the trial (or any other trial time).
+                pv.useTable (1,1) = false % Set this to true of the plg argument is the name of a DJ table 
             end
             if ~exists(expt)
                 fprintf('Empty experiment table; no dimensions addded.\n')
@@ -131,13 +134,14 @@ classdef Dimension < dj.Manual
             exptTpl = fetch(expt);
             nrExpt = numel(exptTpl);
             tic
-            fprintf('Defining Dimension %s for %d experiments...',name,nrExpt)
+            fprintf('Defining Dimension %s for %d experiments...\n',name,nrExpt)
             totalNrTpl=0;
             % Collect values as string (to make a unique condition name)
             % and as actual values (to store as values).
             for e =1:nrExpt
                 valStr = "";
                 valTbl = table;
+                allTrials  = (1:fetch1(ns.Experiment&exptTpl(e),'nrtrials'))';
                 for i=1:nrPlg
                     if pv.nameValueOnly
                         prefix="";
@@ -149,11 +153,19 @@ classdef Dimension < dj.Manual
                             prefix = string(plg{i}(1:pv.left)) +pvSEPARATOR +string(prm{i}(1:pv.left)) +pvSEPARATOR;
                         end
                     end
-                    prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',0)';
-                    if isempty(prmValues)
+                    if pv.useTable
+                        thisTbl = feval(plg{i});
+                        assert(ismember('trial',cat(2,thisTbl.primaryKey,thisTbl.nonKeyFields)),"The %s table must have a column called trial to use it in a dimension definition.", plg{i})
+                        [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');                                            
+                    else                        
+                        prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime)';
+                        prmTrials = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what','trial');                    
+                    end
+                    if isempty(prmValues) ||  numel(prmTrials)~=numel(allTrials)  || ~all(prmTrials==allTrials)
                         % This experiment did not use the plugin; error in
                         % the condition specification, skip to the next
                         % experiment
+                        fprintf(2,'Failed to define dimension (%s:%s) for %s on %s at %s \n',plg{i},prm{i},exptTpl(e).subject,exptTpl(e).session_date,exptTpl(e).starttime);
                         break;
                     end
                     % Transform the values using the user-specified
@@ -185,13 +197,13 @@ classdef Dimension < dj.Manual
                 valStr = fillmissing(valStr,"constant","unknown");
                 if ~isempty(pv.restrict)
                     % Determine which trials meet the specified condition
-                    restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{1},'prm',pv.restrict{2}, 'atTrialTime',0)';
+                    restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{1},'prm',pv.restrict{2}, 'atTrialTime',pv.atTrialTime)';
                     stay = ismember(restrictValue,pv.restrict{3});
                     valStr =valStr(stay,:);
                     stayTrials = find(stay);
                     valTbl= valTbl(stay,:);
                 else
-                    stayTrials = 1:fetch1(ns.Experiment&exptTpl(e),'nrtrials');
+                    stayTrials = allTrials;
                 end
                 % Find the unique combinations of parameters
                 [uValStr,ia,ic] =unique(valStr,'rows');                

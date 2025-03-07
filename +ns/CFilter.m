@@ -71,6 +71,25 @@ for f=fn
             fprintf('Detrending (%d)...',parms.detrend{1})
             signal = detrend(signal,parms.detrend{:});
             fprintf('Done in %d seconds.\n',round(toc))
+
+        case "reference"
+
+            switch parms.reference{1}
+                case "average"
+
+                    disp('Applying rereferencing to the average channel activity.');
+                    signal = signal - mean(signal,2);
+
+                case "channel"
+                case "laplacian"
+
+                    disp('Applying Laplacian re-referencing channel activity.');
+                    signal = laplacian_reference(signal, parms.layout.neighbors);
+
+                    
+                otherwise
+                    continue
+            end
         otherwise
             % Not a defined filter operation, just skip.
     end
@@ -78,4 +97,14 @@ for f=fn
     [nrSamples,nrChannels] = size(signal);
     sampleRate = 1./mode(diff(time));
 end
+end
+
+%% Subtract mean of neighbors from each channel
+function tmp = laplacian_reference(signal, neighbors)
+    tmp = zeros(size(signal));
+    for iCh = 1:width(neighbors)
+    
+        tmp(:, iCh) = signal(:,iCh) - mean(signal(:,neighbors(iCh).neighbors), 2);
+    
+    end
 end

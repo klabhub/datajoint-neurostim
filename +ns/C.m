@@ -50,7 +50,7 @@ nrsamples: int          # Number of samples/frames across the experiment
 % recordingInfo - General (channel non-specific) info on the recording.
 %
 % Note that you can also add rows to this table that depend on other rows
-% in this table. TFor this, use the ns.processC as the 'fun' (see
+% in this table. For this, use the ns.processC as the 'fun' (see
 % ns.processC for instructions, and sbx.spikeML for an example).
 %
 % EXAMPLE:
@@ -111,7 +111,7 @@ classdef C< dj.Computed
         function v = get.keySource(~)
             % Restricted to files with the extenstion specified in CParm
             % and the include/exclude specs in CParm.
-            % This seems cumbersome, but I coudl not get a simpler join to work
+            % This seems cumbersome, but I could not get a simpler join to work
             allTpl = [];
             for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
                 % Loop over the rows in CParm
@@ -203,8 +203,8 @@ classdef C< dj.Computed
             % select trials and time periods without artifacts, and plot
             % only those.
             %
-            % 'robust' - set to false (default) to use mean and std, 
-            %          set to true to use median and iqr 
+            % 'robust' - set to false (default) to use mean and std,
+            %          set to true to use median and iqr
             %
             % 'name'  Name of the conditions to be used when grouping
             %           does not use the ns.Dimension table.
@@ -245,14 +245,14 @@ classdef C< dj.Computed
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
                 pv.fun = @(x)(x) % A function to apply to the data obtained from ns.C
-                pv.robust (1,1) logical = false 
+                pv.robust (1,1) logical = false
                 pv.name {mustBeText} = ""
                 pv.start (1,1) double = 0
                 pv.stop (1,:) double =  inf
                 pv.step  (1,1) double = 0;
                 pv.align (1,:) double = []
                 pv.interpolation {mustBeText} = 'nearest';
-                pv.baseline (1,2) double = [NaN NaN] 
+                pv.baseline (1,2) double = [NaN NaN]
                 pv.averageOverChannels (1,1)  logical = false;
                 pv.mode (1,:) {mustBeMember(pv.mode,["COHERENCE", "RASTER", "TIMECOURSE","EVOKED","TOTAL"])} = "TIMECOURSE"
                 pv.crossTrial (1,1) logical = false;
@@ -264,7 +264,7 @@ classdef C< dj.Computed
                 pv.useImage = false;
                 % Spectrum options
                 pv.pspectrum = {}; % Cell array of parameter value pairs passed to pspectrum , or a function_handle for a function that computes the spectrum from the signal and time vector.
-                pv.decibel (1,1) logical  = false ;% Define pv.baseline and set to true to determine power ratios in [start stop] compared to baseline                
+                pv.decibel (1,1) logical  = false ;% Define pv.baseline and set to true to determine power ratios in [start stop] compared to baseline
             end
 
 
@@ -284,7 +284,7 @@ classdef C< dj.Computed
             if pv.robust
                 average = @(x,dim) median(x,dim,"omitmissing");
                 error    = @(x,dim) iqr(x,dim);
-            else                
+            else
                 average = @(x,dim) mean(x,dim,"omitmissing");
                 error    = @(x,dim) std(x,0,dim,"omitnan")./sqrt(sum(~isnan(x),2));
             end
@@ -332,7 +332,7 @@ classdef C< dj.Computed
                     nrTrialsPerCondition =nan(1,nrConditions);
                     for c= 1:nrConditions
                         [y,time] = timetableToDouble(T{c});
-                        y = y(:,:,channelCntr);                       
+                        y = y(:,:,channelCntr);
                         % Post-process depending on mode
                         switch upper(plotMode)
                             case {"TOTAL","EVOKED"}
@@ -352,8 +352,8 @@ classdef C< dj.Computed
                                 else
                                     [pwr,freq] = pspectrum(y,time,'power',pv.pspectrum{:});
                                 end
-                                
-                                if pv.decibel 
+
+                                if pv.decibel
                                     % Determine ratio between [start stop]
                                     % window and baseline in decibel
                                     [b,bTime] = timetableToDouble(B{c});
@@ -362,23 +362,23 @@ classdef C< dj.Computed
                                     b(isnan(b)) =0;
                                     if isa(pv.pspectrum,'function_handle')
                                         [basePwr,baseFreq] = pv.pspectrum(b,bTime);
-                                         if size(basePwr,1) ==1
-                                                basePwr = basePwr';
-                                                baseFreq =baseFreq';
+                                        if size(basePwr,1) ==1
+                                            basePwr = basePwr';
+                                            baseFreq =baseFreq';
                                         end
                                     else
-                                       [basePwr,baseFreq] = pspectrum(b,bTime,'power',pv.pspectrum{:});
+                                        [basePwr,baseFreq] = pspectrum(b,bTime,'power',pv.pspectrum{:});
                                     end
                                     assert(all(baseFreq==freq),'Baseline window has different frequency estimates');
                                     basePwr = average(basePwr,2); % Average over trials
-                                    pwr = 10*log10(pwr./basePwr); % Divide 
+                                    pwr = 10*log10(pwr./basePwr); % Divide
                                 end
                                 % Average over trials
                                 thisM = average(pwr,2);
                                 thisE  = error(pwr,2);
                                 thisX = freq;
                                 if ~pv.decibel
-                                   thisM = thisM.*freq;
+                                    thisM = thisM.*freq;
                                 end
                             case "TIMECOURSE"
                                 % Average over trials  in the condition
@@ -438,7 +438,7 @@ classdef C< dj.Computed
                                     [hh.Color] =deal(h.Color);
                                 end
                                 ylim([0 nrConditions+1])
-                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
+                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                                 xlabel 'Frequency (Hz)'
                             end
                         case "RASTER"
@@ -466,7 +466,7 @@ classdef C< dj.Computed
                             nrLinesPerCondition = nrTrialsPerCondition+1; % Marker to separate conditions
                             leftEdge = [0 cumsum(nrLinesPerCondition(1:end-1))];
                             middleOfCondition = leftEdge+nrLinesPerCondition./2;
-                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionName)
+                            set(gca,'yTick',middleOfCondition,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                             if pv.padding=="tight"
                                 set(gca,'XTick',[]);
                             else
@@ -496,7 +496,7 @@ classdef C< dj.Computed
                                 [hh.Color] =deal(h.Color);
                             end
                             ylim([0 nrConditions+1])
-                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName)
+                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                             xlabel 'Time (s)'
                             ylabel 'Response per condition'
 
@@ -572,7 +572,7 @@ classdef C< dj.Computed
 
         end
 
-        function [T,conditionValue,channelNr,B] = align(tbl,pv)
+        function [T,conditionName,channelNr,B] = align(tbl,pv)
             % Function to retrieve trial-based and aligned preprocessed signals.
             %
             % A sample is assigned to a trial if it occurs after the first monitor frame
@@ -613,8 +613,8 @@ classdef C< dj.Computed
             % fetchOptions - Options passed to the fectch(ns.C)
             %               call.(For instance 'LIMIT 1')
             %
-            % robust - set to false (default) to use mean and std, 
-            %          set to true to use median and iqr 
+            % robust - set to false (default) to use mean and std,
+            %          set to true to use median and iqr
             %
             % OUTPUT
             % T     = timetable with each column a trial. Time is in seconds
@@ -641,12 +641,12 @@ classdef C< dj.Computed
                 pv.start (1,1) double = 0
                 pv.stop  (1,1) double = inf
                 pv.step (1,1) double  = 0;
-                pv.baseline (1,2) double = [NaN NaN] 
+                pv.baseline (1,2) double = [NaN NaN]
                 pv.interpolation {mustBeText} = 'nearest'
                 pv.crossTrial (1,1) logical = false;
                 pv.align (1,:) double = []
                 pv.removeArtifacts (1,1) = true
-                pv.robust (1,1) logical = false 
+                pv.robust (1,1) logical = false
             end
             doBaselineCorrection = ~any(isnan(pv.baseline));
             if doBaselineCorrection && nargout > 3
@@ -658,7 +658,7 @@ classdef C< dj.Computed
             if pv.robust
                 average = @(x,dim) median(x,dim,"omitmissing");
             else
-                average = @(x,dim) mean(x,dim,"omitmissing");            
+                average = @(x,dim) mean(x,dim,"omitmissing");
             end
             % Expt info.
             exptTpl = fetch(ns.Experiment & tbl,'nrtrials');
@@ -737,7 +737,7 @@ classdef C< dj.Computed
 
             %% Initialize
             tPerCondition =cell(nrConditions,1);
-            if baselineOutput 
+            if baselineOutput
                 bPerCondition = cell(nrConditions,1);
             end
 
@@ -760,44 +760,43 @@ classdef C< dj.Computed
                     exptArtifacts= fetch(aTbl,'trial','start','stop');
                     for art = 1:numel(exptArtifacts)
                         fprintf('Removing %d trials based on %s artifacts.\n',numel(exptArtifacts(art).trial),exptArtifacts(art).atag);
-
-                    for tr=exptArtifacts(art).trial
-                        from = t>=trialStartTime(tr)-dt;
-                        if tr<nrTrials
-                            to = t<=trialStartTime(tr+1)+dt;
-                        else
-                            to = from;  % Last trial - exclude to the end of the recording
+                        for tr=exptArtifacts(art).trial
+                            from = t>=trialStartTime(tr)-dt;
+                            if tr<nrTrials
+                                to = t<=trialStartTime(tr+1)+dt;
+                            else
+                                to = from;  % Last trial - exclude to the end of the recording
+                            end
+                            signal(from & to,:)=NaN;
                         end
-                        signal(from & to,:)=NaN;
-                    end
-                    isArtifact = any(arrayfun(@(a,b) (t>=a-dt & t<=b+dt),exptArtifacts(art).start,exptArtifacts(art).stop,'UniformOutput',true),2);
-                    signal(isArtifact,:) = NaN;
-                    end
+                        isArtifact = false(nrChannels,1);
+                        for epoch = 1:numel(exptArtifacts(art).start)
+                            isArtifact = isArtifact | (t>=exptArtifacts(art).start(epoch) & t<=exptArtifacts(art).stop(epoch));
+                        end
+                        signal(isArtifact,:) = NaN; end
                 end
 
                 % Artifacts found in individual channels
                 acTbl =  (ns.ArtifactChannel & proj(aTbl ))& struct('channel',{channelTpl.channel});
                 if exists(acTbl)
-                    channelArtifacts= fetch(acTbl,'trial','start','stop');                      
-                    for ch= 1:numel(channelArtifacts)                        
+                    channelArtifacts= fetch(acTbl,'trial','start','stop');
+                    for ch= 1:numel(channelArtifacts)
                         thisChannel = channelNr == channelArtifacts(ch).channel;
                         fprintf('Removing %d trials from channel %d based on %s artifacts.\n',numel(channelArtifacts(ch).trial),channelNr,channelArtifacts(ch).atag);
-                        if isempty(channelArtifacts(ch).trial)
-                            % trial not defined means all trials
-                            signal(:,thisChannel) = NaN;
-                        else
-                            for tr=channelArtifacts(ch).trial
-                                from = t>=trialStartTime(tr)-dt;
-                                if tr<nrTrials
-                                    to = t<=trialStartTime(tr+1)+dt;
-                                else
-                                    to = from;
-                                end
-                                signal(from & to,thisChannel)=NaN;
+                        for tr=channelArtifacts(ch).trial
+                            from = t>=trialStartTime(tr)-dt;
+                            if tr<nrTrials
+                                to = t<=trialStartTime(tr+1)+dt;
+                            else
+                                to = from;
                             end
-                            isArtifact = any(arrayfun(@(a,b) (t>=a-dt & t<=b+dt),channelArtifacts(ch).start,channelArtifacts(ch).stop,'UniformOutput',true),2);
-                            signal(isArtifact,thisChannel) = NaN;
+                            signal(from & to,thisChannel)=NaN;
                         end
+                        isArtifact = false(nrChannels,1);
+                        for epoch = 1:numel(channelArtifacts(ch).start)
+                            isArtifact = isArtifact | (t>=channelArtifacts(ch).start(epoch) & t<=channelArtifacts(ch).stop(epoch));
+                        end
+                        signal(isArtifact,thisChannel) = NaN;
                     end
                 end
             end
@@ -828,13 +827,13 @@ classdef C< dj.Computed
                     % Setup the new time axis for the results
                     newTimes = milliseconds(pv.start:pv.step:pv.stop)';
                     nrTimes  = numel(newTimes);
-                   
+
                     % Create a timetable with the activity per trial
                     nrTrials = numel(trials{c});
                     varNames = "Trial" + string(trials{c});
                     T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
 
-                     if baselineOutput
+                    if baselineOutput
                         newBaselineTimes = milliseconds(pv.baseline(1):pv.step:pv.baseline(2))';
                         nrBaselineTimes = numel(newBaselineTimes);
                         B =timetable('Size',[nrBaselineTimes nrTrials],'RowTimes',newBaselineTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
@@ -886,15 +885,15 @@ classdef C< dj.Computed
                         alignNsTime(trCntr) = trialStartTime(thisTrial)+ alignTrialTime(trCntr);
                         trialTime = t(staySamples)-alignNsTime(trCntr); %
                         if doBaselineCorrection
-                            stayBaseline = t>=baseStart & t<baseStop;                            
+                            stayBaseline = t>=baseStart & t<baseStop;
                             baseline = average(signal(stayBaseline,:),1);
                             if baselineOutput
                                 baselineTime = t(stayBaseline)-alignNsTime(trCntr);
-                                thisT = timetable(milliseconds(baselineTime),signal(stayBaseline,:)-baseline); 
+                                thisT = timetable(milliseconds(baselineTime),signal(stayBaseline,:)-baseline);
                                 % Retime the baseline table to the new time axis. Never extrapolation
                                 thisT = retime(thisT,newBaselineTimes,pv.interpolation,'EndValues',NaN);
                                 B.(varNames(trCntr)) = table2array(thisT);
-                            end                    
+                            end
                         else
                             baseline  = 0;
                         end
@@ -902,12 +901,12 @@ classdef C< dj.Computed
                         % Now retime the table to the new time axis. Never extrapolation
                         thisT = retime(thisT,newTimes,pv.interpolation,'EndValues',NaN);
                         T.(varNames(trCntr)) = table2array(thisT);
-                     end
+                    end
                     T(:,trialOut) = [];
                     if baselineOutput
                         B(:,trialOut) = [];
                         B= addprop(B,"alignTime",repmat("variable",[1 1]));
-                        B.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);  
+                        B.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
                         bPerCondition{conditionNr} =B;
                     end
                     T= addprop(T,"alignTime",repmat("variable",[1 1]));

@@ -100,6 +100,7 @@ neurostimTime = neurostimTime(stay);
 
 %% Preprocess if requested
 % Apply filtering - time in seconds to allow Hz units for filters
+parms.layout = MFF.etc.layout;
 [signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
 %% Package output
 % Regular sampling - stored in ms
