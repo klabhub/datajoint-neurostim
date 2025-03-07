@@ -1,9 +1,8 @@
 %{
 # Functional Connectivity 
--> ns.C       # Continuous data used to compute FC.
--> fc.Parm    # Parameters that define the FC computation 
+-> ns.C         # Continuous data used to compute FC.
+-> fc.Skeleton  # Parameters that define the FC computation 
 ---
-pairs           : int  # Number of pairs in the FC
 quality = NULL : float # Some measure of quality of the FC (optional)
 %}
 %
@@ -21,17 +20,20 @@ classdef Fc < dj.Computed
         function plot(tbl,pv)
             % Rudimentary plot function. Needs to be extended with options
             arguments
-                tbl (1,1) {mustHaveRows(tbl,1)}               
+                tbl (1,1) {mustHaveRows(tbl)}               
                 pv.bothSides (1,1) logical % Show symmetric matrix
                 pv.alpha (1,1) double = 0.05;                 
             end
-            FC =fcMatrix(tbl,type =["fc" "p"]);
-            FC.fc (FC.p<pv.alpha) = NaN;
-            imagesc(FC.fc);
-            xlabel 'Target'
-            ylabel 'Src'
-            key =fetch(tbl);
-            title(sprintf('%s for %s-%s@%s.',key.fctag,key.subject,key.session_date,key.starttime))                     
+            tiledlayout('flow')
+            for tpl = fetch(tbl)'
+                nexttile
+                FC =fcMatrix(tbl&tpl,type =["fc" "p"]);
+                FC.fc(FC.p>pv.alpha) = NaN;
+                imagesc(FC.fc);
+                xlabel 'Channel'
+                ylabel 'Channel'                
+                title(sprintf('%s for %s-%s@%s.',tpl.fctag,tpl.subject,tpl.session_date,tpl.starttime))                     
+            end
         end
 
         function v = fcMatrix(tbl,pv)
@@ -70,21 +72,21 @@ classdef Fc < dj.Computed
             assert(~isempty(which(parms.method)),sprintf('Unknown FC method %s',parms.method))
             
             %% Determine which channels are in the skeleton
-            skeleton =  fc.Skeleton & key;
-            assert(exists(skeleton),"No skeleton found for %s-%s@%s. Populate fc.Skeleton first?.",key.subject,key.session_date,key.starttime)                
-            % Pass the CChannel to the method, together with issource/istarget
+            % skeleton =  fc.Skeleton & key;
+            % assert(exists(skeleton),"No skeleton found for %s-%s@%s. Populate fc.Skeleton first?.",key.subject,key.session_date,key.starttime)                
+            % % Pass the CChannel to the method, together with issource/istarget
             % information from the skeleton (in case the method deals with
             % these differently).
             
             % The function takes the parms and channels as input and returns 
             % fc, p, and err, for each src and trg. 
-            [FC,p,err,source,target] = feval(parms.method,parms,ns.CChannel * proj(skeleton,'issource','istarget'));
-            key.pairs = numel(source);
+            channels = ns.CChannel & fc.SkeletonChannel & key ;                        
+            [FC,p,err,src,trg] = feval(parms.method,parms,channels);            
             % Insert the result into the Fc table
             insert(tbl,key);
 
             % Prepare tuples for the Pair table
-            tpl = struct('fc',num2cell(FC(:)),'p',num2cell(p(:)),'err',num2cell(err(:)),'source',num2cell(source(:)),'target',num2cell(target(:)));
+            tpl = struct('fc',num2cell(FC(:)),'p',num2cell(p(:)),'err',num2cell(err(:)),'source',num2cell(src(:)),'target',num2cell(trg(:)));
             tpl = mergestruct(ns.stripToPrimary(fc.Fc,key),tpl);
             chunkedInsert(fc.FcPair,tpl);
         end
