@@ -1,4 +1,4 @@
-function  [srcChannels,trg]  = pearsonSkeleton(parms,srcChannels,trgChannels)
+function  [src,trg]  = pearsonSkeleton(parms,channels)
 % Function to compute a FC skeleton based on Pearson correlations. 
 % This uses the parms.skeleton.upper and .lower values to include only 
 % pairs with an FC that falls above the upper percentile or below the
@@ -6,11 +6,10 @@ function  [srcChannels,trg]  = pearsonSkeleton(parms,srcChannels,trgChannels)
 %
 arguments
     parms (1,1) struct % The parameters to use for FC computation 
-    srcChannels (1,1) ns.CChannel % The CChannels to use as sources
-    trgChannels (1,1) ns.Channel  % The CChannels to use as targets
+    channels (1,1) ns.CChannel % The CChannels to use as sources    
 end
-% Determine pearson FC for all
-[FC,p,err,srcChannels,trg] = fc.pearson(parms,srcChannels,trgChannels); %#ok<ASGLU>
+% Determine pearson FC for all channels
+[FC,p,err,src,trg] = fc.pearson(parms,channels); %#ok<ASGLU>
 
 % Now determine the skeleton
 stay   = false(size(FC)); % By default none
@@ -22,6 +21,6 @@ end
 if isfield(parms.skeleton,'lower')
     stay = stay |  FC < prctile(FC,parms.skeleton.lower);
 end
-% Return only pairs that the criteria
-srcChannels =srcChannels(stay);
+% Return only src and trg channel numbers that meet the criteria
+src =src(stay);
 trg = trg(stay);

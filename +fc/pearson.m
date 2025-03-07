@@ -14,7 +14,10 @@ function   [fc,p,err,src,trg] = pearson(parms,channels)
 % 'align' specified, the data from separate experiments are treated as 
 % separate trials. When no align is specified, the time courses of the 
 % experiments are concatenated.
-
+arguments
+    parms (1,1) struct
+    channels (1,1) 
+end
 if isfield(parms,'align')
     % Use the align function to retrieve all
     % signals
@@ -52,6 +55,6 @@ fc =r(ix);
 p = p(ix);
 err = err(ix);
 [src,trg] =meshgrid(channel,channel);
-src = src(ix); % no distinction between src and trg for Pearson
+src = src(ix); 
 trg = trg(ix);
 end

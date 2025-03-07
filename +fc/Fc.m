@@ -3,25 +3,60 @@
 -> ns.C       # Continuous data used to compute FC.
 -> fc.Parm    # Parameters that define the FC computation 
 ---
--> fc.Skeleton 
+pairs           : int  # Number of pairs in the FC
+quality = NULL : float # Some measure of quality of the FC (optional)
 %}
 %
-% Functional connectivity table. Draft version.
+% Functional connectivity table. 
 %  The ns.C foreign key identifies the continuous data for which functional
 %  connectivity is computed.
-% The fc.Oarm is a lookup table that defines how FC is computed. The user
-% has full control by specifying a function handle as a method in the
-% fc.Parm parms. 
-% 
-% Currently this table only serves as bookkeeping (that FC has been
-% computed); it could be extended with additional properties that apply to
-% the entire FC (properties that are not specific to a pair, and not
-% already in the fc.Parm). 
+% The fc.Parm is a lookup table that defines how FC is computed. The user
+% has full control by specifying a method in the fc.Parm parms. 
 %
-% The part table fc.Pair stores the actual values plus stats of the computed 
-% connectivity between pairs. This too could be extended with additional properties. 
-% 
+% The dj.Part table fc.FcPair stores the actual FC values per pair
+%
+% See Also fc.Parm
 classdef Fc < dj.Computed
+     methods
+        function plot(tbl,pv)
+            % Rudimentary plot function. Needs to be extended with options
+            arguments
+                tbl (1,1) {mustHaveRows(tbl,1)}               
+                pv.bothSides (1,1) logical % Show symmetric matrix
+                pv.alpha (1,1) double = 0.05;                 
+            end
+            FC =fcMatrix(tbl,type =["fc" "p"]);
+            FC.fc (FC.p<pv.alpha) = NaN;
+            imagesc(FC.fc);
+            xlabel 'Target'
+            ylabel 'Src'
+            key =fetch(tbl);
+            title(sprintf('%s for %s-%s@%s.',key.fctag,key.subject,key.session_date,key.starttime))                     
+        end
+
+        function v = fcMatrix(tbl,pv)
+            % Convenience function that returns a struct with FC as a
+            % matrix, together with the channels that the FC was
+            % calculated for and, optionally, the associated p and err
+            % values form the FcPair table.
+            arguments
+                tbl (1,1) fc.Fc
+                pv.type (1,:) string = "fc"  % Set to ["fc" "p" "err" ]  to include p and err values.
+            end
+                columns =cellstr([pv.type "source" "target"]);
+                FC = fetch(fc.FcPair & tbl,columns{:});
+                [v.src,~,srcIx] =unique([FC.source]);
+                [v.trg,~,trgIx] =unique([FC.target]);
+                nrSource = numel(v.src);
+                nrTarget = numel(v.trg);
+                for tp = pv.type
+                    m = nan(nrSource,nrTarget);
+                    m(sub2ind([nrSource nrTarget],srcIx,trgIx)) = [FC.(tp)];    
+                    v.(tp) = m;
+                end
+        end
+    end
+
     methods (Access=protected)
 
         function makeTuples(tbl,key)
@@ -36,19 +71,22 @@ classdef Fc < dj.Computed
             
             %% Determine which channels are in the skeleton
             skeleton =  fc.Skeleton & key;
-
-            % the function takes the parms and channels as input and returns 
-            % fc, p, and err, for each src and trg. 
-            [FC,p,err,src,trg] = feval(parms.method,parms,ns.CChannel & skeleton);
+            assert(exists(skeleton),"No skeleton found for %s-%s@%s. Populate fc.Skeleton first?.",key.subject,key.session_date,key.starttime)                
+            % Pass the CChannel to the method, together with issource/istarget
+            % information from the skeleton (in case the method deals with
+            % these differently).
             
-                
-                % Insert placeholder into the Fc table
+            % The function takes the parms and channels as input and returns 
+            % fc, p, and err, for each src and trg. 
+            [FC,p,err,source,target] = feval(parms.method,parms,ns.CChannel * proj(skeleton,'issource','istarget'));
+            key.pairs = numel(source);
+            % Insert the result into the Fc table
             insert(tbl,key);
 
-            % Combine the computed pairwise values with the key
-            pairTpl = mergestruct(key,pairTpl);
-            % Insert into the FcPair table
-            chunkedInsert(ns.FcPair,pairTpl);
+            % Prepare tuples for the Pair table
+            tpl = struct('fc',num2cell(FC(:)),'p',num2cell(p(:)),'err',num2cell(err(:)),'source',num2cell(source(:)),'target',num2cell(target(:)));
+            tpl = mergestruct(ns.stripToPrimary(fc.Fc,key),tpl);
+            chunkedInsert(fc.FcPair,tpl);
         end
     end
 end

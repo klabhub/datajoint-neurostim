@@ -27,6 +27,7 @@ nrTpls = numel(tpl);
 fprintf('Uploading to server ')
 
 i = 1;
+lineBreak = 1;
 while i <= nrTpls
     
     % Find optimal chunk size for this iteration without exceeding limit
@@ -43,8 +44,9 @@ while i <= nrTpls
 
     insert(tbl,tpl(thisChunk));
     
-    fprintf(repmat('.',1,currentChunkSize))
-    if mod(i,80)==0;fprintf('\n');end
+    fprintf('.')
+    lineBreak =lineBreak+1;
+    if lineBreak==80;fprintf('\n');lineBreak = 1;end
     
     i = i + currentChunkSize;  % Move to the next chunk
 

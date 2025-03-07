@@ -1,17 +1,17 @@
 %{
 # Functional Connectivity between channels
-(source)-> ns.CChannel(channel)  # The source channel
-(target)-> ns.CChannel(channel)  # The target channel
--> ns.Fc
+-> fc.Fc
+source    : int  # Channel number of the source of the FC
+target    : int  # Channel number of the target of the FC
 ---
 fc : float # The functional connectivity between the source and the target
 p  = NULL : float # p-value associated with the FC.
 err =NULL : float # a measure of uncertainty associated with the FC.
 %}
 
-classdef Pair < dj.Part
+classdef FcPair < dj.Part
      properties (SetAccess=protected)
-        master = ns.Fc;
+        master = fc.Fc;
      end
-    % Insertion is done by the master ns.Fc/makeTuples
+    % Insertion is done by the master fc.Fc/makeTuples
 end
