@@ -13,8 +13,8 @@ parms : blob                 # Struct with the parameters.
 %               'fctag','pearson',
 %               'description','Pearson correlation based on the entire timecourse');
 % insert(ns.FcParm,tpl)
-% See ns.Fc/makeTuples how this is used.
+% See fc.Fc/makeTuples how this is used.
 %
-classdef FcParm <dj.Lookup
+classdef Parm <dj.Lookup
 
 end

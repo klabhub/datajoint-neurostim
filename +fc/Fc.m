@@ -1,23 +1,24 @@
 %{
 # Functional Connectivity 
--> ns.C                 # Continuous data used to compute FC.
--> ns.FcParm            # Parameters that define the FC computation 
+-> ns.C       # Continuous data used to compute FC.
+-> fc.Parm    # Parameters that define the FC computation 
 ---
+-> fc.Skeleton = NULL
 %}
 %
 % Functional connectivity table. Draft version.
 %  The ns.C foreign key identifies the continuous data for which functional
 %  connectivity is computed.
-% The ns.FcParm is a lookup table that defines how FC is computed. The user
+% The fc.Oarm is a lookup table that defines how FC is computed. The user
 % has full control by specifying a function handle as a method in the
-% FcParm parms. 
+% fc.Parm parms. 
 % 
 % Currently this table only serves as bookkeeping (that FC has been
 % computed); it could be extended with additional properties that apply to
 % the entire FC (properties that are not specific to a pair, and not
-% already in the FcParm). 
+% already in the fc.Parm). 
 %
-% The part table FcPair stores the actual values plus stats of the computed 
+% The part table fc.Pair stores the actual values plus stats of the computed 
 % connectivity between pairs. This too could be extended with additional properties. 
 % 
 classdef Fc < dj.Computed

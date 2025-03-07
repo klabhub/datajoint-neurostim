@@ -9,7 +9,7 @@ p  = NULL : float # p-value associated with the FC.
 err =NULL : float # a measure of uncertainty associated with the FC.
 %}
 
-classdef FcPair < dj.Part
+classdef Pair < dj.Part
      properties (SetAccess=protected)
         master = ns.Fc;
      end
