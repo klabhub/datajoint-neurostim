@@ -12,7 +12,7 @@ parms : blob                 # Struct with the parameters.
 % tpl  =struct('parms',struct('method','PEARSON'),
 %               'fctag','pearson',
 %               'description','Pearson correlation based on the entire timecourse');
-% insert(ns.FcParm,tpl)
+% insert(fc.Parm,tpl)
 % See fc.Fc/makeTuples how this is used.
 %
 classdef Parm <dj.Lookup
