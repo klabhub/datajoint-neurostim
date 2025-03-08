@@ -46,15 +46,15 @@ classdef Fc < dj.Computed
                 pv.type (1,:) string = "fc"  % Set to ["fc" "p" "err" ]  to include p and err values.
             end
                 columns =cellstr([pv.type "source" "target"]);
-                FC = fetch(fc.FcPair & tbl,columns{:});
-                [v.src,~,srcIx] =unique([FC.source]);
-                [v.trg,~,trgIx] =unique([FC.target]);
-                nrSource = numel(v.src);
-                nrTarget = numel(v.trg);
+                FC = fetch(fc.FcPair & tbl,columns{:});                
+                [v.channel] =unique([[FC.source];[FC.target]]);
+                [~,srcIx] = ismember([FC.source],v.channel);
+                [~,trgIx] = ismember([FC.target],v.channel);                
+                nrChannel = numel(v.channel);                
+                sz = [nrChannel nrChannel];
                 for tp = pv.type
-                    m = nan(nrSource,nrTarget);
-                    m(sub2ind([nrSource nrTarget],srcIx,trgIx)) = [FC.(tp)];    
-                    v.(tp) = m;
+                    v.(tp) = nan(sz);
+                    v.(tp)(sub2ind(sz,srcIx,trgIx)) = [FC.(tp)];                        
                 end
         end
     end
@@ -63,31 +63,31 @@ classdef Fc < dj.Computed
 
         function makeTuples(tbl,key)
             % When calling (par)populate, this function is called with the
-            % key containing the information on a set of continuous data.
+            % key containing the information on a set of continuous data
+            % (i.e. limited to an experiment), and a skeleton (which is 
+            % computed per session, so it can be based on multiple
+            % experiments). 
             % In principle FC can be computed for any C data that has
             % multiple channels.
 
             %% Fetch the parms from the FcParms table
             parms = fetch1(fc.Parm&key,'parms');
             assert(~isempty(which(parms.method)),sprintf('Unknown FC method %s',parms.method))
-            
-            %% Determine which channels are in the skeleton
-            % skeleton =  fc.Skeleton & key;
-            % assert(exists(skeleton),"No skeleton found for %s-%s@%s. Populate fc.Skeleton first?.",key.subject,key.session_date,key.starttime)                
-            % % Pass the CChannel to the method, together with issource/istarget
-            % information from the skeleton (in case the method deals with
-            % these differently).
-            
-            % The function takes the parms and channels as input and returns 
+           
+           %% Call the user specified method function 
+            % The method takes the parms and channels as input and returns 
             % fc, p, and err, for each src and trg. 
-            channels = ns.CChannel & fc.SkeletonChannel & key ;                        
-            [FC,p,err,src,trg] = feval(parms.method,parms,channels);            
-            % Insert the result into the Fc table
+            channels = ns.CChannel & fc.SkeletonChannel & key ; % Restrict channels to the skeleton                        
+            [FC,p,err,src,trg] = feval(parms.method,parms,channels);      
+
+            % Insert the key into the Fc table
+            % TODO: key.quality = add some generic quality measure...            
             insert(tbl,key);
 
-            % Prepare tuples for the Pair table
+            % Prepare tuples for the FcPair table
             tpl = struct('fc',num2cell(FC(:)),'p',num2cell(p(:)),'err',num2cell(err(:)),'source',num2cell(src(:)),'target',num2cell(trg(:)));
             tpl = mergestruct(ns.stripToPrimary(fc.Fc,key),tpl);
+            % Insert.
             chunkedInsert(fc.FcPair,tpl);
         end
     end
