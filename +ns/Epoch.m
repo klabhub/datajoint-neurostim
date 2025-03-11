@@ -36,8 +36,8 @@ classdef Epoch < dj.Computed
 
             t_export = gen.Timer().start("Exporting data from ns.CChannel...\n");
 
-            signal = fetch(ns.CChannel & exp_tbl, 'signal');
-            channels = fetch(ns.CChannel & exp_tbl, 'channel');
+            signal = fetch(ns.CChannel & (ns.C & key), 'signal');
+            channels = fetch(ns.CChannel & (ns.C & key), 'channel');
 
             t_export.stop("\tExporting is complete.");
             t_export.report();
