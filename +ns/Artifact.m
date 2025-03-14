@@ -43,13 +43,13 @@ classdef Artifact < dj.Computed
         function makeTuples(tbl,key)
             prms = fetch(ns.ArtifactParm &key,'*');
             assert(~isempty(which(prms.fun)),'Artifact detection function %s not found.',prms.fun);
-            [experiment,channel] = feval(prms.fun,ns.C&key,prms.parms); % Pass to handler
+            [experimentTpl,channelTpl] = feval(prms.fun,ns.C&key,prms.parms); % Pass to handler            
             % Setup the artifact table (applies to all channels)            
-            aKey = mergestruct(key,experiment);
+            aKey = mergestruct(key,experimentTpl);
             insert(tbl,aKey);
-            if ~isempty(channel)
+            if ~(isempty(channelTpl) || isempty(channelTpl.channel))
                 % Add channel specific artifact info
-                acKey = mergestruct(key,channel);
+                acKey = mergestruct(key,channelTpl);
                 insert(ns.ArtifactChannel,acKey);
             end
         end
