@@ -47,7 +47,8 @@ classdef Artifact < dj.Computed
             % Setup the artifact table (applies to all channels)            
             aKey = mergestruct(key,experimentTpl);
             insert(tbl,aKey);
-            if ~(isempty(channelTpl) || isempty(channelTpl.channel))
+
+            if ~(isempty(channelTpl) || isempty([channelTpl.channel]))
                 % Add channel specific artifact info
                 acKey = mergestruct(key,channelTpl);
                 insert(ns.ArtifactChannel,acKey);
