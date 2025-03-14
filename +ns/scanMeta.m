@@ -13,6 +13,7 @@ function scanMeta(tbl,pv)
 arguments
     tbl (1,1) {mustBeA(tbl,{'ns.Experiment','ns.Subject','ns.Session'})}
     pv.dryrun (1,1) logical = false
+    pv.NS_ROOT = getenv("NS_ROOT")
 end
 % Get the meta table
 className = class(tbl);
@@ -20,10 +21,11 @@ metaTbl = feval([className 'Meta']) & tbl;
 
 if strcmpi(className ,'ns.Subject')
     % Read the single json
-    jsonFile  =fullfile(getenv("NS_ROOT"),'subject.json');
+    jsonFile  =fullfile(pv.NS_ROOT,'subject.json');
     allJson = readJson(jsonFile);
    % dob,sex,and species are stored in the main table (not SubjectMeta).
-   % Handle them as updates here. 
+   % Handle them as updates here (slow). 
+   fprintf('Updating %d subject entries.',numel(allJson))
     for j =1:numel(allJson)
         key = tbl & struct('subject',allJson(j).subject);
         if exists(key)        
@@ -39,7 +41,9 @@ if strcmpi(className ,'ns.Subject')
             end            
             update(key,'species',char(allJson(j).species));            
         end
+        fprintf('.'); 
     end
+    fprintf('Done.\n');
 end
 
 dj.conn().startTransaction
