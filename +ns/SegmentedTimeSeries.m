@@ -8,10 +8,10 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
 
     properties
 
-        sampling_time (1,:) double {mustBeRow} % (1, n_sample) timepoints of the original signal
-        signal (:,:) double {mustBeMatrix} % (n_channel, n_sample) original signal
+        sampling_time (1,:) double % (1, n_sample) timepoints of the original signal
+        signal (:,:) double % (n_channel, n_sample) original signal
 
-        onsets (:,1) double {mustBeColumn} % (1, n_trial) onset times of trials/epochs
+        onsets (:,1) double % (1, n_trial) onset times of trials/epochs
         epoch_window (1,2) double % Time window [t_before, t_after] relative to each onset.
 
         iOnset (:,1) int64 % Indices of the onset times within the timepoints array.
