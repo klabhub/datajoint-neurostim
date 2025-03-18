@@ -82,6 +82,98 @@ classdef Epoch < dj.Computed
     end
     methods (Access = public)
 
+        function [op, t] = retrieve(eTbl, pv)
+
+            arguments
+
+                eTbl (1,1) ns.Epoch
+
+                pv.channel = [] % if empty all channels
+                pv.trials = {} % if empty, all trials
+                pv.time_window = [];
+
+
+            end
+           
+            epoch_win = getfield(getfield(fetch(ns.EpochParameter & eTbl,'pv'),'pv'),'epoch_win');
+
+            if isempty(pv.time_window)
+
+                pv.time_window = epoch_win;
+
+            end
+
+
+            % Decide on figures and subplotting
+            primary_keys = fetchtable(eTbl);
+            uniq_keys = varfun(@(x) unique(x), primary_keys, 'OutputFormat', 'cell');
+            n_uniq_keys = cellfun(@(x) length(unique(x)), uniq_keys);
+            isDimExpand = n_uniq_keys ~= 1;
+            uniq_keys = cell2struct(uniq_keys', primary_keys.Properties.VariableNames);
+
+            op = table('Size', [height(primary_keys), sum(isDimExpand) + 1], ...
+                'VariableTypes', [primary_keys.Properties.VariableTypes(isDimExpand), "cell"], ...
+                'VariableNames', [primary_keys.Properties.VariableNames(isDimExpand), "signal"]);
+
+            n_rows = height(primary_keys);
+
+            if sum(isDimExpand)
+
+                op(:, 1:sum(isDimExpand)) = primary_keys(:, isDimExpand);
+
+            end
+
+            for iKey = 1:n_rows
+
+                qryN = table2struct(primary_keys(iKey,:));
+
+                % Select trials to plot
+                isValid = ~isinf(getfield(fetch(ns.Epoch & qryN,'event_onset'),'event_onset')); % inf indicates that the trial was not shown
+                trials = getfield(fetch(ns.DimensionCondition & eTbl & qryN, 'trials'), 'trials'); % the actual trial numbers
+
+                if ~isempty(pv.channel)
+                    channel_qryN = sprintf("channel in (%s)", join(string(pv.channel),","));
+                else, channel_qryN = '';
+                end
+
+                % fetch data
+
+                t_fetch = gen.Timer().start("Fetching epochs: %d of % d\n", iKey, n_rows);
+                if isempty(channel_qryN)
+                    datN = fetch(ns.EpochChannel & eTbl & qryN, 'signal');
+                else
+                    datN = fetch(ns.EpochChannel & eTbl & qryN & channel_qryN, 'signal');
+                end
+
+                t_fetch.stop("\t Fetching iscomplete. ");
+                t_fetch.report();
+
+                if ~isempty(pv.trials)
+
+                    trials2fetch = intersect(pv.trials{iKey}, trials(isValid));
+                    isFetchTrials = ismember(trials(isValid),trials2fetch);
+
+                else
+
+                    isFetchTrials = ones(1,sum(isValid))==1;
+
+                end
+
+
+                datN = cat(3, datN(:).signal); % trial by timepoint by channel
+                datN = permute(datN,[1, 3, 2]); % trial by channel by timepoint
+                datN = datN(isFetchTrials,:,:);
+
+                t = linspace(epoch_win(1),epoch_win(2), size(datN,3));
+                isT = t >= pv.time_window(1) & t <= pv.time_window(2);
+                datN = datN(:,:,isT);
+                op.signal{iKey} = datN;
+                op.time{iKey} = t(isT);
+
+            end          
+
+        end
+
         function varargout = plot(eTbl, pv)
 
             % In the future add another method called get_epochs with
