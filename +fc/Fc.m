@@ -17,22 +17,48 @@ quality = NULL : float # Some measure of quality of the FC (optional)
 % See Also fc.Parm
 classdef Fc < dj.Computed
      methods
-        function plot(tbl,pv)
+        
+         function plot(tbl,pv)
             % Rudimentary plot function. Needs to be extended with options
             arguments
                 tbl (1,1) {mustHaveRows(tbl)}               
-                pv.bothSides (1,1) logical % Show symmetric matrix
-                pv.alpha (1,1) double = 0.05;                 
+                pv.bothSides (1,1) logical = true; % Show symmetric matrix
+                pv.alpha (1,1) double = Inf; % so far for testing                
             end
             tiledlayout('flow')
+            glob_max = [];
+            glob_min = [];
             for tpl = fetch(tbl)'
                 nexttile
-                FC =fcMatrix(tbl&tpl,type =["fc" "p"]);
-                FC.fc(FC.p>pv.alpha) = NaN;
+                FC = fcMatrix(tbl & tpl,type =["fc" "p"]);
+                FC.fc(FC.p > pv.alpha) = NaN;
+                if pv.bothSides
+                    % get NaN entries in the lower triangle
+                    mask = isnan(tril(FC.fc, -1));
+                    % copy values from upper to lower
+                    aux = FC.fc.';
+                    FC.fc(mask) = aux(mask);
+                    
+                end
+                glob_max = cat(1,glob_max,max(max(FC.fc)));
+                glob_min = cat(1,glob_min,min(min(FC.fc)));
+
+
                 imagesc(FC.fc);
+                % to make the FC matrix square
+                axis equal;        
+                pbaspect([1 1 1]); 
                 xlabel 'Channel'
                 ylabel 'Channel'                
-                title(sprintf('%s for %s-%s@%s.',tpl.fctag,tpl.subject,tpl.session_date,tpl.starttime))                     
+                title(sprintf('%s\n for %s-%s@%s',tpl.fctag,tpl.subject,tpl.session_date,tpl.starttime),'Interpreter', 'none')  
+            end
+            % use one unique color range for all plots to compare them
+            rwb = centeredColormap(256,min(glob_min),max(glob_max));
+            axHandles = findall(gcf, 'Type', 'axes');
+            for i = 1:numel(axHandles)
+                colormap(axHandles(i), rwb);
+                colorbar(axHandles(i));
+                set(axHandles(i), 'CLim', [min(glob_min) max(glob_max)]);
             end
         end
 
@@ -45,9 +71,9 @@ classdef Fc < dj.Computed
                 tbl (1,1) fc.Fc
                 pv.type (1,:) string = "fc"  % Set to ["fc" "p" "err" ]  to include p and err values.
             end
-                columns =cellstr([pv.type "source" "target"]);
+                columns = cellstr([pv.type "source" "target"]);
                 FC = fetch(fc.FcPair & tbl,columns{:});                
-                [v.channel] =unique([[FC.source];[FC.target]]);
+                [v.channel] = sort(unique([[FC.source];[FC.target]]));
                 [~,srcIx] = ismember([FC.source],v.channel);
                 [~,trgIx] = ismember([FC.target],v.channel);                
                 nrChannel = numel(v.channel);                
@@ -57,6 +83,22 @@ classdef Fc < dj.Computed
                     v.(tp)(sub2ind(sz,srcIx,trgIx)) = [FC.(tp)];                        
                 end
         end
+
+        % copy to datajoint and remove from here.
+        function cmap = centeredColormap(n, dataMin, dataMax)
+            % n is the number of colors (optional, default = 256)
+            % dataMin and dataMax are the minimum and maximum of the data range
+            if nargin < 1
+                n = 256; % Default number of colors
+            end
+            % Define color for negative (blue), center (white), and positive (red)
+            colors = [0 0 255/256; 1 1 1; 1 0 0]; % Blue, White, Red
+            % Create interpolation points
+            x = [dataMin, 0, dataMax]; % Map dataMin to blue, 0 to white, dataMax to red
+            % Create the colormap using interpolation for each channel (R, G, B)
+            cmap = interp1(x, colors, linspace(dataMin, dataMax, n), 'linear');
+        end
+
     end
 
     methods (Access=protected)
@@ -70,15 +112,30 @@ classdef Fc < dj.Computed
             % In principle FC can be computed for any C data that has
             % multiple channels.
 
+
             %% Fetch the parms from the FcParms table
-            parms = fetch1(fc.Parm&key,'parms');
+            parms = fetch1(fc.Parm & key,'parms');
             assert(~isempty(which(parms.method)),sprintf('Unknown FC method %s',parms.method))
            
            %% Call the user specified method function 
             % The method takes the parms and channels as input and returns 
             % fc, p, and err, for each src and trg. 
-            channels = ns.CChannel & fc.SkeletonChannel & key ; % Restrict channels to the skeleton                        
-            [FC,p,err,src,trg] = feval(parms.method,parms,channels);      
+            %channels = ns.CChannel & fc.SkeletonChannel & key ; % Restrict channels to the skeleton                        
+            % Use the fc.SkeletonFcPair to compute the experiment FC
+            % Using channels is not enough if computing multiple
+            % regression. Need all the sources for  a target for example.
+            
+            % now restrict to the paradigm in parms.skeleton.paradigm
+            % is this correct, or do we want the fc for everything?
+            
+
+            channels = ns.CChannel & fc.SkeletonChannel & key;
+            % worth it having a new function or adjust the original
+            % alignForFC?
+            [D,channelInMatrix] = fc.alignForFCSimple(parms,channels); 
+            sk =  fc.SkeletonFcPair & key;
+            % for now multiple regression for FC
+            [FC,p,err,src,trg] = feval(parms.method,parms,D,channelInMatrix,sk);      
 
             % Insert the key into the Fc table
             % TODO: key.quality = add some generic quality measure...            

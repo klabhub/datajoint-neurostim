@@ -6,7 +6,7 @@ channel : int
 %}
  
 
-classdef SkeletonChannel <dj.Part
+classdef SkeletonChannel < dj.Part
      properties (SetAccess=protected)
         master = fc.Skeleton;
      end

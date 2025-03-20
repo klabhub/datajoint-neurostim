@@ -6,7 +6,7 @@ target    : int  # Channel number of the target of the FC
 ---
 fc : float # The functional connectivity between the source and the target
 p  = NULL : float # p-value associated with the FC.
-err =NULL : float # a measure of uncertainty associated with the FC.
+err = NULL : float # a measure of uncertainty associated with the FC.
 %}
 
 classdef FcPair < dj.Part
