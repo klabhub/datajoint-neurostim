@@ -240,7 +240,7 @@ classdef Preprocessed < dj.Computed
             else
                 error('NIY');
             end
-            analyzeExptThisSession = analyze(allExptThisSession,strict=false);
+            analyzeExptThisSession = analyze(allExptThisSession,strict=false);            
             dataFldr = file(analyzeExptThisSession);
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
@@ -280,6 +280,7 @@ classdef Preprocessed < dj.Computed
                         depth  = [depth info.config.knobby.pos.z]; %#ok<AGROW>
                     end
                     uScale = unique(scale,'rows');
+                    if isempty(uScale); error('Info file missing from sbx? Cannot preprocess.');end
                     assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
                     nrPlanes = unique(nrPlanes);
                     assert(isscalar(nrPlanes),"Different number of planes across experiments in this session.");
