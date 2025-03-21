@@ -23,13 +23,13 @@ if isfield(parms,'align')
     % Use the ns.C/align function to retrieve specific
     % signals from the CChannels.
     args =namedargs2cell(parms.align);  % All parms members are passed to align
-    allC =ns.C &channels;
+    allC =ns.C & channels;
     warning('off', 'DataJoint:longCondition')
     fc = [];
     p = [];
-    for thisC= fetch(allC)'
+    for thisC = fetch(allC)'
         % Loop over rows in C ; they correspond to experiments
-        [T,~,channelInMatrix] = align(allC & thisC ,'channel',proj(channels &thisC), args{:});
+        [T,~,channelInMatrix] = align(allC & thisC ,'channel',proj(channels & thisC), args{:});
         X= timetableToDouble(T);
         % Sort the channels to make sure src/trg pairs are all in the upper
         % right corner of a matrix. (For consistency with the method
@@ -37,12 +37,13 @@ if isfield(parms,'align')
         [channelInMatrix,sorted] = sort(channelInMatrix);
         X = X(:,:,sorted);        
         X =permute(X,[1 3 2]); % Put trials last
-        [~,nrChannels,nrTrials] =size(X);
+        [~,nrChannels,nrTrials] = size(X);
         thisFc = zeros(nrChannels,nrChannels,nrTrials);
         thisP = zeros(nrChannels,nrChannels,nrTrials);
         % FC per trial
-        for tr=1:nrTrials
+        for tr = 1:nrTrials
             [thisFc(:,:,tr),thisP(:,:,tr)] = corr(X(:,:,tr),"Type","Pearson");
+            disp(tr);
         end
         fc = cat(3,fc,thisFc); % Concatenate trials across experiments
         p  = cat(3,p,thisP);
