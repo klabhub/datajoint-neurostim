@@ -948,7 +948,7 @@ classdef C< dj.Computed
                 filename = fullfile(folder(ns.Experiment &key),fetch1(qry,'filename'));
             end
             if exist(filename,'file') || exist(filename,'dir')
-                fprintf('Reading %s\n',filename);
+                fprintf('Processing %s\n',filename);
             else
                 error('File %s does not exist. Cannot create C',filename);
             end

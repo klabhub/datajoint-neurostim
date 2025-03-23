@@ -18,15 +18,15 @@ function [spk,time,channelInfo,recordingInfo] = spikeML(key,parms)
 % (no isolated events) then these defaults weill be used:
 % parms.deconv = tps_mlspikes('par'); % Initialize parameters for the MLspike algorithm.
 % parms.deconv.a = 0.07; % Expected amplitude.
-% parms.deconv.tau = 1.3; % Gcamp6s is 1.3s 
+% parms.deconv.tau = 1.3; % Gcamp6s is 1.3s
 % parms.deconv.algo.nspikemax = 4; % Set the maximum number of spikes expected within one time window.
 % parms.deconv.pnonlin = [0.85 -0.006];  % Deneux values for Gcamp6s.
 % parms.deconv.drift.parameter = 0.01; % Drift parameters.
 % parms.deconv.drift.baselinestart = 1; % Specify the starting frame for baseline correction.
 % parms.deconv.dographsummary = false; % Disable graphical summary of the spike inference.
 % parms.deconv.display = 'no'; % Disable display outputs during spike inference.
-%%  Define autocalibration parameters. 
-% Autocalibration (if defined, by creating the .autocalibrate field in the parms struct) 
+%%  Define autocalibration parameters.
+% Autocalibration (if defined, by creating the .autocalibrate field in the parms struct)
 % can (if successful) overrule the a, tau, and sigma parameters for the deconvolution.
 % Here too, the definitions come from the MLspike toolbox:
 % parms.autocalibrate = spk_autocalibration('par'); % Initialize parameters for autocalibration.
@@ -38,22 +38,22 @@ function [spk,time,channelInfo,recordingInfo] = spikeML(key,parms)
 % parms.autocalibrate.pnonlin = [0.85 -0.006];  % Deneux values for Gcamp6s -  Set parameters for non-linear processing, if applicable.
 % parms.autocalibrate.mlspikepar.dographsummary = false; % Disable graphical summary of the autocalibration process.
 % parms.autocalibrate.display = 'no'; % Disable display outputs during autocalibration.
-%% 
+%%
 % Having defined the instructions (parms) we can add it as a CParm
 % spikeMLPrep = struct('ctag','spikesMLAutoCal',...       % Name of this C
-%                   'description','Deconvolution using spike ML with autocalibration',... 
+%                   'description','Deconvolution using spike ML with autocalibration',...
 %                    'extension','.sbx',...  % Files to process
-%                    'fun','sbx.spikeML',...  % function to call.     
-%                    'parms',parms);   % parameters to pass 
+%                    'fun','sbx.spikeML',...  % function to call.
+%                    'parms',parms);   % parameters to pass
 % insertIfNew(ns.CParm, spikeMLPrep);
 % Then:
-% populate(ns.C,'ctag="spikesMLAutoCal"') wil populate the ns.C table with spikes 
+% populate(ns.C,'ctag="spikesMLAutoCal"') wil populate the ns.C table with spikes
 % for all sbx files. Files that don't have a fluorescence or neuropil entry in ns.C will fail.
 %
 % NOTE
 %  The newly created deconvolved spike rows in ns.C are not linked to their "parent"
 %  fluorescence and will not be deleted/modified  if their parents are deleted/modified.
-% 
+%
 % Sept 2024.
 
 
@@ -92,89 +92,59 @@ driftKey = key;
 driftKey.ctag = driftTag;
 
 
-%% Fetch data from the Fluorescence and Neuropil soures
+%% Setup data structs to store results 
+% 
 [t,dt] = sampleTime(fSrc); %(should match neuropil timing)
 nrSamples = numel(t);
 dt = dt/1000;% ms -> s
 t = t /1000;
 parms.deconv.dt = dt;
-nrChannels = count(ns.CChannel&fKey);
+if isfield(parms,'restrictRoi')
+    % ROI restriction - allow user to specify something like
+    % 'pcell>0.1 AND radius> 2.5'
+    restrictRoi = proj(sbx.PreprocessedRoi & parms.restrictRoi,'roi->channel');
+else
+    restrictRoi  = true; % No restrictons
+end
+fChannels= fSrc*(ns.CChannel & restrictRoi);
+bgChannels = bgSrc*(ns.CChannel & restrictRoi);
+nrChannels = count(fChannels);
+
 spk = nan(nrSamples,nrChannels);
 drift = cell(1,nrChannels);
-channelInfo  =repmat(struct('nr',nan,'quality',nan,'parms',struct),[nrChannels 1]);
+channelInfo  =repmat(struct('nr',nan,'nanFrac',nan,'quality',nan,'parms',struct),[nrChannels 1]);
+
+% Start parpool if requested
 if isfield(parms,'nrWorkers')
-    nrWorkers = parms.nrWorkers; 
+    pool = gcp("nocreate");
+    if isempty(pool)
+        pool = parpool(parms.nrWorkers);
+    else 
+        parms.nrWorkers = min(parms.nrWorkers,pool.NumWorkers);        
+    end
 else
-    nrWorkers  =0; % Default to 0
+    pool = [];
 end
-parfor  (ch = 1:nrChannels,nrWorkers)
-%for  ch = 1:nrChannels
-    [F,channel] = fetchn(ns.CChannel & fSrc,'signal','channel',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);    
-    [Bg] = fetchn(ns.CChannel & bgSrc,'signal',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);        
-    signal = (F{1}-Bg{1}); % Subtract the neuropil background from the fluorescence.
-    isNaN = isnan(signal);
-    signal(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
-    if isfield(parms,'autocalibrate') && ~isempty(fieldnames(parms.autocalibrate))
-        % Do autocalibration 
-        pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibrate
-        pax.display = 'none'; 
-        pax.mlspikepar.dographsummary = false;
-        fn = fieldnames(parms.autocalibrate);
-        nrFields= numel(fn);
-        for f=1:nrFields
-            % Copy values from autocalibrate struct to pax
-            % see spk_demo in mlspike/spikes
-            % Values to set include
-            % amin, amax, taumin,taumax, and saturation
-            pax.(fn{f}) = parms.autocalibrate.(fn{f});
-        end
-        pax.dt = dt; % Dont allow overrule by autocalibrate.
-        % perform auto-calibration
-        fprintf('SpikeML: Autocalibrating Channel %d\n',channel)        
-        [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
-        calibratedParms = parms.deconv; % Default from CParm
-        % If events is empty, calibration was not possible, use defaults.
-        if ~isempty(events)
-            calibratedParms.tau = tau;
-            calibratedParms.a = amp;
-            calibratedParms.finetune.sigma= sigma;
-        end
-    else
-        % No autocalibration : use parms as specified in CParm
-        calibratedParms = parms.deconv;
+fprintf('Deconvolving %d channels \n',nrChannels)
+%% Loop for/parfor per channel
+if isempty(pool)
+    for  ch = 1:nrChannels
+        [spk(:,ch),drift{ch}, channelInfo(ch)] = loopBody(fChannels,bgChannels,parms,driftKey,t,dt,ch);
     end
-    fprintf('SpikeML: Deconvolving Channel %d\n',channel)
-    [thisSpk,fit,drift{ch}] = spk_est(signal,calibratedParms);
-
-    %% spk - spiketimes in s
-    % Convert back to spike counts at the sample rate of the fluorescence
-    spk(:,ch) = histcounts(thisSpk,([t;t(end)+dt]-t(1)))';
-    %% fit - fit of the F signal at each sample - used to estimate quality
-    % and stored in channelInfo
-    channelInfo(ch).nr = channel;
-    channelInfo(ch).quality = corr(fit(~isNaN),signal(~isNaN),Type="Pearson");
-    channelInfo(ch).nanFrac = mean(isNaN);
-    channelInfo(ch).parms  = calibratedParms; % Store the parms that were used for this channel
-    % If a previous populate call failed when inserting the deconvolved
-    % spikes, the drift may still be in the database. Remove here, reinsert
-    % the new values below.
-    thisDriftTpl = mergestruct(driftKey,struct('channel',channel));
-    if exists(ns.CChannel & thisDriftTpl)
-        delQuick(ns.CChannel & thisDriftTpl);
+else
+    parfor  (ch = 1:nrChannels,parms.nrWorkers)
+        [spk(:,ch),drift{ch}, channelInfo(ch)]  = loopBody(fChannels,bgChannels,parms,driftKey,t,dt,ch);
     end
 end
 
-
-%% drift - drift of the F signal at each sample - add to separate ns.C row
-% Create tuples and insert.
+%% Create tuples and insert.
+% Drift
 driftTpl = mergestruct(driftKey,...
     struct('time',time, ...
     'nrsamples',nrSamples,...
     'info',''));
 insertIfNew(ns.C,driftTpl);
-
-
-% Create tpl and insert
+% Drift per channel
 driftChannelTpl = mergestruct(driftKey,...
     struct('signal',drift',...
     'channel',{channelInfo.nr}',...
@@ -183,4 +153,63 @@ insert(ns.CChannel,driftChannelTpl);
 
 % The spikes are returened to the calling function (ns.C/makeTuples) and
 % inserted there.
+end
+
+%% Function that does the deconvolution for one channel 
+% This is called from eitehr a for (nrWorkers=0) or parfor loop
+function [spk,drift, channelInfo] = loopBody(fChannels,bgChannels,parms,driftKey,t,dt,ch)
+
+[F,channel] = fetchn(fChannels,'signal','channel',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);
+[Bg] = fetchn(bgChannels,'signal',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);
+signal = (F{1}-Bg{1}); % Subtract the neuropil background from the fluorescence.
+isNaN = isnan(signal);
+signal(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
+if isfield(parms,'autocalibrate') && ~isempty(fieldnames(parms.autocalibrate))
+    % Do autocalibration
+    pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibrate
+    pax.display = 'none';
+    pax.mlspikepar.dographsummary = false;
+    fn = fieldnames(parms.autocalibrate);
+    nrFields= numel(fn);
+    for f=1:nrFields
+        % Copy values from autocalibrate struct to pax
+        % see spk_demo in mlspike/spikes
+        % Values to set include
+        % amin, amax, taumin,taumax, and saturation
+        pax.(fn{f}) = parms.autocalibrate.(fn{f});
+    end
+    pax.dt = dt; % Dont allow overrule by autocalibrate.
+    % perform auto-calibration
+    fprintf('SpikeML: Autocalibrating Channel %d\n',channel)
+    [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
+    calibratedParms = parms.deconv; % Default from CParm
+    % If events is empty, calibration was not possible, use defaults.
+    if ~isempty(events)
+        calibratedParms.tau = tau;
+        calibratedParms.a = amp;
+        calibratedParms.finetune.sigma= sigma;
+    end
+else
+    % No autocalibration : use parms as specified in CParm
+    calibratedParms = parms.deconv;
+end
+fprintf('SpikeML: Deconvolving Channel %d\n',channel)
+[thisSpk,fit,drift] = spk_est(signal,calibratedParms);
+
+%% spk - spiketimes in s
+% Convert back to spike counts at the sample rate of the fluorescence
+spk = histcounts(thisSpk,([t;t(end)+dt]-t(1)))';
+%% fit - fit of the F signal at each sample - used to estimate quality
+% and stored in channelInfo
+channelInfo.nr = channel;
+channelInfo.quality = corr(fit(~isNaN),signal(~isNaN),Type="Pearson");
+channelInfo.nanFrac = mean(isNaN);
+channelInfo.parms  = calibratedParms; % Store the parms that were used for this channel
+% If a previous populate call failed when inserting the deconvolved
+% spikes, the drift may still be in the database. Remove here, reinsert
+% the new values below.
+thisDriftTpl = mergestruct(driftKey,struct('channel',channel));
+if exists(ns.CChannel & thisDriftTpl)
+    delQuick(ns.CChannel & thisDriftTpl);
+end
 end
