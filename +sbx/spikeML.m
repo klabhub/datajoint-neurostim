@@ -107,8 +107,8 @@ if isfield(parms,'nrWorkers')
 else
     nrWorkers  =0; % Default to 0
 end
-%parfor  (ch = 1:nrChannels,nrWorkers)
-for  ch = 1:nrChannels
+parfor  (ch = 1:nrChannels,nrWorkers)
+%for  ch = 1:nrChannels
     [F,channel] = fetchn(ns.CChannel & fSrc,'signal','channel',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);    
     [Bg] = fetchn(ns.CChannel & bgSrc,'signal',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);        
     signal = (F{1}-Bg{1}); % Subtract the neuropil background from the fluorescence.
