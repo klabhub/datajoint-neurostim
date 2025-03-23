@@ -52,7 +52,7 @@ function [spk,time,channelInfo,recordingInfo] = spikeML(key,parms)
 %
 % NOTE
 %  The newly created deconvolved spike rows in ns.C are not linked to their "parent"
-%  fluorescence and will not be deleted/modified  when their parents are deleted/modified.
+%  fluorescence and will not be deleted/modified  if their parents are deleted/modified.
 % 
 % Sept 2024.
 
@@ -80,7 +80,7 @@ time = fetch1(fSrc,'time');
 %% To store the drift estimates, create another row in ns.CParm
 % but we exclude all files so that it will never lead to a
 % maketuple call from populate.
-driftTag = key.ctagF + "-drift";
+driftTag = key.ctag + "-drift";
 if ~exists(ns.CParm & struct('ctag', driftTag))
     cPrm = fetch(ns.CParm & key,'*'); % Copy the CParm from the MLSpike entry
     cPrm.ctag =driftTag; % Rename the ctag
