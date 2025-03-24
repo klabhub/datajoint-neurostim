@@ -112,15 +112,15 @@ nrChannels = count(fChannels);
 
 spk = nan(nrSamples,nrChannels);
 drift = cell(1,nrChannels);
-channelInfo  =repmat(struct('nr',nan,'nanFrac',nan,'quality',nan,'parms',struct),[nrChannels 1]);
+channelInfo  =repmat(struct('nr',nan,'nanFrac',nan,'quality',nan,'autoCal',nan,'parms',struct),[nrChannels 1]);
 
-% Start parpool if requested
-if isfield(parms,'nrWorkers')
+%Start parpool if requested
+if isfield(parms,'nrWorkers') && parms.nrWorkers>0
     pool = gcp("nocreate");
     if isempty(pool)
         pool = parpool(parms.nrWorkers);
     else 
-        parms.nrWorkers = min(parms.nrWorkers,pool.NumWorkers);        
+        parms.nrWorkers = max(parms.nrWorkers,pool.NumWorkers);        
     end
 else
     pool = [];
@@ -133,6 +133,7 @@ if isempty(pool)
     end
 else
     parfor  (ch = 1:nrChannels,parms.nrWorkers)
+        dj.conn; % Need to refresh connection in each worker
         [spk(:,ch),drift{ch}, channelInfo(ch)]  = loopBody(fChannels,bgChannels,parms,driftKey,t,dt,ch);
     end
 end
@@ -164,19 +165,19 @@ function [spk,drift, channelInfo] = loopBody(fChannels,bgChannels,parms,driftKey
 signal = (F{1}-Bg{1}); % Subtract the neuropil background from the fluorescence.
 isNaN = isnan(signal);
 signal(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
-if isfield(parms,'autocalibrate') && ~isempty(fieldnames(parms.autocalibrate))
+if isfield(parms,'autocalibration') && ~isempty(fieldnames(parms.autocalibration))
     % Do autocalibration
     pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibrate
     pax.display = 'none';
     pax.mlspikepar.dographsummary = false;
-    fn = fieldnames(parms.autocalibrate);
+    fn = fieldnames(parms.autocalibration);
     nrFields= numel(fn);
     for f=1:nrFields
         % Copy values from autocalibrate struct to pax
         % see spk_demo in mlspike/spikes
         % Values to set include
         % amin, amax, taumin,taumax, and saturation
-        pax.(fn{f}) = parms.autocalibrate.(fn{f});
+        pax.(fn{f}) = parms.autocalibration.(fn{f});
     end
     pax.dt = dt; % Dont allow overrule by autocalibrate.
     % perform auto-calibration
@@ -184,14 +185,18 @@ if isfield(parms,'autocalibrate') && ~isempty(fieldnames(parms.autocalibrate))
     [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
     calibratedParms = parms.deconv; % Default from CParm
     % If events is empty, calibration was not possible, use defaults.
-    if ~isempty(events)
+    if isempty(events)
+        autoCal = false;
+    else
         calibratedParms.tau = tau;
         calibratedParms.a = amp;
         calibratedParms.finetune.sigma= sigma;
+        autoCal = true;
     end
 else
     % No autocalibration : use parms as specified in CParm
     calibratedParms = parms.deconv;
+    autoCal = false;
 end
 fprintf('SpikeML: Deconvolving Channel %d\n',channel)
 [thisSpk,fit,drift] = spk_est(signal,calibratedParms);
@@ -205,6 +210,7 @@ channelInfo.nr = channel;
 channelInfo.quality = corr(fit(~isNaN),signal(~isNaN),Type="Pearson");
 channelInfo.nanFrac = mean(isNaN);
 channelInfo.parms  = calibratedParms; % Store the parms that were used for this channel
+channelInfo.autoCal   = autoCal;
 % If a previous populate call failed when inserting the deconvolved
 % spikes, the drift may still be in the database. Remove here, reinsert
 % the new values below.
