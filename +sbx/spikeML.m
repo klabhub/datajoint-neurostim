@@ -162,25 +162,22 @@ function [spk,drift, channelInfo] = loopBody(fChannels,bgChannels,parms,driftKey
 
 [F,channel] = fetchn(fChannels,'signal','channel',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);
 [Bg] = fetchn(bgChannels,'signal',['ORDER BY channel LIMIT 1 OFFSET ' num2str(ch-1)]);
-signal = (F{1}-Bg{1}); % Subtract the neuropil background from the fluorescence.
+signal = (F{1}-0.7*Bg{1}); % Subtract the neuropil background from the fluorescence.
 isNaN = isnan(signal);
 signal(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
 if isfield(parms,'autocalibration') && ~isempty(fieldnames(parms.autocalibration))
     % Do autocalibration
     pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibrate
-    pax.display = 'none';
-    pax.mlspikepar.dographsummary = false;
-    fn = fieldnames(parms.autocalibration);
-    nrFields= numel(fn);
-    for f=1:nrFields
-        % Copy values from autocalibrate struct to pax
-        % see spk_demo in mlspike/spikes
-        % Values to set include
-        % amin, amax, taumin,taumax, and saturation
-        pax.(fn{f}) = parms.autocalibration.(fn{f});
-    end
+    %pax.display = '';
+    pax.mlspikepar.dographsummary = true;
+  %  pax = fn_structmerge(pax,parms.deconv,'recursive','type');
+    % Copy values from autocalibrate struct to pax     
+    % Values to set include
+    % amin, amax, taumin,taumax, and saturation    
+    pax = fn_structmerge(pax,parms.autocalibration,'strict','recursive','type');       
     pax.dt = dt; % Dont allow overrule by autocalibrate.
     % perform auto-calibration
+    
     fprintf('SpikeML: Autocalibrating Channel %d\n',channel)
     [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
     calibratedParms = parms.deconv; % Default from CParm
