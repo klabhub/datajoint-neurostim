@@ -168,22 +168,16 @@ signal(isNaN) = 0; % Could remove samples instead or linearly interpolate, but t
 if isfield(parms,'autocalibration') && ~isempty(fieldnames(parms.autocalibration))
     % Do autocalibration
     pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibrate
-    %pax.display = '';
-    pax.mlspikepar.dographsummary = true;
-  %  pax = fn_structmerge(pax,parms.deconv,'recursive','type');
-    % Copy values from autocalibrate struct to pax     
-    % Values to set include
-    % amin, amax, taumin,taumax, and saturation    
-    pax = fn_structmerge(pax,parms.autocalibration,'strict','recursive','type');       
+    % Copy values from parms.autocalibration struct to pax     
+    pax = fn_structmerge(pax,parms.autocalibration,'strict','recursive','type');           
+    pax.mlspikepar = parms.deconv; % Autocalibration calls tps_mlspikes - with these parms
     pax.dt = dt; % Dont allow overrule by autocalibrate.
-    % perform auto-calibration
-    
-    fprintf('SpikeML: Autocalibrating Channel %d\n',channel)
+    % perform auto-calibration        
     [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
     calibratedParms = parms.deconv; % Default from CParm
     % If events is empty, calibration was not possible, use defaults.
     if isempty(events)
-        autoCal = false;
+        autoCal = false; % Failed
     else
         calibratedParms.tau = tau;
         calibratedParms.a = amp;
@@ -195,7 +189,6 @@ else
     calibratedParms = parms.deconv;
     autoCal = false;
 end
-fprintf('SpikeML: Deconvolving Channel %d\n',channel)
 [thisSpk,fit,drift] = spk_est(signal,calibratedParms);
 
 %% spk - spiketimes in s
