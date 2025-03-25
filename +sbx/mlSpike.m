@@ -1,19 +1,21 @@
-function [spk,time,channelInfo,recordingInfo] = spikeML(key,parms)
-% Perform spike deconvolution on a Calcium fluorescence signal using the spikeML algorithm
+function [spk,time,channelInfo,recordingInfo] = mlSpike(key,parms)
+% Perform spike deconvolution on a Calcium fluorescence signal using the MLspike algorithm
 % Deneux, T., Kaszas, A., Szalay, G., Katona, G., Lakner, T., Grinvald, A., Rozsa, B., & Vanzetta, I. (2016). Accurate spike estimation from noisy calcium signals for ultrafast three-dimensional imaging of large neuronal populations in vivo. Nature Communications 2016 7:1, 7(1), 1–17. https://doi.org/10.1038/ncomms12190
 % Relies on the spikes and brick repositories: https://github.com/MLspike
 %
 % Wrapper by BK
 %
-% parms contains instructions on the source rows in C (i.e., the
+% parms contains restrictions on the source rows in C (i.e., the
 % fluorescence and the neuropil background), and the number of parallel
 % workers:
+%
 %
 % parms.nrWorkers = 5;  % parfor loop over channels in spikeML
 % parms.ctagF = "fluorescence"; % The ctag in ns.C that has the fluorescence data (should already be populated)
 % parms.ctagBg = "neuroopil"; % The ctag in ns.C that has the fluorescence data (should already be populated)
-%% The .deconv substruct defines deconvolution parameters.
-% Note that these parameters follow the definition of tps_mlspikes
+%% The .deconv substruct defines deconvolution parameters used by tps_mlspikes (both in the 
+% deconvolution and as a first rough estimate used by the autocalibration)
+% These parameters follow the definition of tps_mlspikes
 % a , tau, and sigma can be determined by autocalibration, but if that fails
 % (no isolated events) then these defaults weill be used:
 % parms.deconv = tps_mlspikes('par'); % Initialize parameters for the MLspike algorithm.
@@ -26,28 +28,28 @@ function [spk,time,channelInfo,recordingInfo] = spikeML(key,parms)
 % parms.deconv.dographsummary = false; % Disable graphical summary of the spike inference.
 % parms.deconv.display = 'no'; % Disable display outputs during spike inference.
 %%  Define autocalibration parameters.
-% Autocalibration (if defined, by creating the .autocalibrate field in the parms struct)
+% Autocalibration (if defined, by creating the .autocalibration field in the parms struct)
 % can (if successful) overrule the a, tau, and sigma parameters for the deconvolution.
 % Here too, the definitions come from the MLspike toolbox:
-% parms.autocalibrate = spk_autocalibration('par'); % Initialize parameters for autocalibration.
-% parms.autocalibrate.amin = 0.03; % Set minimum amplitude for spike amplitude estimation.
-% parms.autocalibrate.amax = 0.19; % Set maximum amplitude for spike amplitude estimation.
-% parms.autocalibrate.taumin = 1.52; % Set minimum decay time constant for the calcium indicator.
-% parms.autocalibrate.taumax = 2.22; % Set maximum decay time constant for the calcium indicator.
-% parms.autocalibrate.driftparam = 0.01; % Set the drift parameters, possibly to account for baseline drift in fluorescence signal.
-% parms.autocalibrate.pnonlin = [0.85 -0.006];  % Deneux values for Gcamp6s -  Set parameters for non-linear processing, if applicable.
-% parms.autocalibrate.mlspikepar.dographsummary = false; % Disable graphical summary of the autocalibration process.
-% parms.autocalibrate.display = 'no'; % Disable display outputs during autocalibration.
+% parms.autocalibration  calibrate = spk_autocalibration('par'); % Initialize parameters for autocalibration.
+% parms.autocalibration .amin = 0.03; % Set minimum amplitude for spike amplitude estimation.
+% parms.autocalibration .amax = 0.19; % Set maximum amplitude for spike amplitude estimation.
+% parms.autocalibration .taumin = 1.52; % Set minimum decay time constant for the calcium indicator.
+% parms.autocalibration .taumax = 2.22; % Set maximum decay time constant for the calcium indicator.
+% parms.autocalibration .driftparam = 0.01; % Set the drift parameters, possibly to account for baseline drift in fluorescence signal.
+% parms.autocalibration .pnonlin = [0.85 -0.006];  % Deneux values for Gcamp6s -  Set parameters for non-linear processing, if applicable.
+% parms.autocalibration .mlspikepar.dographsummary = false; % Disable graphical summary of the autocalibration process.
+% parms.autocalibration .display = 'no'; % Disable display outputs during autocalibration.
 %%
 % Having defined the instructions (parms) we can add it as a CParm
-% spikeMLPrep = struct('ctag','spikesMLAutoCal',...       % Name of this C
+% prep = struct('ctag','spikes',...       % Name of this C
 %                   'description','Deconvolution using spike ML with autocalibration',...
 %                    'extension','.sbx',...  % Files to process
-%                    'fun','sbx.spikeML',...  % function to call.
+%                    'fun','sbx.mlSpike',...  % function to call.
 %                    'parms',parms);   % parameters to pass
-% insertIfNew(ns.CParm, spikeMLPrep);
+% insertIfNew(ns.CParm, prep);
 % Then:
-% populate(ns.C,'ctag="spikesMLAutoCal"') wil populate the ns.C table with spikes
+% populate(ns.C,'ctag="spikes"') wil populate the ns.C table with spikes
 % for all sbx files. Files that don't have a fluorescence or neuropil entry in ns.C will fail.
 %
 % NOTE
