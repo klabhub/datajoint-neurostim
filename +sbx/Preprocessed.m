@@ -403,7 +403,7 @@ classdef Preprocessed < dj.Computed
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
                     tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);
+                    insert(tbl,tpl);                   
                 case 'caiman'
                     % TODO
                 otherwise

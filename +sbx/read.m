@@ -3,16 +3,14 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 %  This function will first check that preprocessed data exist for 
 % the parms.prep preprocessing instructions (Which should match a row in 
 % sbx.PreprocessedParm. An error is generated if no preprocessed data exist.
-% If the preprocessed data exist, this funciton extracts (from files on disk) 
+% If the preprocessed data exist, this function extracts (from files on disk) 
 % the relevant aspects to store in ns.C. 
 %
 % The parms struct contains the following fields
 % .prep -  A unique name to identify the preprocessing instructions (= a
 % row in sbx.PreprocessedParm)
-% .what - 'F','Fneu', or 'spks'
-%
-% To link  channels in ns.C with ROIs, run populate(sbx.Roi) after
-% populating the ns.C table.
+% .what - 'F','Fneu', 'spks' (deconvolved spikes from suite2p's OASIS
+% algorithm), or 'mlspikes' (spikes deconvolved with MLSpike (See mlSpike.m)
 %
 
 p = sbx.Preprocessed;
@@ -35,7 +33,7 @@ analyzeExptThisSession = analyze(allExptThisSession,strict=false);
 nrFramesPrevious = 0;
 for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
     % Get the info structure that sbx saves
-     info = sbx.readInfoFile(exptThisSession);
+    info = sbx.readInfoFile(exptThisSession);
     nrFrames  = info.nrFrames;
     nrPlanes = info.nrPlanes;
     if strcmpi(exptThisSession.starttime,key.starttime)
@@ -78,12 +76,21 @@ signal=[];
 for pl = 1:numel(planes)
     %% Read npy
     tic;
-    fprintf('Reading numpy files...\n')
-    thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
-    if ~exist(thisFile,"file")
-        error('File %s does not exist',thisFile);
+    if upper(parms.what) == "MLSPIKES"
+        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.mat']);
+         if ~exist(thisFile,"file")
+            error('File %s does not exist',thisFile);
+        end
+        s = load(thisFile,'spikeCount');
+        thisSignal = s.spikeCount;
+    else        
+        fprintf('Reading numpy files...\n')
+        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
+        if ~exist(thisFile,"file")
+            error('File %s does not exist',thisFile);
+        end
+        thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
     end
-    thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
     thisSignal = thisSignal(:,keepFrameIx)';
     signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
