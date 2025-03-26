@@ -24,7 +24,7 @@ if isNumericArray
     end
 
     % Reshape back to original shape
-    m = reshape(m, shape);
+    m = reshape(m, fliplr(shape))';
     return
 end
 

@@ -1,10 +1,10 @@
 function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The key refers to an sbx file in an experiment.
-%  This function will first check that preprocessed data exist for 
-% the parms.prep preprocessing instructions (Which should match a row in 
+%  This function will first check that preprocessed data exist for
+% the parms.prep preprocessing instructions (Which should match a row in
 % sbx.PreprocessedParm. An error is generated if no preprocessed data exist.
-% If the preprocessed data exist, this function extracts (from files on disk) 
-% the relevant aspects to store in ns.C. 
+% If the preprocessed data exist, this function extracts (from files on disk)
+% the relevant aspects to store in ns.C.
 %
 % The parms struct contains the following fields
 % .prep -  A unique name to identify the preprocessing instructions (= a
@@ -21,7 +21,7 @@ if ~exists(ks&key)
 end
 if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     % The session has not been preprocessed. Do that first.
-    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);    
+    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);
 end
 
 % Read the npy results from the suite2p folder and store them in
@@ -48,14 +48,14 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         frameNsTime(1) =[];
         nrTTL = numel(frameNsTime);
 
-           
+
         % Sanity check
         delta = nrFrames- floor(nrTTL/nrPlanes) ;
         % Allow a slack of 3 ttls. TODO: make a prep parameter.
         if delta >0 || delta <=-3
-           error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
+            error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
         else
-            % Assume there were additional extraneous TTLs at the start. 
+            % Assume there were additional extraneous TTLs at the start.
             frameNsTime=frameNsTime(-delta+1:end);
         end
 
@@ -73,33 +73,42 @@ fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struc
 planes = dir(fullfile(fldr,'plane*'));
 recordingInfo =sbx.readInfoFile(key);  % Store the info struct
 signal=[];
+rois = [];
+maxRoi = 0;
 for pl = 1:numel(planes)
     %% Read npy
     tic;
-    if upper(parms.what) == "MLSPIKES"
-        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.mat']);
-         if ~exist(thisFile,"file")
-            error('File %s does not exist',thisFile);
-        end
-        s = load(thisFile,'spikeCount');
-        thisSignal = s.spikeCount;
-    else        
+    if ismember(upper(parms.what), ["F" "FNEU" "SPKS"])
+        % Suite 2p numpy files
         fprintf('Reading numpy files...\n')
         thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
         if ~exist(thisFile,"file")
             error('File %s does not exist',thisFile);
         end
         thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
+        thisSignal = thisSignal(:,keepFrameIx)';
+        rois = [rois ;(1:size(thisSignal,1))'+maxRoi]; %#ok<AGROW>
+        maxRoi = max(rois);
+    else
+        %ML Spike files
+        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.mat']);
+        if ~exist(thisFile,"file")
+            error('File %s does not exist',thisFile);
+        end
+        s = load(thisFile,'spikeCount');
+        thisSignal = s.spikeCount(keepFrameIx,:);
+        rois = [rois;fetchn(sbx.Spikes & key,'roi')];        %#ok<*AGROW>
     end
-    thisSignal = thisSignal(:,keepFrameIx)';
+   
     signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
-    
+
 end
-[nrFrames,nrROIs] = size(signal); 
+nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
-channelInfo =  struct('nr',num2cell(1:nrROIs)');
+channelInfo =  struct('nr',num2cell(rois)');
+
 end

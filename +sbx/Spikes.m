@@ -65,7 +65,7 @@ classdef Spikes < dj.Computed
             parms =fetch1(sbx.SpikesParm &key,'parms');
             prep =fetch(sbx.Preprocessed & key,'*');
             %Start parpool if requested
-            if parms.nrWorkers>0
+            if  parms.nrWorkers>0
                 pool = gcp("nocreate");
                 if isempty(pool)
                     % Create a pool
@@ -82,7 +82,7 @@ classdef Spikes < dj.Computed
             sessionPath=unique(folder(ns.Experiment & key));
             dt = 1/prep.framerate;
             parms.deconv.dt = dt;
-            roiInPrep = fetch(sbx.PreprocessedRoi & key & parms.restrict,'plane','roi');
+            roiInPrep = fetch(sbx.PreprocessedRoi & key & parms.restrict & 'pcell>0.99','plane','roi');
             planes = unique([roiInPrep.plane]);
             % Do MLSpike deconvolution
             for p=planes(:)'
@@ -91,6 +91,7 @@ classdef Spikes < dj.Computed
                 F = ndarrayToArray(py.numpy.load(fullfile(fldr,'F.npy'),allow_pickle=true));
                 Fneu = ndarrayToArray(py.numpy.load(fullfile(fldr,'Fneu.npy'),allow_pickle=true));
                 roi = [roiInPrep.roi];
+                roi = roi(1:30);
                 stayRoi = roi; % & plane...
                 F =F(stayRoi,:);
                 Fneu =Fneu(stayRoi,:);
