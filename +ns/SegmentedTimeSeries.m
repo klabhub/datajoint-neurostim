@@ -97,12 +97,14 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
 
             signalN = self.signal;         
            
-            isBefore = self.iStart<=0;
+            isBefore = self.iStart<=0;            
             n_nanpad_presignal=0;
             if any(isBefore)
 
-                n_nanpad_presignal = self.iStart(find(~isBefore,1,'first')) - self.iStart(1) + 1;
-                signalN = [nan(nChannels,n_nanpad_presignal), signalN];
+                n_nanpad_presignal = self.iStart(find(~isBefore,1,'first')) - self.iStart(1);
+                signalN = paddata(signalN, ...
+                    n_nanpad_presignal + size(signalN, ndims(signalN)), ...
+                    Dimension=ndims(signalN), Side='Leading', FillValue=NaN);
 
             end
 
@@ -110,8 +112,9 @@ classdef SegmentedTimeSeries < matlab.mixin.Copyable
             if any(isAfter)
 
                 n_nanpad_postsignal = self.iEnd(end) - self.n_sample;
-                signalN = [signalN, nan(nChannels,n_nanpad_postsignal)];
-                
+                signalN = paddata(signalN, ...
+                    n_nanpad_postsignal + size(signalN, ndims(signalN)), ...
+                    Dimension=ndims(signalN), FillValue=NaN);
                 
             end
             
