@@ -1,10 +1,10 @@
 function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The key refers to an sbx file in an experiment.
-%  This function will first check that preprocessed data exist for 
-% the parms.prep preprocessing instructions (Which should match a row in 
+%  This function will first check that preprocessed data exist for
+% the parms.prep preprocessing instructions (Which should match a row in
 % sbx.PreprocessedParm. An error is generated if no preprocessed data exist.
-% If the preprocessed data exist, this funciton extracts (from files on disk) 
-% the relevant aspects to store in ns.C. 
+% If the preprocessed data exist, this funciton extracts (from files on disk)
+% the relevant aspects to store in ns.C.
 %
 % The parms struct contains the following fields
 % .prep -  A unique name to identify the preprocessing instructions (= a
@@ -23,7 +23,7 @@ if ~exists(ks&key)
 end
 if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
     % The session has not been preprocessed. Do that first.
-    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);    
+    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);
 end
 
 % Read the npy results from the suite2p folder and store them in
@@ -35,7 +35,7 @@ analyzeExptThisSession = analyze(allExptThisSession,strict=false);
 nrFramesPrevious = 0;
 for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
     % Get the info structure that sbx saves
-     info = sbx.readInfoFile(exptThisSession);
+    info = sbx.readInfoFile(exptThisSession);
     nrFrames  = info.nrFrames;
     nrPlanes = info.nrPlanes;
     if strcmpi(exptThisSession.starttime,key.starttime)
@@ -50,14 +50,14 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         frameNsTime(1) =[];
         nrTTL = numel(frameNsTime);
 
-           
+
         % Sanity check
         delta = nrFrames- floor(nrTTL/nrPlanes) ;
         % Allow a slack of 3 ttls. TODO: make a prep parameter.
         if delta >0 || delta <=-3
-           error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
+            error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
         else
-            % Assume there were additional extraneous TTLs at the start. 
+            % Assume there were additional extraneous TTLs at the start.
             frameNsTime=frameNsTime(-delta+1:end);
         end
 
@@ -70,11 +70,14 @@ end
 
 
 
-%% Read the NPY Output
+%% Read the .npy or .mat Output
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 planes = dir(fullfile(fldr,'plane*'));
 recordingInfo =sbx.readInfoFile(key);  % Store the info struct
 signal=[];
+rois = [];
+maxRoi = 0;
+assert(~isempty(planes),"No preprocessed files in %s ",fldr);
 for pl = 1:numel(planes)
     %% Read npy
     tic;
@@ -87,9 +90,9 @@ for pl = 1:numel(planes)
     thisSignal = thisSignal(:,keepFrameIx)';
     signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
-    
+
 end
-[nrFrames,nrROIs] = size(signal); 
+[nrFrames,nrROIs] = size(signal);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
