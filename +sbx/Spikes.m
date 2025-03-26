@@ -108,11 +108,7 @@ classdef Spikes < dj.Computed
                 xlabel 'amplitude'
                 ylabel '#roi'
 
-
                 title(layout,sprintf('%s: %d rois from %d sessions in %d subjects',tpl.stag,height(T),numel(unique(T.session_date)),numel(unique(T.subject))));
-
-
-
             end
 
             if nargout >0
@@ -136,8 +132,6 @@ classdef Spikes < dj.Computed
 
     end
 
-
-
     methods (Access=protected)
         function makeTuples(tbl,key)
             % Confirm that the mlspike toolbox is on the path
@@ -158,7 +152,6 @@ classdef Spikes < dj.Computed
             else
                 pool = [];
             end
-
 
             sessionPath=unique(folder(ns.Experiment & key));
             dt = 1/prep.framerate;
