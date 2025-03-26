@@ -229,7 +229,7 @@ classdef Spikes < dj.Computed
                 % calls tps_mlspikes with these parms
                 pax.mlspikepar = parms.deconv;
                 pax.dt = parms.deconv.dt; % Dont allow overrule by autocalibrate.
-                % perform auto-calibration
+                % perform auto-calibration                
                 [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
                 calibratedParms = parms.deconv; % Default from CParm
                 calibratedParms.finetune.sigma = sigma; % Always estimated
