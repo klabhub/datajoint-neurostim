@@ -4,8 +4,8 @@
 -> sbx.SpikesParm
 roi : smallint
 ---
-quality : float #  
-nanfrac : float # 
+quality : float #
+nanfrac : float #
 autocal : float #
 amplitude : float
 sigma : float
@@ -53,7 +53,7 @@ classdef Spikes < dj.Computed
             % Ideally those would be near the center of the autocal
             % distributions. (Or one could be conservative and not analyze
             % any ROIs for which autocal fails). For instance with a query
-            % like this : 
+            % like this :
             % ns.CChannel & proj(sbx.Spikes & 'autocal=1' &  'quality>0.8','roi->channel')
             arguments
                 tbl (1,1) sbx.Spikes {mustHaveRows(tbl)}
@@ -61,7 +61,7 @@ classdef Spikes < dj.Computed
             end
 
             for tpl = fetch(sbx.SpikesParm & tbl,'*')'
-                
+
                 T = fetchtable(tbl &tpl ,'*');
                 figByName(tpl.stag)
                 clf
@@ -93,7 +93,7 @@ classdef Spikes < dj.Computed
                 % For those where autocal did not work, the tau and amplitude are fixed.
                 % Show only the ones that were estimated from the data.
                 histogram(T.tau(T.autocal==1))
-                hold on                
+                hold on
                 % Show the default
                 line(tpl.parms.deconv.tau*[1 1],ylim,'Color','r','LineWidth',2);
                 title(sprintf('Tau %.2f +/- %.2f (def= %.2f)',mean(T.tau(T.autocal==1)),std(T.tau(T.autocal==1)),tpl.parms.deconv.tau))
@@ -111,13 +111,13 @@ classdef Spikes < dj.Computed
 
                 title(layout,sprintf('%s: %d rois from %d sessions in %d subjects',tpl.stag,height(T),numel(unique(T.session_date)),numel(unique(T.subject))));
 
-                
+
 
             end
 
             if nargout >0
                 % Calculate averages per method (stag) , session and
-                % subject. 
+                % subject.
                 T = fetchtable(tbl,'*');
                 G = groupsummary(T(T.autocal==1,:),["stag" "session_date" "subject"],{@mean,@std},["quality" "amplitude" "sigma" "tau"]);
                 nm = strrep(G.Properties.VariableNames,'fun1','mean');
@@ -175,11 +175,11 @@ classdef Spikes < dj.Computed
                 roi = [roiInPrep.roi];
                 F =F(roi,:);
                 Fneu =Fneu(roi,:);
-                signal = F -0.7*Fneu; % Subtract neuropil 
+                signal = F -0.7*Fneu; % Subtract neuropil
                 signal = signal'; % Rois as columns for parfor
                 [nrSamples,nrRoi] = size(signal);
                 spikeCount = nan(nrSamples,nrRoi);
-                drift = nan(nrSamples,nrRoi);                
+                drift = nan(nrSamples,nrRoi);
                 tpl  =struct('roi',num2cell(roi),'nanfrac',nan,'quality',nan,'autocal',nan,'amplitude',nan,'tau',nan,'sigma',nan);
                 fprintf('Deconvolving %d channels \n',nrRoi)
                 %% Loop for/parfor per channel
@@ -232,9 +232,9 @@ classdef Spikes < dj.Computed
                 % Copy values from parms.autocalibration struct to pax
                 pax = fn_structmerge(pax,parms.autocalibration,'strict','recursive','type');
                 % For consistency of autocalibration and deconvolution;
-                % copy deconv to mlspike par, the autocalibration function 
+                % copy deconv to mlspike par, the autocalibration function
                 % calls tps_mlspikes with these parms
-                pax.mlspikepar = parms.deconv; 
+                pax.mlspikepar = parms.deconv;
                 pax.dt = parms.deconv.dt; % Dont allow overrule by autocalibrate.
                 % perform auto-calibration
                 [tau,amp,sigma,events] = spk_autocalibration(signal,pax);
@@ -256,7 +256,7 @@ classdef Spikes < dj.Computed
             % Do the deconvolution
             [thisSpk,fit,drift,parEst] = spk_est(signal,calibratedParms);
             calibratedParms.finetune.sigma= parEst.finetune.sigma; % Estimated (if no autocal)
-            
+
             % Convert back to spike counts at the sample rate of the fluorescence
             bins = (0:nrSamples)*parms.deconv.dt;
             spk = histcounts(thisSpk,bins)';

@@ -19,28 +19,30 @@ compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less c
 classdef PreprocessedRoi < dj.Part
     properties (SetAccess = protected)
         master = sbx.Preprocessed
-    end 
+    end
 
     methods  (Access=public)
         function o = PreprocessedRoi(varargin)
             assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
-             o@dj.Part(varargin{:});
+            o@dj.Part(varargin{:});
         end
+
+
         function nwbRoot = nwb(tbl,nwbRoot,pv)
             % Add to NWB root
             % Read the masks
-              error('Still to be changed after change to dj.Part table')
-%%   NOTES:
-% This table is no longer linked to an experiment, but to the session.
-% Have to adjust nwbExport in ns.Experiment to include this information.
-% and separately export some or all of the C table entries (which were
-% previously linked via sbx.Roi)
+            error('Still to be changed after change to dj.Part table')
+            %%   NOTES:
+            % This table is no longer linked to an experiment, but to the session.
+            % Have to adjust nwbExport in ns.Experiment to include this information.
+            % and separately export some or all of the C table entries (which were
+            % previously linked via sbx.Roi)
 
             prep = sbx.Preprocessed & tbl; %
             assert(count(prep)==1,"More than one preprocessed set.NIY");
             stat =  prep.stat; % Reads the stat.npy file
             assert(~isempty(stat),'Stat file not found.');
-            sz = size(fetch1(prep,'img'));           
+            sz = size(fetch1(prep,'img'));
             nrRoi = count(tbl);
             masks =zeros([fliplr(sz) nrRoi]);
             % Loop over the roi, setting pixels in the mask to 1.
@@ -68,7 +70,7 @@ classdef PreprocessedRoi < dj.Part
 
             % Collect the signals from the nsCChannel table
             cChannelTbl = (ns.CChannel & 'ctag="fluorescence"' & expt) & roi.proj('subject','session_date','roi->channel');
-            
+
             signal = fetchn(ns.CChannel&tbl,'signal');
             signal = cat(2,signal{:})'; %[nrRoi nrFrames]
             signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoi 1]);
@@ -100,7 +102,7 @@ classdef PreprocessedRoi < dj.Part
             %
             % INPUT
             % roi  = (subset of) sbx.Roi
-            % 
+            %
             % Parameter/Value pairs:
             % sz = Size to use for each ROI. By default, the estimated physical size
             %       of the roi is used. But by passing some other property (e.g. tuning per ROI),
@@ -124,19 +126,19 @@ classdef PreprocessedRoi < dj.Part
             % Anatimical properties :
             % Size of the circle represents the size of the ROI, color
             % represents the compactness.
-            % plot(sbx.PreprocessedRoi & 'session_date="2024-02-09"'); 
+            % plot(sbx.PreprocessedRoi & 'session_date="2024-02-09"');
             % Functional properties for a subset of ROI
             % roi = sbx.PreprocessedRoi & 'pcell>0.75';
             %  Query the CChannel table, for instance spike rate in a
             %  specific experiment:
-            % cChannel = ns.CChannel & 'ctag="spikes"' & 'starttime="14:08:06"' 
-            % Then do an inner join to match roi with channels:            
+            % cChannel = ns.CChannel & 'ctag="spikes"' & 'starttime="14:08:06"'
+            % Then do an inner join to match roi with channels:
             % spikes = fetchn(cChannel & proj(roi,'subject','session_date','roi->channel'),'signal')
             % meanSpikes = cellfun(@mean,spikes)
             % then plot:
             % plotSpatial(roi,color=meanSpikes,pix=true)
             arguments
-                roi (1,1) sbx.PreprocessedRoi                
+                roi (1,1) sbx.PreprocessedRoi
                 pv.sz   (1,:)  double  = []
                 pv.szLabel (1,1) string = ''
                 pv.color   (1,:) double = []
@@ -168,10 +170,10 @@ classdef PreprocessedRoi < dj.Part
 
 
             %% Setup color
-            if isempty(pv.color) 
-                % Show the compactness as the color of the cells                
+            if isempty(pv.color)
+                % Show the compactness as the color of the cells
                 pv.color = fetchn(roi,'compact');
-                pv.colorLabel = 'Compactness';            
+                pv.colorLabel = 'Compactness';
             end
             % Clamp to the limits
             if isempty(pv.clim)
@@ -262,7 +264,7 @@ classdef PreprocessedRoi < dj.Part
     methods (Access=?sbx.Preprocessed)
         function makeTuples(tbl,key)
             prep = fetch(sbx.Preprocessed& key,'*');
-            micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));           
+            micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));
             fldr = unique(fullfile(folder(ns.Experiment & key),prep.folder));
             if ~exist(fldr,"dir")
                 error('Preprocessed data folder %s not found',fldr)
@@ -294,7 +296,7 @@ classdef PreprocessedRoi < dj.Part
 
                 %% Make tuples and insert=
                 nrROIs= numel(aspect);
-                roi = roisSoFar+(1:nrROIs);              
+                roi = roisSoFar+(1:nrROIs);
                 tpl = mergestruct(key, ...
                     struct('roi',num2cell(roi)', ...
                     'plane',pl-1, ...
@@ -309,4 +311,6 @@ classdef PreprocessedRoi < dj.Part
             end
         end
     end
+
+   
 end

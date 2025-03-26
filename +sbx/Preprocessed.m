@@ -254,7 +254,8 @@ classdef Preprocessed < dj.Computed
                     if pyenv().Status=="Loaded"
                         % Already loaded. Because we cannot unload we have to hope that
                         % this python has a suite2p env which may be needed
-                        % below (if the output files do not already exist)
+                        % below (if the output files do not already exist)                                                
+                        conda = extractBefore(pyenv().Home,'/envs');
                     else
                         % Get the env from the NS_CONDA environment
                         % variable
@@ -403,7 +404,7 @@ classdef Preprocessed < dj.Computed
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
                     tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);
+                    insert(tbl,tpl);                   
                 case 'caiman'
                     % TODO
                 otherwise

@@ -3,16 +3,14 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 %  This function will first check that preprocessed data exist for
 % the parms.prep preprocessing instructions (Which should match a row in
 % sbx.PreprocessedParm. An error is generated if no preprocessed data exist.
-% If the preprocessed data exist, this funciton extracts (from files on disk)
+% If the preprocessed data exist, this function extracts (from files on disk)
 % the relevant aspects to store in ns.C.
 %
 % The parms struct contains the following fields
 % .prep -  A unique name to identify the preprocessing instructions (= a
 % row in sbx.PreprocessedParm)
-% .what - 'F','Fneu', or 'spks'
-%
-% To link  channels in ns.C with ROIs, run populate(sbx.Roi) after
-% populating the ns.C table.
+% .what - 'F','Fneu', 'spks' (deconvolved spikes from suite2p's OASIS
+% algorithm), or 'mlspikes' (spikes deconvolved with MLSpike (See mlSpike.m)
 %
 
 p = sbx.Preprocessed;
@@ -77,25 +75,41 @@ recordingInfo =sbx.readInfoFile(key);  % Store the info struct
 signal=[];
 rois = [];
 maxRoi = 0;
-assert(~isempty(planes),"No preprocessed files in %s ",fldr);
 for pl = 1:numel(planes)
     %% Read npy
     tic;
-    fprintf('Reading numpy files...\n')
-    thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
-    if ~exist(thisFile,"file")
-        error('File %s does not exist',thisFile);
+    if ismember(upper(parms.what), ["F" "FNEU" "SPKS"])
+        % Suite 2p numpy files
+        fprintf('Reading numpy files...\n')
+        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
+        if ~exist(thisFile,"file")
+            error('File %s does not exist',thisFile);
+        end
+        thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
+        thisSignal = thisSignal(:,keepFrameIx)';
+        rois = [rois ;(1:size(thisSignal,1))'+maxRoi]; %#ok<AGROW>
+        maxRoi = max(rois);
+    else
+        %ML Spike files
+        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.mat']);
+        if ~exist(thisFile,"file")
+            error('File %s does not exist',thisFile);
+        end
+        s = load(thisFile,'spikeCount');
+        thisSignal = s.spikeCount(keepFrameIx,:);
+        rois = [rois;fetchn(sbx.Spikes & key,'roi')];        %#ok<*AGROW>
     end
-    thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
-    thisSignal = thisSignal(:,keepFrameIx)';
+
     signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
 
 end
 [nrFrames,nrROIs] = size(signal);
+nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
-channelInfo =  struct('nr',num2cell(1:nrROIs)');
+channelInfo =  struct('nr',num2cell(rois)');
+
 end
