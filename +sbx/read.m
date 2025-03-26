@@ -85,9 +85,9 @@ for pl = 1:numel(planes)
         if ~exist(thisFile,"file")
             error('File %s does not exist',thisFile);
         end
-        thisSignal = single(py.numpy.load(thisFile,allow_pickle=true));
+        thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
         thisSignal = thisSignal(:,keepFrameIx)';
-        rois = [rois ;(1:size(thisSignal,1))'+maxRoi]; %#ok<AGROW>
+        rois = [rois ;(1:size(thisSignal,1))'+maxRoi];
         maxRoi = max(rois);
     else
         %ML Spike files
@@ -100,11 +100,10 @@ for pl = 1:numel(planes)
         rois = [rois;fetchn(sbx.Spikes & key,'roi')];        %#ok<*AGROW>
     end
 
-    signal = [signal  thisSignal]; %#ok<AGROW>
+    signal = [signal  thisSignal]; 
     fprintf('Done in %s.\n',seconds(toc))
 
 end
-[nrFrames,nrROIs] = size(signal);
 nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in

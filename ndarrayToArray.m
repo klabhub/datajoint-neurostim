@@ -1,6 +1,8 @@
 function m = ndarrayToArray(x, pv)
 % Convert a numpy array to a matlab array, with quick conversions for
-% matrices, and slower conversions for ragged arrays/
+% matrices, and slower conversions for ragged arrays.
+% Although double(x) should work, I find that sometimes it fails. This code
+% takes a bit longer but seems to work for any numpy array.
 arguments
     x (1,1) py.object
     pv.single (1,1) logical = false
@@ -13,7 +15,6 @@ isNumericArray = ismember(dtype, numericTypes) && ~strcmp(dtype, "object");
 if isNumericArray
     % Get shape
     shape = double(x.shape);
-
     % Flatten the numpy array and convert to Python array.array
     if pv.single
         pyarr = py.array.array('f', x.astype('float32').flatten().tolist());
@@ -22,9 +23,8 @@ if isNumericArray
         pyarr = py.array.array('d', x.astype('float64').flatten().tolist());
         m = double(pyarr);
     end
-
     % Reshape back to original shape
-    m = reshape(m, fliplr(shape))';
+    m = reshape(m, fliplr(shape))';% Need the fliplr becuase numpy uses column major order.
     return
 end
 
