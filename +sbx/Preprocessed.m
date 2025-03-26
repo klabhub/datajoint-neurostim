@@ -254,7 +254,8 @@ classdef Preprocessed < dj.Computed
                     if pyenv().Status=="Loaded"
                         % Already loaded. Because we cannot unload we have to hope that
                         % this python has a suite2p env which may be needed
-                        % below (if the output files do not already exist)
+                        % below (if the output files do not already exist)                                                
+                        conda = extractBefore(pyenv().Home,'/envs');
                     else
                         % Get the env from the NS_CONDA environment
                         % variable

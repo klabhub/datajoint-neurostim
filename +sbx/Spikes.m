@@ -82,7 +82,7 @@ classdef Spikes < dj.Computed
             sessionPath=unique(folder(ns.Experiment & key));
             dt = 1/prep.framerate;
             parms.deconv.dt = dt;
-            roiInPrep = fetch(sbx.PreprocessedRoi & key & parms.restrict & 'pcell>0.99','plane','roi');
+            roiInPrep = fetch(sbx.PreprocessedRoi & key & parms.restrict,'plane','roi');
             planes = unique([roiInPrep.plane]);
             % Do MLSpike deconvolution
             for p=planes(:)'
@@ -90,20 +90,12 @@ classdef Spikes < dj.Computed
                 % Get the segmented data
                 F = ndarrayToArray(py.numpy.load(fullfile(fldr,'F.npy'),allow_pickle=true));
                 Fneu = ndarrayToArray(py.numpy.load(fullfile(fldr,'Fneu.npy'),allow_pickle=true));
-                roi = [roiInPrep.roi];
-                roi = roi(1:30);
-                stayRoi = roi; % & plane...
-                F =F(stayRoi,:);
-                Fneu =Fneu(stayRoi,:);
+                roi = [roiInPrep.roi];                
+                F =F(roi,:);
+                Fneu =Fneu(roi,:);
                 signal = F -0.7*Fneu;
                 signal = signal';
                 [nrSamples,nrRoi] = size(signal);
-
-
-                %  signal  = signal(1:floor(nrSamples/5),1:2);
-                %  [nrSamples,nrRoi] = size(signal);
-                %  roi = roi(1:2);
-                % %
                 spikeCount = nan(nrSamples,nrRoi);
                 drift = nan(nrSamples,nrRoi);
 
