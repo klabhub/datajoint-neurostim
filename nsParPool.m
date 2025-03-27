@@ -34,7 +34,7 @@ function pool = nsParPool(pv)
 % instance, but using that in code defeats the purpose of the function).
 arguments
     pv.nrWorkers {mustBePositive} = str2double(getenv("NS_PARFOR"));
-    pv.spmd = false
+    pv.spmdEnabled = false
 end
 pool = gcp("nocreate");
 if isnan(pv.nrWorkers)
@@ -45,7 +45,7 @@ elseif pv.nrWorkers==0
     pool = [];
 elseif isempty(pool)
     % create a pool with the requested number of workers
-    pool = parpool('Processes',pv.nrWorkers,'SpmdEnabled',pv.spmd);
+    pool = parpool('Processes',pv.nrWorkers,'SpmdEnabled',pv.spmdEnabled);
 else 
     % use the pool as is. 
 end       
