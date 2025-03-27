@@ -45,7 +45,7 @@ classdef Preprocessed < dj.Computed
                     v{keyCntr} =   py.numpy.load(resultsFile,allow_pickle=true); %#ok<AGROW>
                 else
                     fprintf('OPS file  %s not found \n',resultsFile);
-                    v{keyCntr} = [];
+                    v{keyCntr} = []; %#ok<AGROW>
                 end
             end
             if isscalar(v)
@@ -63,10 +63,10 @@ classdef Preprocessed < dj.Computed
                 resultsFile =fullfile(sessionPath,key.folder,'plane0','stat.mat');
                 if exist(resultsFile,"file")
                     load(resultsFile,'stat');
-                    v{keyCntr} =   [stat{:}];   %#ok<PROP>
+                    v{keyCntr} =   [stat{:}];   %#ok<AGROW,PROP>
                 else
                     fprintf('Stat file  %s not found \n',resultsFile);
-                    v{keyCntr} = [];
+                    v{keyCntr} = []; %#ok<AGROW>
                 end
             end
             if isscalar(v)

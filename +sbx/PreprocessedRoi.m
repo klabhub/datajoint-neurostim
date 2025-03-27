@@ -21,13 +21,7 @@ classdef PreprocessedRoi < dj.Part
         master = sbx.Preprocessed
     end
 
-    methods  (Access=public)
-        function o = PreprocessedRoi(varargin)
-            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
-            o@dj.Part(varargin{:});
-        end
-
-
+    methods  (Access=public)       
         function nwbRoot = nwb(tbl,nwbRoot,pv)
             % Add to NWB root
             % Read the masks
@@ -263,6 +257,8 @@ classdef PreprocessedRoi < dj.Part
     end
     methods (Access=?sbx.Preprocessed)
         function makeTuples(tbl,key)
+            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
+   
             prep = fetch(sbx.Preprocessed& key,'*');
             micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));
             fldr = unique(fullfile(folder(ns.Experiment & key),prep.folder));
