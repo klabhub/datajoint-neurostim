@@ -186,6 +186,7 @@ classdef Spikes < dj.Computed
                     dq = parallel.pool.DataQueue;
                     counter = 0;     totalDuration =minutes(0);                                        
                     afterEach(dq, @(x) updateMessage(x));
+                    tStart = tic;
                     if isempty(pool)                        
                         for  ch = 1:nrRoi
                             tic;
@@ -201,7 +202,6 @@ classdef Spikes < dj.Computed
                             send(dq,{ch,true,seconds(toc)});
                         end
                     else 
-                        tic
                         parfor  (ch = 1:nrRoi)
                             dj.conn; % Need to refresh connection in each worker
                             warning('off','backtrace'); % Needs to be set on each worker
@@ -230,9 +230,8 @@ classdef Spikes < dj.Computed
             function updateMessage(x)
                 [channel,done,thisDuration] =deal(x{:});
                 if done
-                    counter= counter+1;
-                    totalDuration= totalDuration + minutes(toc);                            
-                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %s) \n",counter,nrRoi,thisDuration,totalDuration);
+                    counter= counter+1;                                               
+                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %s) \n",counter,nrRoi,thisDuration,minutes(toc(tStart)));
                 else
                     fprintf("Starting channel #%d\n",channel);
                 end
