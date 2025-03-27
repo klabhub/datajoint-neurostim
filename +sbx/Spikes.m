@@ -150,20 +150,8 @@ classdef Spikes < dj.Computed
             warning('off','backtrace');
             parms =fetch1(sbx.SpikesParm &key,'parms');  % Parameters for mlspike
             prep =fetch(sbx.Preprocessed & key,'*');     % Preprocessed data set
-            %Start parpool if requested
-            parms.nrWorkers =12;
-            if  parms.nrWorkers>0
-                pool = gcp("nocreate");
-                if isempty(pool)
-                    % Create a pool
-                    pool = parpool(parms.nrWorkers);
-                else
-                    % Use what is available
-                    parms.nrWorkers = max(parms.nrWorkers,pool.NumWorkers);
-                end
-            else
-                pool = [];
-            end
+            
+            pool =nsParPool();
 
             sessionPath=unique(folder(ns.Experiment & key));
             dt = 1/prep.framerate;
@@ -214,7 +202,7 @@ classdef Spikes < dj.Computed
                             send(dq,{ch,true,seconds(toc)});
                         end
                     else                           
-                        parfor  (ch = 1:nrRoi,parms.nrWorkers)
+                        parfor  (ch = 1:nrRoi)
                             dj.conn; % Need to refresh connection in each worker
                             warning('off','backtrace'); % Needs to be set on each worker
                             tic
@@ -254,7 +242,8 @@ classdef Spikes < dj.Computed
 
     methods (Static)
         %% Function that does the deconvolution for one channel
-        % This is called from either a for (nrWorkers=0) or parfor loop
+        % This is called from either a for or parfor loop; set NS_PARFOR to
+        % the number of workers or create a parpool manually to use parfor.
         function [spk,drift, quality, nanFrac,calibratedParms,autoCal] = mlSpikeSingleRoi(signal,parms)
             isNaN = isnan(signal);
             nrSamples = numel(signal);
