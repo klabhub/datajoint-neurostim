@@ -231,7 +231,7 @@ classdef Spikes < dj.Computed
                 [channel,done,thisDuration] =deal(x{:});
                 if done
                     counter= counter+1;                                               
-                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %s) \n",counter,nrRoi,thisDuration,minutes(toc(tStart)));
+                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %.1f minutes) \n",counter,nrRoi,thisDuration,minutes(seconds(toc(tStart))));
                 else
                     fprintf("Starting channel #%d\n",channel);
                 end

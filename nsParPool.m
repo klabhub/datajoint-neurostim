@@ -33,7 +33,7 @@ function pool = nsParPool(pv)
 % environment variable (you can use this to start a pool manually for
 % instance, but using that in code defeats the purpose of the function).
 arguments
-    pv.nrWorkers {mustBePositive} = str2double(getenv("NS_PARFOR"));
+    pv.nrWorkers = str2double(getenv("NS_PARFOR"));
     pv.spmdEnabled = false
 end
 pool = gcp("nocreate");
