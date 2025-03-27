@@ -172,8 +172,7 @@ classdef Spikes < dj.Computed
                     fprintf('Loading segmentation from %s.\n',fldr)
                     F = ndarrayToArray(py.numpy.load(fullfile(fldr,'F.npy'),allow_pickle=true));
                     Fneu = ndarrayToArray(py.numpy.load(fullfile(fldr,'Fneu.npy'),allow_pickle=true));
-                    roi = [roiInPrep.roi];
-                    roi = roi(1:5);
+                    roi = [roiInPrep.roi];                    
                     F =F(roi,:);
                     Fneu =Fneu(roi,:);
                     signal = F -0.7*Fneu; % Subtract neuropil
