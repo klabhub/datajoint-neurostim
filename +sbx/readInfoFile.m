@@ -52,7 +52,7 @@ for e=1:numel(expt)
     if floor(info.nrFrames) ~=info.nrFrames
         % This seems to happen in 2-plane recordings;  an extra byte in the
         % file?
-        fprintf(2,"Half frames in %s?? Flooring.\n",ff)
+        fprintf(2,"Half frames (nrPlanes = %d) in %s?? Flooring.\n",nrPlanes,ff)
         info.nrFrames = floor(info.nrFrames);
     end
     out(e) = info; %#ok<AGROW>
