@@ -33,7 +33,7 @@ end
 
 if isempty(pv.Version)
     fprintf(2,'Python setup unsuccessful (conda: %s file: %s)\n',conda,f)
-else
+else 
     fprintf('Python setup successful (Exe: %s Ver:%s)\n',pv.Executable,pv.Version)
 end
 ok = pv.Version ~="";

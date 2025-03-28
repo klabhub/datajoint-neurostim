@@ -146,7 +146,7 @@ classdef Spikes < dj.Computed
             % Confirm that the mlspike toolbox is on the path
             assert(exist('fn_structmerge','file'),"The brick repository must be on the path for mlSpike");
             assert(exist('spk_est.m','file'),"The spikes repository must be on the path for mlSpike");
-                        
+            setupPython;            
             warning('off','backtrace');
             parms =fetch1(sbx.SpikesParm &key,'parms');  % Parameters for mlspike
             prep =fetch(sbx.Preprocessed & key,'*');     % Preprocessed data set
