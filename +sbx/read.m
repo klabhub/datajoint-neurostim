@@ -118,9 +118,9 @@ end
 
 if isfield(parms,'restrict')
     % Restrict with a query on sbx.PreprocessedRoi
-    keepRoi = [fetch(sbx.PreprocessedRoi & prep & parms.restrict,'roi').roi];
-    signal = signal(keepRoi);
-    rois    = rois(keepRoi);
+    keepRoi = [fetch((sbx.PreprocessedRoi & parms.restrict ) & key ,'roi').roi];
+    signal = signal(:,keepRoi);
+    rois    = keepRoi;
 end
 nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
