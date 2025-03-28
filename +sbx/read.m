@@ -87,7 +87,7 @@ for pl = 1:numel(planes)
         end
         thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
         thisSignal = thisSignal(:,keepFrameIx)';
-        rois = [rois ;(1:size(thisSignal,1))'+maxRoi];
+        rois = [rois ;(1:size(thisSignal,2))'+maxRoi];
         maxRoi = max(rois);
     else
         %ML Spike files
