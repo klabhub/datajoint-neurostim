@@ -1,4 +1,4 @@
-function nsAddToDataJoint(tSubject,tSession ,tExperiment,varargin)
+function nsAddToDataJoint(tSubject,tSession ,tExperiment,pv)
 % Takes the output of nsScan and adds new information to the DJ server.
 % Depending on how nsScan was called this can add meta-data about the experiments
 % only, include meta data from cic, or include all data from all plugins.
@@ -18,21 +18,41 @@ function nsAddToDataJoint(tSubject,tSession ,tExperiment,varargin)
 %               changes to the database.
 %
 % BK -Jan 2023
-
-p=inputParser;
-p.addParameter('safeMode',true,@islogical);
-p.addParameter('root',getenv('NS_ROOT'));
-p.addParameter('populateFile',true,@islogical)
-p.addParameter('dryrun',false,@islogical)
-p.addParameter('cic',[]); % A vector of cic objects. One per row of the experiment table.
-p.addParameter('newOnly',true)
-p.addParameter('existingOnly',false)
-p.parse(varargin{:});
+arguments
+    tSubject table
+    tSession table 
+    tExperiment table
+    pv.safeMode (1,1) logical =true
+    pv.root (1,1) string = getenv("NS_ROOT")
+    pv.populateFile (1,1) logical = true
+    pv.dryrun (1,1) logical = false
+    pv.cic = [] % A vector of cic objects. One per row of the experiment table.
+    pv.newOnly (1,1) logical = true
+    pv.existingOnly (1,1) logical =false
+end
 
 currentSafeMode= dj.config('safemode');
-dj.config('safemode',p.Results.safeMode);
+dj.config('safemode',pv.safeMode);
 warnstate =warning('query');
 warning('off', 'DataJoint:longCondition');
+
+%% Check meta data from json files
+if ismember("analyze",tExperiment.Properties.VariableNames)
+    % Have json meta
+    out = tExperiment.analyze=="0";
+    if any(out)
+            fprintf('Removing %d experiments that are marked analyze=0',sum(out));
+            tExperiment(out,:)= [];
+            if ~isempty(pv.cic)
+                pv.cic(out) = [];
+            end
+            % Cascade
+            [~,keep] = intersect(tSession(:,["subject" "session_date"]),tExperiment(:,["subject" "session_date"]));
+            tSession= tSession(keep,:);
+            [~,keep] = intersect(tSubject(:,"subject"),tSession(:,"subject"));
+            tSubject= tSubject(keep,:);
+    end
+end
 
 %% Add Subjects
 % Replace empty dates with 0 date
@@ -40,21 +60,21 @@ if ismember('dob',tSubject.Properties.VariableNames)
     tSubject{tSubject.dob=="",'dob'} = "0000-00-00";
 end
 tSubject= removevars(tSubject,'id');
-insertNewTuples(tSubject,ns.Subject,p.Results.dryrun,p.Results.newOnly,p.Results.existingOnly);
+insertNewTuples(tSubject,ns.Subject,pv.dryrun,pv.newOnly,pv.existingOnly);
 
 %% Add Sessions
 
 tSession= removevars(tSession,'id');
-insertNewTuples(tSession,ns.Session,p.Results.dryrun,p.Results.newOnly,p.Results.existingOnly);
+insertNewTuples(tSession,ns.Session,pv.dryrun,pv.newOnly,pv.existingOnly);
 
 %% Add Experiments
 tExperiment = removevars(tExperiment,'id');
-[newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,p.Results.dryrun,p.Results.newOnly,p.Results.existingOnly);
-if  ~p.Results.dryrun && ~isempty(newExpts)
-    if ~isempty(p.Results.cic)
-        updateWithFileContents(ns.Experiment & newExpts,p.Results.cic(newTplsRows));
+[newExpts,~,newTplsRows] = insertNewTuples(tExperiment,ns.Experiment,pv.dryrun,pv.newOnly,pv.existingOnly);
+if  ~pv.dryrun && ~isempty(newExpts)
+    if ~isempty(pv.cic)
+        updateWithFileContents(ns.Experiment & newExpts,pv.cic(newTplsRows));
     end
-    if p.Results.populateFile
+    if pv.populateFile
         % Populate the File table (all files associated with this experiment)
         populate(ns.File, newExpts);
     end
@@ -80,7 +100,7 @@ function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun,ne
 % OUTPUT
 % tpl  - Tuples with new information
 % metaTpl - Tuples with new meta information.
-
+if isempty(tbl);return;end
 %% Determine whether there are entries that are not yet in the database
 newTpls = [];
 updateTpls = [];
