@@ -230,8 +230,10 @@ classdef Spikes < dj.Computed
             function updateMessage(x)
                 [channel,done,thisDuration] =deal(x{:});
                 if done
-                    counter= counter+1;                                               
-                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %.1f minutes) \n",counter,nrRoi,thisDuration,minutes(seconds(toc(tStart))));
+                    counter= counter+1;              
+                    secs = seconds(toc(tStart));
+                    eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);                    
+                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %.1f min. ETA: %s) \n",counter,nrRoi,round(thisDuration),minutes(secs),eta);
                 else
                     fprintf("Starting channel #%d\n",channel);
                 end
