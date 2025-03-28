@@ -78,7 +78,7 @@ maxRoi = 0;
 for pl = 1:numel(planes)
     %% Read npy
     tic;
-    if ismember(upper(parms.what), ["F" "FNEU" "SPKS"])
+    if ismember(parms.what, ["F" "Fneu" "spks"])
         % Suite 2p numpy files
         fprintf('Reading numpy files...\n')
         thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
@@ -87,6 +87,12 @@ for pl = 1:numel(planes)
         end
         thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
         thisSignal = thisSignal(:,keepFrameIx)';
+        if  parms.what=="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
+            neuFile = strrep(thisFile,'F.npy','Fneu.npy');
+            Fneu  =  ndarrayToArray(py.numpy.load(neuFile,allow_pickle=true),single=true);
+            Fneu = Fneu(:,keepFrameIx)';
+            thisSignal = thisSignal - parms.neuropilfactor*Fneu;
+        end
         rois = [rois ;(1:size(thisSignal,2))'+maxRoi];
         maxRoi = max(rois);
     else
@@ -100,7 +106,7 @@ for pl = 1:numel(planes)
         rois = [rois;fetchn(sbx.Spikes & key,'roi')];        %#ok<*AGROW>
     end
 
-    signal = [signal  thisSignal]; 
+    signal = [signal  thisSignal];
     fprintf('Done in %s.\n',seconds(toc))
 
 end
