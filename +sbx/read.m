@@ -1,20 +1,26 @@
 function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The key refers to an sbx file in an experiment.
+%
 %  This function will first check that preprocessed data exist for
 % the parms.prep preprocessing instructions (Which should match a row in
 % sbx.PreprocessedParm. An error is generated if no preprocessed data exist.
-% If the preprocessed data exist, this function extracts (from files on disk)
+%
+% Once the preprocessed data exist, this function extracts (from files on disk)
 % the relevant aspects to store in ns.C.
 %
 % The parms struct contains the following fields
-% .prep -  A unique name to identify the preprocessing instructions (= a
-% row in sbx.PreprocessedParm)
-% .what - 'F','Fneu', 'spks' (deconvolved spikes from suite2p's OASIS
-% algorithm), or 'mlspikes' (spikes deconvolved with MLSpike (See mlSpike.m)
-%
-
-p = sbx.Preprocessed;
-ks = p.keySource;
+% .prep -  A unique name to identify the preprocessing instructions (= a row in sbx.PreprocessedParm)
+% .what - 'F'    - Fluorescence
+%         'Fneu'  - Neuropil 
+%         'spks'  - deconvolved spikes from suite2p's OASIS
+%         any 'stag' from sbx.SpikesParm  will retrieve the spikes
+%         deconvolved with MLSpike (See sbx.Spikes)
+% .neuropilfactor - If .what ="F" then setting this to a non-zero value will compute
+%               bacground corrected fluorescence (F-factor*Fneu)
+% .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset. 
+%               For instance 'pcell>0.75'
+prep = sbx.Preprocessed;
+ks = prep.keySource;
 if ~exists(ks&key)
     fprintf('No files to analyze in this session\n');
     return;
@@ -48,7 +54,6 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         frameNsTime(1) =[];
         nrTTL = numel(frameNsTime);
 
-
         % Sanity check
         delta = nrFrames- floor(nrTTL/nrPlanes) ;
         % Allow a slack of 3 ttls. TODO: make a prep parameter.
@@ -58,7 +63,6 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
             % Assume there were additional extraneous TTLs at the start.
             frameNsTime=frameNsTime(-delta+1:end);
         end
-
         keepFrameIx = nrFramesPrevious+(1:nrFrames);
         break; % We have what we need; break the loop over experiments in this session
     else
@@ -88,6 +92,7 @@ for pl = 1:numel(planes)
         thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
         thisSignal = thisSignal(:,keepFrameIx)';
         if  parms.what=="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
+            % Compute background/neuropil corrected fluorescence
             neuFile = strrep(thisFile,'F.npy','Fneu.npy');
             Fneu  =  ndarrayToArray(py.numpy.load(neuFile,allow_pickle=true),single=true);
             Fneu = Fneu(:,keepFrameIx)';
@@ -110,11 +115,17 @@ for pl = 1:numel(planes)
     fprintf('Done in %s.\n',seconds(toc))
 
 end
+
+if isfield(parms,'restrict')
+    % Restrict with a query on sbx.PreprocessedRoi
+    keepRoi = [fetch(sbx.PreprocessedRoi & prep & parms.restrict,'roi').roi];
+    signal = signal(keepRoi);
+    rois    = rois(keepRoi);
+end
 nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
 channelInfo =  struct('nr',num2cell(rois)');
-
 end
