@@ -30,7 +30,9 @@ tau : float
 %                   'description','ML Spike deconvolved spikes ',...
 %                    'extension','.sbx',...  % Files to process
 %                    'fun','sbx.read',...      % Use this function to read the spikes files
-%                    'parms',struct('what','mlspikes','prep','gcamp6s'));   % pass these  parms to the fun
+%                    'parms',struct('what','mlspikes','prep','gcamp6s'));  
+% where 'mlspikes'  matches the stag used to perform the deconvolution
+% (i.e. the row in the sbx.Spikes table)
 %
 % insertIfNew(ns.CParm, spksPrep);
 % and then call
@@ -146,11 +148,11 @@ classdef Spikes < dj.Computed
             % Confirm that the mlspike toolbox is on the path
             assert(exist('fn_structmerge','file'),"The brick repository must be on the path for mlSpike");
             assert(exist('spk_est.m','file'),"The spikes repository must be on the path for mlSpike");
-            setupPython;            
+            setupPython;
             warning('off','backtrace');
             parms =fetch1(sbx.SpikesParm &key,'parms');  % Parameters for mlspike
             prep =fetch(sbx.Preprocessed & key,'*');     % Preprocessed data set
-            
+
             pool =nsParPool();
 
             sessionPath=unique(folder(ns.Experiment & key));
@@ -160,83 +162,105 @@ classdef Spikes < dj.Computed
             planes = unique([fetch(sbx.PreprocessedRoi & key , 'plane').plane]);
             roisPreviousPlanes= 0;
             for p=planes(:)'
-                  % Restrict rois as specified in parms.restrict                  
-                roi = [fetch(sbx.PreprocessedRoi & key & ['plane= ' num2str(p)] & parms.restrict,'roi').roi];
-                roiIx  = roi-roisPreviousPlanes;
                 fldr = fullfile(sessionPath,prep.folder,sprintf('plane%d',p));
-                trgFile = fullfile(fldr,[key.stag '.mat']);
-                if exist(trgFile,"file")
-                    fprintf("%s already exists, reading from file.\n",trgFile);
-                    secs = load(trgFile,'info');
-                    info = secs.info;
+                trgFile = fullfile(fldr, [key.stag '.mat']); % spikeCount, drift, and info will be saved here
+                tempFolder = fullfile(fldr, "temp" + key.stag); % temp folder with one file per roi  (allows recovery from interrupted computations)                    
+                % Restrict rois as specified in parms.restrict
+                roi = [fetch(sbx.PreprocessedRoi & key & ['plane= ' num2str(p)] & parms.restrict,'roi').roi];
+                if exist(trgFile,'file')
+                    % Deconv data already exist on file. Just load and add to the
+                    % database
+                    load(trgFile,'info');
+                    % Sanity check 
+                    assert(isempty(setdiff([info.roi],roi)),'The deconvolution data on disk (%s) do not match the currently selected ROIs. Use a different stag.',trgFile);
                 else
-                    % Get the segmented data
-                    fprintf('Loading segmentation from %s.\n',fldr)
-                    F = ndarrayToArray(py.numpy.load(fullfile(fldr,'F.npy'),allow_pickle=true));
-                    Fneu = ndarrayToArray(py.numpy.load(fullfile(fldr,'Fneu.npy'),allow_pickle=true));
-                    F =F(roiIx,:);
-                    Fneu =Fneu(roiIx,:);
-                    signal = F -0.7*Fneu; % Subtract neuropil
-                    signal = signal'; % Rois as columns for parfor
-                    [nrSamples,nrRoi] = size(signal);
+                    % At least some need to be computed
+                    nrRoi = numel(roi);
+                    if ~exist(tempFolder, 'dir')
+                        mkdir(tempFolder);
+                    end
+                    % Check which ROIs already have  temp files (from a previous,
+                    % interrupted attempt at deconvolution of this set)
+                    existingFiles = dir(fullfile(tempFolder, 'roi_*.mat'));
+                    existingRois = arrayfun(@(f) sscanf(f.name, 'roi_%d.mat'), existingFiles);
+                    roiToProcess = roi(~ismember(roi, existingRois)); % Filter out already processed ROIs
+
+                    % Skip processing if all ROIs are already computed
+                    if ~isempty(roiToProcess)
+                        % Get the segmented data
+                        fprintf('Loading segmentation from %s.\n',fldr)
+                        F = ndarrayToArray(py.numpy.load(fullfile(fldr,'F.npy'),allow_pickle=true));
+                        Fneu = ndarrayToArray(py.numpy.load(fullfile(fldr,'Fneu.npy'),allow_pickle=true));
+                        roiIx = roiToProcess - roisPreviousPlanes;
+                        F =F(roiIx,:);
+                        Fneu =Fneu(roiIx,:);
+                        signal = F -0.7*Fneu; % Subtract neuropil
+                        signal = signal'; % Rois as columns for parfor
+                        [nrSamples,nrRoi] = size(signal);
+                        fprintf('Deconvolving %d channels \n',nrRoi)
+                        %% Loop for/parfor per channel
+                        dq = parallel.pool.DataQueue;
+                        counter = 0;
+                        afterEach(dq, @(x) updateMessage(x));
+                        tStart = tic;
+                        if isempty(pool)
+                            for  ch = 1:numel(roiToProcess)
+                                tic;
+                                send(dq,{ch,false,0});
+                                sbx.Spikes.mlSpikeSingleRoi(signal(:,ch),parms,roiToProcess(ch),tempFolder);
+                                send(dq,{ch,true,seconds(toc)});
+                            end
+                        else
+                            parfor  (ch = 1:numel(roiToProcess))
+                                dj.conn; % Need to refresh connection in each worker
+                                warning('off','backtrace'); % Needs to be set on each worker
+                                tic
+                                send(dq,{ch,false,0})
+                                sbx.Spikes.mlSpikeSingleRoi(signal(:,ch),parms,roiToProcess(ch),tempFolder);
+                                send(dq,{ch,true, seconds(toc)})
+                            end
+                        end
+                    end
+
+                    % Combine individual files into a single trgFile
+                    fprintf('Combining individual ROI files into %s.\n', trgFile);
                     spikeCount = nan(nrSamples,nrRoi);
                     drift = nan(nrSamples,nrRoi);
                     info  =struct('roi',num2cell(roi),'nanfrac',nan,'quality',nan,'autocal',nan,'amplitude',nan,'tau',nan,'sigma',nan);
-                    fprintf('Deconvolving %d channels \n',nrRoi)
-                    %% Loop for/parfor per channel
-                    dq = parallel.pool.DataQueue;
-                    counter = 0;     
-                    afterEach(dq, @(x) updateMessage(x));
-                    tStart = tic;
-                    if isempty(pool)                        
-                        for  ch = 1:nrRoi
-                            tic;
-                            send(dq,{ch,false,0});
-                            [spikeCount(:,ch),drift(:,ch), quality, nanFrac,cal,autoCal]   = sbx.Spikes.mlSpikeSingleRoi(signal(:,ch),parms);
-                            % Store autocalibration results and other info
-                            info(ch).quality = quality;
-                            info(ch).nanfrac = nanFrac;
-                            info(ch).autocal = autoCal;
-                            info(ch).amplitude = cal.a;
-                            info(ch).tau = cal.tau;
-                            info(ch).sigma = cal.finetune.sigma;
-                            send(dq,{ch,true,seconds(toc)});
-                        end
-                    else 
-                        parfor  (ch = 1:nrRoi)
-                            dj.conn; % Need to refresh connection in each worker
-                            warning('off','backtrace'); % Needs to be set on each worker
-                            tic
-                            send(dq,{ch,false,0})
-                            [spikeCount(:,ch),drift(:,ch), quality, nanFrac,cal,autoCal]  =  sbx.Spikes.mlSpikeSingleRoi(signal(:,ch),parms); %#ok<PFOUS>
-                            info(ch).quality = quality;
-                            info(ch).nanfrac = nanFrac;
-                            info(ch).autocal = autoCal;
-                            info(ch).amplitude = cal.a
-                            info(ch).tau = cal.tau;
-                            info(ch).sigma = cal.finetune.sigma;  
-                            send(dq,{ch,true, seconds(toc)})
-                        end
+                    for ch  = 1:numel(roi)
+                        tempData = load(fullfile(tempFolder,sprintf('roi_%d.mat', roi(ch))));
+                        spikeCount(:,ch) =tempData.spikeCount;
+                        drift(:,ch) = tempData.drift;
+                        info(ch) =  tempData.info;
                     end
-                    % Save results in a mat file in the plane folder, together
-                    % with F.npy etc. This file will be read by sbx.read to add
-                    % the spike as continuous data in ns.C
-                    info = mergestruct(key,info);
-                    save(trgFile,'spikeCount','drift','info','-v7.3');
-               
+
+                    % Save combined data to trgFile
+                    save(trgFile, 'spikeCount', 'drift', 'info', '-v7.3');
+                    fprintf('Saved combined data to %s.\n', trgFile);
                 end
-                % Store meta data in the table.
+                
+                % Store the results in the DJ database
+                info = mergestruct(key,info);
                 insert(tbl,info);
-                roisPreviousPlanes =  roisPreviousPlanes+ count(sbx.PreprocessedRoi & key & ['plane= ' num2str(p)] );         
-            end % for plane      
+
+                % Clean up temporary files
+                fprintf('Cleaning up temporary files in %s.\n', tempFolder);
+                if exist(tempFolder,"dir")
+                    delete(fullfile(tempFolder, 'roi_*.mat'));
+                    rmdir(tempFolder);
+                end
+                roisPreviousPlanes =  roisPreviousPlanes+ count(sbx.PreprocessedRoi & key & ['plane= ' num2str(p)] );
+            end % for plane
+
+
             warning('on','backtrace');
             function updateMessage(x)
                 [channel,done,thisDuration] =deal(x{:});
                 if done
-                    counter= counter+1;              
+                    counter= counter+1;
                     secs = toc(tStart);
-                    eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);                    
-                    fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %.1f min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
+                    eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);
+                    fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
                 else
                     fprintf("Starting channel #%d\n",channel);
                 end
@@ -248,7 +272,9 @@ classdef Spikes < dj.Computed
         %% Function that does the deconvolution for one channel
         % This is called from either a for or parfor loop; set NS_PARFOR to
         % the number of workers or create a parpool manually to use parfor.
-        function [spk,drift, quality, nanFrac,calibratedParms,autoCal] = mlSpikeSingleRoi(signal,parms)
+        % Per-Roi Results are saved to a file in a temp folder to allow
+        % graceful recovery. 
+        function mlSpikeSingleRoi(signal,parms,roi,tempFolder)
             isNaN = isnan(signal);
             nrSamples = numel(signal);
             signal(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
@@ -285,10 +311,25 @@ classdef Spikes < dj.Computed
 
             % Convert back to spike counts at the sample rate of the fluorescence
             bins = (0:nrSamples)*parms.deconv.dt;
-            spk = histcounts(thisSpk,bins)';
+            spikeCount = histcounts(thisSpk,bins)';
             % fit - fit of the F signal at each sample - used to estimate quality
             quality = double(corr(fit(~isNaN),signal(~isNaN),Type="Pearson"));
             nanFrac = mean(isNaN);
+
+            % Store autocalibration results and other info
+            info.quality = quality;
+            info.nanfrac = nanFrac;
+            info.autocal = autoCal;
+            info.amplitude = calibratedParms.a;
+            info.tau = calibratedParms.tau;
+            info.sigma = calibratedParms.finetune.sigma;
+            info.roi = roi;
+
+            % Save results to a temporary file (using -fromstruct to allow
+            % calls from parfor loops)
+            tempFile = fullfile(tempFolder, sprintf('roi_%d.mat', roi));
+            s = struct('spikeCount',spikeCount,'drift',drift,'info',info);
+            save(tempFile, '-v7.3','-fromstruct',s);
         end
 
     end

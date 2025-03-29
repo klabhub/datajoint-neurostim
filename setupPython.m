@@ -8,6 +8,9 @@ function ok = setupPython(env)
 %
 % The conda install is determined from the NS_CONDA environment variable.
 % Set it to something like "~/miniconda3"
+%
+% On Unix python is set to OutOfProcess (the only way to avoid library
+% conflicts and segfaults in my experience)
 arguments
     env (1,1) string = "matlab" % Default env, to be created by user
 end
@@ -50,7 +53,7 @@ end
 
 % Check the outcome
 pv =pyenv();
-envLoaded = extractAfter(pv.Home,'envs/');
+envLoaded = extractAfter(pv.Home,['envs' +filesep]);
 if envLoaded ~= env
     fprintf(2,'%s could not be loaded, instead we have %s. Hoping for the best.\n',env,envLoaded);
 end

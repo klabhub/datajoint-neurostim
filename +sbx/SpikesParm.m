@@ -16,9 +16,10 @@ parms       : longblob          # struct containing all parameters used by packa
 % a , tau, and sigma are determined by autocalibration, but if that fails
 % (no isolated events) then these defaults weill be used:
 %mlParms.deconv.a = 0.07;
-% mlParms.deconv.tau  = 0.4; % Gcamp6s 1.3s but 0.8 is a typical value in
-%                               our recordings
+% mlParms.deconv.tau  = 0.4; % Gcamp6s 1.3s but autocalibration in our
+% recordings generally leads to much lower numbers. 
 % mlParms.deconv.algo.nspikemax =4;  % Allow 4 spikes per bin (15 Hz)
+% To use autocalibration; define its parameters like this:
 % mlParms.autocalibration = struct('amin',0.035,...
 %                'amax',0.2,...
 %                 'taumin',0.25,...
