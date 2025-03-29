@@ -185,7 +185,7 @@ classdef Spikes < dj.Computed
                     fprintf('Deconvolving %d channels \n',nrRoi)
                     %% Loop for/parfor per channel
                     dq = parallel.pool.DataQueue;
-                    counter = 0;     totalDuration =minutes(0);                                        
+                    counter = 0;     
                     afterEach(dq, @(x) updateMessage(x));
                     tStart = tic;
                     if isempty(pool)                        
@@ -234,7 +234,7 @@ classdef Spikes < dj.Computed
                 [channel,done,thisDuration] =deal(x{:});
                 if done
                     counter= counter+1;              
-                    secs = seconds(toc(tStart));
+                    secs = toc(tStart);
                     eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);                    
                     fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %.1f min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
                 else

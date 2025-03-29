@@ -251,25 +251,9 @@ classdef Preprocessed < dj.Computed
             end
             switch (parms.toolbox)
                 case 'suite2p'
-                    if pyenv().Status=="Loaded"
-                        % Already loaded. Because we cannot unload we have to hope that
-                        % this python has a suite2p env which may be needed
-                        % below (if the output files do not already exist)                                                
-                        conda = extractBefore(pyenv().Home,'/envs');
-                    else
-                        % Get the env from the NS_CONDA environment
-                        % variable
-                        conda = getenv('NS_CONDA');
-                        if isempty(conda)
-                            error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
-                        end
-                        if ispc
-                            pyenv(Version = fullfile(conda,'envs/suite2p/python.exe'));
-                        else
-                            pyenv(Version = fullfile(conda,'envs/suite2p/bin/python3'));
-                        end
-                    end
-
+                    setupPython("suite2p");
+                    conda = extractBefore(pyenv().Home,'/envs');
+                    
                     %% Check that each experiment used the same scaling
                     scale = [];
                     nrPlanes = [];
