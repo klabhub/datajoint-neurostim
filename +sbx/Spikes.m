@@ -156,11 +156,13 @@ classdef Spikes < dj.Computed
             sessionPath=unique(folder(ns.Experiment & key));
             dt = 1/prep.framerate;
             parms.deconv.dt = dt;
-            % Restrict rois as specified in parms.restrict
-            roiInPrep = fetch(sbx.PreprocessedRoi & key & parms.restrict,'plane','roi');
-            planes = unique([roiInPrep.plane]);
             % Do MLSpike deconvolution per roi
+            planes = unique([fetch(sbx.PreprocessedRoi & key , 'plane').plane]);
+            roisPreviousPlanes= 0;
             for p=planes(:)'
+                  % Restrict rois as specified in parms.restrict                  
+                roi = [fetch(sbx.PreprocessedRoi & key & ['plane= ' num2str(p)] & parms.restrict,'roi').roi];
+                roiIx  = roi-roisPreviousPlanes;
                 fldr = fullfile(sessionPath,prep.folder,sprintf('plane%d',p));
                 trgFile = fullfile(fldr,[key.stag '.mat']);
                 if exist(trgFile,"file")
@@ -172,9 +174,8 @@ classdef Spikes < dj.Computed
                     fprintf('Loading segmentation from %s.\n',fldr)
                     F = ndarrayToArray(py.numpy.load(fullfile(fldr,'F.npy'),allow_pickle=true));
                     Fneu = ndarrayToArray(py.numpy.load(fullfile(fldr,'Fneu.npy'),allow_pickle=true));
-                    roi = [roiInPrep.roi];                    
-                    F =F(roi,:);
-                    Fneu =Fneu(roi,:);
+                    F =F(roiIx,:);
+                    Fneu =Fneu(roiIx,:);
                     signal = F -0.7*Fneu; % Subtract neuropil
                     signal = signal'; % Rois as columns for parfor
                     [nrSamples,nrRoi] = size(signal);
@@ -222,9 +223,11 @@ classdef Spikes < dj.Computed
                     % the spike as continuous data in ns.C
                     info = mergestruct(key,info);
                     save(trgFile,'spikeCount','drift','info','-v7.3');
+               
                 end
                 % Store meta data in the table.
                 insert(tbl,info);
+                roisPreviousPlanes =  roisPreviousPlanes+ count(sbx.PreprocessedRoi & key & ['plane= ' num2str(p)] );         
             end % for plane      
             warning('on','backtrace');
             function updateMessage(x)
@@ -233,7 +236,7 @@ classdef Spikes < dj.Computed
                     counter= counter+1;              
                     secs = seconds(toc(tStart));
                     eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);                    
-                    fprintf("Deconvolution complete (%d out of %d : %s, cumulative %.1f min. ETA: %s) \n",counter,nrRoi,round(thisDuration),minutes(secs),eta);
+                    fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %.1f min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
                 else
                     fprintf("Starting channel #%d\n",channel);
                 end

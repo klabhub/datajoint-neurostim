@@ -11,24 +11,49 @@ pv = pyenv;
 if ispc
     exe = 'python.exe';
 else
-    exe = 'python';
+    exe = 'bin/python';
 end
-if isempty(pv.Version)
-    conda = getenv("NS_CONDA");
-    if ~isempty(conda) && exist(conda,'dir')
-        % Check for a conda environment called matlab.
-        f = fullfile(conda,'envs','matlab','bin',exe);
-        if exist(f,'file')
-            pv = pyenv('Version',f);
-        else
-            % Use the default install of miniconda
-            f= fullfile(conda,'bin',exe);
-            pv = pyenv('Version',f);
-        end
-    else
-        fprintf('CONDA dir %s does not exist. Define NS_CONDA.',conda);
-        f ='';
+
+envLoaded = extractAfter(pv.Home,'envs/');
+if envLoaded ~=env
+    % Change of environment
+    if pv.Status == "Loaded"  && pv.ExecutionMode =="OutOfProcess"
+        terminate(pyenv);  % Terminate the old
+        pv= pyenv;
     end
+
+    if pv.Status == "NotLoaded"
+        % Either just terminated (outtofprocess) or never loaded
+        % (inprocess) - set up new
+        conda = getenv("NS_CONDA");
+        if ~isempty(conda) && exist(conda,'dir')
+            % Check for a conda environment called matlab.
+            f = fullfile(conda,'envs',env,exe);
+            if exist(f,'file')
+                pyenv('Version',f);
+            else
+                fprintf('CONDA env %s does not exist.',env);
+                % Use the default install of miniconda
+                f= fullfile(conda,exe);
+                pyenv('Version',f);
+            end
+        else
+            fprintf('CONDA dir %s does not exist. Define NS_CONDA.',conda);
+            f ='';
+        end
+    end
+end
+
+% Check the outcome
+pv =pyenv();
+envLoaded = extractAfter(pv.Home,['envs' filesep]);
+if envLoaded ~= env
+    fprintf(2,'%s could not be loaded, instead we have %s. Hoping for the best.\n',env,envLoaded);
+end
+
+if isunix
+    % Crashing without this
+    pyenv('ExecutionMode','OutOfProcess');
 end
 
 if isempty(pv.Version)
