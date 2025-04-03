@@ -34,7 +34,7 @@ while i <= nrTpls
     
     % Double check if the submission exceeds the limit or not
     thisChunk = i:(i+currentChunkSize-1);
-    while get_mem_size(tpl(thisChunk)) > bytesPerInsert
+    while (get_mem_size(tpl(thisChunk)) > bytesPerInsert) && currentChunkSize >1
         
         currentChunkSize = currentChunkSize - 1;
         thisChunk = i:(i+currentChunkSize-1);
