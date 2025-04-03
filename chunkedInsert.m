@@ -44,6 +44,7 @@ while i <= nrTpls
     insert(tbl,tpl(thisChunk));
     
     fprintf(repmat('.',1,currentChunkSize))
+    fprintf('\n');
     if mod(i,80)==0;fprintf('\n');end
     
     i = i + currentChunkSize;  % Move to the next chunk
