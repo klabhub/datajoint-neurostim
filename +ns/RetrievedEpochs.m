@@ -373,6 +373,22 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                             case {"average"}
                             otherwise
                         end
+
+                    case "split_trials"
+
+
+                        trials = varargin{iOper}; % either n_row x 1 cell of trials or a function that outputs indices or boolean indices to select trials per group
+                        iOper = iOper + 1;
+ 
+                        col_name = varargin{iOper};
+                        iOper = iOper + 1;
+
+                        level_names = varargin{iOper};
+                        iOper = iOper + 1;
+
+                        op = ep.split_trials_(op, trials, col_name, level_names);
+
+
                 end
 
             end
@@ -629,6 +645,70 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         end
 
+        function new_data = split_trials_(data, trials, col_name, level_names)
+
+            n_levels = numel(level_names);
+
+
+
+            var_names = data.Properties.VariableNames;
+            isDataColumn = ismember(var_names,ns.RetrievedEpochs.data_columns_);
+            copy_vars = var_names(~isDataColumn);
+            data_cols = var_names(isDataColumn);
+            new_data = repelem(data(:,copy_vars),n_levels,1);
+            new_data.(col_name) = repmat(gen.make_column(level_names),height(data),1);
+            new_data(:,data_cols) = repmat(cell(1),height(new_data),1);
+
+            idx_selector = repmat({':'}, 1, ndims(data.(data_cols{1}){1}));
+
+            iRow = 1;
+            for i = 1:height(data)
+
+                for iLvl = 1:n_levels
+
+                    trlN = new_data{iRow,"trials"}{1};
+                    if isa(trials, "function_handle")
+
+                        isTrl = trials(trlN);
+                        trlN = isTrl == (iLvl-1);
+
+                    elseif isa(trials, "cell")
+
+                        trls = trials{iLvl};
+                        if isa(trls, "function_handle")
+
+                            trls = trls(trlN);
+
+                        end
+
+                        if islogical(trls)
+
+                            trlN = trls;
+
+                        else
+
+                            trlN = ismember(trlN,trls);
+
+                        end
+
+                    end
+
+                    idx_selector{1} = trlN;
+                    new_data.trials{iRow} = new_data.trials{iRow}(trlN);
+
+                    for iCol = 1:sum(isDataColumn)
+
+                        new_data(iRow, data_cols{iCol}) = {data.(data_cols{iCol}){i}(idx_selector{:})};
+                    end
+
+                    iRow = iRow + 1;
+
+                end
+
+            end
+
+
+        end
     end
-    
+
 end
