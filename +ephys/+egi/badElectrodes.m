@@ -37,8 +37,4 @@ end
 
 perExpt = struct('start',[],'stop',[],'trial',[]); % Nothing applicable to all channels
 
-
-
-
 end
-

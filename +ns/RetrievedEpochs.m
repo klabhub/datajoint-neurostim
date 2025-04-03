@@ -1,0 +1,1023 @@
+classdef RetrievedEpochs < matlab.mixin.Copyable
+%% DESCRIPTION:
+%
+% Represents a collection of epochs (time segments of neural data) retrieved
+% from an ns.Epoch data source. This class facilitates common operations
+% like data transformation (detrending, baselining, FFT, PSD, SNR),
+% subsetting (by time, channels, trials, frequency), and plotting.
+%
+% The core idea is to fetch raw epoch data based on specific criteria
+% (channels, trials, time window) and store it along with relevant metadata
+% in a table (`data`). Subsequent transformations modify this table,
+% potentially adding new data columns (e.g., 'amplitude', 'power').
+%
+%% CONSTRAINTS:
+% - The initial retrieval is based on a single ns.Epoch entry, implying
+%   epochs share common parameters like sampling rate and original time
+%   window, as asserted in the constructor.
+% - Data within each cell of the `data` table (e.g., `data.signal{i}`) is
+%   expected to have consistent dimensions initially, often
+%   (trials x channels x time). Averaging operations can collapse
+%   dimensions.
+%
+%% EXAMPLE
+%
+% ep = RetrievedEpochs(eTbl, 'channels', [*list of channels*], 'trials',
+% {[*list of trial numbers per row in eTbl*],[...],...}, 'time_window', [*
+% (1 x 2) range of timepoints to be extracted.*])
+%
+%% Inputs (Constructor)
+%   eTbl (ns.Epoch)     : A scalar ns.Epoch object specifying the data source.
+%                         Must correspond to a single unique key combination
+%                         (e.g., one etag).
+%   pv.channels (double): Optional. Vector of channel indices/IDs to retrieve.
+%                         If empty or omitted, all channels are retrieved.
+%   pv.trials (cell)    : Optional. Cell array specifying trials to retrieve
+%                         for each potential row defined by `eTbl`'s primary keys.
+%                         If empty or omitted, all valid trials are retrieved.
+%                         Since eTbl has 1 row, this should be a 1x1 cell array.
+%   pv.time_window (double): Optional. 1x2 vector [start_time, end_time]
+%                         specifying the time window within the epoch to retrieve.
+%                         If empty or omitted, uses the full epoch_win from
+%                         ns.EpochParameter.
+%
+%% Properties (Public, Protected, Dependent)
+% Public:
+%   Epoch (ns.Epoch)    : Handle to the source ns.Epoch object.
+%   EpochParameter      : Handle to the associated ns.EpochParameter object.
+%
+% Protected:
+%   data (table)        : Core data container. Rows often represent different
+%                         experimental conditions or groupings. Columns include
+%                         metadata (from ns.Epoch primary keys) and cell arrays
+%                         holding the numerical data ('signal', 'amplitude', etc.).
+%   channels (double)   : Vector of channel IDs included in the data.
+%   time_window (double): [start, end] time relevant to the current data (seconds).
+%   frequency_window (double): [start, end] frequency window (Hz) after subsetting.
+%   frequencies (double): Vector of frequency values (Hz) after FFT/PSD.
+%   trials (cell)       : {1 x n_rows} cell array. Trial numbers for each row.
+% Dependent:
+%   timepoints (double) : Vector of time points for the data's time axis (seconds).
+%   epoch_window (double): Original [start, end] epoch window from EpochParameter (seconds).
+%   dt (double)         : Time step / sampling interval (seconds).
+%   n_rows (double)     : Number of rows in the `data` table.
+%
+%% Methods (Key Public with Examples)
+%   RetrievedEpochs     : Constructor - Initializes object and retrieves data.
+%       Example: 
+%           myEpoch = ns.Epoch & 'subject="S1"' & 'etag="VisualStim"';
+%           rp = ns.RetrievedEpochs(myEpoch, channels=[1, 5, 10], time_window=[-0.5, 1.5]);
+%
+%   transform           : Applies data processing steps (detrend, baseline, FFT, etc.).
+%       Examples:
+%           rp = rp.transform('detrend'); 
+%           rp = rp.transform('baseline', [-0.2, 0]); % Baseline correct using -200ms to 0ms
+%           rp = rp.transform('average', 'trials'); % Average across trials
+%           rp = rp.transform('pad', 'zero', 2048, 'psd', 'sfreq', rp.Epoch.sfreq, 'options', {{'Method','welch'}}); % Pad, then Welch PSD
+%           rp = rp.transform('fft', 'sfreq', 1000, 'snr', 'amplitude', 'neighbors', 5); % FFT, then SNR on amplitude using +/- 5 neighbors
+%           rp = rp.transform('split_trials', @(t) mod(t,2), 'Parity', {'Even','Odd'}); % Split by trial parity
+%   subset              : Selects a subset of data based on criteria.
+%       Example: 
+%           subset_criteria.time_window = [0, 1.0];
+%           subset_criteria.channels = [1, 5];
+%           subset_criteria.frequency_window = [10, 30]; % Only if FFT/PSD done
+%           subset_criteria.trials = {[1:10]}; % Assuming 1 row, select trials 1-10
+%           rp = rp.subset(subset_criteria);
+%   insert              : Adds new columns to the `data` table.
+%       Example:
+%           labels = {'ConditionA'}; % Assuming rp has 1 row currently
+%           rp = rp.insert('ConditionLabel', labels);
+%   plot                : Visualizes the data (e.g., signal vs. time, power vs. frequency).
+%       Examples:
+%           rp.plot('signal'); % Plot signal vs time
+%           rp.plot('power', 'xlim', [5, 50], 'ylim', 'scale_figure'); % Plot power (5-50Hz), scale figures identically
+%           rp.plot('amplitude', 'collate', 'subject'); % Plot amplitude, arrange figures by subject into one window
+
+    properties
+
+        Epoch (1,1) ns.Epoch
+        EpochParameter (1,1) ns.EpochParameter        
+
+    end
+
+    properties (SetAccess = protected)
+
+        data table
+        channels (1,:) double = []
+        time_window double = []
+        frequency_window = []
+        frequencies
+        trials = {}
+
+    end
+
+    properties (Dependent)
+
+        timepoints
+        epoch_window
+        dt
+        n_rows
+
+    end
+
+    properties (Hidden)
+
+        isPadded_ = false
+        pad_filler_ = 'zeros';
+        signal_length_after_padding_
+        transform_steps_ = {}
+        dimensions_ = struct(trials=1, channels=2, time=3, frequency=3)
+
+    end
+
+    properties (Hidden, Constant)
+
+        separate_figure_by_levels_ = ["ctag", "etag", "dimension", "subject"]
+        data_columns_ = ["signal", "amplitude", "power", "snr"]
+
+    end
+
+    methods
+
+        function ep = RetrievedEpochs(eTbl, pv)
+
+            arguments
+
+                eTbl (1,1) ns.Epoch
+
+                pv.channels = [] % if empty all channels
+                pv.trials = {} % if empty, all trials
+                pv.time_window = [];
+
+            end
+
+            ep.Epoch = eTbl;
+            ep.EpochParameter = ns.EpochParameter & eTbl;
+            if isempty(pv.time_window)
+
+                pv.time_window = ep.EpochParameter.epoch_win;
+
+            end
+
+            assert(ep.EpochParameter.nrows == 1, ...
+                "retrieve(ns.Epoch,...) is designed for compatible epoch structures corresponding to a single etag.")
+
+            ep.channels = pv.channels;
+            ep.time_window = pv.time_window;
+            ep.trials = pv.trials;
+            ep.retrieve;
+
+
+        end
+
+        function ep = transform(ep, varargin)
+
+
+            op = ep.data;
+
+            iOper = 1;
+            while iOper <= nargin-1
+
+                argN = varargin{iOper};
+                iOper = iOper + 1;
+                switch lower(argN)
+
+                    case "detrend"
+
+                        op.signal = cellfun(@(x) gen.make_row(squeeze(ep.detrend_(x, ndims(op.signal)))), op.signal, 'UniformOutput', false);
+
+                    case "baseline"
+
+                        restricter.time_window = varargin{iOper + 1};
+                        iOper = iOper + 1;
+
+                        baselineN = ep.copy().subset(restricter).apply('signal', @mean, ep.dimensions_.time);
+
+                        ep.signal = arrayfun(@(i) ep.signal{i} - baselineN.signal{i}, 1:ep.n_rows, 'UniformOutput', false);
+
+                    case "subset"
+
+                        restricter = varargin{iOper};
+                        if ~isstruct(restricter) || ~any(isfield(restricter,["trials", "channels", "time_window", "frequency_window"]))
+
+                            error("'subset' command needs to be followed by a (1x1) structure array containing some or all of the following fieldL 'trials', 'channels', 'time_window'")
+                        else
+                            iOper = iOper + 1;
+                        end
+
+                        ep = ep.subset(restricter);
+
+                    case "average"
+
+                        subargN = varargin{iOper};
+                        iOper = iOper + 1;
+                        switch lower(subargN)
+
+                            case 'trials'
+
+                                assert(~isnan(ep.dimensions_.trials), "Trials were already collapsed.")
+                                avg_dim = ep.dimensions_.trials;
+                                ep.dimensions_.trials = NaN;
+                                if ~isnan(ep.dimensions_.channels)
+                                    ep.dimensions_.channels = 1;
+                                end
+                                ep.dimensions_.time = 2;
+
+                            case 'channels'
+
+                                assert(~isnan(ep.dimensions_.channels), "Channels were already collapsed.")
+                                avg_dim = ep.dimensions_.channel;
+                                ep.dimensions_.channels = NaN;
+                                ep.dimensions_.time = 2;
+
+                            case 'all'
+
+                                assert(~any(isnan([ep.dimensions_.channels, ep.dimensions_.trials])), "Channels and/or trials were already collapsed.")
+                                avg_dim = [ep.dimensions_.trials, ep.dimensions_.channels];
+                                ep.dimensions_.trials = NaN;
+                                ep.dimensions_.channels = NaN;
+                                ep.dimensions_.time = 2;
+
+                        end
+
+                        op.signal = cellfun(@(x) gen.make_row(squeeze(mean(x, avg_dim, 'omitmissing'))), op.signal, 'UniformOutput', false);
+
+                    case "pad"
+
+                        subargN = varargin{iOper};
+                        iOper = iOper + 1;
+                        ep.isPadded_ = true;
+
+                        switch lower(subargN)
+
+                            case {'nan', 'nans'}
+
+                                ep.pad_filler_ = NaN;
+
+                            case {'zero', 'zeros'}
+
+                                ep.pad_filler_ = 0;
+
+                            otherwise
+
+                                error('Epoch signal can only be padded with "zero" or "nan".');
+
+                        end
+
+                        ep.signal_length_after_padding_ = varargin{iOper};
+                        iOper = iOper + 1;
+                        assert(isnumeric(ep.signal_length_after_padding_), 'Pad length must be numeric and given as the 3rd input following the input "pad".');
+
+                    case "window"
+                    case "fft"
+
+                        sfreq = varargin{iOper};
+                        iOper = iOper + 1;
+                        if ~isnumeric(sfreq) && strcmp(sfreq, "sfreq")
+                            sfreq = varargin{iOper};
+                            iOper = iOper + 1;
+                        end
+
+                        if ep.isPadded_
+
+                            tmp_signal = cellfun(@(x) paddata(x, ep.signal_length_after_padding_, Side='Both', FillValue=ep.pad_filler_, Dimension=ndims(x)), ...
+                                op.signal, 'UniformOutput', false);
+
+                        else
+
+                            tmp_signal = op.signal;
+
+                        end
+
+                        for i = 1:height(op)
+
+                            [op.amplitude{i}, op.phase{i}, fqN] = ep.do_fft(tmp_signal{i}, sfreq, ndims(tmp_signal{i}));
+
+                        end
+
+                        ep.frequencies = fqN;
+
+                    case "psd"
+
+                        sfreq = varargin{iOper};
+                        iOper = iOper + 1;
+                        if ~isnumeric(sfreq) && strcmp(sfreq, "sfreq")
+                            sfreq = varargin{iOper};
+                            iOper = iOper + 1;
+                        end
+
+                        if nargin > iOper
+                            opts = varargin{iOper};
+                            if strcmp(opts, "options")
+
+                                opts = varargin{iOper+1};
+                                iOper = iOper + 2;
+                            end
+
+                        else
+                            opts = {};
+                        end
+
+                        if ep.isPadded_
+
+                            tmp_signal = cellfun(@(x) paddata(x, ep.signal_length_after_padding_, Side='Both', FillValue=ep.pad_filler_, Dimension=ndims(x)), ...
+                                op.signal, 'UniformOutput', false);
+
+                        else
+
+                            tmp_signal = op.signal;
+
+                        end
+
+                        for i = 1:height(op)
+
+                            [op.power{i}, fqN] = ep.do_psd(tmp_signal{i}, sfreq, ndims(tmp_signal{i}), opts{:});
+
+                        end
+
+                        ep.frequencies = fqN;
+
+                    case "snr"
+
+                        by_var = varargin{iOper};
+                        if ~ismember(by_var, ["amplitude", "power"])
+                            by_var = "amplitude";
+                            if ~ismember(by_var, op.Properties.VariableNames)
+                                by_var = "power";
+                            end
+                        else
+                            iOper = iOper + 1;
+                        end
+
+                        subargN = varargin{iOper};
+                        iOper = iOper + 1;
+                        switch lower(subargN)
+                            case {"neighbors"}
+
+                                n_bins = varargin{iOper};
+                                iOper = iOper + 1;
+
+                                op.snr = cellfun(@(x) ...
+                                    gen.apply_func_along_dimension(x, ndims(x), @ep.divide_by_n_neighbor_, n_bins), ...
+                                    op.(by_var), 'UniformOutput', false);
+
+                            case {"medfilt", "median"}
+
+                                n_bins = varargin{iOper};
+                                iOper = iOper + 1;
+
+                                op.snr = cellfun(@(x) ...
+                                    gen.apply_func_along_dimension(x, ndims(x), @ep.divide_by_medfilt_, n_bins), ...
+                                    op.(by_var), 'UniformOutput', false);
+
+                            case {"average"}
+                            otherwise
+                        end
+
+                    case "split_trials"
+
+
+                        trials = varargin{iOper}; % either n_row x 1 cell of trials or a function that outputs indices or boolean indices to select trials per group
+                        iOper = iOper + 1;
+ 
+                        col_name = varargin{iOper};
+                        iOper = iOper + 1;
+
+                        level_names = varargin{iOper};
+                        iOper = iOper + 1;
+
+                        op = ep.split_trials_(op, trials, col_name, level_names);
+
+
+                end
+
+            end
+
+            ep.data = op;
+
+            isFunc = cellfun(@(x) isa(x, 'function_handle'), varargin);
+            for i = 1:length(isFunc)
+                if ~any(isFunc)
+                    break;
+                elseif isFunc(i)
+
+                    varargin{i} = func2str(varargin{i});
+                    
+                end
+
+            end
+            ep.transform_steps_ = [ep.transform_steps_{:}, varargin{:}];
+
+        end
+
+        function ep = subset(ep, restricter)
+
+            arguments
+
+                ep
+                restricter struct
+
+            end
+
+
+            dat = ep.data;
+
+            restricter_fields = ["trials", "channels", "time_window", "frequency_window"];
+
+            for rN = restricter_fields
+
+                if ~isfield(restricter, rN)
+
+                    restricter.(rN) = [];
+
+                end
+
+            end
+
+            idx_selector = repmat({':'}, 1, ndims(dat.signal{1}));
+
+            if ~isempty(restricter.trials)
+
+                idx_selectorN = idx_selector;
+
+                if length(restricter.trials) == height(dat)
+
+                    for i = 1:height(dat)
+
+                        if ~isempty(restricter.trials{i})
+
+                            assert(~isnan(ep.dimensions_.trials), "The data structure was collapsed across trials.");
+
+                            idx_selectorN{ep.dimensions_.trials} = ismember(dat.trials{i}, restricter.trials{i});
+                            assert(any(idx_selectorN{ep.dimensions_.trials}), "Selected trials do not exist in the data.")
+
+                            for colN = ep.data_columns_
+
+                                if ismember(colN, dat.Properties.VariableNames)
+                                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
+                                end
+
+                            end
+
+                            dat.trials{i} = restricter.trials{i};
+
+                        end
+
+                    end
+
+                else
+
+                    error("'trials' must be a {1 x nrows} cell array.")
+
+                end
+
+            end
+
+            if ~isempty(restricter.channels)
+
+                idx_selectorN = idx_selector;
+                assert(~isnan(ep.dimensions_.channels), "The data structure was collapsed across channels.");
+                idx_selectorN{ep.dimensions_.channels} = ismember(ep.channels, restricter.channels);
+                assert(all(idx_selectorN{ep.dimensions_.channels}), "Selected channels do not exist in the data.")
+                for colN = ep.data_columns_
+
+                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
+
+                end
+
+                ep.channels = restricter.channels;
+
+            end
+
+            if ~isempty(restricter.time_window)
+
+                assert(all(gen.iswithin(restricter.time_window, ep.time_window)), "Selected time window is out of range in the existing data.")
+
+
+                isT = gen.iswithin(ep.timepoints, restricter.time_window);
+                idx_selectorN = idx_selector;
+                idx_selectorN{ep.dimensions_.time} = isT;
+                dat.signal{i} = dat.signal{i}(idx_selectorN{:});
+
+            end
+
+            if ~isempty(restricter.frequency_window)
+
+                assert(all(gen.iswithin(restricter.frequency_window, gen.range(ep.frequencies))), "Selected time window is out of range in the existing data.")
+
+
+                isFq = gen.iswithin(ep.frequencies, restricter.frequency_window);
+                idx_selectorN = idx_selector;
+                idx_selectorN{ep.dimensions_.frequency} = isFq;
+                for colN = ep.data_columns_(2:end)
+
+                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
+
+                end
+
+                ep.frequencies = ep.frequencies(isFq);
+
+            end
+
+            ep.data = dat;
+
+        end
+
+        function ep = insert(ep, varargin)
+
+            n_arg = nargin-1;
+
+            for whArg = 1:2:n_arg
+
+                ep.data.(varargin{whArg}) = varargin{whArg+1};
+
+            end
+
+        end
+
+        function n = get.n_rows(ep)
+
+            n = height(ep.data);
+
+        end
+
+        function win = get.epoch_window(ep)
+
+            win = ep.EpochParameter.epoch_win;
+
+        end
+
+        function dt = get.dt(ep)
+
+            dt = ep.Epoch.dt;
+
+        end
+
+        function t = get.timepoints(ep)
+
+            win = ep.epoch_window;
+
+            t = win(1):ep.dt:win(2);
+
+            t = t(gen.ifwithin(t, ep.time_window));
+
+        end
+
+        function plot(ep, y, varargin)
+
+
+            x_lim = false;
+            y_lim = "scale_plot";
+            isCollate = false;
+
+            n_arg = nargin - 3;
+
+            whArg = 1;
+            while whArg <= n_arg
+
+                argN = varargin{whArg};
+                whArg = whArg + 1;
+
+                switch argN
+
+                    case "xlim"
+
+                        subargN = varargin{whArg};
+                        whArg = whArg + 1;
+
+                        if isnumeric(subargN)
+
+                            x_lim = subargN;
+
+                        end
+
+                    case "ylim"
+
+                        subargN = varargin{whArg};
+                        whArg = whArg + 1;
+
+                        y_lim = subargN;
+
+                    case "collate"
+
+                        collate_by = string(varargin{whArg}); %by which variable
+                        n_coll_var = length(collate_by);
+                        whArg = whArg + 1;
+                        assert(n_coll_var<=2, "Only 1 or 2 variables/columns are collateable.");
+                        isCollate = true;
+
+                end
+
+            end
+
+            if strcmp(y, "signal")
+
+                x_label = "Time (milliseconds)";
+                x = "timepoints";
+                y_label = "$\muV$";
+
+            else
+
+                x = "frequencies";
+                x_label = "Frequency (Hz)";
+
+            end
+
+            if strcmp(y, "amplitude")
+                y_label = "Amplitude (\muV)";
+
+            elseif strcmp(y, "phase")
+                y_label = "Phase angle (radians)";
+            elseif strcmp(y, "power")
+                y_label = "Power (\muV^2)";
+            elseif strcmp(y, "snr")
+                y_label = "SNR";
+            end
+
+            datN = ep.data;
+
+            x = ep.(x);
+
+            separate_figs_by = intersect(lower(datN.Properties.VariableNames), ep.separate_figure_by_levels_);
+            n_figs_by_dim = varfun(@(x) length(unique(x)), datN(:,separate_figs_by), 'OutputFormat','uniform');
+            n_figs = prod(n_figs_by_dim);
+
+            n_subplot = length(unique(datN.name));
+
+            ax = squeeze(cell([n_figs_by_dim, n_subplot, 1]));
+            figs = squeeze(cell([n_figs_by_dim, 1]));
+            fig_subsN  = squeeze(cell(size(n_figs_by_dim)));
+            if numel(n_figs_by_dim) ==1, n_figs_by_dim = [n_figs_by_dim, 1]; end
+
+            for iFig = 1:n_figs
+
+                [fig_subsN{:}] = ind2sub(n_figs_by_dim, iFig);
+                figs{fig_subsN{:}} = figure('Visible', 'off');
+                tileN = tiledlayout(figs{fig_subsN{:}},n_subplot, 1, 'TileSpacing', 'loose', 'Padding', 'compact');
+
+                datN = ep.data((1:n_subplot) + (iFig-1)*n_subplot,:);
+                for iSp = 1:n_subplot
+
+                    axN = nexttile(tileN);
+
+
+                    if ~isempty(datN.(y){iSp})
+                        n_rows = size(datN.(y){iSp}, 1);
+                        for j = 1:n_rows
+                            plot(axN, x, squeeze(datN.(y){iSp}(j, :)), 'LineWidth', 1.5);
+                            hold(axN, 'on');
+                        end
+
+                        if isnumeric(x_lim)
+
+                            xlim(axN, x_lim);
+
+                        end
+
+
+                        hold(axN, 'off');
+                    else
+                        plot(axN, NaN, NaN);
+                    end
+                    if iSp < n_subplot, set(axN, 'XTick',[], 'XTickLabel',[]); end
+                    title(axN, datN.name{iSp}, 'Interpreter', 'latex');
+
+                    ax{fig_subsN{:}, iSp} = axN;
+                end
+
+                if strcmp(y_lim, "scale_figure")
+
+                    y_scale = vertcat(datN.(y){:});
+                    if isnumeric(x_lim)
+                        y_scale = y_scale(:, gen.ifwithin(x,x_lim));
+                    end
+                    y_limN = gen.range(y_scale,'all');
+                    cellfun(@(axN) ylim(axN, y_limN), ax(fig_subsN{:},:));
+
+                end
+
+                if isnumeric(y_lim)
+
+                    cellfun(@(axN) ylim(axN, y_lim), ax(fig_subsN{:},:));
+
+                end
+
+
+                ylabel(tileN, y_label);
+                xlabel(tileN, x_label, 'Interpreter', 'latex');
+                fig_titleN = join(arrayfun(@(col) sprintf("%s: %s", col, datN.(col){1}), separate_figs_by),",   ");
+                title(tileN, fig_titleN);
+
+            end
+
+            if isCollate
+
+                if n_coll_var == 1
+
+                    % sp_size = gen.get_closest_integer_dividers(n_figs);
+                    sp_size = [round(sqrt(n_figs)), ceil(sqrt(n_figs))];
+                    new_figs = cell(sp_size);
+
+                    new_figs(1:numel(figs)) = figs(:);
+                    new_ax = [ax; cell([prod(sp_size)-length(ax),n_subplot])];
+                    new_ax = reshape(new_ax,[sp_size, n_subplot]);
+                    ax = new_ax;
+                    figs = new_figs;
+
+
+
+                elseif n_coll_var == 2
+
+                    sp_dim_order = arrayfun(@(x) find(ismember(separate_figs_by, x)), collate_by);
+                    figs = permute(figs,sp_dim_order);
+
+
+                end
+
+                newFig = gen.combine_figures_into_subplots(figs, ax);
+
+            else
+
+                cellfun(@(figN) set(figN, 'Visible','on'), figs);
+
+
+            end
+        end
+    end
+
+    methods (Access = protected)
+
+        function ep = retrieve(ep)
+
+            eTbl = ep.Epoch;
+            primary_keys = fetchtable(eTbl);
+            uniq_keys = varfun(@(x) unique(x), primary_keys, 'OutputFormat', 'cell');
+            n_uniq_keys = cellfun(@(x) length(unique(x)), uniq_keys);
+            isDimExpand = n_uniq_keys ~= 1;
+
+            op = table('Size', [height(primary_keys), sum(isDimExpand) + 1], ...
+                'VariableTypes', [primary_keys.Properties.VariableTypes(isDimExpand), "cell"], ...
+                'VariableNames', [primary_keys.Properties.VariableNames(isDimExpand), "signal"]);
+
+            n_rows = height(primary_keys);
+
+            if sum(isDimExpand)
+
+                op(:, 1:sum(isDimExpand)) = primary_keys(:, isDimExpand);
+
+            end
+
+            for iKey = 1:n_rows
+
+                qryN = table2struct(primary_keys(iKey,:));
+
+                isValidN = ~isinf(getfield(fetch(ns.Epoch & qryN,'event_onset'),'event_onset')); % inf indicates that the trial was not shown
+                trialsN = getfield(fetch(ns.DimensionCondition & ep.Epoch & qryN, 'trials'), 'trials'); % the actual trial numbers
+
+                if ~isempty(ep.channels)
+                    channel_qryN = sprintf("channel in (%s)", join(string(ep.channels),","));
+                else
+                    channel_qryN = '';
+                end
+
+                % fetch data
+
+                t_fetch = gen.Timer().start("Fetching epochs: %d of % d\n", iKey, n_rows);
+                if isempty(channel_qryN)
+                    datN = fetch(ns.EpochChannel & ep & qryN, 'signal');
+                else
+                    datN = fetch(ns.EpochChannel & ep & qryN & channel_qryN, 'signal');
+                end
+
+                t_fetch.stop("\t Fetching is complete. ");
+                t_fetch.report();
+
+                if ~isempty(ep.trials)
+
+                    trials2fetch = intersect(ep.trials{iKey}, trialsN(isValidN));
+                    isFetchTrials = ismember(trialsN(isValidN),trials2fetch);
+
+                else
+
+                    trials2fetch = trialsN(isValidN);
+                    isFetchTrials = ones(1,sum(isValidN))==1;
+
+                end
+
+
+                datN = cat(3, datN(:).signal); % trial by timepoint by channel
+                datN = permute(datN,[1, 3, 2]); % trial by channel by timepoint
+                datN = datN(isFetchTrials,:,:);
+
+                isT = ep.timepoints >= ep.time_window(1) & ep.timepoints <= ep.time_window(2);
+
+                op.trials{iKey} = trials2fetch;
+                op.signal{iKey} = datN(:,:,isT);
+
+            end
+
+            ep.data = op;
+
+        end
+
+        function ep = apply(ep, var, func, varargin)
+
+            for i = 1:ep.n_rows
+
+                ep.(var){i} = func(ep.var{i}, varargin{:});
+
+            end
+
+        end
+
+        function ep = apply_func2rows(ep, func, varargin)
+
+            for i = 1:ep.n_rows
+
+                ep(i,:) = func(ep(i,:), varargin{:});
+
+            end
+
+        end
+
+
+
+    end
+
+    methods (Access = protected, Static)
+
+        function [pow, frequencies] = do_psd(dat, fs, iDim, varargin)
+
+            dim_size = size(dat);
+            dim_size(iDim) = 1;
+            slice_idx = arrayfun(@(x) 1:x, dim_size, 'UniformOutput',false);
+            slice_idx{iDim} = ':';
+            slice_idx = table2cell(combinations(slice_idx{:}));
+
+            [pow, frequencies] = gen.apply_func_along_dimension(dat, iDim, @pspectrum, fs, varargin{:});
+
+            select_idx = repmat({1},1, ndims(pow));
+            select_idx{iDim} = ':';
+            frequencies = squeeze(frequencies(select_idx{:}))';
+
+
+        end
+
+        function [amplitude, phase, frequencies] = do_fft(data, fs, n)
+            % fftSliceReal - Computes FFT amplitude and phase for each slice along the n'th dimension.
+            %                Only includes real frequencies.
+            %
+            % Inputs:
+            %   data: Input multi-dimensional data.
+            %   n: Dimension along which to slice and compute FFT.
+            %   fs: Sampling frequency (optional, default is 1).
+            %
+            % Outputs:
+            %   amplitude: Amplitude of the FFT.
+            %   phase: Phase of the FFT.
+            %   frequencies: Corresponding real frequencies.
+
+            n_dim = ndims(data);
+
+            % Compute FFT for each slice
+            fftResult = fft(data, [], n_dim);
+
+            idx = repmat({':'},1,n_dim);
+            % Calculate real frequencies
+            N = size(data, n);
+            if mod(N, 2) == 0
+                frequencies = (0:N/2) * fs / N;
+                idx{n_dim} = 1:N/2+1;
+            else
+                frequencies = (0:(N-1)/2) * fs / N;
+                idx{n_dim} = 1:(N+1)/2;
+            end
+
+            amplitude = 2*abs(fftResult(idx{:})/sqrt(N));
+            phase = angle(fftResult(idx{:}));
+
+
+        end
+
+        function A = detrend_(A, dim)
+
+            A = gen.apply_func_along_dimension(A,ndims(A),@detrend);
+            return
+
+            % A: Input array
+
+            % Get the number of dimensions
+            n_dims = ndims(A);
+            if n_dims == 2, A = detrend(A); return; end
+
+            % Create the permutation order
+            perm_order = 1:n_dims;
+            perm_order([dim, n_dims]) = perm_order([n_dims, dim]);
+
+            % Permute the array
+            A = permute(A, perm_order);
+
+            % Detrend along the last dimension
+            A = detrend(A);
+
+            % Permute back to the original order
+            A = permute(A, perm_order);
+
+        end
+
+        function denoised_vec = divide_by_n_neighbor_(vec, n)
+
+            len = length(vec);
+            noise_vec = zeros(size(vec));
+
+            for i = 1:len
+
+                if i <= n || i > len - n
+
+                    noise_vec(i) = NaN;
+
+                else
+
+                    noise_vec(i) = mean(vec([(i-n):(i-1), (i+1):(i+n)]));
+
+                end
+
+            end
+
+            denoised_vec = vec./noise_vec;
+
+        end
+
+        function denoised_vec = divide_by_medfilt_(vec, n)
+
+            denoised_vec = vec ./ medfilt1(vec, n, 'truncate');
+
+        end
+
+        function new_data = split_trials_(data, trials, col_name, level_names)
+
+            n_levels = numel(level_names);
+
+
+
+            var_names = data.Properties.VariableNames;
+            isDataColumn = ismember(var_names,ns.RetrievedEpochs.data_columns_);
+            copy_vars = var_names(~isDataColumn);
+            data_cols = var_names(isDataColumn);
+            new_data = repelem(data(:,copy_vars),n_levels,1);
+            new_data.(col_name) = repmat(gen.make_column(level_names),height(data),1);
+            new_data(:,data_cols) = repmat(cell(1),height(new_data),1);
+
+            idx_selector = repmat({':'}, 1, ndims(data.(data_cols{1}){1}));
+
+            iRow = 1;
+            for i = 1:height(data)
+
+                for iLvl = 1:n_levels
+
+                    trlN = new_data{iRow,"trials"}{1};
+                    if isa(trials, "function_handle")
+
+                        isTrl = trials(trlN);
+                        trlN = isTrl == (iLvl-1);
+
+                    elseif isa(trials, "cell")
+
+                        trls = trials{iLvl};
+                        if isa(trls, "function_handle")
+
+                            trls = trls(trlN);
+
+                        end
+
+                        if islogical(trls)
+
+                            trlN = trls;
+
+                        else
+
+                            trlN = ismember(trlN,trls);
+
+                        end
+
+                    end
+
+                    idx_selector{1} = trlN;
+                    new_data.trials{iRow} = new_data.trials{iRow}(trlN);
+
+                    for iCol = 1:sum(isDataColumn)
+
+                        new_data(iRow, data_cols{iCol}) = {data.(data_cols{iCol}){i}(idx_selector{:})};
+                    end
+
+                    iRow = iRow + 1;
+
+                end
+
+            end
+
+
+        end
+    end
+
+end

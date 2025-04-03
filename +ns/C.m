@@ -773,7 +773,8 @@ classdef C< dj.Computed
                         for epoch = 1:numel(exptArtifacts(art).start)
                             isArtifact = isArtifact | (t>=exptArtifacts(art).start(epoch) & t<=exptArtifacts(art).stop(epoch));
                         end
-                        signal(isArtifact,:) = NaN; end
+                        signal(isArtifact,:) = NaN; 
+                    end
                 end
 
                 % Artifacts found in individual channels
