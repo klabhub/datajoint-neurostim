@@ -563,7 +563,76 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         end
 
-        function plot(ep, x, y, varargin)
+        function plot(ep, y, varargin)
+
+
+            x_lim = false;
+            y_lim = "scale_plot";
+            isCollate = false;
+
+            n_arg = nargin - 3;
+
+            whArg = 1;
+            while whArg <= n_arg
+
+                argN = varargin{whArg};
+                whArg = whArg + 1;
+
+                switch argN
+
+                    case "xlim"
+
+                        subargN = varargin{whArg};
+                        whArg = whArg + 1;
+
+                        if isnumeric(subargN)
+
+                            x_lim = subargN;
+
+                        end
+
+                    case "ylim"
+
+                        subargN = varargin{whArg};
+                        whArg = whArg + 1;
+
+                        y_lim = subargN;
+
+                    case "collate"
+
+                        collate_by = string(varargin{whArg}); %by which variable
+                        n_coll_var = length(collate_by);
+                        whArg = whArg + 1;
+                        assert(n_coll_var<=2, "Only 1 or 2 variables/columns are collateable.");
+                        isCollate = true;
+
+                end
+
+            end
+
+            if strcmp(y, "signal")
+
+                x_label = "Time (milliseconds)";
+                x = "timepoints";
+                y_label = "$\muV$";
+
+            else
+
+                x = "frequencies";
+                x_label = "Frequency (Hz)";
+
+            end
+
+            if strcmp(y, "amplitude")
+                y_label = "Amplitude (\muV)";
+
+            elseif strcmp(y, "phase")
+                y_label = "Phase angle (radians)";
+            elseif strcmp(y, "power")
+                y_label = "Power (\muV^2)";
+            elseif strcmp(y, "snr")
+                y_label = "SNR";
+            end
 
             datN = ep.data;
 
@@ -575,27 +644,102 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
             n_subplot = length(unique(datN.name));
 
+            ax = squeeze(cell([n_figs_by_dim, n_subplot, 1]));
+            figs = squeeze(cell([n_figs_by_dim, 1]));
+            fig_subsN  = squeeze(cell(size(n_figs_by_dim)));
+            if numel(n_figs_by_dim) ==1, n_figs_by_dim = [n_figs_by_dim, 1]; end
+
             for iFig = 1:n_figs
 
-                figure;
-                tileN = tiledlayout(n_subplot, 1, 'TileSpacing', 'none', 'Padding', 'none');
+                [fig_subsN{:}] = ind2sub(n_figs_by_dim, iFig);
+                figs{fig_subsN{:}} = figure('Visible', 'off');
+                tileN = tiledlayout(figs{fig_subsN{:}},n_subplot, 1, 'TileSpacing', 'loose', 'Padding', 'compact');
 
+                datN = ep.data((1:n_subplot) + (iFig-1)*n_subplot,:);
                 for iSp = 1:n_subplot
 
                     axN = nexttile(tileN);
+
+
                     if ~isempty(datN.(y){iSp})
                         n_rows = size(datN.(y){iSp}, 1);
                         for j = 1:n_rows
                             plot(axN, x, squeeze(datN.(y){iSp}(j, :)), 'LineWidth', 1.5);
                             hold(axN, 'on');
                         end
+
+                        if isnumeric(x_lim)
+
+                            xlim(axN, x_lim);
+
+                        end
+
+
                         hold(axN, 'off');
                     else
                         plot(axN, NaN, NaN);
                     end
+                    if iSp < n_subplot, set(axN, 'XTick',[], 'XTickLabel',[]); end
+                    title(axN, datN.name{iSp}, 'Interpreter', 'latex');
+
+                    ax{fig_subsN{:}, iSp} = axN;
+                end
+
+                if strcmp(y_lim, "scale_figure")
+
+                    y_scale = vertcat(datN.(y){:});
+                    if isnumeric(x_lim)
+                        y_scale = y_scale(:, gen.ifwithin(x,x_lim));
+                    end
+                    y_limN = gen.range(y_scale,'all');
+                    cellfun(@(axN) ylim(axN, y_limN), ax(fig_subsN{:},:));
+
+                end
+
+                if isnumeric(y_lim)
+
+                    cellfun(@(axN) ylim(axN, y_lim), ax(fig_subsN{:},:));
+
+                end
+
+
+                ylabel(tileN, y_label);
+                xlabel(tileN, x_label, 'Interpreter', 'latex');
+                fig_titleN = join(arrayfun(@(col) sprintf("%s: %s", col, datN.(col){1}), separate_figs_by),",   ");
+                title(tileN, fig_titleN);
+
+            end
+
+            if isCollate
+
+                if n_coll_var == 1
+
+                    % sp_size = gen.get_closest_integer_dividers(n_figs);
+                    sp_size = [round(sqrt(n_figs)), ceil(sqrt(n_figs))];
+                    new_figs = cell(sp_size);
+
+                    new_figs(1:numel(figs)) = figs(:);
+                    new_ax = [ax; cell([prod(sp_size)-length(ax),n_subplot])];
+                    new_ax = reshape(new_ax,[sp_size, n_subplot]);
+                    ax = new_ax;
+                    figs = new_figs;
+
+
+
+                elseif n_coll_var == 2
+
+                    sp_dim_order = arrayfun(@(x) find(ismember(separate_figs_by, x)), collate_by);
+                    figs = permute(figs,sp_dim_order);
 
 
                 end
+
+                newFig = gen.combine_figures_into_subplots(figs, ax);
+
+            else
+
+                cellfun(@(figN) set(figN, 'Visible','on'), figs);
+
 
             end
         end
@@ -634,6 +778,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 if ~isempty(ep.channels)
                     channel_qryN = sprintf("channel in (%s)", join(string(ep.channels),","));
                 else 
+                else
                     channel_qryN = '';
                 end
 
@@ -666,8 +811,8 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 datN = permute(datN,[1, 3, 2]); % trial by channel by timepoint
                 datN = datN(isFetchTrials,:,:);
 
-                isT = ep.timepoints >= ep.time_win(1) & ep.timepoints <= ep.time_win(2);
-                
+                isT = ep.timepoints >= ep.time_window(1) & ep.timepoints <= ep.time_window(2);
+
                 op.trials{iKey} = trials2fetch;
                 op.signal{iKey} = datN(:,:,isT);
 
@@ -675,7 +820,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
             ep.data = op;
 
-        end     
+        end
 
     end
 
