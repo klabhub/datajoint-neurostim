@@ -96,21 +96,27 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
     properties
 
         Epoch (1,1) ns.Epoch
-        EpochParameter (1,1) ns.EpochParameter
+        EpochParameter (1,1) ns.EpochParameter        
+
+    end
+
+    properties (SetAccess = protected)
+
         data table
         channels (1,:) double = []
-        time_win double = []        
-        trials = {}
-
+        time_window double = []
+        frequency_window = []
         frequencies
+        trials = {}
 
     end
 
     properties (Dependent)
 
         timepoints
-        epoch_win
+        epoch_window
         dt
+        n_rows
 
     end
 
@@ -120,12 +126,14 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
         pad_filler_ = 'zeros';
         signal_length_after_padding_
         transform_steps_ = {}
+        dimensions_ = struct(trials=1, channels=2, time=3, frequency=3)
 
     end
 
     properties (Hidden, Constant)
 
         separate_figure_by_levels_ = ["ctag", "etag", "dimension", "subject"]
+        data_columns_ = ["signal", "amplitude", "power", "snr"]
 
     end
 
@@ -150,21 +158,21 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 pv.time_window = ep.EpochParameter.epoch_win;
 
             end
-            
+
             assert(ep.EpochParameter.nrows == 1, ...
                 "retrieve(ns.Epoch,...) is designed for compatible epoch structures corresponding to a single etag.")
 
             ep.channels = pv.channels;
-            ep.time_win = pv.time_window;
+            ep.time_window = pv.time_window;
             ep.trials = pv.trials;
             ep.retrieve;
 
 
         end
 
-        function op = transform(ep, varargin)
+        function ep = transform(ep, varargin)
 
-            
+
             op = ep.data;
 
             iOper = 1;
