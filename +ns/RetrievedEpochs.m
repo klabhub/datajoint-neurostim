@@ -410,7 +410,138 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         end
 
-        function win = get.epoch_win(ep)
+        function ep = subset(ep, restricter)
+
+            arguments
+
+                ep
+                restricter struct
+
+            end
+
+
+            dat = ep.data;
+
+            restricter_fields = ["trials", "channels", "time_window", "frequency_window"];
+
+            for rN = restricter_fields
+
+                if ~isfield(restricter, rN)
+
+                    restricter.(rN) = [];
+
+                end
+
+            end
+
+            idx_selector = repmat({':'}, 1, ndims(dat.signal{1}));
+
+            if ~isempty(restricter.trials)
+
+                idx_selectorN = idx_selector;
+
+                if length(restricter.trials) == height(dat)
+
+                    for i = 1:height(dat)
+
+                        if ~isempty(restricter.trials{i})
+
+                            assert(~isnan(ep.dimensions_.trials), "The data structure was collapsed across trials.");
+
+                            idx_selectorN{ep.dimensions_.trials} = ismember(dat.trials{i}, restricter.trials{i});
+                            assert(any(idx_selectorN{ep.dimensions_.trials}), "Selected trials do not exist in the data.")
+
+                            for colN = ep.data_columns_
+
+                                if ismember(colN, dat.Properties.VariableNames)
+                                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
+                                end
+
+                            end
+
+                            dat.trials{i} = restricter.trials{i};
+
+                        end
+
+                    end
+
+                else
+
+                    error("'trials' must be a {1 x nrows} cell array.")
+
+                end
+
+            end
+
+            if ~isempty(restricter.channels)
+
+                idx_selectorN = idx_selector;
+                assert(~isnan(ep.dimensions_.channels), "The data structure was collapsed across channels.");
+                idx_selectorN{ep.dimensions_.channels} = ismember(ep.channels, restricter.channels);
+                assert(all(idx_selectorN{ep.dimensions_.channels}), "Selected channels do not exist in the data.")
+                for colN = ep.data_columns_
+
+                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
+
+                end
+
+                ep.channels = restricter.channels;
+
+            end
+
+            if ~isempty(restricter.time_window)
+
+                assert(all(gen.iswithin(restricter.time_window, ep.time_window)), "Selected time window is out of range in the existing data.")
+
+
+                isT = gen.iswithin(ep.timepoints, restricter.time_window);
+                idx_selectorN = idx_selector;
+                idx_selectorN{ep.dimensions_.time} = isT;
+                dat.signal{i} = dat.signal{i}(idx_selectorN{:});
+
+            end
+
+            if ~isempty(restricter.frequency_window)
+
+                assert(all(gen.iswithin(restricter.frequency_window, gen.range(ep.frequencies))), "Selected time window is out of range in the existing data.")
+
+
+                isFq = gen.iswithin(ep.frequencies, restricter.frequency_window);
+                idx_selectorN = idx_selector;
+                idx_selectorN{ep.dimensions_.frequency} = isFq;
+                for colN = ep.data_columns_(2:end)
+
+                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
+
+                end
+
+                ep.frequencies = ep.frequencies(isFq);
+
+            end
+
+            ep.data = dat;
+
+        end
+
+        function ep = insert(ep, varargin)
+
+            n_arg = nargin-1;
+
+            for whArg = 1:2:n_arg
+
+                ep.data.(varargin{whArg}) = varargin{whArg+1};
+
+            end
+
+        end
+
+        function n = get.n_rows(ep)
+
+            n = height(ep.data);
+
+        end
+
+        function win = get.epoch_window(ep)
 
             win = ep.EpochParameter.epoch_win;
 
@@ -424,11 +555,11 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         function t = get.timepoints(ep)
 
-            win = ep.epoch_win;
+            win = ep.epoch_window;
 
             t = win(1):ep.dt:win(2);
 
-            t = t(gen.ifwithin(t, ep.time_win));
+            t = t(gen.ifwithin(t, ep.time_window));
 
         end
 
