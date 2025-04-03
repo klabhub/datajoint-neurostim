@@ -1,10 +1,97 @@
-classdef RetrievedEpochs < handle
-
-    %{
-A subset of epochs retrieved / fetched from ns.Epochs for plotting,
-transforming data etc.
-The retrieved epochs must call for the same timepoints and channels.
-    %}
+classdef RetrievedEpochs < matlab.mixin.Copyable
+%% DESCRIPTION:
+%
+% Represents a collection of epochs (time segments of neural data) retrieved
+% from an ns.Epoch data source. This class facilitates common operations
+% like data transformation (detrending, baselining, FFT, PSD, SNR),
+% subsetting (by time, channels, trials, frequency), and plotting.
+%
+% The core idea is to fetch raw epoch data based on specific criteria
+% (channels, trials, time window) and store it along with relevant metadata
+% in a table (`data`). Subsequent transformations modify this table,
+% potentially adding new data columns (e.g., 'amplitude', 'power').
+%
+%% CONSTRAINTS:
+% - The initial retrieval is based on a single ns.Epoch entry, implying
+%   epochs share common parameters like sampling rate and original time
+%   window, as asserted in the constructor.
+% - Data within each cell of the `data` table (e.g., `data.signal{i}`) is
+%   expected to have consistent dimensions initially, often
+%   (trials x channels x time). Averaging operations can collapse
+%   dimensions.
+%
+%% EXAMPLE
+%
+% ep = RetrievedEpochs(eTbl, 'channels', [*list of channels*], 'trials',
+% {[*list of trial numbers per row in eTbl*],[...],...}, 'time_window', [*
+% (1 x 2) range of timepoints to be extracted.*])
+%
+%% Inputs (Constructor)
+%   eTbl (ns.Epoch)     : A scalar ns.Epoch object specifying the data source.
+%                         Must correspond to a single unique key combination
+%                         (e.g., one etag).
+%   pv.channels (double): Optional. Vector of channel indices/IDs to retrieve.
+%                         If empty or omitted, all channels are retrieved.
+%   pv.trials (cell)    : Optional. Cell array specifying trials to retrieve
+%                         for each potential row defined by `eTbl`'s primary keys.
+%                         If empty or omitted, all valid trials are retrieved.
+%                         Since eTbl has 1 row, this should be a 1x1 cell array.
+%   pv.time_window (double): Optional. 1x2 vector [start_time, end_time]
+%                         specifying the time window within the epoch to retrieve.
+%                         If empty or omitted, uses the full epoch_win from
+%                         ns.EpochParameter.
+%
+%% Properties (Public, Protected, Dependent)
+% Public:
+%   Epoch (ns.Epoch)    : Handle to the source ns.Epoch object.
+%   EpochParameter      : Handle to the associated ns.EpochParameter object.
+%
+% Protected:
+%   data (table)        : Core data container. Rows often represent different
+%                         experimental conditions or groupings. Columns include
+%                         metadata (from ns.Epoch primary keys) and cell arrays
+%                         holding the numerical data ('signal', 'amplitude', etc.).
+%   channels (double)   : Vector of channel IDs included in the data.
+%   time_window (double): [start, end] time relevant to the current data (seconds).
+%   frequency_window (double): [start, end] frequency window (Hz) after subsetting.
+%   frequencies (double): Vector of frequency values (Hz) after FFT/PSD.
+%   trials (cell)       : {1 x n_rows} cell array. Trial numbers for each row.
+% Dependent:
+%   timepoints (double) : Vector of time points for the data's time axis (seconds).
+%   epoch_window (double): Original [start, end] epoch window from EpochParameter (seconds).
+%   dt (double)         : Time step / sampling interval (seconds).
+%   n_rows (double)     : Number of rows in the `data` table.
+%
+%% Methods (Key Public with Examples)
+%   RetrievedEpochs     : Constructor - Initializes object and retrieves data.
+%       Example: 
+%           myEpoch = ns.Epoch & 'subject="S1"' & 'etag="VisualStim"';
+%           rp = ns.RetrievedEpochs(myEpoch, channels=[1, 5, 10], time_window=[-0.5, 1.5]);
+%
+%   transform           : Applies data processing steps (detrend, baseline, FFT, etc.).
+%       Examples:
+%           rp = rp.transform('detrend'); 
+%           rp = rp.transform('baseline', [-0.2, 0]); % Baseline correct using -200ms to 0ms
+%           rp = rp.transform('average', 'trials'); % Average across trials
+%           rp = rp.transform('pad', 'zero', 2048, 'psd', 'sfreq', rp.Epoch.sfreq, 'options', {{'Method','welch'}}); % Pad, then Welch PSD
+%           rp = rp.transform('fft', 'sfreq', 1000, 'snr', 'amplitude', 'neighbors', 5); % FFT, then SNR on amplitude using +/- 5 neighbors
+%           rp = rp.transform('split_trials', @(t) mod(t,2), 'Parity', {'Even','Odd'}); % Split by trial parity
+%   subset              : Selects a subset of data based on criteria.
+%       Example: 
+%           subset_criteria.time_window = [0, 1.0];
+%           subset_criteria.channels = [1, 5];
+%           subset_criteria.frequency_window = [10, 30]; % Only if FFT/PSD done
+%           subset_criteria.trials = {[1:10]}; % Assuming 1 row, select trials 1-10
+%           rp = rp.subset(subset_criteria);
+%   insert              : Adds new columns to the `data` table.
+%       Example:
+%           labels = {'ConditionA'}; % Assuming rp has 1 row currently
+%           rp = rp.insert('ConditionLabel', labels);
+%   plot                : Visualizes the data (e.g., signal vs. time, power vs. frequency).
+%       Examples:
+%           rp.plot('signal'); % Plot signal vs time
+%           rp.plot('power', 'xlim', [5, 50], 'ylim', 'scale_figure'); % Plot power (5-50Hz), scale figures identically
+%           rp.plot('amplitude', 'collate', 'subject'); % Plot amplitude, arrange figures by subject into one window
 
     properties
 
