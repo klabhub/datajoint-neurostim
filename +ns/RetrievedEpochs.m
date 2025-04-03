@@ -188,10 +188,25 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                     case "baseline"
 
+                        restricter.time_window = varargin{iOper + 1};
+                        iOper = iOper + 1;
 
+                        baselineN = ep.copy().subset(restricter).apply('signal', @mean, ep.dimensions_.time);
+
+                        ep.signal = arrayfun(@(i) ep.signal{i} - baselineN.signal{i}, 1:ep.n_rows, 'UniformOutput', false);
 
                     case "subset"
-                    
+
+                        restricter = varargin{iOper};
+                        if ~isstruct(restricter) || ~any(isfield(restricter,["trials", "channels", "time_window", "frequency_window"]))
+
+                            error("'subset' command needs to be followed by a (1x1) structure array containing some or all of the following fieldL 'trials', 'channels', 'time_window'")
+                        else
+                            iOper = iOper + 1;
+                        end
+
+                        ep = ep.subset(restricter);
+
                     case "average"
 
                         subargN = varargin{iOper};
