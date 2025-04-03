@@ -771,13 +771,11 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                 qryN = table2struct(primary_keys(iKey,:));
 
-                % Select trials to plot
                 isValidN = ~isinf(getfield(fetch(ns.Epoch & qryN,'event_onset'),'event_onset')); % inf indicates that the trial was not shown
                 trialsN = getfield(fetch(ns.DimensionCondition & ep.Epoch & qryN, 'trials'), 'trials'); % the actual trial numbers
 
                 if ~isempty(ep.channels)
                     channel_qryN = sprintf("channel in (%s)", join(string(ep.channels),","));
-                else 
                 else
                     channel_qryN = '';
                 end
@@ -821,6 +819,28 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
             ep.data = op;
 
         end
+
+        function ep = apply(ep, var, func, varargin)
+
+            for i = 1:ep.n_rows
+
+                ep.(var){i} = func(ep.var{i}, varargin{:});
+
+            end
+
+        end
+
+        function ep = apply_func2rows(ep, func, varargin)
+
+            for i = 1:ep.n_rows
+
+                ep(i,:) = func(ep(i,:), varargin{:});
+
+            end
+
+        end
+
+
 
     end
 
