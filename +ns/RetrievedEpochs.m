@@ -339,7 +339,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                     case "snr"
 
-                        by_var = varargin{iOper};                        
+                        by_var = varargin{iOper};
                         if ~ismember(by_var, ["amplitude", "power"])
                             by_var = "amplitude";
                             if ~ismember(by_var, op.Properties.VariableNames)
