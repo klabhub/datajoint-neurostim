@@ -266,8 +266,8 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                         ep.signal_length_after_padding_ = varargin{iOper};
                         iOper = iOper + 1;
-                        assert(isnumeric(end_length), 'Pad length must be numeric and given as the 3rd input following the input "pad".');
-                        
+                        assert(isnumeric(ep.signal_length_after_padding_), 'Pad length must be numeric and given as the 3rd input following the input "pad".');
+
                     case "window"
                     case "fft"
 
@@ -291,7 +291,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                         for i = 1:height(op)
 
-                            [op.amplitude{i}, op.phase{i}, fqN] = do_fft(op.signal{i}, ndims(tmp_signal{i}), sfreq);
+                            [op.amplitude{i}, op.phase{i}, fqN] = ep.do_fft(tmp_signal{i}, sfreq, ndims(tmp_signal{i}));
 
                         end
 
@@ -331,7 +331,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                         for i = 1:height(op)
 
-                           [op.power{i}, fqN] = ep.do_psd(tmp_signal{i}, sfreq, ndims(tmp_signal{i}), opts{:});
+                            [op.power{i}, fqN] = ep.do_psd(tmp_signal{i}, sfreq, ndims(tmp_signal{i}), opts{:});
 
                         end
 
@@ -523,53 +523,53 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         function [pow, frequencies] = do_psd(dat, fs, iDim, varargin)
 
-                dim_size = size(dat);
-                dim_size(iDim) = 1;
-                slice_idx = arrayfun(@(x) 1:x, dim_size, 'UniformOutput',false);
-                slice_idx{iDim} = ':';
-                slice_idx = table2cell(combinations(slice_idx{:}));
+            dim_size = size(dat);
+            dim_size(iDim) = 1;
+            slice_idx = arrayfun(@(x) 1:x, dim_size, 'UniformOutput',false);
+            slice_idx{iDim} = ':';
+            slice_idx = table2cell(combinations(slice_idx{:}));
 
-                [pow, frequencies] = gen.apply_func_along_dimension(dat, iDim, @pspectrum, fs, varargin{:});
+            [pow, frequencies] = gen.apply_func_along_dimension(dat, iDim, @pspectrum, fs, varargin{:});
 
-                select_idx = repmat({1},1, ndims(pow));
-                select_idx{iDim} = ':';
-                frequencies = squeeze(frequencies(select_idx{:}))';
+            select_idx = repmat({1},1, ndims(pow));
+            select_idx{iDim} = ':';
+            frequencies = squeeze(frequencies(select_idx{:}))';
 
 
+        end
+
+        function [amplitude, phase, frequencies] = do_fft(data, fs, n)
+            % fftSliceReal - Computes FFT amplitude and phase for each slice along the n'th dimension.
+            %                Only includes real frequencies.
+            %
+            % Inputs:
+            %   data: Input multi-dimensional data.
+            %   n: Dimension along which to slice and compute FFT.
+            %   fs: Sampling frequency (optional, default is 1).
+            %
+            % Outputs:
+            %   amplitude: Amplitude of the FFT.
+            %   phase: Phase of the FFT.
+            %   frequencies: Corresponding real frequencies.
+
+            n_dim = ndims(data);
+
+            % Compute FFT for each slice
+            fftResult = fft(data, [], n_dim);
+
+            idx = repmat({':'},1,n_dim);
+            % Calculate real frequencies
+            N = size(data, n);
+            if mod(N, 2) == 0
+                frequencies = (0:N/2) * fs / N;
+                idx{n_dim} = 1:N/2+1;
+            else
+                frequencies = (0:(N-1)/2) * fs / N;
+                idx{n_dim} = 1:(N+1)/2;
             end
 
-            function [amplitude, phase, frequencies] = do_fft(data, n, fs)
-                % fftSliceReal - Computes FFT amplitude and phase for each slice along the n'th dimension.
-                %                Only includes real frequencies.
-                %
-                % Inputs:
-                %   data: Input multi-dimensional data.
-                %   n: Dimension along which to slice and compute FFT.
-                %   fs: Sampling frequency (optional, default is 1).
-                %
-                % Outputs:
-                %   amplitude: Amplitude of the FFT.
-                %   phase: Phase of the FFT.
-                %   frequencies: Corresponding real frequencies.
-
-                n_dim = ndims(data);
-
-                % Compute FFT for each slice
-                fftResult = fft(data, [], n_dim);
-
-                idx = repmat({':'},1,n_dim);
-                % Calculate real frequencies
-                N = size(data, n);
-                if mod(N, 2) == 0
-                    frequencies = (0:N/2) * fs / N;
-                    idx{n_dim} = 1:N/2+1;
-                else
-                    frequencies = (0:(N-1)/2) * fs / N;
-                    idx{n_dim} = 1:(N+1)/2;
-                end
-
-                amplitude = abs(fftResult(idx{:}))/N;
-                phase = angle(fftResult(idx{:}));
+            amplitude = 2*abs(fftResult(idx{:})/sqrt(N));
+            phase = angle(fftResult(idx{:}));
 
 
         end
