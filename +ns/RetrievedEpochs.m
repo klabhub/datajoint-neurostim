@@ -215,19 +215,32 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                             case 'trials'
 
-                                avg_dim = 1;
+                                assert(~isnan(ep.dimensions_.trials), "Trials were already collapsed.")
+                                avg_dim = ep.dimensions_.trials;
+                                ep.dimensions_.trials = NaN;
+                                if ~isnan(ep.dimensions_.channels)
+                                    ep.dimensions_.channels = 1;
+                                end
+                                ep.dimensions_.time = 2;
 
                             case 'channels'
 
-                                avg_dim = 2;
+                                assert(~isnan(ep.dimensions_.channels), "Channels were already collapsed.")
+                                avg_dim = ep.dimensions_.channel;
+                                ep.dimensions_.channels = NaN;
+                                ep.dimensions_.time = 2;
 
                             case 'all'
 
-                                avg_dim = [1,2];
+                                assert(~any(isnan([ep.dimensions_.channels, ep.dimensions_.trials])), "Channels and/or trials were already collapsed.")
+                                avg_dim = [ep.dimensions_.trials, ep.dimensions_.channels];
+                                ep.dimensions_.trials = NaN;
+                                ep.dimensions_.channels = NaN;
+                                ep.dimensions_.time = 2;
 
                         end
 
-                        op.signal = cellfun(@(x) gen.make_row(squeeze(mean(x, avg_dim))), op.signal, 'UniformOutput', false);
+                        op.signal = cellfun(@(x) gen.make_row(squeeze(mean(x, avg_dim, 'omitmissing'))), op.signal, 'UniformOutput', false);
 
                     case "pad"
 
