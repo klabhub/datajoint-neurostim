@@ -394,7 +394,20 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
             end
 
             ep.data = op;
+
+            isFunc = cellfun(@(x) isa(x, 'function_handle'), varargin);
+            for i = 1:length(isFunc)
+                if ~any(isFunc)
+                    break;
+                elseif isFunc(i)
+
+                    varargin{i} = func2str(varargin{i});
+                    
+                end
+
+            end
             ep.transform_steps_ = [ep.transform_steps_{:}, varargin{:}];
+
         end
 
         function win = get.epoch_win(ep)
