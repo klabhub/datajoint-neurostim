@@ -20,6 +20,12 @@ arguments
     pv.maxWorkers = 64    % Never more than this number of workers
     pv.restrict (1,:) cell = {}  % Restrict parpopulate(tbl, restrict{:})
     pv.clearJobStatus (1,:) string = "error" %  string array of status flags that should be cleared from the jobs table.
+    pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
+end
+if pv.dryrun 
+    drMsg = "[DRYRUN]";
+else
+    drMsg = "";
 end
 
 if numel(pv.restrict)>0
@@ -41,17 +47,21 @@ if pv.clearJobStatus~=""
     jt = feval(jobsTable);
     jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
     if count(jt)>0
-        fprintf('%d related jobs in %s will be deleted',count(jt),jobsTable)
-        delQuick(jt)
+        fprintf('%s %d related jobs in %s will be deleted',drMsg,count(jt),jobsTable)
+        if ~pv.dryrun
+            delQuick(jt)
+        end
     end
 end
 
-nrToDo = count(getKeySource(tbl) - tbl);
+nrToDo = count(getKeySource(tbl) - proj(tbl));
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
-    fprintf("Populating %d rows of %s with %d workers (cmd=%s)\n",nrToDo,tbl.className,nrWorkers,cmd);
-    cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts);
+    fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
+    if ~pv.dryrun
+        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts);
+    end
 else
-    fprintf("Nothing to populate for %s (table has %d rows)\n",cmd,count(tbl));
+    fprintf("%s Nothing to populate for %s (table has %d rows)\n",drMsg,cmd,count(tbl));
 end
 
