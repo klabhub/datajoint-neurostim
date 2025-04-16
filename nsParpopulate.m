@@ -13,6 +13,10 @@ function nsParpopulate(tbl,cls,opts,pv)
 % (if those jobs are currently running this will cause problems...)
 %
 % The maximum number of workers is set to 64 by default. Be nice.
+%
+% Use dryrun = true to get a brief report of the jobs that would be started
+% with dryrun =false. 
+% 
 arguments
     tbl (1,1) dj.Relvar     % table to populate
     cls (1,1) mslurm        % slurm cluster to use
