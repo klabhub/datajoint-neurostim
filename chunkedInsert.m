@@ -27,26 +27,30 @@ nrTpls = numel(tpl);
 fprintf('Uploading to server ')
 
 i = 1;
+lineBreak = 1;
 while i <= nrTpls
-    
+
     % Find optimal chunk size for this iteration without exceeding limit
     currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);
-    
+
     % Double check if the submission exceeds the limit or not
     thisChunk = i:(i+currentChunkSize-1);
     while (get_mem_size(tpl(thisChunk)) > bytesPerInsert) && currentChunkSize >1
-        
+
         currentChunkSize = currentChunkSize - 1;
         thisChunk = i:(i+currentChunkSize-1);
 
     end
 
     insert(tbl,tpl(thisChunk));
-    
+
     fprintf(repmat('.',1,currentChunkSize))
-    fprintf('\n');
-    if mod(i,80)==0;fprintf('\n');end
-    
+    lineBreak = lineBreak + currentChunkSize;
+    if lineBreak > 80
+        fprintf('\n')
+        lineBreak = 1;
+    end
+
     i = i + currentChunkSize;  % Move to the next chunk
 
 end

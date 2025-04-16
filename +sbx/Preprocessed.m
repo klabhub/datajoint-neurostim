@@ -11,14 +11,17 @@ xscale : float              # Scale factor of xpixels (micron/pixel)
 yscale : float              # Scale factor of ypixels  (micron/pixels)
 %}
 %
-% Calls to python require If environment variable NS_CONDA to point to a conda
+% Calls to python require environment variable NS_CONDA to point to a conda
 % installation. Python will run OutOfProcess (i.e. using a
-% system call to start Python outside Matlab). 
+% system call to start Python outside Matlab).
 %
 % With suite2p preprocessing, the fast_disk option can be set in PreprocessedParms,
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
+% 
+% This table has an associated PreprocessedRoi table that stores
+% information on each of the ROIs extracted with this preprocessing. 
 classdef Preprocessed < dj.Computed
     properties (Dependent)
         ops
@@ -42,7 +45,7 @@ classdef Preprocessed < dj.Computed
                     v{keyCntr} =   py.numpy.load(resultsFile,allow_pickle=true); %#ok<AGROW>
                 else
                     fprintf('OPS file  %s not found \n',resultsFile);
-                    v{keyCntr} = [];
+                    v{keyCntr} = []; %#ok<AGROW>
                 end
             end
             if isscalar(v)
@@ -60,10 +63,10 @@ classdef Preprocessed < dj.Computed
                 resultsFile =fullfile(sessionPath,key.folder,'plane0','stat.mat');
                 if exist(resultsFile,"file")
                     load(resultsFile,'stat');
-                    v{keyCntr} =   [stat{:}];   %#ok<PROP>
+                    v{keyCntr} =   [stat{:}];   %#ok<AGROW,PROP>
                 else
                     fprintf('Stat file  %s not found \n',resultsFile);
-                    v{keyCntr} = [];
+                    v{keyCntr} = []; %#ok<AGROW>
                 end
             end
             if isscalar(v)
@@ -237,7 +240,7 @@ classdef Preprocessed < dj.Computed
             else
                 error('NIY');
             end
-            analyzeExptThisSession = analyze(allExptThisSession,strict=false);
+            analyzeExptThisSession = analyze(allExptThisSession,strict=false);            
             dataFldr = file(analyzeExptThisSession);
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
@@ -248,18 +251,10 @@ classdef Preprocessed < dj.Computed
             end
             switch (parms.toolbox)
                 case 'suite2p'
-                   %% if pyenv().Status=="Loaded"
-                        % Already loaded. Hope that this python is set up
-                        % to run suite2p,
-                   %% else
-                        conda = getenv('NS_CONDA');
-                        if isempty(conda)
-                            error('Please set the NS_CONDA variable to point to your Conda installation (e.g. /home/user/miniconda3')
-                        end
-                        pyenv(Version = fullfile(conda,'envs/suite2p/bin/python3'));   
-                    %% end
-
-                    % Check that each experiment used the same scaling
+                    setupPython("suite2p");
+                    conda = extractBefore(pyenv().Home,'/envs');
+                    
+                    %% Check that each experiment used the same scaling
                     scale = [];
                     nrPlanes = [];
                     depth = [];
@@ -270,51 +265,55 @@ classdef Preprocessed < dj.Computed
                         depth  = [depth info.config.knobby.pos.z]; %#ok<AGROW>
                     end
                     uScale = unique(scale,'rows');
-                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");                    
+                    if isempty(uScale); error('Info file missing from sbx? Cannot preprocess.');end
+                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
                     nrPlanes = unique(nrPlanes);
-                    assert(isscalar(nrPlanes),"Different number of planes across experiments in this session.");                    
+                    assert(isscalar(nrPlanes),"Different number of planes across experiments in this session.");
                     % Scanning the same animal at different depths requires
                     % running preprocessing separately for all experiments
                     % at that depth. Not implemented yet, probably best
                     % done by assigning a different plane number to the
                     % different depths.
                     assert(isscalar(unique(depth)),"Experiments in this session were recorded at different depths. Not implemented yet.");
-                    
 
-
-
-                    opts = py.suite2p.default_ops();
-                    opts{'input_format'} = "sbx";
-                    opts{'nplanes'} = uint64(nrPlanes);
-                    opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
-                    %replace parameters defined in the prep
-                    %settings
-                    fn= fieldnames(parms.ops);
-                    for  f= 1:numel(fn)
-                        try
-                            default= opts{fn{f}};
-                            pyClass =class(default);
-                            prepValue =parms.ops.(fn{f});
-                            if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
-                                % Some options have to specified as a
-                                % length 1 list of strings. If the user
-                                % put a string/char in the prepParms
-                                % this codes wraps it in a py.list
-                                prepValue = {prepValue};
-                            end
-                            overruled = feval(pyClass,prepValue);
-                        catch me
-                            error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
-                        end
-                        opts{fn{f}} = overruled;
-                    end
+                    %% Check whether preprocessing has already completed.
                     opsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
                     outFiles = fullfile(sessionPath,resultsFolder,'plane0',{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
-                    outFilesExist = true;
+                    prepComplete = exist(opsFile,"file");
                     for of =1:numel(outFiles)
-                        outFilesExist = outFilesExist & exist(outFiles(of),'file');
+                        prepComplete = prepComplete & exist(outFiles(of),'file');
                     end
-                    if ~outFilesExist
+
+                    if prepComplete
+                        fprintf('Preprocessing results already exist. Importing %s\n',opsFile);
+                    else
+                        % Read installation default ops
+                        opts = py.suite2p.default_ops();
+                        opts{'input_format'} = "sbx";
+                        opts{'nplanes'} = uint64(nrPlanes);
+                        opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
+                        
+                        % Then replace parameters defined in the prep settings
+                        fn= fieldnames(parms.ops);
+                        for  f= 1:numel(fn)
+                            try
+                                default= opts{fn{f}};
+                                pyClass =class(default);
+                                prepValue =parms.ops.(fn{f});
+                                if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
+                                    % Some options have to specified as a
+                                    % length 1 list of strings. If the user
+                                    % put a string/char in the prepParms
+                                    % this codes wraps it in a py.list
+                                    prepValue = {prepValue};
+                                end
+                                overruled = feval(pyClass,prepValue);
+                            catch me
+                                error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
+                            end
+                            opts{fn{f}} = overruled;
+                        end
+
                         % Create a dict with the folder information
                         if isempty(cell(opts{'fast_disk'}))
                             % No fast disk specified, guessing that temp will have better access speed.
@@ -340,7 +339,7 @@ classdef Preprocessed < dj.Computed
                             'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
 
                         fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-                       
+
                         % Calling python in-process can lead to problems
                         % with library conflicts. Using a system call seems more robust to
                         % different installs. To pass the ops and db dicst we save them
@@ -381,30 +380,22 @@ classdef Preprocessed < dj.Computed
                             statFile = fullfile(sessionPath,resultsFolder,sprintf('plane%d',p-1),'stat.npy');
                             npyToMat(statFile);
                         end
-
                         fprintf('Completed at %s\n',datetime('now'));
-                    else
-                        fprintf('Preprocessing results already exist. Importing %s\n',opsFile);
                     end
                     % Load the save ops.npy to extract the mean image
                     opts =py.numpy.load(opsFile,allow_pickle=true);
-                    img= single(opts.item{'meanImg'}); % Convert to single to store in DJ
+                    img = ndarrayToArray(opts.item{'meanImg'},single=true);
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
                     tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);
+                    insert(tbl,tpl);                   
                 case 'caiman'
                     % TODO
                 otherwise
                     error('Unknown preprocessing toolbox %s',parms.toolbox);
             end
-
-
+            % Create the part table with per ROI information
+            makeTuples(sbx.PreprocessedRoi,key)
         end
-
-       
-    end
-    methods (Static)
-
     end
 end

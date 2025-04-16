@@ -676,8 +676,8 @@ classdef C< dj.Computed
                 channelRestriction = struct('channel',num2cell(pv.channel(:))');
             elseif ischar(pv.channel) || isstring(pv.channel) ||iscellstr(pv.channel)
                 channelRestriction = struct('name',cellstr(pv.channel)');
-            elseif isstruct(pv.channel)
-                channelRestriction = pv.channel;
+            elseif isstruct(pv.channel) || isa(pv.channel,'dj.Relvar') || isa(pv.channel,'dj.internal.GeneralRelvar')
+                channelRestriction = pv.channel;            
             end
             nrChannels = count(tbl*(ns.CChannel & channelRestriction) & exptTpl);
             assert(nrChannels >0,'No matching channels found. Nothing to do.\n');
@@ -949,7 +949,7 @@ classdef C< dj.Computed
                 filename = fullfile(folder(ns.Experiment &key),fetch1(qry,'filename'));
             end
             if exist(filename,'file') || exist(filename,'dir')
-                fprintf('Reading %s\n',filename);
+                fprintf('Processing %s\n',filename);
             else
                 error('File %s does not exist. Cannot create C',filename);
             end

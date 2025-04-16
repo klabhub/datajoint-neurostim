@@ -564,7 +564,7 @@ if pv.addToDatajoint
         tExperiment = removevars(tExperiment,'cic');
     else
         cic =[];
-    end
+    end   
     nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',pv.safeMode, ...
         'root',pv.root,'populateFile',pv.populateFile, ...
         'newOnly',pv.newOnly  && ~pv.jsonOnly);

@@ -582,7 +582,7 @@ classdef Experiment  < dj.Manual
                 % Restrict the tbl to the rows that correspond to these
                 % cics                
                 for cicCntr = 1:numel(cic)
-                    restrict(cicCntr) = ns.Experiment.tplFromCic(cic(cicCntr));
+                    restrict(cicCntr) = ns.Experiment.tplFromCic(cic(cicCntr)); %#ok<AGROW>
                 end
                 tbl = tbl & restrict;
             end

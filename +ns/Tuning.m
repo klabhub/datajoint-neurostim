@@ -95,6 +95,7 @@ classdef Tuning <dj.Computed
                 pv.nrBootToShow (1,1) {mustBeNonnegative,mustBeInteger} = 50  % How many boostrap samples to show
                 pv.linkAxes (1,1) logical =false                        % Link axes in the figure?
                 pv.average (1,1) logical =false
+                pv.figureOffset (1,1) double =0
             end
             cntr =0;
             % Loop over the table
@@ -127,7 +128,7 @@ classdef Tuning <dj.Computed
                 end
                 cntr =cntr+1;
                 % 1 figure for every nrPerFigure plots
-                figure(ceil(cntr/pv.nrPerFigure));
+                figure(ceil(cntr/pv.nrPerFigure)+ pv.figureOffset);
                 if mod(cntr-1,pv.nrPerFigure)+1==1
                     T= tiledlayout('flow');
                 end

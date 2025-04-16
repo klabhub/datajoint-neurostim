@@ -1,9 +1,9 @@
 %{
 # Properties of a ROI in a session, based on a Preprocessed set.
--> ns.CChannel
-roi : smallint    #  id within this segmentation and plane
-plane : smallint #  plane
+-> sbx.Preprocessed
+roi : smallint    #  id within this segmentation 
 ---
+plane = 0: smallint #  plane
 pcell = 0 : float # Probability that the ROI is a neuron
 x        : Decimal(4,0) # x-Pixel location 
 y        : Decimal(4,0) # y-Pixel location 
@@ -11,33 +11,34 @@ radius   : Decimal(4,1) # Radius of cell in micron
 aspect   : Decimal(4,1)  # Aspect raio of major/minor axis of a 2D Gaussian fit.
 compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less compact)
 %}
-classdef Roi < dj.Computed
-    properties (Dependent)
-        keySource
+%
+% Note that ROI numbering continues across planes. E.g., with 10 ROIs in
+% plane0 and 20 in plane1, roi will run from 1 to 30, with 20:30 in plane1.
+% The ROI numbers have to be unique to allow joins with the CChannel table
+% that has a single channel number that identifies a time series.
+classdef PreprocessedRoi < dj.Part
+    properties (SetAccess = protected)
+        master = sbx.Preprocessed
     end
-    methods
-        function v = get.keySource(~)
-            % The key source is the ns.C table becuase we read all channels
-            % for a ns.C entry from a single npy file
-            v = ns.C & (ns.CParm & 'extension=''.sbx''');
-        end
-    end
-    methods  (Access=public)
 
-        function o = Roi(varargin)
-            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
-             o@dj.Computed(varargin{:});
-        end
+    methods  (Access=public)       
         function nwbRoot = nwb(tbl,nwbRoot,pv)
             % Add to NWB root
             % Read the masks
+            error('Still to be changed after change to dj.Part table')
+            %%   NOTES:
+            % This table is no longer linked to an experiment, but to the session.
+            % Have to adjust nwbExport in ns.Experiment to include this information.
+            % and separately export some or all of the C table entries (which were
+            % previously linked via sbx.Roi)
+
             prep = sbx.Preprocessed & tbl; %
             assert(count(prep)==1,"More than one preprocessed set.NIY");
             stat =  prep.stat; % Reads the stat.npy file
             assert(~isempty(stat),'Stat file not found.');
-            info = sbx.readInfoFile(ns.Experiment &tbl);
+            sz = size(fetch1(prep,'img'));
             nrRoi = count(tbl);
-            masks =zeros([fliplr(info.sz) nrRoi]);
+            masks =zeros([fliplr(sz) nrRoi]);
             % Loop over the roi, setting pixels in the mask to 1.
             for r=1:nrRoi
                 x =stat(r).xpix;
@@ -62,6 +63,8 @@ classdef Roi < dj.Computed
             nwbRoot.processing.set('ophys',ophys);
 
             % Collect the signals from the nsCChannel table
+            cChannelTbl = (ns.CChannel & 'ctag="fluorescence"' & expt) & roi.proj('subject','session_date','roi->channel');
+
             signal = fetchn(ns.CChannel&tbl,'signal');
             signal = cat(2,signal{:})'; %[nrRoi nrFrames]
             signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoi 1]);
@@ -93,13 +96,13 @@ classdef Roi < dj.Computed
             %
             % INPUT
             % roi  = (subset of) sbx.Roi
+            %
             % Parameter/Value pairs:
             % sz = Size to use for each ROI. By default, the estimated physical size
             %       of the roi is used. But by passing some other property (e.g. tuning per ROI),
             %       this can be visualized. Maximum size is 500 points (surface area).
             % szLabel  - Label to use in the datatip.
-            % color = Color to use for each ROI. By default, the z-scored
-            %           spiking activity across the session is used.
+            % color = Color to use for each ROI. By default this represents the compactness.
             % colorLabel = Label to use in the datatip.
             % clim - Color limits to use
             % showImg  - Set to true to show the mean Ca image as a
@@ -114,12 +117,22 @@ classdef Roi < dj.Computed
             %    hScatter - Handle to the scatter object
             % EXAMPLE
             %
-            %
-            % plot(sbx.Roi); % Encode all cell radius (size) and z-scored session activity (color).
-            % z = computed properties of all rois
-            % plot(sbx.Roi,color =z,clim = [0 5]);  % Encode z by the color, crop colors at 5
+            % Anatimical properties :
+            % Size of the circle represents the size of the ROI, color
+            % represents the compactness.
+            % plot(sbx.PreprocessedRoi & 'session_date="2024-02-09"');
+            % Functional properties for a subset of ROI
+            % roi = sbx.PreprocessedRoi & 'pcell>0.75';
+            %  Query the CChannel table, for instance spike rate in a
+            %  specific experiment:
+            % cChannel = ns.CChannel & 'ctag="spikes"' & 'starttime="14:08:06"'
+            % Then do an inner join to match roi with channels:
+            % spikes = fetchn(cChannel & proj(roi,'subject','session_date','roi->channel'),'signal')
+            % meanSpikes = cellfun(@mean,spikes)
+            % then plot:
+            % plotSpatial(roi,color=meanSpikes,pix=true)
             arguments
-                roi (1,1) sbx.Roi
+                roi (1,1) sbx.PreprocessedRoi
                 pv.sz   (1,:)  double  = []
                 pv.szLabel (1,1) string = ''
                 pv.color   (1,:) double = []
@@ -131,12 +144,11 @@ classdef Roi < dj.Computed
                 pv.alpha (1,1) double = 0.5;
                 pv.alphaThreshold (1,1) double =0;
             end
-
-            if count(roi) ==0
+            nrRoi = count(roi);
+            if nrRoi ==0
                 fprintf('No rois, nothing to plot \n');
                 return;
             end
-
             % To visualize an arbitrary and large subset of rois, this
             % function can be called with a large struct array (one per roi),
             % which is potentially inefficient. Silencing DJ warning about this.
@@ -145,6 +157,7 @@ classdef Roi < dj.Computed
 
             MAXPOINTS = 300; %
             [x,y,radius,roiNr] = fetchn(roi,'x','y','radius','roi');
+
             [xScale,yScale] =fetchn(sbx.Preprocessed & roi,'xscale','yscale');
             micPerPix = [xScale yScale];
             micPerPixR = sqrt(sum(micPerPix.^2));
@@ -152,13 +165,9 @@ classdef Roi < dj.Computed
 
             %% Setup color
             if isempty(pv.color)
-                % Use the z-scored spike rate as the color of the cells
-                signal  = fetchn(ns.CChannel & 'ctag="spikes"' & roi,'signal');
-                m  = cellfun(@(x) mean(x,"omitmissing"),signal);
-                sd = cellfun(@(x) std(x,0,1,"omitmissing"),signal);
-                z = m./sd;
-                pv.color = z;
-                pv.colorLabel = 'spike rate (Z)';
+                % Show the compactness as the color of the cells
+                pv.color = fetchn(roi,'compact');
+                pv.colorLabel = 'Compactness';
             end
             % Clamp to the limits
             if isempty(pv.clim)
@@ -246,25 +255,18 @@ classdef Roi < dj.Computed
 
         end
     end
-    methods (Access=protected)
-        function makeTuples(tbl,cKey)
-            % Extract info from Channel key
-            c = fetch((ns.C & cKey)*(ns.CParm & 'extension=''.sbx'''),'*');
-            if isempty(c)
-                error('This ns.C (%s) does not contain SBX data. Cannot create sbx.ROI tuples.',cKey.ctag)
-            end
-            prep = sbx.Preprocessed & struct('subject',c.subject,'session_date',c.session_date,'prep',c.parms.prep);
-            info = sbx.readInfoFile(fetch(ns.Experiment&cKey,'LIMIT 1'));
-            micPerPix = sqrt(sum([info.xscale info.yscale].^2));
-            if count(prep)~=1
-                error('Need exactly 1 sbx.Preprocessed set to extract ROIs, not %d',count(prep))
-            end
-            fldr = fullfile(folder(ns.Experiment & cKey),fetch1(prep,'folder'));
+    methods (Access=?sbx.Preprocessed)
+        function makeTuples(tbl,key)
+            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
+   
+            prep = fetch(sbx.Preprocessed& key,'*');
+            micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));
+            fldr = unique(fullfile(folder(ns.Experiment & key),prep.folder));
             if ~exist(fldr,"dir")
                 error('Preprocessed data folder %s not found',fldr)
             end
             planes = dir(fullfile(fldr,'plane*'));
-            channelsSoFar = 0;
+            roisSoFar = 0;
 
             for pl = 1:numel(planes)
                 %% Read npy
@@ -272,7 +274,7 @@ classdef Roi < dj.Computed
                 if ~exist(thisFile,"file")
                     error('File %s does not exist',thisFile);
                 end
-                iscell = single(py.numpy.load(thisFile,allow_pickle=true));
+                iscell = ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
 
                 % We saved the stat.npy as stat.mat in sbx.Preprocessed
                 thisFile = fullfile(fldr,planes(pl).name,'stat.mat');
@@ -290,11 +292,9 @@ classdef Roi < dj.Computed
 
                 %% Make tuples and insert=
                 nrROIs= numel(aspect);
-                key = repmat(ns.stripToPrimary(ns.C,cKey),[nrROIs 1]);
-                channelsPerRoi = num2cell(channelsSoFar+(1:nrROIs));
-                [key.channel] = deal(channelsPerRoi{:});
+                roi = roisSoFar+(1:nrROIs);
                 tpl = mergestruct(key, ...
-                    struct('roi',num2cell(1:nrROIs)', ...
+                    struct('roi',num2cell(roi)', ...
                     'plane',pl-1, ...
                     'pcell',num2cell(iscell(:,2)), ...
                     'x',num2cell(med(:,2)), ...    % Dim 2 is the horizontal axis of the image
@@ -303,8 +303,10 @@ classdef Roi < dj.Computed
                     'compact',num2cell(compact',1)', ...
                     'aspect',num2cell(aspect',1)'));
                 insert(tbl,tpl);
-                channelsSoFar = channelsSoFar + nrROIs; % Next plane starts at nrROIs+1
+                roisSoFar = roisSoFar + nrROIs; % Next plane starts at nrROIs+1
             end
         end
     end
+
+   
 end
