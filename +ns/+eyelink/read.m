@@ -87,16 +87,8 @@ nrSamples= numel(time);
 % Put the requested channels in signal
 nrChannels =numel(parms.channel);
 signal= nan(nrSamples,nrChannels);
-startNoPupilIx = [];
-endNoPupulIx =[];
 for i=1:nrChannels
     signal(:,i) = data.FSAMPLE.(parms.channel{i})(parms.eye,:)';
-    if strcmpi(parms.channel{i},'pa')
-        % We get zero pupil size instead of MISSING ;
-        changeZeroPupil  = [0; diff(signal(:,i)==0)];
-        startNoPupilIx =find(changeZeroPupil>0);
-        endNoPupulIx = find(changeZeroPupil<0);
-    end
 end
 
 %% Fill missing values ;
@@ -119,8 +111,6 @@ if isfield(parms,'downsample')
         end
         signal =tmp;
         time = linspace(time(1),time(end),nrSamples)';
-        startNoPupilIx  = floor((startNoPupilIx-1)/R)+1;
-        endNoPupulIx   = floor((endNoPupulIx-1)/R)+1;
         fprintf('Done in %d seconds.\n',round(toc));
     end
 end
@@ -141,9 +131,6 @@ channelInfo =struct('name',parms.channel,'nr',num2cell(1:nrChannels));
 recordingInfo= data.RECORDINGS(end);
 recordingInfo.header = data.HEADER;
 
-startNoPupilTime = time(startNoPupilIx);
-endNoPupilTime = time(endNoPupulIx);
-
 % Regular sampling so reduce time representation
 time = double([time(1) time(end) nrSamples]);
 % Reduce storage (ns.C.align converts back to double
@@ -152,55 +139,39 @@ signal  = single(signal);
 %% Parse events to add as plugin parameter
 trialStartTime = get(ns.Experiment & key,'cic','prm','firstFrame','what','clocktime');
 
-% Create tpl and insert, pretending this is a regular plugin.
+% Create tpl, pretending this is a regular plugin.
 plgTpl= fetch(ns.Experiment &key);
 plgTpl.plugin_name ="edf";
 if exists(ns.Plugin & plgTpl)
     % Delete existing without asking
-    delQuick(ns.PluginParameter&plgTpl); % delquick does not cascade 
+    delQuick(ns.PluginParameter&plgTpl); % delquick does not cascade
     delQuick(ns.Plugin&plgTpl);
 end
 
+%% Add certain event types as events in the edf plugin
+% currently no edf data are added to the events.
 types = dictionary;
-types("startblink") =3;
+types("startblink") =3; % from edf_data.h
 types("endblink") =4;
 types("startsacc") =5;
 types("endsacc") =6;
 types("startfix") =7;
 types("endfix") =8;
-notEyelinkTypes = ["startzero" "endzero"];
-types('startzero') =0;
-types('endzero') =0;
-
 keys= types.keys;
-
 prmTpl  = mergestruct(plgTpl,struct('property_name','','property_time',[],'property_nstime',[],'property_trial',[],'property_value',[],'property_type','Event'));
 prmTpl = repmat(prmTpl,[types.numEntries 1]);
-
 for i =1:types.numEntries
     thisType = keys(i);
-    if ismember(thisType,notEyelinkTypes)
-        % Not an eyelink type
-        switch (thisType)
-            case 'startzero'
-                eventTime = startNoPupilTime;
-            case 'endzero'
-                eventTime = endNoPupilTime;
-            otherwise
-                error('niy');
-        end
+    events = data.FEVENT([data.FEVENT.type]==types(thisType));
+    if startsWith(thisType,'end')
+        % The endXXX events store the start time of the corresponding
+        % startXXX as their starttime the EDF. Here I store the endXXX
+        % event with its entime (to avoid duplication and not lose the
+        % entime)
+        eventTime = polyval(clockParms,double([events.entime]))';
     else
-        events = data.FEVENT([data.FEVENT.type]==types(thisType));
-        if startsWith(thisType,'end')
-            % The endXXX events store the start time of the corresponding
-            % startXXX as their starttime the EDF. Here I store the endXXX
-            % event with its entime (to avoid duplication and not lose the
-            % entime)
-            eventTime = polyval(clockParms,double([events.entime]))';
-        else
-            %
-            eventTime = polyval(clockParms,double([events.sttime]))';
-        end
+        %
+        eventTime = polyval(clockParms,double([events.sttime]))';
     end
     nrEvtsThisType = numel(eventTime);
 

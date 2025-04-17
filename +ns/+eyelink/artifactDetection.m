@@ -62,8 +62,6 @@ if ismember("PUPIL",definedMethods)
     % pupil.blink.pre  - samples before startblink event to set to NaN
     % pupil.blink.post - samples after endblink event to set to NaN
     %
-    % pupil area values that are zero are treated as blinks (missed blink
-    % events - see eyelink.read)
     if isfield(parms.pupil,'blink')
         blinkStartTime = get(ns.Experiment & C,'edf','prm','startblink','what','clocktime');        
         perChannel.channel  = fetch1(ns.CChannel & C & 'name="pa"','channel');          
@@ -71,13 +69,7 @@ if ismember("PUPIL",definedMethods)
             blinkStopTime = get(ns.Experiment & C,'edf','prm','endblink','what','clocktime');
             perChannel.start = [perChannel.start; blinkStartTime - parms.pupil.blink.pre];
             perChannel.stop = [perChannel.stop ;blinkStopTime + parms.pupil.blink.post];
-        end
-        % zeroStartTime = get(ns.Experiment & C,'edf','prm','startzero','what','clocktime');        
-        % if ~isempty(zeroStartTime)
-        %     zeroStopTime = get(ns.Experiment & C,'edf','prm','endzero','what','clocktime');
-        %     perChannel.start = [perChannel.start ;zeroStartTime - parms.pupil.blink.pre];
-        %     perChannel.stop = [perChannel.stop ;zeroStopTime + parms.pupil.blink.post];
-        % end
+        end       
     end
     if isfield(parms.pupil,'frac')
         % Remove complete trials if a large frac has a pupil area that does
