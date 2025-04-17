@@ -312,7 +312,10 @@ classdef C< dj.Computed
                     m = [];  % Average over trial
                     e = [];
                     allX = [];
-                    if pv.forceFig
+                    if isgraphics(pv.forceFig)
+                        axes(pv.forceFig) %#ok<LAXES>                    
+                    else
+                    if islogical(pv.forceFig) && pv.forceFig
                         uid = "uid: " + string(randi(1e10));
                     else
                         uid = "";
@@ -330,6 +333,7 @@ classdef C< dj.Computed
                         nexttile;
                     else
                         axes(hAx(1)) %#ok<LAXES>
+                    end
                     end
                     nrTrialsPerCondition =nan(1,nrConditions);
                     for c= 1:nrConditions
@@ -753,7 +757,7 @@ classdef C< dj.Computed
             end
             signal =double([channelTpl.signal]); % Signal as matrix
             [nrSamples,nrChannels] = size(signal);
-            
+
             if nrSamples==0||nrChannels==0
                 T= timetable; % Empty
                 B =timetable;
@@ -855,7 +859,7 @@ classdef C< dj.Computed
                 alignNsTime = nan(1,nrTrials);
                 for trCntr=1:nrTrials
                     if isinf(alignTrialTime(trCntr)) || isnan(alignTrialTime(trCntr))
-                        fprintf('Align even did not occur in trial %d. Skipping trial.\n',trials{c}(trCntr))
+                        fprintf('Align event did not occur in trial %d. Skipping trial.\n',trials{c}(trCntr))
                         trialOut(trCntr) = true;
                         continue;
                     end
@@ -921,8 +925,10 @@ classdef C< dj.Computed
                     B.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
                     bPerCondition{conditionNr} =B;
                 end
-                T= addprop(T,"alignTime",repmat("variable",[1 1]));
+                T= addprop(T,"alignTime","table");
+                T= addprop(T,"trials","table");                
                 T.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
+                T.Properties.CustomProperties.trials = trials{c}(~trialOut);                
                 tPerCondition{conditionNr} =T;
             end
 
