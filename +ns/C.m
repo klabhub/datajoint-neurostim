@@ -188,7 +188,7 @@ classdef C< dj.Computed
             %
             %
             % grouping- Specify how trials should be grouped into conditions:
-            %               []  - All trials are considered a single
+            %               ""  - All trials are considered a single
             %               condition (Default).
             %               A cell array of trial numbers identifies trials
             %               as belonging to specific conditions, each will
@@ -240,7 +240,7 @@ classdef C< dj.Computed
             arguments
                 cTbl (1,1) ns.C {mustHaveRows}
                 pv.channel   = []  % A ns.CChannel or a CChannel based restriction
-                pv.grouping = []
+                pv.grouping = ""
                 pv.groupingName = {};
                 pv.removeArtifacts (1,1) = true
                 pv.trial = []
@@ -258,7 +258,7 @@ classdef C< dj.Computed
                 pv.mode (1,:) {mustBeMember(pv.mode,["COHERENCE", "RASTER", "TIMECOURSE","EVOKED","TOTAL"])} = "TIMECOURSE"
                 pv.crossTrial (1,1) logical = false;
                 pv.fetchOptions {mustBeText} = ''
-                pv.prctileMax (1,1) double {mustBeInRange(pv.prctileMax,0,100)} = 95;
+                pv.prctileMax (1,1) double  =95 %{mustBeInRange(pv.prctileMax,0,100)} = 95;
                 % Layout
                 pv.padding string = "compact";
                 pv.forceFig  = false
@@ -484,12 +484,16 @@ classdef C< dj.Computed
                             end
                         case "TIMECOURSE"
                             %% One time series line perCondition , spaced vertically.
+                            if isnan(pv.prctileMax)
+                                [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
+                            else
                             % Scale each condition to the grandMax
                             grandMax = prctile(m(:),pv.prctileMax );
                             grandMin = prctile(m(:),100-pv.prctileMax );
                             m = (m-grandMin)./(grandMax-grandMin);
                             e = e./(grandMax-grandMin);
-                            % Add the conditionNr so that each m column has a mean of
+
+                            % Add the conditionNr so that each m column has a min of
                             % conditionNr and can be plotted on the same axis, with
                             % conditions discplaced vertically from each other.
                             m = m + repmat(1:nrConditions,[nrX 1]);
@@ -503,6 +507,8 @@ classdef C< dj.Computed
                             end
                             ylim([0 nrConditions+1])
                             set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
+                            end
+
                             xlabel 'Time (s)'
                             ylabel 'Response per condition'
 
@@ -641,7 +647,7 @@ classdef C< dj.Computed
                 tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
                 pv.fetchOptions {mustBeText} = ''
                 pv.channel  =[]   %
-                pv.grouping = []
+                pv.grouping = ""
                 pv.fun (1,1) function_handle = @(x)(x)  % A function to apply to the data
                 pv.trial (1,:) double = []
                 pv.start (1,1) double = 0
@@ -698,7 +704,7 @@ classdef C< dj.Computed
                 conditionOrder = 1:numel(pv.grouping);
                 conditionValue = (1:numel(pv.grouping))';
                 conditionName = string(conditionValue);
-            elseif isempty(pv.grouping)
+            elseif isempty(pv.grouping) || pv.grouping ==""
                 trials= {1:exptTpl.nrtrials};% All as one group
                 conditionValue =1;
                 conditionName = string(conditionValue);
