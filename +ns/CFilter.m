@@ -1,4 +1,4 @@
-function [signal,time] = CFilter(signal,time,parms)
+function varargout = CFilter(signal,time,parms)
 % Generic downsampling and filtering function.
 % Can be called from read functions (see intan.read for an example)
 % The user passes a parms struct with any of the following fields.
@@ -30,6 +30,7 @@ function [signal,time] = CFilter(signal,time,parms)
 [nrSamples,nrChannels] = size(signal);
 sampleRate = 1./mode(diff(time));
 
+varargout = cell(1, nargout);
 fn =string(fieldnames(parms))';
 for f=fn
     switch f
@@ -70,7 +71,22 @@ for f=fn
             tic;
             fprintf('Detrending (%d)...',parms.detrend{1})
             signal = detrend(signal,parms.detrend{:});
-            fprintf('Done in %d seconds.\n',round(toc))
+            fprintf('Done in %d seconds.\n',round(toc));
+
+        case "noisy_channels"
+
+            tic;
+            fprintf('Finding noisy channels...\n')
+            parmsN = parms.noisy_channels;
+
+            if isfield(parms, "layout")
+                parmsN = horzcat(parmsN, "ChannelLocations", parms.layout.chanlocs');
+            end
+            
+            ep_mask = parms.noisy_channels{find(ismember(parms.noisy_channels, "epoch_masks")) + 1};
+            varargout{3} = ns.find_noisy_channels(signal(:, ep_mask), ...
+                'Timepoints', time, parmsN{:});
+            fprintf('Done in %d seconds.\n',round(toc));
 
         case "reference"
 
@@ -96,6 +112,8 @@ for f=fn
     % Update after the filter step
     [nrSamples,nrChannels] = size(signal);
     sampleRate = 1./mode(diff(time));
+    varargout{1} = signal;
+    varargout{2} = time;
 end
 end
 
