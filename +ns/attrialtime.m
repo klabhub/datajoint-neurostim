@@ -37,11 +37,19 @@ if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
         case "data"
             out = props.(propName);
         case "trialtime"            
-            out = props.(propName +"Time");
+            if isfield(props,propName +"Time")
+                out = props.(propName +"Time");
+            else
+                out= [];
+            end
         case "clocktime"
             out = props.(propName + "NsTime");
         case "trial"
-            out = props.(propName +"Trial");
+            if isfield(props,propName +"Trial")
+                out = props.(propName +"Trial");
+            else
+                out = [];
+            end
     end
     if ~isempty(trial) && isfield(props,propName +"Trial")
         trialNrs = props.(propName +"Trial");
