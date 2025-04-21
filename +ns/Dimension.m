@@ -36,6 +36,53 @@ description = NULL :varchar(1024)   #   A brief description
 % See also ns.Tuning
 classdef Dimension < dj.Manual
     methods (Access=public)
+        function varargout = split(d,T,pv)
+            % Split a table T into subtables  corresponding to the conditions in the dimension.
+            % This is done by matching the .trials in each condition to the
+            % .trial column in the table. For instance, if the dimension has two
+            % conditions, the table T will be split int two subtables
+            % containing only the trials from each condition.  The second
+            % output gives the values that identify the conditions.
+            %
+            % With labelOnly =true, the table is not split, but a column is added 
+            % to indicate which condition the row (trial) corresponds to. 
+            %
+            arguments
+                d (1,1) ns.Dimension {mustHaveRows(d,1)}
+                T (:,:) table
+                pv.labelOnly  (1,1) logical = true
+            end
+            conditions = ns.DimensionCondition & d;
+            nrConditions  = count(conditions);
+            dimensionName = fetch1(d,'dimension');
+            if pv.labelOnly
+                 % Add a column that labels the condition in the
+                 % existing table                 
+                TT = addvars(T,nan(height(T),1), 'NewVariableNames', dimensionName);
+            else
+                 % Split the table rows into multiple tables                   
+                TT =cell(1,nrConditions);
+                conditionValues = cell(1,nrConditions);
+            end
+            cCntr=0;
+            for c = fetch(conditions,'value','trials')'
+                cCntr= cCntr+1;
+                trialsThisCondition = ismember(T.trial,c.trials);
+                assert(isscalar(c.value),"Condition value should be a scalar");
+                valueThisCondition = c.value{1}; % Stored as cell but is a scalar
+                if pv.labelOnly
+                    [TT{trialsThisCondition,dimensionName}] = deal(valueThisCondition);    
+                else
+                    TT{cCntr} = T(trialsThisCondition,:);
+                    conditionValues{cCntr} =valueThisCondition;
+                end
+            end
+            if pv.labelOnly
+                varargout = {TT};
+            else
+                varargout = {TT,conditionValues};
+            end
+        end
         function [trials,values] = combine(d,dimension,restriction)
             % Factorial combination of multiple dimensions
             % Returns a cell array with trial numbers that correspond ot

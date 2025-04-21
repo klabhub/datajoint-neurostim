@@ -20,6 +20,7 @@ if packages~=""
 end
 
 className = string([]);
+try
 cls = feval(top);
 m = metaclass(cls);
 if ismember('nwb',{m.MethodList.Name})
@@ -31,4 +32,8 @@ children=cls.children;
 for ch=1:numel(children)
     childName =  string(dj.conn().tableToClass(children{ch}));
     className = [className nwbFind(childName)]; %#ok<AGROW>
+end
+catch me
+    me.message
+
 end

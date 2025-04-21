@@ -44,12 +44,17 @@ for e=1:numel(expt)
     else
         nrPlanes = info.otparam(3);
     end
-    nrChannels = numel(info.channels);
+    nrChannels = (info.channels==0)+1;  % 0 means red+green, all others mean single channel
     % 2 bytes per pixel.
     dirInfo = dir(fullfile(fldr,fname));
     info.nrFrames = dirInfo.bytes./prod(info.sz)/nrChannels/nrPlanes/2;
     info.nrPlanes  = nrPlanes;
-
-    out(e) = info;
+    if floor(info.nrFrames) ~=info.nrFrames
+        % This seems to happen in 2-plane recordings;  an extra byte in the
+        % file?
+        fprintf(2,"Half frames (nrPlanes = %d) in %s?? Flooring.\n",nrPlanes,ff)
+        info.nrFrames = floor(info.nrFrames);
+    end
+    out(e) = info; %#ok<AGROW>
 end
 end
