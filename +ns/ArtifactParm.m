@@ -1,18 +1,17 @@
 %{
 #  Preprocessing instructions used to detect artifact trials and time periods.
 atag         :  varchar(32)     # A  unique name for these instructions
+ctag         : varchar(32)    # The ctag of the data to which this applies. 
 ---
 fun         : varchar(255)      # The user defined function that does the work. 
-c           : varchar(32)       # The ctag of the data to which this applies. 
 description : varchar(1024)     # Short description
 parms       : longblob          # struct containing all parameters that the fun needs to do its job.
-paradigm   = NULL : longblob    # Cellstring of paradigms to which this artifact correction should be applied. Leave empty to apply to all paradigms
 %}
 %
 % EXAMPLE
-% struct(adtag','outliers','fun','artifacts',
+% struct('atag','outliers','fun','artifacts',
 %           'description','Finding outliers in EEG data',
-%           'c','eeg','parms',struct('z',5,'maxVoltage',50e-6))
+%           'ctag','eeg','parms',struct('z',5,'maxVoltage',50e-6))
 % This will call the function artifacts.m for each row in C that has the
 % ctag 'eeg'. The artifacts.m function has the following prototype:
 % 

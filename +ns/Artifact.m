@@ -19,24 +19,7 @@ classdef Artifact < dj.Computed
         function v = get.keySource(~)
             % Restricted to ns.C tuples with the ctag specified in
             % ArtifactParm
-            allTpl = [];
-            for thisPrm= fetch(ns.ArtifactParm,'c','paradigm')'
-                tbl = (ns.C*ns.CParm) & struct('ctag',thisPrm.c);
-                if ~isempty(thisPrm.paradigm)
-                    tbl = tbl & (ns.Experiment & struct('paradigm',thisPrm.paradigm));
-                end
-                % Would like to concatenate this tbl with the next row but
-                % this does not work with the | operator. Instead, concatenate
-                % tuples of primary keys
-                thisTpl = fetch(tbl*(proj(ns.ArtifactParm) & thisPrm));
-                if isempty(allTpl)
-                    allTpl = thisTpl;
-                else
-                    allTpl  = catstruct(1,allTpl,thisTpl);
-                end
-            end
-            % And then restrict the full table by the set of found tuples.
-            v = (ns.C*proj(ns.ArtifactParm,'atag','fun','description','parms')) & allTpl;
+            v =ns.C & (ns.CParm & proj(ns.ArtifactParm,'ctag'));            
         end
     end
     methods (Access=protected)
