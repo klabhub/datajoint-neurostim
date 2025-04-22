@@ -28,7 +28,7 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 %  BK - Jan 2025
 
 %% Fetch the file to read (ns.C has already checked that it exists)
-mffFilename = strrep(fullfile(folder(ns.Experiment &key),key.filename),'\','/'); % Avoid fprintf errors
+mffFilename = strrep(fullfile(folder(ns.Experiment &key),key.file),'\','/'); % Avoid fprintf errors
 
 %% Read the raw signals from the mff.
 fprintf("Start reading from " +  mffFilename + "...")
@@ -71,8 +71,8 @@ isTcp = contains(source,'Multi-Port ECI');
 % Using NTPSync results in pretty much perfectly aligned clocks (no
 % drift,little offset). But we check anyway using the Begin Trial (bTRL)
 % events.
-
-prms  = get(ns.Experiment & key,{'cic','egi'});
+exp_tpl = ns.Experiment & key;
+prms  = get(exp_tpl,{'cic','egi'});
 trialStartTimeNeurostim  = prms.cic.trialNsTime(2:end);% 
 trialStartTimeEgi = [MFF.event(strcmpi(code,'BTRL')).time];
 % The number of trials should match
@@ -99,9 +99,35 @@ signal =double(MFF.data(:,stay)');
 neurostimTime = neurostimTime(stay);
 
 %% Preprocess if requested
-% Apply filtering - time in seconds to allow Hz units for filters
+
+% Layout necessary for certain referencing and interpolation functions
 parms.layout = MFF.etc.layout;
-[signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
+
+% If assigned badElectrodes file, the electrodes will have been marked 
+% during preprocessing 
+parms.badElectrodes = ephys.egi.badElectrodes(exp_tbl, ...
+    struct(filename = 'badElectrodes', extension = '.xlsx'));
+
+% If noisy channel detection requested, check if the signal needs to be
+% subsetted n-seconds around trials
+if isfield(parms, "noisy_channels")
+
+    if any(ismember(parms.noisy_channels, "epoch_buffer"))
+
+        buffer_t = parms.noisy_channels{find(ismember(parms.noisy_channels, "epoch_buffer"))+1};
+        ep_mask = ns.getTimepointsAroundTrials(exp_tpl, neurostimTime, buffer_t);
+        mask_epochs = {"epoch_mask", ep_mask};
+
+    else
+        mask_epochs = {"epoch_mask", ones(size(signal))==1};
+    end
+    parms.noisy_channels = horzcat([parms.noisy_channels, mask_epochs]);
+    [signal,neurostimTime, noisyChannels] = ns.CFilter(signal,neurostimTime/1000,parms);
+else
+    [signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
+
+end
+
 %% Package output
 % Regular sampling - stored in ms
 neurostimTime = [1000*neurostimTime(1) 1000*neurostimTime(end) numel(neurostimTime)];
@@ -113,6 +139,11 @@ nr = num2cell(nr);
 [channelInfo.nr] =deal(nr{:}); 
 recordingInfo = mergestruct(MFF.chaninfo,MFF.etc);
 recordingInfo.ref = MFF.ref;
+if isfield(parms, "noisy_channels")
+
+    recordingInfo.noisyChannels = noisyChannels;
+    
+end
 
 %% TODO: Add evts to egi plugin?
 
