@@ -20,6 +20,10 @@ parms       : longblob          # struct containing all parameters that the fun 
 %  When populate(ns.Artifact) is called, the fun will be called with C a
 %  relevant row from the ns.C table, and parms the parms defined in this
 %  table.
+% You can apply the same artifact detection to mutiple types of C data
+% by inserting another row, with a different ctag but the same atag
+% in this ArtifactParm table.
+%
 % The user defined function should return two structs (which can be empty)
 % perExpt defines trials (.trial) and time periods (.start, .stop) that
 % identify trials that shoudl be excluded from analysis (in ns.C/align)

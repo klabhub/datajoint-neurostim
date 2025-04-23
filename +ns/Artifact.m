@@ -19,7 +19,7 @@ classdef Artifact < dj.Computed
         function v = get.keySource(~)
             % Restricted to ns.C tuples with the ctag specified in
             % ArtifactParm
-            v =ns.C & (ns.CParm & proj(ns.ArtifactParm,'ctag'));            
+            v =(ns.C *ns.CParm) *proj(ns.ArtifactParm,'atag','ctag');            
         end
     end
     methods (Access=protected)
