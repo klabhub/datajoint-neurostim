@@ -35,7 +35,7 @@ if exists(file)
     badElectrodes = T{:,1};
     perChannel =struct('start',[],'stop',[],'trial',[],'channel',num2cell(badElectrodes));
 else
-    fprintf('No %s for %s',parms.filename,fldr)
+    fprintf('No %s for %s.\n',parms.filename,fldr)
     perChannel =struct('start',[],'stop',[],'trial',[],'channel',[]);
 end
 
