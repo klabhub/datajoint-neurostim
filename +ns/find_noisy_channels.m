@@ -157,9 +157,8 @@ function noisyChannels = find_noisy_channels(signal, options)
 
             case "inverse_distance"
                 
-                interp_func = @ns.interpolate_by_inverse_distance;
-
-                interpParams = options.ransacDistanceParams;
+                interp_func = @ns.interpolate_by_inverse_distance;                
+                interpParams = gen.struct_to_varargin(options.ransacDistanceParams);
 
         end
     end
