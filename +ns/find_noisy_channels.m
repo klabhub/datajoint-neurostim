@@ -56,7 +56,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         options.highAmplitudeMaxRatio (1,1) {mustBeNumeric, mustBePositive, mustBeLessThanOrEqual(options.highAmplitudeMaxRatio, 1)} = 0.25
 
         % Deviation
-        options.deviationThreshold (1,1) {mustBeNumeric, mustBePositive} = 1.96
+        options.deviationThreshold (1,1) {mustBeNumeric, mustBePositive} = 2.576
 
         % Correlation
         options.correlationFrequencyCutoff (1,1) {mustBeNumeric, mustBePositive} = 50
@@ -76,9 +76,9 @@ function noisyChannels = find_noisy_channels(signal, options)
         options.ransacMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.ransacMaxBadWindows, 0, 1)} = 0.4
         options.ransacSampleSize (1,1) {mustBeNumeric, mustBeInteger, mustBePositive} = 5
         options.ransacSplineParams (1,3) {mustBeNumeric, mustBeVector} = [0 4 7]
-        options.ransacDistanceParams = {"idwPower", "optimize"}
+        options.ransacDistanceParams = struct(idwPower = 'optimize')
 
-        options.interpolationMethod = "inverse_distance"
+        options.interpolationMethod = 'inverse_distance'
     end
     % --- End of Argument Validation ---
 
