@@ -33,15 +33,30 @@ hasNoisyChannels = ~isempty(parms.badElectrodes);
 varargout = cell(1, nargout);
 fn =string(fieldnames(parms))';
 for f=fn
-    switch f
+
+    % In order to apply same transformations multiple times at different
+    % orders the parms field can end with an identifier number, which is
+    % removed at this step.
+    f = char(f);
+    command = f;
+    isNumInF = isstrprop(f, 'digit');
+
+    if isNumInF(end)
+
+        last_digit_idx = find(~isNumInF,1,'last')+1;
+        command(last_digit_idx:end) = '';
+
+    end
+
+    switch command
         case "decimate"
             %% Downsampling using decimate
             tic
-            if numel(parms.decimate)==2 & strcmpi(parms.decimate{1},"frequency")
-                targetRate = parms.decimate{2};
+            if numel(parms.(f))==2 & strcmpi(parms.(f){1},"frequency")
+                targetRate = parms.(f){2};
                 R = round(sampleRate/targetRate);                
             else
-                R=  parms.decimate{1}; % First input to decimate is the R factor
+                R=  parms.(f){1}; % First input to decimate is the R factor
                 targetRate =  sampleRate/R;
             end
             fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',sampleRate,targetRate);                        
@@ -57,11 +72,11 @@ for f=fn
             %% Notch, Bandpass,etc. 
             % Any filter that can be designed with designfilt
             % and applied with filtfilt
-            fn = fieldnames(parms.filtfilt);
+            fn = fieldnames(parms.(f));
             for i=1:numel(fn)
                 tic;
                 fprintf('Applying filter (designfilt.%s)...',fn{i})
-                prms= parms.filtfilt.(fn{i});
+                prms= parms.(f).(fn{i});
                 d = designfilt(prms{:},'SampleRate',sampleRate);
                 signal = filtfilt(d,signal);
                 fprintf('Done in %d seconds.\n',round(toc))
@@ -69,21 +84,21 @@ for f=fn
         case "detrend"
             %% Detrending using the detrend function    
             tic;
-            fprintf('Detrending (%d)...',parms.detrend{1})
-            signal = detrend(signal,parms.detrend{:});
+            fprintf('Detrending (%d)...',parms.(f){1})
+            signal = detrend(signal,parms.(f){:});
             fprintf('Done in %d seconds.\n',round(toc));
 
         case "noisy_channels"
 
             tic;
             fprintf('Finding noisy channels...\n')
-            parmsN = parms.noisy_channels;
+            parmsN = parms.(f);
 
             if isfield(parms, "layout")
                 parmsN.ChannelLocations = parms.layout.ChannelLocations;
             end
             
-            ep_mask = parms.noisy_channels.epoch_mask;
+            ep_mask = parms.(f).epoch_mask;
             parmsN = rmfield(parmsN,"epoch_mask");
             if isfield(parmsN,"epoch_buffer")
                 parmsN = rmfield(parmsN, "epoch_buffer");
@@ -97,7 +112,31 @@ for f=fn
 
         case "reference"
 
-            switch parms.reference{1}
+            ref_opts = parms.(f);
+            isBadsArg = ismember(ref_opts, "bads");
+            if any(isBadsArg) && hasNoisyChannels
+
+                handle_bads = ref_opts{find(isBadsArg) + 1};
+                
+            elseif hasNoisyChannels
+
+                handle_bads = "exclude";
+
+            else
+
+                handle_bads = [];
+
+            end
+
+            if ~isempty(handle_bads) && strcmp(handle_bads, "interpolate")
+
+                %% Fix here, add option for interpParms{:} and chosing interp_func
+                signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
+                    setdiff(1:size(signal,1), parms.badElectrodes), parms.badElectrodes);
+
+            end
+
+            switch parms.(f){1}
                 case "average"
 
                     disp('Applying rereferencing to the average channel activity.');
