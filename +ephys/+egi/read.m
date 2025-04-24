@@ -28,7 +28,8 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 %  BK - Jan 2025
 
 %% Fetch the file to read (ns.C has already checked that it exists)
-mffFilename = strrep(fullfile(folder(ns.Experiment &key),key.file),'\','/'); % Avoid fprintf errors
+exp_tpl = ns.Experiment & key;
+mffFilename = strrep(fullfile(folder(exp_tpl),key.filename),'\','/'); % Avoid fprintf errors
 
 %% Read the raw signals from the mff.
 fprintf("Start reading from " +  mffFilename + "...")
@@ -71,7 +72,6 @@ isTcp = contains(source,'Multi-Port ECI');
 % Using NTPSync results in pretty much perfectly aligned clocks (no
 % drift,little offset). But we check anyway using the Begin Trial (bTRL)
 % events.
-exp_tpl = ns.Experiment & key;
 prms  = get(exp_tpl,{'cic','egi'});
 trialStartTimeNeurostim  = prms.cic.trialNsTime(2:end);% 
 trialStartTimeEgi = [MFF.event(strcmpi(code,'BTRL')).time];
@@ -102,26 +102,34 @@ neurostimTime = neurostimTime(stay);
 
 % Layout necessary for certain referencing and interpolation functions
 parms.layout = MFF.etc.layout;
+parms.layout.ChannelLocations = [[MFF.chanlocs.X]', [MFF.chanlocs.Y]', [MFF.chanlocs.Z]'];
 
 % If assigned badElectrodes file, the electrodes will have been marked 
 % during preprocessing 
-parms.badElectrodes = ephys.egi.badElectrodes(exp_tbl, ...
+badElectrodes = ephys.egi.badElectrodes(exp_tpl, ...
     struct(filename = 'badElectrodes', extension = '.xlsx'));
+if isfield(badElectrodes, "channel")
+    parms.badElectrodes = badElectrodes.channel;
+    signal(parms.badElectrodes, :) = NaN;
+else
+    parms.badElectrodes = [];
+end
 
 % If noisy channel detection requested, check if the signal needs to be
 % subsetted n-seconds around trials
 if isfield(parms, "noisy_channels")
 
-    if any(ismember(parms.noisy_channels, "epoch_buffer"))
+    if isfield(parms.noisy_channels, "epoch_buffer")
 
-        buffer_t = parms.noisy_channels{find(ismember(parms.noisy_channels, "epoch_buffer"))+1};
-        ep_mask = ns.getTimepointsAroundTrials(exp_tpl, neurostimTime, buffer_t);
-        mask_epochs = {"epoch_mask", ep_mask};
+        buffer_t = parms.noisy_channels.epoch_buffer;
+        
+        parms.noisy_channels.epoch_mask = ns.getTimepointsAroundTrials(exp_tpl, neurostimTime, buffer_t);
 
     else
-        mask_epochs = {"epoch_mask", ones(size(signal))==1};
+        parms.noisy_channels.epoch_mask =  ones(size(signal))==1;
     end
-    parms.noisy_channels = horzcat([parms.noisy_channels, mask_epochs]);
+
+    parms.noisy_channels.Fs = MFF.srate;
     [signal,neurostimTime, noisyChannels] = ns.CFilter(signal,neurostimTime/1000,parms);
 else
     [signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
@@ -139,6 +147,8 @@ nr = num2cell(nr);
 [channelInfo.nr] =deal(nr{:}); 
 recordingInfo = mergestruct(MFF.chaninfo,MFF.etc);
 recordingInfo.ref = MFF.ref;
+recordingInfo.srate = MFF.srate;
+recordingInfo.layout = parms.layout;
 if isfield(parms, "noisy_channels")
 
     recordingInfo.noisyChannels = noisyChannels;
