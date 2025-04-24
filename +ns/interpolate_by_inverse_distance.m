@@ -620,7 +620,6 @@ arguments
     epsilon (1,1) {mustBeNumeric, mustBeReal, mustBePositive}
 end
 % --- Core Logic ---
-cost = 2.0; % Default high cost
 numTotalGood = length(allGoodChanIdx);
 n_subset_pool = max(2, round(numTotalGood * frac_predictor_ch));
 n_subset_pool = min(n_subset_pool, numTotalGood); % Cannot exceed total good
