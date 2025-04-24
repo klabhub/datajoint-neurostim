@@ -101,7 +101,7 @@ for f=fn
                 case "average"
 
                     disp('Applying rereferencing to the average channel activity.');
-                    signal = signal - mean(signal,2);
+                    signal = signal - mean(signal,2, 'omitnan', true);
 
                 case "channel"
                 case "laplacian"
