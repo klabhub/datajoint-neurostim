@@ -29,7 +29,7 @@ function varargout = CFilter(signal,time,parms)
 
 [nrSamples,nrChannels] = size(signal);
 sampleRate = 1./mode(diff(time));
-
+hasNoisyChannels = ~isempty(parms.badElectrodes);
 varargout = cell(1, nargout);
 fn =string(fieldnames(parms))';
 for f=fn
@@ -80,12 +80,19 @@ for f=fn
             parmsN = parms.noisy_channels;
 
             if isfield(parms, "layout")
-                parmsN = horzcat(parmsN, "ChannelLocations", parms.layout.chanlocs');
+                parmsN.ChannelLocations = parms.layout.ChannelLocations;
             end
             
-            ep_mask = parms.noisy_channels{find(ismember(parms.noisy_channels, "epoch_masks")) + 1};
-            varargout{3} = ns.find_noisy_channels(signal(:, ep_mask), ...
-                'Timepoints', time, parmsN{:});
+            ep_mask = parms.noisy_channels.epoch_mask;
+            parmsN = rmfield(parmsN,"epoch_mask");
+            if isfield(parmsN,"epoch_buffer")
+                parmsN = rmfield(parmsN, "epoch_buffer");
+            end
+            parmsN = gen.struct_to_varargin(parmsN);
+            varargout{3} = ns.find_noisy_channels(signal(ep_mask,:)', parmsN{:});
+            varargout{3}.parameters = rmfield(varargout{3}.parameters, 'ChannelLocations'); % duplicate
+            hasNoisyChannels = ~isempty(varargout{3}.all);
+            parms.badElectrodes = unique(horzcat(parms.badElectrodes, varargout{3}.all));
             fprintf('Done in %d seconds.\n',round(toc));
 
         case "reference"
