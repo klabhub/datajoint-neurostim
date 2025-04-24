@@ -46,7 +46,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         signal (:,:) {mustBeNumeric, mustBeNonempty}
 
         % Optional Name-Value Pair Arguments
-        options.Timepoints {mustBeNumeric, mustBeVector} = []
+        options.Timepoints = []
         options.ChannelLocations (:,3) {mustBeNumeric, mustBeReal, mustBeFinite} = []
         options.Fs {mustBeNumeric, mustBeScalarOrEmpty, mustBePositive} = []
         options.highPassCutoff {mustBeNumeric, mustBeScalarOrEmpty, mustBeNonnegative} = 1
