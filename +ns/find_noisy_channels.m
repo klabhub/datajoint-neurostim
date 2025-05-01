@@ -56,7 +56,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         options.highAmplitudeMaxRatio (1,1) {mustBeNumeric, mustBePositive, mustBeLessThanOrEqual(options.highAmplitudeMaxRatio, 1)} = 0.25
 
         % Deviation
-        options.deviationThreshold (1,1) {mustBeNumeric, mustBePositive} = 2.576
+        options.deviationThreshold (1,1) {mustBeNumeric, mustBePositive} = 3.291
 
         % Correlation
         options.correlationFrequencyCutoff (1,1) {mustBeNumeric, mustBePositive} = 50
@@ -66,18 +66,21 @@ function noisyChannels = find_noisy_channels(signal, options)
 
         % HF Noise
         options.noiseFrequencyCutoff (1,1) {mustBeNumeric, mustBePositive} = 50
-        options.noiseThreshold (1,1) {mustBeNumeric, mustBePositive} = 1.96
+        options.noiseThreshold (1,1) {mustBeNumeric, mustBePositive} = 3.291
 
         % RANSAC
         options.EnableRansac (1,1) {mustBeNumericOrLogical} = true
         options.ransacWindowSeconds (1,1) {mustBeNumeric, mustBePositive} = 4
         options.ransacChannelFraction (1,1) {mustBeNumeric, mustBeInRange(options.ransacChannelFraction, 0, 1, 'exclusive')} = 0.1
-        options.ransacCorrelationThreshold (1,1) {mustBeNumeric, mustBeInRange(options.ransacCorrelationThreshold, 0, 1)} = 0.75
-        options.ransacMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.ransacMaxBadWindows, 0, 1)} = 0.4
-        options.ransacSampleSize (1,1) {mustBeNumeric, mustBeInteger, mustBePositive} = 5
+        options.ransacCorrelationThresholdMethod = 'absolute' % if 'robust z'
+        options.ransacCorrelationThreshold (1,1) {mustBeNumeric} = 0.5 %, mustBeInRange(options.ransacCorrelationThreshold, 0, 1)} = 0.5
+        options.ransacCorrelationMethod = 'Spearman' % Rank correlation ny default
+        options.ransacMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.ransacMaxBadWindows, 0, 1)} = 0.5
+        options.ransacMinimumSampleSize (1,1) {mustBeNumeric, mustBeInteger, mustBePositive} = 5 % minimum number of channels needed as predictors
         options.ransacSplineParams (1,3) {mustBeNumeric, mustBeVector} = [0 4 7]
         options.ransacDistanceParams = struct(idwPower = 'optimize')
-
+        
+        options.rngSeed {mustBeNumeric, mustBePositive} = []
         options.interpolationMethod = 'inverse_distance'
     end
     % --- End of Argument Validation ---
@@ -97,8 +100,7 @@ function noisyChannels = find_noisy_channels(signal, options)
 
     % --- Initial Setup ---
     [nChannels, nTimepoints] = size(signal); % Use dimensions from validated signal
-    noisyChannels = struct();
-    noisyChannels.parameters = options; % Store parameters used
+    noisyChannels = struct();    
     % Handle Timepoints and Sampling Rate (Fs)
     timepoints_in = options.Timepoints; % Might be empty
     if isempty(options.Fs)
@@ -232,6 +234,11 @@ function noisyChannels = find_noisy_channels(signal, options)
     goodChannelsForRansac_Idx = setdiff(1:nChannels, noisyInterim);
 
     if options.EnableRansac
+
+        if isempty(options.rngSeed)
+            options.rngSeed = randi(2^32-1);
+        end
+        rng(options.rngSeed);
         processedSignal = processedSignal + interim_mean;
 
         if ~isempty(noisyInterim)
@@ -244,6 +251,7 @@ function noisyChannels = find_noisy_channels(signal, options)
 
             % use the idwPower which was estimated at the intrep call
             interpParams{prev_idwPower_idx} = paramsN.idwPower;
+            options.ransacDistanceParams.actualIDWPower = paramsN.idwPower;
         end
         processedSignal = processedSignal - interim_mean;
         noisyChannels.badByRansac = detect_bads_by_ransac(goodChannelsForRansac_Idx);
@@ -257,6 +265,7 @@ function noisyChannels = find_noisy_channels(signal, options)
                                 noisyChannels.badByAmplitude, noisyChannels.badByDeviation, noisyChannels.badByCorrelation, ...
                                 noisyChannels.badByRansac, noisyChannels.badByHFNoise])';
 
+    noisyChannels.parameters = options; % Store parameters used
     % --- Summary ---
     fprintf('--- Summary ---\n');
     fprintf(' Total unique noisy channels identified: %d\n', length(noisyChannels.all));
@@ -424,7 +433,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         fprintf('Checking predictability criterion (RANSAC)...\n');
 
         % Check enough channels remain
-        minChannelsForRansac = options.ransacSampleSize + 1; % Need predictors + target
+        minChannelsForRansac = options.ransacMinimumSampleSize + 1; % Need predictors + target
         if isempty(currentGood_Idx) || length(currentGood_Idx) < minChannelsForRansac
             warning('Not enough good channels (%d) remaining for RANSAC (minimum %d required). Skipping.', length(currentGood_Idx), minChannelsForRansac);
             return;
@@ -445,7 +454,7 @@ function noisyChannels = find_noisy_channels(signal, options)
          % --- RANSAC Core Logic ---
          ransacBadWindowCount = zeros(nChannels, 1); % Store counts using original indices
          ransacTested = false(nChannels, 1); % Keep track of channels tested
-
+         ransacCorrCoeff = nan(nChannels, nRansacWindows);
          % Use original signal for RANSAC prediction targets/data
          ransacSignal = signal;
 
@@ -464,9 +473,9 @@ function noisyChannels = find_noisy_channels(signal, options)
                 nPredictorsNeeded = ceil(options.ransacChannelFraction * length(currentGood_Idx));
                 nPredictorsNeeded = min(nPredictorsNeeded, length(predictorPool)); % Ensure we don't request more than available
 
-                if nPredictorsNeeded < options.ransacSampleSize
+                if nPredictorsNeeded < options.ransacMinimumSampleSize
                      fprintf('   Skipping channel %d: Not enough predictors (%d available, min %d needed based on fraction/sample size).\n', ...
-                             targetChanIdx, length(predictorPool), options.ransacSampleSize);
+                             targetChanIdx, length(predictorPool), options.ransacMinimumSampleSize);
                      continue; % Skip to next target channel
                 end
 
@@ -499,7 +508,7 @@ function noisyChannels = find_noisy_channels(signal, options)
                         correlation = 0;
                     else
                          try % Use column vectors for corr
-                            correlation = corr(actualSignal(:), interpolatedSignal(:));
+                            correlation = corr(actualSignal(:), interpolatedSignal(:), 'Type', options.ransacCorrelationMethod);
                          catch ME_corr
                              warning('Correlation calculation failed for chan %d, win %d: %s. Counting as bad window.', targetChanIdx, iWin, ME_corr.message);
                              correlation = NaN;
@@ -507,11 +516,23 @@ function noisyChannels = find_noisy_channels(signal, options)
                     end
 
                     % Check threshold
-                    if isnan(correlation) || correlation < options.ransacCorrelationThreshold
+                    
+                    if strcmp(options.ransacCorrelationThresholdMethod, 'absolute') && (isnan(correlation) || correlation < options.ransacCorrelationThreshold)
                         ransacBadWindowCount(targetChanIdx) = ransacBadWindowCount(targetChanIdx) + 1;
                     end
+                    ransacCorrCoeff(targetChanIdx, iWin) = correlation;
                 end % End window loop
              end % End target channel loop
+
+             % If method is robust_z, first check the distribution of
+             % correlations
+             if strcmp(options.ransacCorrelationThresholdMethod, 'robust_z')
+
+                 [z_corrCoeff, med, var] = robust_z_func(ransacCorrCoeff);
+                 ransacBadWindowCount = sum(z_corrCoeff < options.ransacCorrelationThreshold, 2, "omitnan");
+                 options.ransacAbsoluteCorrelationThreshold = var .* options.ransacCorrelationThreshold + med;
+             
+             end
 
              % Classify based on fraction of bad windows for tested channels
              testedIndices = find(ransacTested);

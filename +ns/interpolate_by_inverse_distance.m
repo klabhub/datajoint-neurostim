@@ -10,7 +10,7 @@ function [signalData, options] = interpolate_by_inverse_distance(signalData, cha
 %   parameters are specified using Name-Value pairs.
 %
 %   Inputs:
-%       signalData     - Data matrix (channels x time).
+%       signalData     - Data matrix (channels x time) or (epochs x channels x time).
 %       channelCoords  - Matrix of 2D or 3D Cartesian coordinates (X, Y, [Z])
 %                        for ALL channels (num_channels x num_dims). Row index
 %                        must match signalData row index.
@@ -85,17 +85,38 @@ function [signalData, options] = interpolate_by_inverse_distance(signalData, cha
 %   See also: pdist2, convhull, graph, distances, perform_idw_core, optimize_idwPower_via_fminbnd
 
 arguments % Start arguments block
-    signalData (:,:) {mustBeNumeric, mustBeReal}
+    signalData {mustBeNumeric, mustBeReal}
     channelCoords (:,:) {mustBeNumeric, mustBeReal}
     goodChanIdx (1,:) {mustBeNumeric, mustBeInteger, mustBePositive, mustBeVector}
     badChanIdx (1,:) {mustBeNumeric, mustBeInteger, mustBePositive, mustBeVector}
     % Optional Name-Value Pairs:
     options.distanceMetric (1,1) string {mustBeMember(options.distanceMetric, ["euclidean", "geodesic"])} = "euclidean"
     % Allow idwPower to be numeric OR string initially, validate further below
-    options.idwPower {mustBeNumericOrStringScalar(options.idwPower)} = 2.0
+    options.idwPower {mustBeNumericOrStringScalar(options.idwPower)} = 'optimize'
     options.idwOptimizationParameters (1,1) struct = struct() % Default empty struct
     options.verbose (1,1) {mustBeNumericOrLogical} = false % Default
 end % End arguments block
+
+% --- Determine and reshape signal dimensions ---
+original_signal_dims = size(signalData);
+num_dims = length(original_signal_dims);
+
+if num_dims == 2
+    nChannels = original_signal_dims(1);
+    nTimepoints = original_signal_dims(2); % This is actually time samples
+    is3d = false;
+elseif num_dims == 3
+    nEpochs = original_signal_dims(1);
+    nChannels = original_signal_dims(2);
+    nTimepoints = original_signal_dims(3); % This is actually time points per epoch
+    is3d = true;
+    % Reshape 3D (epochs x channels x time) to 2D (channels x (epochs * time))
+    % Permute to (channels x epochs x time) then reshape to (channels x (epochs * time))
+    signalData = reshape(permute(signalData, [2 1 3]), nChannels, nEpochs * nTimepoints);
+else
+    error('signalData must be a 2D matrix (channels x time) or a 3D array (epochs x channels x time).');
+end
+
 
 % --- Extract options for use ---
 idwPowerInput = options.idwPower; % Keep original input separate
@@ -112,9 +133,9 @@ optParams = setDefaultOptimizationParams(options.idwOptimizationParameters, verb
 epsilon = 1e-9; % Small value for numerical stability
 
 % --- Additional Cross-Argument Validations ---
-[numChannels, numTimepoints] = size(signalData);
-if size(channelCoords, 1) ~= numChannels
-    error('Number of rows in signalData (%d) must match number of rows in channelCoords (%d).', numChannels, size(channelCoords, 1));
+
+if size(channelCoords, 1) ~= nChannels
+    error('Number of rows in signalData (%d) must match number of rows in channelCoords (%d).', nChannels, size(channelCoords, 1));
 end
 % Validate coordinate dimensions based on distance metric
 if strcmpi(distanceMetric, "geodesic")
@@ -125,11 +146,11 @@ elseif size(channelCoords, 2) < 2
     error('channelCoords must have at least 2 dimensions (X, Y).');
 end
 
-if any(goodChanIdx > numChannels)
-    error('goodChanIdx contains indices out of bounds (1 to %d).', numChannels);
+if any(goodChanIdx > nChannels)
+    error('goodChanIdx contains indices out of bounds (1 to %d).', nChannels);
 end
-if ~isempty(badChanIdx) && any(badChanIdx > numChannels)
-    error('badChanIdx contains indices out of bounds (1 to %d).', numChannels);
+if ~isempty(badChanIdx) && any(badChanIdx > nChannels)
+    error('badChanIdx contains indices out of bounds (1 to %d).', nChannels);
 end
 if isempty(goodChanIdx)
     error('Need at least one good channel index for interpolation.');
@@ -172,7 +193,7 @@ if (ischar(idwPowerInput) || isstring(idwPowerInput))
             optParams.frac_predictor_ch, optParams.p_min, optParams.p_max, ...
             'verbose', verbose); % Pass main verbose flag
         idwPower = optimalExp; % Use the optimized value
-        options.idwPoer = idwPower;
+        options.idwPower = idwPower;
         if verbose
             fprintf('INFO: Optimization complete. Using optimal IDW power p = %.4f for final interpolation.\n', idwPower);
         end
@@ -208,7 +229,7 @@ if strcmpi(distanceMetric, "geodesic")
     % Geodesic distance calculation requires 3D check already done above
     if verbose
          fprintf('INFO: Calculating geodesic (surface) distances using convex hull...\n');
-         fprintf('      Using all %d points to build the graph...\n', numChannels);
+         fprintf('      Using all %d points to build the graph...\n', nChannels);
     end
     % Call local function using ALL coordinates, passing the main verbose flag
     [fullSurfaceDistances, ~, ~, ~, ~] = calculate_surface_distances(channelCoords, verbose);
@@ -238,7 +259,8 @@ else % Default or explicit "euclidean"
 end
 
 % Initialize Temporary Output Array
-interpolatedData = zeros(numBadChans, numTimepoints, signalClass);
+nSample = size(signalData,2);
+interpolatedData = zeros(numBadChans, nSample, signalClass);
 
 % Identify Coincident Channels (Distance ~ 0 based on calculated metric)
 [minDists, closestGoodIndRel] = min(distances, [], 2); % Find minimum distance for each bad channel
@@ -271,8 +293,7 @@ if any(interpNeededBadMask)
     if verbose
         fprintf('  INFO: Interpolating %d non-coincident channel(s) using weighted average...\n', num_to_interp);
     end
-    interpNeededBadIndicesRel = find(interpNeededBadMask);
-    interpNeededBadIndicesAbs = badChanIdx(interpNeededBadIndicesRel); % Absolute indices for potential warnings
+    interpNeededBadIndicesAbs = badChanIdx(interpNeededBadMask); % Absolute indices for potential warnings
     distancesToInterp = distances(interpNeededBadMask, :); % Distances for only the channels needing interpolation
 
     % Call the core calculation function, passing final idwPower and defined epsilon
@@ -284,6 +305,21 @@ end
 
 % Update the original signalData matrix
 signalData(badChanIdx, :) = interpolatedData;
+
+% --- Reshape back to original dimensions if necessary ---
+if is3d
+    % Reshape 2D (channels x (epochs * time)) back to 3D (epochs x channels x time)
+    % Reshape needs (epochs * time) x channels, then permute to (epochs x channels x time)
+    % Reshape the 2D data (channels x total_time) into (channels x epochs x time_per_epoch)
+    signalData = reshape(signalData, nChannels, nEpochs, nTimepoints);
+    % Permute back to (epochs x channels x time_per_epoch)
+    signalData = permute(signalData, [2 1 3]);
+
+    if verbose
+        fprintf('INFO: Reshaped interpolated data back to original 3D shape (%d x %d x %d).\n', numEpochs, numChannels, numTimepoints);
+    end
+
+end
 
 if verbose
     fprintf('INFO: Inverse Distance Weighting interpolation complete.\n');
