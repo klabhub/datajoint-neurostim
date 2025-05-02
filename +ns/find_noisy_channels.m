@@ -300,8 +300,8 @@ function noisyChannels = find_noisy_channels(signal, options)
              diffSignal = diff(processedSignal(nonZeroVarChans,:), 1, 2);
              isFlatSection(nonZeroVarChans) = any(abs(diffSignal) < 1e-10, 2);
         end
-        badFlat_all = find(isFlatSection | isZeroVariance)';
-        badFlat_Idx = setdiff(badFlat_all, badNan_Idx); % Exclude NaNs
+        badFlat_all = gen.make_row(find(isFlatSection | isZeroVariance));
+        badFlat_Idx = gen.make_row(setdiff(badFlat_all, badNan_Idx)); % Exclude NaNs
         fprintf(' Found %d NaN, %d Flat channels.\n', length(badNan_Idx), length(badFlat_Idx));
     end % detect_bads_by_nan_flat
     
@@ -312,7 +312,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         if isempty(currentGood_Idx), fprintf(' INFO: Skipping amplitude check (no good channels).\n'); return; end
         signalSubset = processedSignal(currentGood_Idx, :);
 
-        badAmp_Idx = find(mean(abs(signalSubset) > options.highAmplitudeCutOff, 2) > options.highAmplitudeMaxRatio);
+        badAmp_Idx = gen.make_row(find(mean(abs(signalSubset) > options.highAmplitudeCutOff, 2) > options.highAmplitudeMaxRatio));
 
         fprintf(' Found %d channels failing amplitude criterion.\n', length(badAmp_Idx));
     end
@@ -330,7 +330,7 @@ function noisyChannels = find_noisy_channels(signal, options)
              channelRobustStd = 0.7413 * channelIQR;
              channelRobustStd(channelRobustStd < eps) = eps;
              deviationZ = robust_z_func(channelRobustStd, 1, "std"); % Z-score across channels in subset
-             badDeviation_Idx = originalIndicesSubset(deviationZ > options.deviationThreshold); % Map back
+             badDeviation_Idx = gen.make_row(originalIndicesSubset(deviationZ > options.deviationThreshold)); % Map back
          catch ME 
              warning(ME.identifier, 'Deviation check failed: %s', ME.message); 
          end
@@ -380,7 +380,7 @@ function noisyChannels = find_noisy_channels(signal, options)
               end % iWin loop
 
               lowCorrFraction = sum(maxCorrelationsWindowed < options.correlationThreshold, 2) / nWindows;
-              badCorrelation_Idx = originalIndicesSubset(lowCorrFraction > options.correlationMaxBadWindows); % Map back
+              badCorrelation_Idx = gen.make_row(originalIndicesSubset(lowCorrFraction > options.correlationMaxBadWindows)); % Map back
 
          catch ME
              warning(ME.identifier, 'Correlation check failed: %s', ME.message);
@@ -414,7 +414,7 @@ function noisyChannels = find_noisy_channels(signal, options)
                 noisinessRatio(~isfinite(noisinessRatio)) = max(noisinessRatio(isfinite(noisinessRatio)), 1);
             end
             noiseZ = robust_z_func(noisinessRatio, 1, "std"); % Z-score across subset
-            badHFNoise_Idx = originalIndicesSubset(noiseZ > options.noiseThreshold); % Map back
+            badHFNoise_Idx = gen.make_row(originalIndicesSubset(noiseZ > options.noiseThreshold)); % Map back
          catch ME
              warning(ME.identifier, 'HF Noise check failed: %s', ME.message); 
          end
@@ -543,7 +543,7 @@ function noisyChannels = find_noisy_channels(signal, options)
                      badRansac_Idx = [badRansac_Idx, idx]; %#ok<AGROW>
                  end
              end
-             badRansac_Idx = unique(badRansac_Idx); % Final list of original indices
+             badRansac_Idx = gen.make_row(unique(badRansac_Idx)); % Final list of original indices
 
          catch ME_ransac
             warning(ME_ransac.identifier, 'RANSAC check failed during execution: %s', ME_ransac.message);
