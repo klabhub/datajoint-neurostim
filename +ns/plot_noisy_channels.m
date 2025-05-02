@@ -12,8 +12,7 @@ function plot_noisy_channels(noisyChannels, signal, timepoints, varargin)
 %   Inputs:
 %       noisyChannels - Structure output from find_noisy_channels function.
 %                       Must contain fields like .all, .badBy...
-%       signal        - (nChannels x nTimepoints) EEG data matrix used in
-%                       find_noisy_channels.
+%       signal        - (nChannels x nTimepoints) EEG data matrix or (nEpochs x nChannels x nTimepoints) EEG DaTA.
 %       timepoints    - (1 x nTimepoints) Time vector corresponding to signal.
 %       varargin      - Optional Name-Value pairs:
 %           'TimeRange'        - [startTime, endTime] vector to plot only a
@@ -41,8 +40,8 @@ p.FunctionName = 'plot_noisy_channels';
 
 % Validation functions
 isValidNoisyStruct = @(x) isstruct(x) && isfield(x, 'all') && ~isempty(regexp(strjoin(fieldnames(x)), 'badBy', 'once'));
-isValidSignal = @(x) isnumeric(x) && ismatrix(x) && ~isempty(x);
-isValidTimepoints = @(x, sig) isnumeric(x) && isvector(x) && length(x) == size(sig, 2);
+isValidSignal = @(x) isnumeric(x) && ~isempty(x) && (ismatrix(x) || ndims(x) == 3);
+isValidTimepoints = @(x, sig) isnumeric(x) && isvector(x) && length(x) == size(sig, ndims(sig));
 isValidRange = @(x) isempty(x) || (isnumeric(x) && numel(x) == 2 && x(1) < x(2));
 isValidMaxChan = @(x) isnumeric(x) && isscalar(x) && x > 0 && floor(x)==x;
 isValidIQRScale = @(x) isnumeric(x) && isscalar(x) && x > 0;
@@ -57,8 +56,8 @@ addRequired(p, 'noisyChannels', isValidNoisyStruct);
 addRequired(p, 'signal', isValidSignal);
 addRequired(p, 'timepoints', @(x) isValidTimepoints(x, signal)); % Pass signal for validation
 addParameter(p, 'TimeRange', [], isValidRange);
-addParameter(p, 'MaxChannelsPerPlot', 50, isValidMaxChan);
-addParameter(p, 'YLimIQRScale', 2.0, isValidIQRScale);
+addParameter(p, 'MaxChannelsPerPlot', 257, isValidMaxChan);
+addParameter(p, 'YLimIQRScale', 10.0, isValidIQRScale);
 addParameter(p, 'YLim', [], isValidYLim); % New YLim parameter
 addParameter(p, 'LineWidth', 1, isValidLineWidth);
 addParameter(p, 'LineAlpha', 1.0, isValidAlpha); % New LineAlpha parameter
@@ -70,7 +69,19 @@ parse(p, noisyChannels, signal, timepoints, varargin{:});
 params = p.Results;
 
 % --- Data Preparation ---
-[nChannels, nTimepoints] = size(signal);
+n_dims = ndims(signal);
+if n_dims == 2
+    
+    [nChannels, nTimepoints] = size(signal);
+    chan_dim = 1;
+    
+else
+    [nEpochs, nChannels, nTimepoints] = size(signal);
+    chan_dim = 2;
+end
+
+idx_selector =  repmat({':'}, 1, n_dims);
+
 % Fs = 1 / median(diff(timepoints)); % Estimate sampling frequency (not strictly needed here)
 
 % Time selection
@@ -139,8 +150,12 @@ else
             warning('plot_noisyChannels:MaxChan', 'Category "%s": Too many channels (%d). Plotting only the first %d.', categoryName, nCatChans, params.MaxChannelsPerPlot);
         end
 
-        nToPlot = length(plotIndices);
-        signalToPlot = signal(plotIndices, timeIdx);
+        idx_selector{chan_dim} = plotIndices;
+        idx_selector{end} = timeIdx;
+        signalToPlot = signal(idx_selector{:});
+        if n_dims == 3
+            signalToPlot = squeeze(mean(signalToPlot, 1));
+        end
 
         % Plotting (No Offset)
         ax = nexttile(t1);
@@ -194,8 +209,12 @@ if nAllChans > params.MaxChannelsPerPlot
     titleSuffixAll = sprintf(' (showing random %d of %d)', params.MaxChannelsPerPlot, nAllChans);
      warning('plot_noisyChannels:MaxChan', 'All Channels: Too many channels (%d). Plotting only a random subset of %d.', nAllChans, params.MaxChannelsPerPlot);
 end
-nToPlotAll = length(plotIndicesAll);
-signalToPlotAll = signal(plotIndicesAll, timeIdx);
+idx_selector{chan_dim} = plotIndicesAll;
+idx_selector{end} = timeIdx;
+signalToPlotAll = signal(idx_selector{:});
+if n_dims == 3
+    signalToPlotAll = squeeze(mean(signalToPlotAll, 1));
+end
 
 % Plotting (No Offset)
 hold(ax1, 'on');
@@ -239,8 +258,13 @@ else
         titleSuffixGood = sprintf(' (showing random %d of %d)', params.MaxChannelsPerPlot, nGoodChans);
          warning('plot_noisyChannels:MaxChan', 'Good Channels: Too many channels (%d). Plotting only a random subset of %d.', nGoodChans, params.MaxChannelsPerPlot);
     end
-    nToPlotGood = length(plotIndicesGood);
-    signalToPlotGood = signal(plotIndicesGood, timeIdx);
+    
+    idx_selector{chan_dim} = plotIndicesGood;
+    idx_selector{end} = timeIdx;
+    signalToPlotGood = signal(idx_selector{:});
+    if n_dims == 3
+        signalToPlotGood = squeeze(mean(signalToPlotGood, 1));
+    end
 
     % Plotting (No Offset)
     hold(ax2, 'on');
