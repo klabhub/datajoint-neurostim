@@ -96,27 +96,36 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
     properties
 
         Epoch (1,1) ns.Epoch
-        EpochParameter (1,1) ns.EpochParameter        
+        EpochChannel (1,1) ns.EpochChannel
+        EpochParameter (1,1) ns.EpochParameter 
+        Artifact (1,1) ns.Artifact
+        ArtifactChannel (1,1) ns.ArtifactChannel
+        C (1,1) ns.C
 
     end
 
     properties (SetAccess = protected)
 
         data table
-        channels (1,:) double = []
+        channels
+        trials
         time_window double = []
         frequency_window = []
         frequencies
-        trials = {}
-
+        artifacts struct = struct(keep=true, discard=false, fillnan=false, interpolate=false)
+        badEpochs struct
     end
 
     properties (Dependent)
 
         timepoints
+        epoch_length
         epoch_window
         dt
         n_rows
+        data_columns
+        temporal_data_columns
+        spectral_data_columns
 
     end
 
@@ -125,16 +134,19 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
         isPadded_ = false
         pad_filler_ = 'zeros';
         signal_length_after_padding_
+
         transform_steps_ = {}
         dimensions_ = struct(trials=1, channels=2, time=3, frequency=3)
-
+        
     end
 
     properties (Hidden, Constant)
 
         separate_figure_by_levels_ = ["ctag", "etag", "dimension", "subject"]
         data_columns_ = ["signal", "amplitude", "power", "snr"]
-
+        temporal_data_columns_ = ["signal"];
+        spectral_data_columns_ = ["amplitude", "power", "snr"];
+    
     end
 
     methods
@@ -148,11 +160,18 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 pv.channels = [] % if empty all channels
                 pv.trials = {} % if empty, all trials
                 pv.time_window = [];
+                pv.artifacts = []
 
             end
 
             ep.Epoch = eTbl;
             ep.EpochParameter = ns.EpochParameter & eTbl;
+            ep.EpochChannel = ns.EpochChannel & eTbl;
+            ep.C = ns.C & eTbl;
+
+            ep.Artifact = ns.Artifact & eTbl;
+            ep.ArtifactChannel = ns.ArtifactChannel & eTbl;
+
             if isempty(pv.time_window)
 
                 pv.time_window = ep.EpochParameter.epoch_win;
@@ -162,18 +181,24 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
             assert(ep.EpochParameter.nrows == 1, ...
                 "retrieve(ns.Epoch,...) is designed for compatible epoch structures corresponding to a single etag.")
 
+
             ep.channels = pv.channels;
             ep.time_window = pv.time_window;
             ep.trials = pv.trials;
+            if ~isempty(pv.artifacts)
+                ep.artifacts = pv.artifacts;
+
+                if islogical(struct2array(ep.artifacts))
+
+                    assert(sum(struct2array(ep.artifacts))==1, "Only one of the fields in the property 'artifacts' must be set to true.");
+                end
+            end
             ep.retrieve;
 
 
         end
 
         function ep = transform(ep, varargin)
-
-
-            op = ep.data;
 
             iOper = 1;
             while iOper <= nargin-1
@@ -182,23 +207,43 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 iOper = iOper + 1;
                 switch lower(argN)
 
+                    case "rereference"
+
+                        if strcmp(varargin{iOper}, 'options')
+                            
+                            ref_opts = varargin{iOper + 1};
+                            iOper = iOper + 2;
+                            
+                        else
+                            ref_opts = {};
+                        end
+
+                        c_info = getfield(fetch(ep.C, 'info'),'info');
+
+                        if isfield(c_info.layout, 'ChannelLocations')
+                            ref_opts = [ref_opts, 'channel_locations', c_info.layout.ChannelLocations];
+                        end                                            
+
+                        ep.data.signal = cellfun(@(x) ns.rereference(x, ref_opts{:}), ep.data.signal, 'UniformOutput',false);
+
                     case "detrend"
 
-                        op.signal = cellfun(@(x) gen.make_row(squeeze(ep.detrend_(x, ndims(op.signal)))), op.signal, 'UniformOutput', false);
+                        ep.data.signal = cellfun(@(x) gen.make_row(squeeze(ep.detrend_(x))), ep.data.signal, 'UniformOutput', false);
 
                     case "baseline"
 
-                        restricter.time_window = varargin{iOper + 1};
+                        restricter = ns.EpochRestricter(time_window = varargin{iOper});
                         iOper = iOper + 1;
 
-                        baselineN = ep.copy().subset(restricter).apply('signal', @mean, ep.dimensions_.time);
+                        baselineN = ep.copy().subset(restricter).apply('signal', @mean, ep.dimensions_.time, 'omitnan');
 
-                        ep.signal = arrayfun(@(i) ep.signal{i} - baselineN.signal{i}, 1:ep.n_rows, 'UniformOutput', false);
+                        % ep.data.signal = 
+                        ep.data.signal = gen.make_column(arrayfun(@(i) ep.data.signal{i} - baselineN.data.signal{i}, 1:ep.n_rows, 'UniformOutput', false));
 
                     case "subset"
 
                         restricter = varargin{iOper};
-                        if ~isstruct(restricter) || ~any(isfield(restricter,["trials", "channels", "time_window", "frequency_window"]))
+                        if ~isa(restricter, 'ns.EpochRestricter')
 
                             error("'subset' command needs to be followed by a (1x1) structure array containing some or all of the following fieldL 'trials', 'channels', 'time_window'")
                         else
@@ -226,7 +271,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                             case 'channels'
 
                                 assert(~isnan(ep.dimensions_.channels), "Channels were already collapsed.")
-                                avg_dim = ep.dimensions_.channel;
+                                avg_dim = ep.dimensions_.channels;
                                 ep.dimensions_.channels = NaN;
                                 ep.dimensions_.time = 2;
 
@@ -240,7 +285,11 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                         end
 
-                        op.signal = cellfun(@(x) gen.make_row(squeeze(mean(x, avg_dim, 'omitmissing'))), op.signal, 'UniformOutput', false);
+                        for colN = ep.data_columns
+
+                            ep.data.(colN) = cellfun(@(x) gen.make_row(squeeze(mean(x, avg_dim, 'omitmissing'))), ep.data.(colN), 'UniformOutput', false);
+
+                        end
 
                     case "pad"
 
@@ -270,28 +319,23 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                     case "window"
                     case "fft"
-
-                        sfreq = varargin{iOper};
-                        iOper = iOper + 1;
-                        if ~isnumeric(sfreq) && strcmp(sfreq, "sfreq")
-                            sfreq = varargin{iOper};
-                            iOper = iOper + 1;
-                        end
+                        
+                        sfreq = 1000/ep.dt;
 
                         if ep.isPadded_
 
                             tmp_signal = cellfun(@(x) paddata(x, ep.signal_length_after_padding_, Side='Both', FillValue=ep.pad_filler_, Dimension=ndims(x)), ...
-                                op.signal, 'UniformOutput', false);
+                                ep.data.signal, 'UniformOutput', false);
 
                         else
 
-                            tmp_signal = op.signal;
+                            tmp_signal = ep.data.signal;
 
                         end
 
-                        for i = 1:height(op)
+                        for i = 1:ep.n_rows
 
-                            [op.amplitude{i}, op.phase{i}, fqN] = ep.do_fft(tmp_signal{i}, sfreq, ndims(tmp_signal{i}));
+                            [ep.data.amplitude{i}, ep.data.phase{i}, fqN] = ep.do_fft(tmp_signal{i}, sfreq, ndims(tmp_signal{i}));
 
                         end
 
@@ -321,17 +365,17 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                         if ep.isPadded_
 
                             tmp_signal = cellfun(@(x) paddata(x, ep.signal_length_after_padding_, Side='Both', FillValue=ep.pad_filler_, Dimension=ndims(x)), ...
-                                op.signal, 'UniformOutput', false);
+                                ep.data.signal, 'UniformOutput', false);
 
                         else
 
-                            tmp_signal = op.signal;
+                            tmp_signal = ep.data.signal;
 
                         end
 
-                        for i = 1:height(op)
+                        for i = 1:ep.n_rows
 
-                            [op.power{i}, fqN] = ep.do_psd(tmp_signal{i}, sfreq, ndims(tmp_signal{i}), opts{:});
+                            [ep.data.power{i}, fqN] = ep.do_psd(tmp_signal{i}, sfreq, ndims(tmp_signal{i}), opts{:});
 
                         end
 
@@ -342,7 +386,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                         by_var = varargin{iOper};
                         if ~ismember(by_var, ["amplitude", "power"])
                             by_var = "amplitude";
-                            if ~ismember(by_var, op.Properties.VariableNames)
+                            if ~ismember(by_var, ep.data.Properties.VariableNames)
                                 by_var = "power";
                             end
                         else
@@ -357,18 +401,18 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                                 n_bins = varargin{iOper};
                                 iOper = iOper + 1;
 
-                                op.snr = cellfun(@(x) ...
+                                ep.data.snr = cellfun(@(x) ...
                                     gen.apply_func_along_dimension(x, ndims(x), @ep.divide_by_n_neighbor_, n_bins), ...
-                                    op.(by_var), 'UniformOutput', false);
+                                    ep.data.(by_var), 'UniformOutput', false);
 
                             case {"medfilt", "median"}
 
                                 n_bins = varargin{iOper};
                                 iOper = iOper + 1;
 
-                                op.snr = cellfun(@(x) ...
+                                ep.data.snr = cellfun(@(x) ...
                                     gen.apply_func_along_dimension(x, ndims(x), @ep.divide_by_medfilt_, n_bins), ...
-                                    op.(by_var), 'UniformOutput', false);
+                                    ep.data.(by_var), 'UniformOutput', false);
 
                             case {"average"}
                             otherwise
@@ -377,7 +421,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                     case "split_trials"
 
 
-                        trials = varargin{iOper}; % either n_row x 1 cell of trials or a function that outputs indices or boolean indices to select trials per group
+                        trial_splitter = varargin{iOper}; % either n_row x 1 cell of trials or a function that outputs indices or boolean indices to select trials per group
                         iOper = iOper + 1;
  
                         col_name = varargin{iOper};
@@ -386,14 +430,12 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                         level_names = varargin{iOper};
                         iOper = iOper + 1;
 
-                        op = ep.split_trials_(op, trials, col_name, level_names);
+                        ep.data = ep.split_trials_(ep.data, trial_splitter, col_name, level_names);
 
 
                 end
 
             end
-
-            ep.data = op;
 
             isFunc = cellfun(@(x) isa(x, 'function_handle'), varargin);
             for i = 1:length(isFunc)
@@ -406,120 +448,81 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 end
 
             end
-            ep.transform_steps_ = [ep.transform_steps_{:}, varargin{:}];
+            ep.transform_steps_ = cat(2, ep.transform_steps_, varargin);
 
         end
 
         function ep = subset(ep, restricter)
 
+            % NULL, ep.channels to be fixed, use EpochRestricter instead
+
             arguments
 
                 ep
-                restricter struct
+                restricter (1,1) ns.EpochRestricter
 
             end
 
 
-            dat = ep.data;
+            ep = restricter.restrict(ep);            
 
-            restricter_fields = ["trials", "channels", "time_window", "frequency_window"];
+        end
 
-            for rN = restricter_fields
+        function find_bad_epochs(ep, varargin)
 
-                if ~isfield(restricter, rN)
+            dat_mat = cat(1, ep.data.signal{:});
+            n_trl_per_row = cellfun(@(x) length(x), ep.trials);
 
-                    restricter.(rN) = [];
+            ep.badEpochs = ns.detect_outlier_epochs(dat_mat, 1000/ep.dt, varargin{:});
 
-                end
+        end
 
-            end
+        function plot_bad_epochs(ep, varargin)
 
-            idx_selector = repmat({':'}, 1, ndims(dat.signal{1}));
+            dat_mat = cat(1, ep.data.signal{:});
 
-            if ~isempty(restricter.trials)
+            % Plot by category
 
-                idx_selectorN = idx_selector;
+            bad_cats = string(fieldnames(ep.badEpochs));
 
-                if length(restricter.trials) == height(dat)
+            bad_cats = bad_cats(startsWith(bad_cats, "badBy") & cellfun(@(x) ~isempty(x), struct2cell(ep.badEpochs)));
 
-                    for i = 1:height(dat)
+            n_cat = length(bad_cats);
 
-                        if ~isempty(restricter.trials{i})
+            fig = figure();
+            tiles = tiledlayout(n_cat, 1, 'TileSpacing', 'compact', Padding='compact');
+            
+            for iCat = 1:n_cat
 
-                            assert(~isnan(ep.dimensions_.trials), "The data structure was collapsed across trials.");
+                datN = squeeze(mean(dat_mat(ep.badEpochs.(bad_cats(iCat)), ep.badEpochs.parameters.criterion_channels,:),2, 'omitnan'));
+                tileN = nexttile(tiles);
+                plot(tileN, ep.timepoints, datN);
 
-                            idx_selectorN{ep.dimensions_.trials} = ismember(dat.trials{i}, restricter.trials{i});
-                            assert(any(idx_selectorN{ep.dimensions_.trials}), "Selected trials do not exist in the data.")
-
-                            for colN = ep.data_columns_
-
-                                if ismember(colN, dat.Properties.VariableNames)
-                                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
-                                end
-
-                            end
-
-                            dat.trials{i} = restricter.trials{i};
-
-                        end
-
-                    end
-
-                else
-
-                    error("'trials' must be a {1 x nrows} cell array.")
-
-                end
+                title(tileN, sprintf("%s (%d Epochs)", bad_cats(iCat), length(ep.badEpochs.(bad_cats(iCat)))));
 
             end
+            title(tiles, "Bad Epochs By Category")
 
-            if ~isempty(restricter.channels)
+            % All epochs
+            fig = figure();
+            tiles = tiledlayout(2, 1, 'TileSpacing', 'compact', Padding='compact');
+            datN = squeeze(mean(dat_mat(:, ep.badEpochs.parameters.criterion_channels,:),2, 'omitnan'));
+            tileN = nexttile(tiles);
+            plot(tileN, ep.timepoints, datN);
+            title(tileN, sprintf("All Epochs (%d Epochs)", size(dat_mat,1)));
 
-                idx_selectorN = idx_selector;
-                assert(~isnan(ep.dimensions_.channels), "The data structure was collapsed across channels.");
-                idx_selectorN{ep.dimensions_.channels} = ismember(ep.channels, restricter.channels);
-                assert(all(idx_selectorN{ep.dimensions_.channels}), "Selected channels do not exist in the data.")
-                for colN = ep.data_columns_
-
-                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
-
-                end
-
-                ep.channels = restricter.channels;
-
-            end
-
-            if ~isempty(restricter.time_window)
-
-                assert(all(gen.iswithin(restricter.time_window, ep.time_window)), "Selected time window is out of range in the existing data.")
+            % Good Epochs
+            datN = squeeze(mean(dat_mat(setdiff(1:size(dat_mat,1), ep.badEpochs.all), ep.badEpochs.parameters.criterion_channels,:),2, 'omitnan'));
+            tileN = nexttile(tiles);
+            plot(tileN, ep.timepoints, datN);
+            title(tileN, sprintf("Good Epochs (%d Epochs)", size(dat_mat,1)- numel(ep.badEpochs.all)));
 
 
-                isT = gen.iswithin(ep.timepoints, restricter.time_window);
-                idx_selectorN = idx_selector;
-                idx_selectorN{ep.dimensions_.time} = isT;
-                dat.signal{i} = dat.signal{i}(idx_selectorN{:});
+        end
+        
+        function ep = select_rows(ep, idx)
 
-            end
-
-            if ~isempty(restricter.frequency_window)
-
-                assert(all(gen.iswithin(restricter.frequency_window, gen.range(ep.frequencies))), "Selected time window is out of range in the existing data.")
-
-
-                isFq = gen.iswithin(ep.frequencies, restricter.frequency_window);
-                idx_selectorN = idx_selector;
-                idx_selectorN{ep.dimensions_.frequency} = isFq;
-                for colN = ep.data_columns_(2:end)
-
-                    dat.(colN){i} = dat.(colN){i}(idx_selectorN{:});
-
-                end
-
-                ep.frequencies = ep.frequencies(isFq);
-
-            end
-
-            ep.data = dat;
+            ep.data = ep.data(idx, :);
 
         end
 
@@ -529,7 +532,47 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
             for whArg = 1:2:n_arg
 
-                ep.data.(varargin{whArg}) = varargin{whArg+1};
+                valN = varargin{whArg+1};
+                if isscalar(valN)
+                    valN = repmat(valN,[ep.n_rows,1]);
+                end
+                ep.data.(varargin{whArg}) = valN;
+
+            end
+
+        end
+
+        function ep = drop(ep, varargin)
+
+            % drop data column
+
+            n_arg = nargin-1;            
+
+            for whArg = 1:n_arg
+                
+                ep.data.(varargin{whArg}) = [];
+
+            end
+
+        end
+
+        function ep = rename(ep, old_names, new_names)
+
+            ep.data = renamevars(ep.data, old_names, new_names);
+
+        end
+
+        function ep = replace(ep, varargin)
+
+            vars = string(varargin{1:2:end});
+            vals = varargin{2:2:end};
+            isVarExist = ismember(vars, ep.data_columns);
+
+            assert(all(isVarExist), "Data variable(s) %s do(es) not exist in the data table.", join(vars(isVarExist), ", "));
+
+            for iVar = 1:length(vars)
+
+                ep.data.(vars(iVar)) = vals(:,iVar);
 
             end
 
@@ -563,12 +606,39 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         end
 
+        function l = get.epoch_length(ep)
+
+            l = length(ep.timepoints);
+
+        end
+
+        function names = get.data_columns(ep)
+
+            names = intersect(ep.data.Properties.VariableNames, ep.data_columns_);
+
+        end
+
+        function names = get.temporal_data_columns(ep)
+
+            names = intersect(ep.data.Properties.VariableNames, ep.temporal_data_columns_);
+
+        end
+
+        function names = get.spectral_data_columns(ep)
+
+            names = intersect(ep.data.Properties.VariableNames, ep.spectral_data_columns_);
+
+        end
+
         function plot(ep, y, varargin)
 
 
             x_lim = false;
             y_lim = "scale_plot";
+            c_lim = "scale_plot";
+            plot_type = "line";
             isCollate = false;
+            cmap = "copper";
 
             n_arg = nargin - 3;
 
@@ -598,6 +668,13 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                         y_lim = subargN;
 
+                    case "clim"
+
+                        subargN = varargin{whArg};
+                        whArg = whArg + 1;
+
+                        c_lim = subargN;
+
                     case "collate"
 
                         collate_by = string(varargin{whArg}); %by which variable
@@ -605,6 +682,16 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                         whArg = whArg + 1;
                         assert(n_coll_var<=2, "Only 1 or 2 variables/columns are collateable.");
                         isCollate = true;
+
+                    case "type"
+
+                        plot_type = varargin{whArg};
+                        whArg = whArg + 1;
+
+                    case "colormap"
+
+                        cmap = varargin{whArg};
+                        whArg = whArg + 1;                  
 
                 end
 
@@ -640,19 +727,24 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
             separate_figs_by = intersect(lower(datN.Properties.VariableNames), ep.separate_figure_by_levels_);
             n_figs_by_dim = varfun(@(x) length(unique(x)), datN(:,separate_figs_by), 'OutputFormat','uniform');
+            if isempty(n_figs_by_dim); n_figs_by_dim = 1; end
             n_figs = prod(n_figs_by_dim);
 
             n_subplot = length(unique(datN.name));
 
             ax = squeeze(cell([n_figs_by_dim, n_subplot, 1]));
             figs = squeeze(cell([n_figs_by_dim, 1]));
-            fig_subsN  = squeeze(cell(size(n_figs_by_dim)));
-            if numel(n_figs_by_dim) ==1, n_figs_by_dim = [n_figs_by_dim, 1]; end
+            fig_subs = arrayfun(@(x) 1:x, n_figs_by_dim, 'UniformOutput', false);
+            fig_subs = table2cell(combinations(fig_subs{:}));
+            % fig_subsN  = squeeze(cell(size(n_figs_by_dim)));
+            if isscalar(n_figs_by_dim), n_figs_by_dim = [n_figs_by_dim, 1]; end
 
             for iFig = 1:n_figs
 
-                [fig_subsN{:}] = ind2sub(n_figs_by_dim, iFig);
+                % [fig_subsN{:}] = ind2sub(n_figs_by_dim, iFig);
+                fig_subsN = fig_subs(iFig,:);
                 figs{fig_subsN{:}} = figure('Visible', 'off');
+                colormap(figs{fig_subsN{:}}, cmap);
                 tileN = tiledlayout(figs{fig_subsN{:}},n_subplot, 1, 'TileSpacing', 'loose', 'Padding', 'compact');
 
                 datN = ep.data((1:n_subplot) + (iFig-1)*n_subplot,:);
@@ -662,10 +754,42 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
 
                     if ~isempty(datN.(y){iSp})
-                        n_rows = size(datN.(y){iSp}, 1);
-                        for j = 1:n_rows
-                            plot(axN, x, squeeze(datN.(y){iSp}(j, :)), 'LineWidth', 1.5);
-                            hold(axN, 'on');
+
+                        if strcmp(plot_type, "line")
+                            n_row = size(datN.(y){iSp}, 1);
+                            for j = 1:n_row
+                                plot(axN, x, squeeze(datN.(y){iSp}(j, :)), 'LineWidth', 1.5);
+                                hold(axN, 'on');
+                            end
+                        elseif strcmp(plot_type, "raster")
+
+                            if isnan(ep.dimensions_.channels)
+                                
+                                y_data = datN.trials{iSp};
+
+                            elseif isnan(ep.dimensions_.trials)
+
+                                y_data = datN.channels;
+
+                            end
+
+                            imagesc(axN, 'XData', x, 'YData', y_data, 'CData', squeeze(datN.(y){iSp}));
+
+                            ylim(gen.range(y_data));
+                            
+                            if strcmp(c_lim, "scale_plot")
+                                maxima = max(squeeze(datN.(y){iSp}),[],2);
+                                maxima = maxima(~isnan(maxima));
+                                maxima_scaled = gen.robust_z(maxima, [], "std");
+
+                                clim(axN, [0, max(maxima(maxima_scaled < 1.96))])
+
+                            elseif isnumeric(c_lim)
+
+                                clim(axN,c_lim);
+
+                            end
+
                         end
 
                         if isnumeric(x_lim)
@@ -705,44 +829,67 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
                 ylabel(tileN, y_label);
                 xlabel(tileN, x_label, 'Interpreter', 'latex');
-                fig_titleN = join(arrayfun(@(col) sprintf("%s: %s", col, datN.(col){1}), separate_figs_by),",   ");
-                title(tileN, fig_titleN);
+                if ~isempty(separate_figs_by)
+                    fig_titleN = join(arrayfun(@(col) sprintf("%s: %s", col, datN.(col){1}), separate_figs_by),",   ");
+                    title(tileN, fig_titleN);
+                end
 
             end
 
             if isCollate
 
-                if n_coll_var == 1
+                isCollateDim = ismember(separate_figs_by, collate_by);
+                n_figs_to_collate = prod(n_figs_by_dim(isCollateDim));
 
-                    % sp_size = gen.get_closest_integer_dividers(n_figs);
-                    sp_size = [round(sqrt(n_figs)), ceil(sqrt(n_figs))];
-                    new_figs = cell(sp_size);
+                n_fig_dims = length(n_figs_by_dim);
+                collate_indices = repmat({':'},1,n_fig_dims);
+                for iDim = 1:n_fig_dims
 
-                    new_figs(1:numel(figs)) = figs(:);
-                    new_ax = [ax; cell([prod(sp_size)-length(ax),n_subplot])];
-                    new_ax = reshape(new_ax,[sp_size, n_subplot]);
-                    ax = new_ax;
-                    figs = new_figs;
+                    if ~isCollateDim(iDim)
 
+                        collate_indices{iDim} = 1:n_figs_by_dim(iDim);
 
-
-                elseif n_coll_var == 2
-
-                    sp_dim_order = arrayfun(@(x) find(ismember(separate_figs_by, x)), collate_by);
-                    figs = permute(figs,sp_dim_order);
-
+                    end
 
                 end
+                collate_indices = table2cell(combinations(collate_indices{:}));
 
-                newFig = gen.combine_figures_into_subplots(figs, ax);
+                for iFig = 1:size(collate_indices,1)
 
+                    figsN = squeeze(figs(collate_indices{iFig,:}));
+                    axN = squeeze(ax(collate_indices{iFig,:},:));
+
+                    if n_coll_var == 1
+
+                        sp_size = [round(sqrt(n_figs_to_collate)), ceil(sqrt(n_figs_to_collate))];
+                        new_figs = cell(sp_size);
+
+                        new_figs(1:numel(figsN)) = figsN(:);
+
+                        axN = squeeze(permute(reshape(permute(cat(1,axN, cell(prod(sp_size)-size(axN,1),n_subplot)), [2:ndims(axN), 1]), [n_subplot, sp_size]), [ndims(axN), ndims(axN)+1, 1:(ndims(axN)-1)]));
+                        figsN = squeeze(new_figs);
+
+
+
+                    elseif n_coll_var == 2
+
+                        sp_dim_order = arrayfun(@(x) find(ismember(separate_figs_by(isCollateDim), x)), collate_by);
+                        % figsN = permute(figsN, sp_dim_order);
+                        % axN = permute(axN,[sp_dim_order, 3]);
+
+
+                    end
+
+                    newFig = gen.combine_figures_into_subplots(figsN, axN);
+                end
             else
 
                 cellfun(@(figN) set(figN, 'Visible','on'), figs);
 
 
             end
-        end
+            close
+        end        
     end
 
     methods (Access = protected)
@@ -759,7 +906,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
                 'VariableTypes', [primary_keys.Properties.VariableTypes(isDimExpand), "cell"], ...
                 'VariableNames', [primary_keys.Properties.VariableNames(isDimExpand), "signal"]);
 
-            n_rows = height(primary_keys);
+            n_row = height(primary_keys);
 
             if sum(isDimExpand)
 
@@ -767,56 +914,151 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
             end
 
-            for iKey = 1:n_rows
+            for iKey = 1:n_row
 
                 qryN = table2struct(primary_keys(iKey,:));
 
                 isValidN = ~isinf(getfield(fetch(ns.Epoch & qryN,'event_onset'),'event_onset')); % inf indicates that the trial was not shown
                 trialsN = getfield(fetch(ns.DimensionCondition & ep.Epoch & qryN, 'trials'), 'trials'); % the actual trial numbers
 
-                if ~isempty(ep.channels)
-                    channel_qryN = sprintf("channel in (%s)", join(string(ep.channels),","));
-                else
+                if isempty(ep.channels) || (iscell(ep.channels) && isempty(ep.channels{iKey}))
+                    
                     channel_qryN = '';
+                
+                else
+
+                    if iscell(ep.channels), ch_list = ep.channels{iKey};
+                    else, ch_list = ep.channels;
+                    end
+                    channel_qryN = sprintf("channel in (%s)", join(string(ch_list),","));
+                    
                 end
 
                 % fetch data
 
-                t_fetch = gen.Timer().start("Fetching epochs: %d of % d\n", iKey, n_rows);
+                t_fetch = gen.Timer().start("Fetching epochs: %d of % d\n", iKey, n_row);
+                artN = fetch(ep.Artifact & qryN);
                 if isempty(channel_qryN)
-                    datN = fetch(ns.EpochChannel & ep & qryN, 'signal');
+
+                    ep_ch_qryN = ep.EpochChannel & qryN;
+                    art_ch_qryN = ep.ArtifactChannel & qryN;
+                    
                 else
-                    datN = fetch(ns.EpochChannel & ep & qryN & channel_qryN, 'signal');
+
+                    ep_ch_qryN = ep.EpochChannel & qryN & channel_qryN;
+                    art_ch_qryN = ep.ArtifactChannel & qryN & channel_qryN;                    
+                
                 end
 
+                datN = fetch(ep_ch_qryN, 'signal');
+                
                 t_fetch.stop("\t Fetching is complete. ");
                 t_fetch.report();
 
                 if ~isempty(ep.trials)
 
-                    trials2fetch = intersect(ep.trials{iKey}, trialsN(isValidN));
-                    isFetchTrials = ismember(trialsN(isValidN),trials2fetch);
+                    trials_to_fetch = intersect(ep.trials{iKey}, trialsN(isValidN));
+                    isFetchTrials = ismember(trialsN(isValidN),trials_to_fetch);
 
                 else
 
-                    trials2fetch = trialsN(isValidN);
+                    trials_to_fetch = trialsN(isValidN);
                     isFetchTrials = ones(1,sum(isValidN))==1;
 
                 end
 
+                %% Include artifacts or not
+                isFillNaN = ones([length(isFetchTrials), height(datN), ep.epoch_length])==0;
 
+                for fldN = string(fieldnames(ep.artifacts))'
+
+
+                    if isfield(ep.artifacts, fldN) && islogical(ep.artifacts.(fldN)) 
+                        
+                        if ep.artifacts.(fldN)
+
+                            atagN = unique(string({artN.atag}));
+
+                        else, continue;
+                        end
+
+                    elseif isstring(ep.artifacts.(fldN))
+
+                        atagN = ep.artifacts.(fldN);                        
+
+                    end
+
+                    switch fldN
+
+                        case 'keep'
+
+                            continue;
+
+                        case {'discard', 'fillnan'}
+
+
+                            atag_qryN = sprintf('atag in ("%s")', join(atagN,'","'));
+                            
+                            %% Check trial specific artifacts across all channels
+                            tbl_qryN = ns.Artifact & artN & atag_qryN;                            
+                            art_tblN = fetchtable(tbl_qryN, 'trial');
+                            isTrl2DiscardN = arrayfun(@(x) double(x), art_tblN.trial, 'UniformOutput', false);
+                            isTrl2DiscardN = ismember(trials_to_fetch, [isTrl2DiscardN{:}]);
+                            
+                            if strcmp(fldN, 'discard')
+                                isFetchTrials(isTrl2DiscardN) = false;
+                            else
+                                isFillNaN(isTrl2DiscardN,:,:) = true;
+                            end
+
+                            art_ch_qryNN = art_ch_qryN & atag_qryN;
+                                                     
+                            if count(art_ch_qryNN)
+
+                                ch_tblN = fetchtable(art_ch_qryNN,'*');
+                                for ii = 1:height(ch_tblN)
+                                    
+                                    isChN = ch_tblN.channel(ii) == [datN.channel];
+                                    if ch_tblN.Properties.VariableTypes(strcmp(ch_tblN.Properties.VariableNames,'trial'))=="double"
+                                        trials_w_artN = ch_tblN.trial(ii,:);
+                                    else
+                                        trials_w_artN = ch_tblN.trial{ii};
+                                    end
+                                    isTrl2DiscardN = ismember(trials_to_fetch, trials_w_artN);
+                                    if isempty(trials_w_artN) % faulty channels
+                                        isTrl2DiscardN = ones(size(trials_to_fetch))==1;
+                                    end
+                                    % add start stop
+                                    isFillNaN(isTrl2DiscardN,isChN, :) = true;
+
+                                end
+
+                            end
+
+                        case 'interpolate'
+                        otherwise
+                            error("err msg")
+                    end
+
+                end
+                
                 datN = cat(3, datN(:).signal); % trial by timepoint by channel
                 datN = permute(datN,[1, 3, 2]); % trial by channel by timepoint
+                datN(isFillNaN) = NaN;
                 datN = datN(isFetchTrials,:,:);
+                
 
                 isT = ep.timepoints >= ep.time_window(1) & ep.timepoints <= ep.time_window(2);
 
-                op.trials{iKey} = trials2fetch;
+                op.trials{iKey} = trials_to_fetch(isFetchTrials);
+                op.channels{iKey} = arrayfun(@(s) s.channel, fetch(ep_ch_qryN,'channel'));
                 op.signal{iKey} = datN(:,:,isT);
 
             end
 
             ep.data = op;
+            ep.channels = op.channels;
+            ep.trials = op.trials;
 
         end
 
@@ -824,7 +1066,7 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
             for i = 1:ep.n_rows
 
-                ep.(var){i} = func(ep.var{i}, varargin{:});
+                ep.data.(var){i} = func(ep.data.(var){i}, varargin{:});
 
             end
 
@@ -841,6 +1083,19 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
         end
 
 
+
+    end
+    
+    methods (Static)
+
+        function ep = merge(ep1, ep2, variable_name, values)
+
+            ep = ep1.copy();
+            ep.insert(variable_name, values(1));            
+
+            ep.data = vertcat(ep.data, ep2.copy().insert(variable_name, values(2)).data);
+            ep.separate_figure_by_levels_ = [ep.separate_figure_by_levels_, variable_name];
+        end
 
     end
 
@@ -899,30 +1154,16 @@ classdef RetrievedEpochs < matlab.mixin.Copyable
 
         end
 
-        function A = detrend_(A, dim)
+        function A = detrend_(A)
 
-            A = gen.apply_func_along_dimension(A,ndims(A),@detrend);
-            return
+            % warning('off', 'MATLAB:detrend:PolyNotUnique');
+            n_dim = ndims(A);
+            A = permute(A, circshift(1:n_dim,1));
+            A = detrend(A,1,'omitnan');
+            A = permute(A, circshift(1:n_dim,-1));
 
-            % A: Input array
-
-            % Get the number of dimensions
-            n_dims = ndims(A);
-            if n_dims == 2, A = detrend(A); return; end
-
-            % Create the permutation order
-            perm_order = 1:n_dims;
-            perm_order([dim, n_dims]) = perm_order([n_dims, dim]);
-
-            % Permute the array
-            A = permute(A, perm_order);
-
-            % Detrend along the last dimension
-            A = detrend(A);
-
-            % Permute back to the original order
-            A = permute(A, perm_order);
-
+            % A = gen.apply_func_along_dimension(A,ndims(A),@detrend, 'omitnan');
+            % warning('on', 'MATLAB:detrend:PolyNotUnique');
         end
 
         function denoised_vec = divide_by_n_neighbor_(vec, n)
