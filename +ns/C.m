@@ -71,9 +71,32 @@ nrsamples: int          # Number of samples/frames across the experiment
 %
 % BK - June 2023
 
-classdef C< dj.Computed
+classdef C < dj.Computed & dj.DJInstance
     properties (Dependent)
-        keySource
+        
+        keySource      
+        
+        % Following attributes are primarily designed to be used for single
+        % row entities where count(cTbl) == 1 or the attribute value is
+        % constant across different rows. If their value differs, the
+        % property will take the form of a table with distinguishing keys
+        % preceding the property variable.
+        channels
+        timepoints        
+        artifacts
+        dt
+        layout
+        channel_coordinates      
+
+    end
+
+    properties (Access = protected)
+
+        channels_ ns.C_channels = ns.C_channels()
+        time_ ns.C_time = ns.C_time()
+        layout_ ns.C_layout = ns.C_layout()
+        channel_coordinates_ ns.C_channel_coordinates = ns.C_channel_coordinates()
+        artifacts_ ns.C_artifacts = ns.C_artifacts()
     end
 
     methods
@@ -144,8 +167,68 @@ classdef C< dj.Computed
             end
             % And then restrict the full table by the set of found tuples.
             v = (ns.File*proj(ns.CParm,'fun','description','parms')) & allTpl;
-        end
+        end     
+       
     end
+
+    % Get methods
+    methods
+
+        function ch = get.channels(cTbl)
+            
+            cTbl.channels_.update(cTbl);
+            ch = cTbl.channels_.value;            
+
+        end
+
+        function t = get.timepoints(cTbl)
+
+            cTbl.time_.update(cTbl);
+            
+            t = cTbl.time_.value;           
+            
+        end
+
+        function t = get.dt(cTbl)
+
+            cTbl.time_.update(cTbl);
+            t = cTbl.timepoints;
+            if istable(t)
+
+                t.value = cellfun(@(x) mode(diff(x)), t.value);
+
+            else
+
+                t = mode(diff(t));
+
+            end
+
+        end
+
+        function l = get.layout(cTbl)
+
+            cTbl.layout_.update(cTbl);
+            l = cTbl.layout_.value;
+
+        end
+
+        function coord = get.channel_coordinates(cTbl)
+
+            cTbl.channel_coordinates_.update(cTbl);
+            coord = cTbl.channel_coordinates_.value;
+            
+        end
+
+        function art = get.artifacts(cTbl)
+
+            cTbl.artifacts_.update(cTbl)
+            art = cTbl.artifacts_.value;
+
+        end
+
+    end
+    
+
     methods (Access=public)
         function [n,T] = toPreprocess(tbl,tag)
             % Return the number of files that stll need to be processed. If
