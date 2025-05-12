@@ -126,7 +126,7 @@ if isfield(parms, "noisy_channels")
         parms.noisy_channels.epoch_mask = ns.getTimepointsAroundTrials(exp_tpl, neurostimTime, buffer_t);
 
     else
-        parms.noisy_channels.epoch_mask =  ones(size(signal))==1;
+        parms.noisy_channels.epoch_mask =  ones(1,size(signal,1))==1;
     end
 
     parms.noisy_channels.Fs = MFF.srate;
