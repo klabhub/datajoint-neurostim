@@ -120,7 +120,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 else
                     outlier_opts = {};
                 end
-                noisy_epochs = ns.detect_outlier_epochs(ep, 1000/cTbl.dt);
+                noisy_epochs = ns.detect_outlier_epochs(ep, 1000/cTbl.dt, outlier_opts{:});
             else
                 noisy_epochs = [];
             end
@@ -233,7 +233,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
         
         function trials = get.trials(eTbl)
 
-            eTbl.trials_.update();
+            eTbl.trials_.update(eTbl);
 
             trials = eTbl.trials_.value;
 
