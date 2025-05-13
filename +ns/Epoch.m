@@ -6,6 +6,7 @@
 -> ns.EpochParameter
 ---
 event_onset : BLOB # clock time to which the trials are locked, t0
+trials : BLOB # trial no
 noisy_epochs : longblob # outlier epoch flags
 %}
 
@@ -57,7 +58,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             if isempty(abs_onsets), return; end
             isVld = ~isinf(rel_onsets) & ~isnan(rel_onsets);
 
-            trial_no = sort(cat(1,dims.trials));%1:length(rel_onsets);
+            trial_no = cellfun(@(x) gen.make_column(x), {dims.trials},'UniformOutput',false);%1:length(rel_onsets);
+            trial_no = sort(cat(1,trial_no));
             trial_no = trial_no(isVld);
             % trial_no = intersect(dims.trials, trial_no(isVld));
             onsets = abs_onsets(trial_no) + rel_onsets(trial_no);
@@ -132,6 +134,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             epoch_tpl = mergestruct(key, struct( ...
                 noisy_epochs = noisy_epochs,...
+                trials = trial_no,...
                 event_onset = rel_onsets(trial_no)...
                 ));
 
