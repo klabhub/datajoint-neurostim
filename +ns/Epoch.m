@@ -27,7 +27,6 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
     properties (Access = protected)
 
-        trials_ = ns.Epoch_trials()
 
     end
 
