@@ -85,6 +85,7 @@ classdef C < dj.Computed & dj.DJInstance
         timepoints        
         artifacts
         dt
+        srate
         layout
         channel_coordinates      
 
@@ -97,6 +98,7 @@ classdef C < dj.Computed & dj.DJInstance
         layout_ ns.C_layout = ns.C_layout()
         channel_coordinates_ ns.C_channel_coordinates = ns.C_channel_coordinates()
         artifacts_ ns.C_artifacts = ns.C_artifacts()
+    
     end
 
     methods
@@ -201,6 +203,18 @@ classdef C < dj.Computed & dj.DJInstance
 
                 t = mode(diff(t));
 
+            end
+
+        end
+
+        function srate = get.srate(cTbl)
+
+            info = fetch(cTbl,'info');
+            if numel(info) > 1
+                srate = arrayfun(@(s) s.info.srate, info);
+                if isscalar(unique(srate)), srate = unique(srate); end
+            else
+                srate = info.info.srate;
             end
 
         end
