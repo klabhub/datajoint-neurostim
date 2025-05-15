@@ -18,9 +18,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
         channels
         timepoints
-        frequencies
-        artifacts
-        trials      
+        frequencies    
         conditions
 
         keySource
@@ -263,15 +261,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             ch = eTbl.C.channels;
             
         end
-        
-        function trials = get.trials(eTbl)
-
-            eTbl.trials_.update(eTbl);
-
-            trials = eTbl.trials_.value;
-
-
-        end
+                
     end
 
 
