@@ -34,7 +34,7 @@ description = NULL :varchar(1024)   #   A brief description
 % curves.
 %
 % See also ns.Tuning
-classdef Dimension < dj.Manual
+classdef Dimension < dj.Manual & dj.DJInstance
     methods (Access=public)
         function varargout = split(d,T,pv)
             % Split a table T into subtables  corresponding to the conditions in the dimension.

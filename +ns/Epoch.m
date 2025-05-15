@@ -2,19 +2,20 @@
 # Preprocessed epoch data, the actual epochs are stored in ns.EpochChannel
 
 -> ns.C
--> ns.Dimension
--> ns.EpochParameter
+-> ns.EpochParm
+trial : int
 ---
-event_onset : BLOB # clock time to which the trials are locked, t0
-trials : BLOB # trial no
-noisy_epochs : longblob # outlier epoch flags
+onset : float
+flag : varchar(32)
 %}
 
 classdef Epoch < dj.Computed & dj.DJInstance
 
     properties (Dependent)
 
-        C
+        C % ns.C table
+        Experiment % ns.Experiment table
+
         channels
         timepoints
         frequencies
@@ -29,7 +30,6 @@ classdef Epoch < dj.Computed & dj.DJInstance
     properties (Access = protected)
 
         trials_ = ns.Epoch_trials()
-        conditions_
 
     end
 
@@ -37,7 +37,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
         function v = get.keySource(~)
 
-            v = ns.C * ns.Dimension * ( ns.Experiment *proj(ns.EpochParameter,'dimension'));
+            v = ns.C * ns.Experiment * proj(ns.EpochParm,'dimension');
         
         end
     end
@@ -46,28 +46,28 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
         function makeTuples(eTbl, key)
 
-            exp_tbl = ns.Experiment & key;           
+            expTbl = ns.Experiment & key;           
 
-            epTbl = ns.EpochParameter & key;
+            epTbl = ns.EpochParm & key;
             cTbl = ns.C & key;
             dims = fetch(ns.DimensionCondition & key, '*');
 
-            abs_onsets = get(exp_tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-            rel_onsets = get(exp_tbl, epTbl.plugin_name, 'prm', 'startTime', 'what', 'trialtime');
-            
+            abs_onsets = expTbl.first_frame_onsets;
+            rel_onsets = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trialtime');
+                        
             if isempty(abs_onsets), return; end
-            isVld = ~isinf(rel_onsets) & ~isnan(rel_onsets);
 
-            trial_no = cellfun(@(x) gen.make_column(x), {dims.trials},'UniformOutput',false);%1:length(rel_onsets);
-            trial_no = sort(cat(1,trial_no));
+            % trials that were shown
+
+            isVld = ~isinf(rel_onsets) & ~isnan(rel_onsets);
+            trial_no = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trial');
             trial_no = trial_no(isVld);
-            % trial_no = intersect(dims.trials, trial_no(isVld));
             onsets = abs_onsets(trial_no) + rel_onsets(trial_no);
             
             t = cTbl.timepoints;
             dt = cTbl.dt;
-            % [t, dt] = sampleTime(ns.C & key); % ns.C method
-            ep_timepoints = epTbl.epoch_win(1):dt:epTbl.epoch_win(2);
+            ep_win = epTbl{'epoch_win'};
+            ep_timepoints = ep_win(1):dt:ep_win(2);
 
             t_export = gen.Timer().start("Exporting data from ns.CChannel...\n");
 
@@ -79,79 +79,95 @@ classdef Epoch < dj.Computed & dj.DJInstance
             t_export.report();
 
             t_sgm = gen.Timer().start("Now segmenting...\n");
-
             
-            % sts = ns.SegmentedTimeSeries(t, abs_onsets(trials) + rel_onsets(trials), epTbl.epoch_win, horzcat(signal(:).signal)');
-            % sts.make();
-            % if epTbl.baseline
-            %     sts.baseline(epTbl.baseline_win);
-            % end
-            % 
-            % if epTbl.detrend
-            %     sts.detrend();
-            % end
-            % 
-            % ep = sts.epochs;
-
             ep = segment();
-            pv = getfield(fetch(epTbl, 'pv'), 'pv');
+
+            t_sgm.stop("\t\tSegmentation complete.");
+            t_sgm.report();
+
+            pv = epTbl{'pv'};
             
-            if isfield(pv, 'detrend')
+            if pv.detrend
 
                 ep = eTbl.detrend(ep);
 
             end
 
-            if isfield(pv, 'baseline') && pv.baseline
+            if pv.baseline
 
                 ep = eTbl.baseline(ep, gen.ifwithin(ep_timepoints, pv.baseline_win));
 
             end
 
-            if isfield(pv, 'rereference')
+            if pv.rereference
 
                 ep(:, cTbl.artifacts.all,:) = NaN; % exclude noisy channels
                 ep = eTbl.rereference(ep, cTbl.channel_coordinates, pv.ref_opts{:});
 
             end
 
-            if isfield(pv, 'find_outliers') && pv.find_outliers
+            n_art_fun = length(pv.artifact_parm);
+            flags = cell(1,n_art_fun);
+            excludeN = [];
+            epoch_flags = repmat("", length(isVld), 1);
 
-                if isfield(pv, 'outlier_opts')
-                    outlier_opts = pv.outlier_opts;
+            for iFun = 1:n_art_fun
+                
+                fun_str = pv.artifact_parm(iFun).fun;
+
+                t_artN = gen.Timer().start("Finding artifacts through: %s.", fun_str);
+                if strcmp(fun_str, 'detect_outliers')
+
+                    %make sure handle refers to the nested function
+
+                    funN = @detect_outliers;
+
                 else
-                    outlier_opts = {};
+
+                    funN = str2func(fun_str);
                 end
-                noisy_epochs = ns.detect_outlier_epochs(ep, 1000/cTbl.dt, outlier_opts{:});
-            else
-                noisy_epochs = [];
+                
+                argN = pv.artifact_parm(iFun).args;
+                if ~iscell(argN)
+                    % if the input arguments are not stored in a cell array
+                    % transform it to cell to make compatible for varargin
+                    argN = {argN};
+                end
+                
+                flags{iFun} = funN(key, 'exclude', excludeN, argN{:});
+                % exclude bad epochs from the prior step
+                excludeN = [excludeN; flags{iFun}.all];
+                % update epoch flags
+                epoch_flags = flags{iFun}.flag(epoch_flags);
+                t_artN.stop("\tArtifact detection '%s' complete.", fun_str);
+                t_artN.report();
+
             end
 
-            t_sgm.stop("\t\tSegmentation complete.");
-            t_sgm.report();
-
+            %% Submission
             t_sub = gen.Timer().start("\tNow submitting to the server\n");
 
+            % Create epoch tuple (n_epochs,1)
             epoch_tpl = mergestruct(key, struct( ...
-                noisy_epochs = noisy_epochs,...
-                trials = trial_no,...
-                event_onset = rel_onsets(trial_no)...
+                trial = num2cell(trial_no),...
+                onset = num2cell(rel_onsets(isVld)),...
+                flag = num2cell(epoch_flags(isVld))...
                 ));
+            chunkedInsert(ns.Epoch, epoch_tpl);
 
-            n_channels = size(ep,2);
-
-            % cepoch_tpl = mergestruct(repmat(key,n_channels,1), ...
-            %     arrayfun(@(x) struct(channel=x.channel),ch_list), ...
-            %         arrayfun(@(iChannel) struct(signal = squeeze(ep(:,iChannel,:))), [ch_list.channel]') ...
-            %         );
-
-            cepoch_tpl = mergestruct(repmat(key,n_channels,1), ...
-                arrayfun(@(x) struct(channel=x),ch_list), ...
-                    arrayfun(@(iChannel) struct(signal = squeeze(ep(:,iChannel,:))), ch_list) ...
-                    );
-
-            insert(eTbl, epoch_tpl);
-            chunkedInsert(ns.EpochChannel, cepoch_tpl)
+            [n_epochs, n_channels, n_timepoints] = size(ep);
+            
+            % reshape epoch to flatten the first two dimensions, channels
+            % unravel first, then epochs
+            ep = reshape(permute(ep, [2, 1, 3]), n_epochs*n_channels, n_timepoints);
+            
+            nonprimKey = setdiff(fieldnames(epoch_tpl), eTbl.primaryKey);
+            epoch_tpl = mergestruct( ...
+                repelem(rmfield(epoch_tpl, nonprimKey), n_channels),...
+                struct(channel = repmat(gen.make_column(num2cell(cTbl.channels)), n_epochs, 1),...
+                signal = num2cell(ep, 2)...
+            ));
+            chunkedInsert(ns.EpochChannel, epoch_tpl)
 
             t_sub.stop("\t\tSubmission is complete.\n");
             t_sub.report();
@@ -164,7 +180,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 nChannels = size(signal,1);
                 nEpochSamples = length(ep_timepoints);
                 nSample = size(t, 2);
-                iStart = arrayfun(@(i) gen.absargmin(t - (onsets(i) + epTbl.epoch_win(1))), 1:nTrials);
+                iStart = arrayfun(@(i) gen.absargmin(t - (onsets(i) + ep_win(1))), 1:nTrials);
                 % iOnset = iStart + find(ep_timepoints >= 0, 1, 'first') - 1;
                 iEnd = iStart + nEpochSamples - 1;
                
@@ -202,6 +218,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             end
 
+            function flags = detect_outliers(varargin)
+                
+                flags = ns.detect_outlier_epochs(ep, cTbl.srate, 'epoch_no', trial_no, varargin{2:end});
+
+            end
+
             
         end
 
@@ -228,6 +250,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
             c = ns.C & eTbl;
 
         end
+
+        function exp = get.Experiment(eTbl)
+
+            exp = ns.Experiment & eTbl;
+
+        end
+
+
         function ch = get.channels(eTbl)
 
             ch = eTbl.C.channels;
@@ -243,6 +273,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
         end
     end
+
 
     methods (Static)
 
