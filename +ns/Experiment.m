@@ -18,7 +18,14 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 %
 % BK - April 2022.
 
-classdef Experiment  < dj.Manual
+classdef Experiment  < dj.Manual & dj.DJInstance
+
+    properties (Dependent)
+
+        first_frame_onsets
+
+    end
+
     methods (Access = public)
 
         function what(tbl,pv)
@@ -650,6 +657,16 @@ classdef Experiment  < dj.Manual
                 end
 
             end
+        end
+    end
+
+    % Get methods
+    methods
+
+        function o = get.first_frame_onsets(expTbl)
+
+            o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
+            
         end
     end
 
