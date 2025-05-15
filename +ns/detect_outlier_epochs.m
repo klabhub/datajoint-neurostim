@@ -1,4 +1,4 @@
-function bad_epochs_flags = detect_outlier_epochs(data, srate, options)
+function flags = detect_outlier_epochs(data, srate, options)
 %DETECT_OUTLIER_EPOCHS Flags EEG epochs based on multiple artifact criteria using vectorized operations and nested functions.
 %
 %   [bad_epochs_idx, bad_epochs_flags] = DETECT_OUTLIER_EPOCHS(data, srate, Name, Value, ...)
@@ -70,14 +70,28 @@ arguments (Input)
     options.hf_z_threshold (1,1) double {mustBeNumeric, mustBePositive} = 3.291 % Default 5 Z
     options.correlation_z_threshold (1,1) double {mustBeNumeric, mustBePositive} = 3.291 % Default 3 Z
     options.criterion_channels (1,:) double {mustBeNumeric, mustBeInteger, mustBePositive} = [] % Default empty
+    
+    options.epoch_no (:,1) {mustBeNumeric, mustBeInteger, mustBePositive} = [] % if trial_no is different than epoch index, provide this to return correct trial numbers
+    options.exclude (:,1) {mustBeNumeric, mustBeInteger, mustBePositive} = [] % Epochs to exclude from analysis
 end
 arguments (Output)
-    bad_epochs_flags (1, 1) struct
+    flags (1, 1) ns.NSFlags
 end
+
 
 % --- Get Data Dimensions ---
 [n_epochs, n_channels, n_timepoints] = size(data);
-n_criteria = 5; % Number of rejection criteria used
+% exclude epochs if provided
+if isempty(options.epoch_no)
+    options.epoch_no = 1:n_epochs;
+end
+
+original_epoch_no = setdiff(options.epoch_no, options.exclude);
+
+included_idx = ~ismember(options.epoch_no, options.exclude);
+data = data(included_idx,:,:);
+n_epochs = sum(included_idx);
+
 fprintf('Analyzing %d epochs, %d channels, %d timepoints (Fs=%.1f Hz).\n', n_epochs, n_channels, n_timepoints, srate);
 
 % --- Validate flag_if_channels_noisy ---
@@ -96,7 +110,7 @@ end
     end
 
 % --- Initialization ---
-bad_epochs_flags = false(n_epochs, n_criteria);
+flags = ns.NSFlags(options);
 
 % =========================================================================
 % --- Calculate Flags using Nested Functions ---
@@ -104,39 +118,30 @@ bad_epochs_flags = false(n_epochs, n_criteria);
 fprintf('Calculating flags...\n');
 
 % --- 1. Flat Signal ---
-bad_epochs_flags(:, 1) = flag_flat_signal();
-fprintf('  Flat signal check complete.\n');
+isFlagged = flag_flat_signal();
+flags.flat = original_epoch_no(isFlagged);
+fprintf('  Flat signal check complete with %d of %d epochs flagged.\n', sum(isFlagged), n_epochs);
 
 % --- 2. Amplitude Threshold ---
-bad_epochs_flags(:, 2) = flag_amplitude();
-fprintf('  Amplitude threshold check complete.\n');
+isFlagged = flag_amplitude();
+flags.amplitude = original_epoch_no(isFlagged);
+fprintf('  Amplitude threshold check complete with %d of %d epochs flagged.\n', sum(isFlagged), n_epochs);
 
 % --- 3. High Variance ---
-bad_epochs_flags(:, 3) = flag_variance();
-fprintf('  Variance check complete.\n');
+isFlagged = flag_variance();
+flags.variance = original_epoch_no(isFlagged);
+fprintf('  Variance check complete with %d of %d epochs flagged.\n', sum(isFlagged), n_epochs);
 
 % --- 4. HF Noise ---
-bad_epochs_flags(:, 4) = flag_hf_noise();
-fprintf('  HF noise check complete.\n');
+isFlagged = flag_hf_noise();
+flags.HFNoise = original_epoch_no(isFlagged);
+fprintf('  HF noise check complete with %d of %d epochs flagged.\n', sum(isFlagged), n_epochs);
 
 % --- 5. High Correlation ---
-bad_epochs_flags(:, 5) = flag_correlation();
-fprintf('  Correlation check complete.\n');
+isFlagged = flag_correlation();
+flags.correlation = original_epoch_no(isFlagged);
+fprintf('  Correlation check complete with %d of %d epochs flagged.\n', sum(isFlagged), n_epochs);
 
-% =========================================================================
-% --- Combine Flags and Finalize ---
-% =========================================================================
-bad_epochs_idx = any(bad_epochs_flags, 2); % Flag epoch if ANY criterion is met
-
-fprintf('Finished epoch rejection. %d / %d epochs flagged.\n', sum(bad_epochs_idx), n_epochs);
-
-bad_epochs_flags = struct(badByFlat = find(bad_epochs_flags(:,1)), ...
-    badByAmplitude = find(bad_epochs_flags(:,2)), ...
-    badByVariance = find(bad_epochs_flags(:,3)), ...
-    badByHFNoise = find(bad_epochs_flags(:,4)), ...
-    badByCorrelation = find(bad_epochs_flags(:,5)), ...
-    all = find(bad_epochs_idx), ...
-    parameters = options);
 % =========================================================================
 % --- Nested Functions for Criteria Evaluation ---
 % =========================================================================
