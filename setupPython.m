@@ -18,7 +18,7 @@ pv = pyenv;
 if ispc
     exe = 'python.exe';
 else
-    exe = 'bin/python';
+    exe = 'python';
 end
 
 envLoaded = extractAfter(pv.Home,'envs/');
