@@ -31,15 +31,19 @@ if pv.dryrun
 else
     drMsg = "";
 end
-
+if ~isempty(tbl.restrictions)    
+    fprintf(2,' The restriction currently specified on the table will be ignored. (You probably want to use pv.restrict )\n');
+end
 if numel(pv.restrict)>0
     % Restrictions - each must be a string
     assert(all(cellfun(@ischar,pv.restrict)),'Each element of the restriction must be a char')
-    r = ['''' strjoin(pv.restrict,''',''') ''''];
-    cmd = sprintf("parpopulate(%s,%s)",tbl.className,r);
+    restriction = ['''' strjoin(pv.restrict,''',''') ''''];
+    cmd = sprintf("parpopulate(%s,%s)",tbl.className,restriction);
+    restrictionString = strjoin(pv.restrict,' AND ') ;
 else
     % Unrestricted populate
     cmd = sprintf("parpopulate(%s)",tbl.className);
+    restrictionString = true;
 end
 % Construct a name for this expression (has to be a valid script name in
 % matlab)
@@ -58,7 +62,7 @@ if pv.clearJobStatus~=""
     end
 end
 
-nrToDo = count(getKeySource(tbl) - proj(tbl));
+nrToDo = count((getKeySource(tbl) & restrictionString) - proj(tbl));
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
