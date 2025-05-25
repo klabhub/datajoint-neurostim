@@ -19,9 +19,9 @@ yscale : float              # Scale factor of ypixels  (micron/pixels)
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
-% 
+%
 % This table has an associated PreprocessedRoi table that stores
-% information on each of the ROIs extracted with this preprocessing. 
+% information on each of the ROIs extracted with this preprocessing.
 classdef Preprocessed < dj.Computed
     properties (Dependent)
         ops
@@ -76,6 +76,60 @@ classdef Preprocessed < dj.Computed
 
     end
     methods (Access=public)
+        function   out = plot(tbl,pv)
+            % Plot a timeline of cell counts, radius, compactness, and
+            % aspect ratio grouped by strain. The pcell input can be used to
+            % select only rois with pcell > pv.pcell and if multiple
+            % pv.pcell are provided those will be shown with different
+            % markers. 
+            % OUTPUT
+            %  A matlab table with the aggregated results.
+            arguments
+                tbl
+                pv.pcell (1,:) double  = 0
+                pv.markers (1,:) string = ["o" "x" "+" "*"]
+                pv.variables (1,:) = ["n" "radius" "compact" "aspect"]
+                pv.yscale (1,1) string = "log"
+            end
+
+            clf;
+            n =ceil(sqrt(numel(pv.variables)));
+            T = tiledlayout(n,n);
+            tStr = "";
+            pcellCntr =0;
+            
+            for pcell = pv.pcell
+                pcellCntr =pcellCntr+1;
+                % Aggregraget counts in sessions
+                P = tbl.aggr(sbx.PreprocessedRoi & ['pcell> ' num2str(pcell)],'session_date','count(*)->n','avg(radius)->radius','avg(compact)->compact','avg(aspect)->aspect');                
+                P = fetchtable(P,'*');
+                % Link with strain information
+                S  = proj(ns.SubjectMeta & P & 'meta_name="strain"','meta_value->strain');
+                S= fetchtable(S,'*');
+                P = outerjoin(P,S,Keys="subject",RightVariables="strain");
+                % Use a convention for subject names to assign strains (in
+                % case the informatio is missing in the subject table)
+                strains = dictionary(["M" "S" "V" "P"],["CaMKIIxAi163" "SSTxAi163" "VIPxAi163" "PVxAi163"]);
+                for s = strains.keys'
+                    P.strain(startsWith(P.subject,s) & ismissing(P.strain)) = strains(s);
+                end
+                % Plot each variable
+                yCntr= 0;
+                for y = pv.variables 
+                    yCntr = yCntr+1;
+                    nexttile(yCntr); hold on
+                    gscatter(datetime(P.session_date),P.(y),P.strain,[],pv.markers(pcellCntr))
+                    xlabel 'Date'
+                    ylabel(y)
+                    yscale(pv.yscale)
+                end
+                tStr = tStr + pv.markers(pcellCntr) + ": pCell>" + string(pcell) +" ";
+            end
+            title(T,tStr)
+            if nargout >0
+                out = P;
+            end
+        end
         function openGui(tbl)
             % Open the preprocessed data in the relevant gui (suite2p)
             % I have not found a way to load the stat.npy
@@ -240,7 +294,7 @@ classdef Preprocessed < dj.Computed
             else
                 error('NIY');
             end
-            analyzeExptThisSession = analyze(allExptThisSession,strict=false);            
+            analyzeExptThisSession = analyze(allExptThisSession,strict=false);
             dataFldr = file(analyzeExptThisSession);
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
@@ -253,7 +307,7 @@ classdef Preprocessed < dj.Computed
                 case 'suite2p'
                     setupPython("suite2p");
                     conda = extractBefore(pyenv().Home,'/envs');
-                    
+
                     %% Check that each experiment used the same scaling
                     scale = [];
                     nrPlanes = [];
@@ -292,7 +346,7 @@ classdef Preprocessed < dj.Computed
                         opts{'input_format'} = "sbx";
                         opts{'nplanes'} = uint64(nrPlanes);
                         opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
-                        
+
                         % Then replace parameters defined in the prep settings
                         fn= fieldnames(parms.ops);
                         for  f= 1:numel(fn)
@@ -388,7 +442,7 @@ classdef Preprocessed < dj.Computed
                     N = double(opts.item{'nframes'});
                     fs = double(opts.item{'fs'});
                     tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);                   
+                    insert(tbl,tpl);
                 case 'caiman'
                     % TODO
                 otherwise
