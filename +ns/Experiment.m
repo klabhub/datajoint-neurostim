@@ -32,36 +32,36 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
             % showParameters =true)  the plugin parameters.
-            % 
+            %
             % Each parameter is shown as a hyperlink. CLicking on it will
             % retrieve the parameter value (using ns.Experiment/get) for
             % the experiment with the mnost trials
             arguments
                 tbl ns.Experiment {mustHaveRows(tbl)}
-                pv.showParameters (1,1) logical =false % 
+                pv.showParameters (1,1) logical =false %
                 pv.showPlugins (1,1) logical = true
             end
             pdms = unique(fetchtable(tbl,'paradigm').paradigm);
             rnge = @(t,c) (sprintf('%d:%d',min(t.(c)),max(t.(c))));
             if ~pv.showParameters
                 % Header
-                neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));                 
+                neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));
             end
-            for pdm = pdms' 
+            for pdm = pdms'
                 T = fetchtable(tbl & struct('paradigm',pdm),'*','ORDER BY nrtrials DESC');
                 if pv.showParameters
                     % Header
-                    neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));                 
+                    neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));
                 end
                 fprintf('%-25s  %-3d \t %-10s \t %-10s \t %-10s \t %-10s \n',pdm,height(T), ...
-                                rnge(T,'conditions'),...
-                                rnge(T,'nrtrials'),...
-                                rnge(T,'run'),...
-                                rnge(T,'seq'));
+                    rnge(T,'conditions'),...
+                    rnge(T,'nrtrials'),...
+                    rnge(T,'run'),...
+                    rnge(T,'seq'));
                 if pv.showPlugins && ~pv.showParameters
                     plgs = fetch(ns.Plugin &   table2struct(T(1,:)));
-                    fprintf('\tPlugins:'); 
-                    fprintf(2,'%s\n',strjoin({plgs.plugin_name}))                    
+                    fprintf('\tPlugins:');
+                    fprintf(2,'%s\n',strjoin({plgs.plugin_name}))
                 end
                 if pv.showParameters
                     what(ns.Plugin &   table2struct(T(1,:)));
@@ -393,41 +393,90 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         end
 
+        function showConditions(tbl)
+            % For each experiment in the table, show a schematic
+            % representing the conditions per trial
+            % This includes multiple dimensions (i.e., ways to define a
+            % condition).
+            tiledlayout('flow');
+            for tpl = fetch(tbl,'nrtrials')'
+                nexttile;
+                dims = fetchtable(ns.Dimension & tpl,'*');
+                if isempty(dims)
+                    text(0,0,"No dimensions defined")
+                    plot(xlim,ylim,'k')
+                    axis off
+                else
+                    nrDims = height(dims);
+                    % Collect values as strings
+                    val = table('Size',[tpl.nrtrials nrDims],'VariableNames',dims.dimension,'VariableTypes',repmat("string",[1 nrDims]));
+                    dimCntr =0;
+                    for dim =fetch(ns.Dimension & tpl)'
+                        dimCntr= dimCntr+1;
+                        conds = ns.DimensionCondition &dim;
+                        for cond = fetch(conds,'*')'
+                            v = string(cond.value{1});
+                            [val{cond.trials,dims.dimension(dimCntr)}] =deal(v);
+                        end
+                    end
+                    % Find the unique values to make an indexed color image.
+                    [u,~,iu] = unique(val{:,:});
+                    iu(ismissing(val{:,:}))=NaN;
+                    nrConds= sum(~ismissing(u));
+                    cmap = [lines(nrConds); 0 0 0];
+                    iu(isnan(iu))=nrConds+1;
+                    iu = reshape(iu,[tpl.nrtrials nrDims]);
+                    image(iu)
+                    colormap(gca,cmap)
+                    xlabel 'Dimension'
+                    ylabel 'Trial'
+                    set(gca,'XTickLabel',dims.dimension,'XTick',1:nrDims);
+                    % Add a colorbar as legend. This changes per tile/file.
+                    h = colorbar;
+                    condLabel = u(~ismissing(u));
+                    condLabel = [condLabel;"N/A"]; %#ok<AGROW>
+                    set(h,'XTick',(1:nrConds+1)+0.5,'XTickLabel',condLabel)
+                end
+                title (tpl.starttime)
+
+            end
+        end
+
         function showBehavior(tbl,behavior,pv)
-            arguments 
+            arguments
                 tbl (1,1) ns.Experiment {mustHaveRows}
-                behavior (1,1) string 
+                behavior (1,1) string
                 pv.trial (1,:) = [] % List of trials to include [] means all.
             end
 
             tiledlayout('flow')
             for tpl = fetch(tbl)'
                 nexttile
-            prms = get(tbl &tpl,behavior);
-            state = prms.(behavior).state;
-            trial  = prms.(behavior).stateTrial;
-            trialTime = prms.(behavior).stateTime;
-            if isempty(pv.trial)
-                keepTrial= true(size(trial));
-            else
-                keepTrial =ismember(trial,pv.trial);
-            end
-            out = state=="" | ~keepTrial;
-            state(out) =[];
-            trial(out) =[];
-            trialTime(out) = [];
-            [uStates,~,stateNumber]  = unique(state,'stable');
-            nrStates= numel(uStates);
-            
-            x = trial + trialTime/max(trialTime);
-            y = stateNumber;
-            %x = [x [x(2:end);x(end)]]';
-            %y = [stateNumber stateNumber]';
-            plot(x(:),y(:))
-            xlabel 'Trial'
-            ylabel 'State'
-            set(gca,'YTick',1:nrStates,'YTickLabel',uStates)
-            title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
+                prms = get(tbl &tpl,behavior);
+                state = prms.(behavior).state;
+                trial  = prms.(behavior).stateTrial;
+                trialTime = prms.(behavior).stateTime;
+                if isempty(pv.trial)
+                    keepTrial= true(size(trial));
+                else
+                    keepTrial =ismember(trial,pv.trial);
+                end
+                out = state=="" | ~keepTrial;
+                state(out) =[];
+                trial(out) =[];
+                trialTime(out) = [];
+                [uStates,~,stateNumber]  = unique(state,'stable');
+                nrStates= numel(uStates);
+
+                x = trial + trialTime/max(trialTime);
+                y = stateNumber;
+                %x = [x [x(2:end);x(end)]]';
+                %y = [stateNumber stateNumber]';
+                plot(x(:),y(:))
+                xlabel 'Trial'
+                ylabel 'State'
+                set(gca,'YTick',1:nrStates,'YTickLabel',uStates)
+                title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
             end
         end
         function [out,filename] = get(tbl,plg,pv)
@@ -587,15 +636,15 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
             if ~isempty(cic)
                 % Restrict the tbl to the rows that correspond to these
-                % cics                
+                % cics
                 for cicCntr = 1:numel(cic)
                     restrict(cicCntr) = ns.Experiment.tplFromCic(cic(cicCntr)); %#ok<AGROW>
                 end
                 tbl = tbl & restrict;
             end
-            
+
             fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
-         
+
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
                 if isempty(cic)
@@ -666,14 +715,14 @@ classdef Experiment  < dj.Manual & dj.DJInstance
         function o = get.first_frame_onsets(expTbl)
 
             o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-            
+
         end
     end
 
     methods (Static)
         function o = load(filename)
             % Default method to open a Neurostim data file (a .mat file
-            % containing a CIC class object in the variable 'c'            
+            % containing a CIC class object in the variable 'c'
             s  = load(filename,'c');
             o=s.c;
         end
