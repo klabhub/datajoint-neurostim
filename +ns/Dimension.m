@@ -44,8 +44,8 @@ classdef Dimension < dj.Manual & dj.DJInstance
             % containing only the trials from each condition.  The second
             % output gives the values that identify the conditions.
             %
-            % With labelOnly =true, the table is not split, but a column is added 
-            % to indicate which condition the row (trial) corresponds to. 
+            % With labelOnly =true, the table is not split, but a column is added
+            % to indicate which condition the row (trial) corresponds to.
             %
             arguments
                 d (1,1) ns.Dimension {mustHaveRows(d,1)}
@@ -56,11 +56,11 @@ classdef Dimension < dj.Manual & dj.DJInstance
             nrConditions  = count(conditions);
             dimensionName = fetch1(d,'dimension');
             if pv.labelOnly
-                 % Add a column that labels the condition in the
-                 % existing table                 
+                % Add a column that labels the condition in the
+                % existing table
                 TT = addvars(T,nan(height(T),1), 'NewVariableNames', dimensionName);
             else
-                 % Split the table rows into multiple tables                   
+                % Split the table rows into multiple tables
                 TT =cell(1,nrConditions);
                 conditionValues = cell(1,nrConditions);
             end
@@ -71,7 +71,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 assert(isscalar(c.value),"Condition value should be a scalar");
                 valueThisCondition = c.value{1}; % Stored as cell but is a scalar
                 if pv.labelOnly
-                    [TT{trialsThisCondition,dimensionName}] = deal(valueThisCondition);    
+                    [TT{trialsThisCondition,dimensionName}] = deal(valueThisCondition);
                 else
                     TT{cCntr} = T(trialsThisCondition,:);
                     conditionValues{cCntr} =valueThisCondition;
@@ -87,64 +87,70 @@ classdef Dimension < dj.Manual & dj.DJInstance
             % Factorial combination of multiple dimensions
             % Returns a cell array with trial numbers that correspond ot
             % the factorial combination of the dimension d with the
-            % dimensions whose names are specified as dimNames. 
+            % dimensions whose names are specified as dimNames.
             %
             % EXAMPLE
             %   Create a single row table for the dimension current
-            %   dim = ns.Dimension & expt & 'dimension=''current'''                    
+            %   dim = ns.Dimension & expt & 'dimension=''current'''
             % Now cross this dimension with the 'stimChannel' dimension
             %   trials= combine(dim,'stimChannel')
             % For an experiment with 5 current levels and 2 stimulation
             % channels this will return a 5x2 cell array where element
             % (i,j) contains the trials in which the ith current was
-            % applied to the the jth channel.       
+            % applied to the the jth channel.
             % The function also returns the values of each of the
             % conditions, values(3,2) is a cell array with the value
             % assigned to the third condition in the first dimension and
             % the second condition in the second dimension. (i.e. it
             % matches the layout of the trials output).
             arguments
-                d (1,1) {mustHaveRows(d,1)}                
+                d (1,1) {mustHaveRows(d,1)}
             end
             arguments (Repeating)
                 dimension (1,1) string
                 restriction (1,1) string
             end
-   
+
             nrDims = 1+numel(dimension);
             dimTrials = cell(1,nrDims);
             dimValue = cell(1,nrDims);
             %  Get the info from the main dimension ; this determines the
             %  experiment
-            [dimTrials{1},dimValue{1}]  = fetchn(d*ns.DimensionCondition,'trials','value');            
+            [dimTrials{1},dimValue{1}]  = fetchn(d*ns.DimensionCondition,'trials','value');
             dTpl = fetch(d); % Only considering the same expt as d
             for i=1:nrDims-1
                 dTpl.dimension = char(dimension{i});
-                % Fetch each dimension 
-                [dimTrials{i+1},dimValue{i+1}]  = fetchn((ns.Dimension&dTpl)*(ns.DimensionCondition & restriction{i}),'trials','value');
+                % Fetch each dimension
+                if restriction{i} == ""
+                    thisRestrict= true;
+                else
+                    thisRestrict = restriction{i};
+                end
+                  
+                [dimTrials{i+1},dimValue{i+1}]  = fetchn((ns.Dimension&dTpl)*(ns.DimensionCondition & thisRestrict),'trials','value');
             end
             % Check what we have
             nrConditions = cellfun(@numel,dimTrials);
             trials =cell(nrConditions);
             values =cell(nrConditions);
             subs = cell(1,nrDims);
-            % Use indexing/subscriptint to combine factorially across an arbitrary number of dimensions 
+            % Use indexing/subscriptint to combine factorially across an arbitrary number of dimensions
             for i=1:prod(nrConditions)
                 [subs{:}] =ind2sub(nrConditions,i);
-                thisTrials = cellfun(@(d,r)(dimTrials{d}{r}),num2cell(1:nrDims),subs,'uni',false);                                
+                thisTrials = cellfun(@(d,r)(dimTrials{d}{r}),num2cell(1:nrDims),subs,'uni',false);
                 trials{i} = intersect(thisTrials{:});% Keep trials that occur in each dimension
-                values{i} = cellfun(@(d,r)(dimValue{d}{r}{1}),num2cell(1:nrDims),subs,'uni',false);                                
+                values{i} = cellfun(@(d,r)(dimValue{d}{r}{1}),num2cell(1:nrDims),subs,'uni',false);
             end
             out= cellfun(@isempty,trials,'uni',true);
             rowOut = all(out,2:nrDims);
             trials(rowOut,:) = [];
-            values(rowOut,:)=[];                
+            values(rowOut,:)=[];
         end
     end
     methods (Static)
         function define(expt,plg,prm,name,pv)
             % Define a dimension ( a set of conditions) based on the values
-            % of a parameter in a plugin. 
+            % of a parameter in a plugin.
             arguments
                 expt (1,1) ns.Experiment
                 plg (1,:) {mustBeNonzeroLengthText}
@@ -152,12 +158,13 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 name (1,1) string
                 pv.fun (1,1) function_handle = @(x)(x) % Function handle to convert plg.prm into a number that defines the condition (default is to do nothing; the value determines the condition)
                 pv.restrict (1,:) cell = {} % Define only in this subset of trials by specifying a set of allowed values for a plugin parameter
+                pv.exclude (1,:) cell = {} % Define only in this subset of trials by specifying a set of disallowed values for a plugin parameter
                 pv.description (1,1) string ="" % A description to add to the table
                 pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and this dimension.
                 pv.left (1,1) double = NaN  % Reduce the names to this number of chars from the left
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
                 pv.atTrialTime (1,1) = 0 % By default a dimension is defined by the parameter value at the start of the trial. Set this to Inf to use the value at the end of the trial (or any other trial time).
-                pv.useTable (1,1) = false % Set this to true of the plg argument is the name of a DJ table 
+                pv.useTable (1,1) = false % Set this to true of the plg argument is the name of a DJ table
             end
             if ~exists(expt)
                 fprintf('Empty experiment table; no dimensions addded.\n')
@@ -187,8 +194,9 @@ classdef Dimension < dj.Manual & dj.DJInstance
             % and as actual values (to store as values).
             for e =1:nrExpt
                 valStr = "";
-                valTbl = table;
                 allTrials  = (1:fetch1(ns.Experiment&exptTpl(e),'nrtrials'))';
+                nrTrials   = numel(allTrials);
+                valTbl = table;
                 for i=1:nrPlg
                     if pv.nameValueOnly
                         prefix="";
@@ -203,16 +211,19 @@ classdef Dimension < dj.Manual & dj.DJInstance
                     if pv.useTable
                         thisTbl = feval(plg{i});
                         assert(ismember('trial',cat(2,thisTbl.primaryKey,thisTbl.nonKeyFields)),"The %s table must have a column called trial to use it in a dimension definition.", plg{i})
-                        [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');                                            
-                    else                        
+                        [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');
+                    else
                         prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime)';
-                        prmTrials = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what','trial');                    
+                        prmTrials = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what','trial');
                     end
-                    if isempty(prmValues) ||  numel(prmTrials)~=numel(allTrials)  || ~all(prmTrials==allTrials)
+                    if isempty(prmTrials) && isscalar(prmValues)
+                        % Global constant.
+                        prmValues= repmat(prmValues,[numel(allTrials) 1]);
+                    elseif isempty(prmValues) ||  numel(prmTrials)~=numel(allTrials)  || ~all(prmTrials==allTrials)
                         % This experiment did not use the plugin; error in
                         % the condition specification, skip to the next
-                        % experiment
-                        fprintf(2,'Failed to define dimension (%s:%s) for %s on %s at %s \n',plg{i},prm{i},exptTpl(e).subject,exptTpl(e).session_date,exptTpl(e).starttime);
+                        % plugin
+                        fprintf('Dimension (%s:%s) not in use for %s on %s at %s \n',plg{i},prm{i},exptTpl(e).subject,exptTpl(e).session_date,exptTpl(e).starttime);
                         break;
                     end
                     % Transform the values using the user-specified
@@ -229,7 +240,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
                         strPrmValues =string(prmValues);
                     end
                     if valStr==""
-                        valStr= prefix+strPrmValues(:); 
+                        valStr= prefix+strPrmValues(:);
                     else
                         valStr = [valStr prefix+strPrmValues];%#ok<AGROW>
                     end
@@ -244,16 +255,29 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 valStr = fillmissing(valStr,"constant","unknown");
                 if ~isempty(pv.restrict)
                     % Determine which trials meet the specified condition
-                    restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{1},'prm',pv.restrict{2}, 'atTrialTime',pv.atTrialTime)';
-                    stay = ismember(restrictValue,pv.restrict{3});
-                    valStr =valStr(stay,:);
-                    stayTrials = find(stay);
-                    valTbl= valTbl(stay,:);
+                    isStayTrials = false(numel(allTrials),1);
+                    for r = 1:3:numel(pv.restrict)
+                        restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{r},'prm',pv.restrict{r+1}, 'atTrialTime',pv.atTrialTime)';
+                        isStayTrials = isStayTrials | ismember(restrictValue,pv.restrict{r+2});
+                    end
                 else
-                    stayTrials = allTrials;
+                    isStayTrials = true(size(allTrials));
                 end
+
+                % Determine which trials meet the specified condition
+                % for exclusion                
+                for r = 1:3:numel(pv.exclude)
+                    excludeValue = get(ns.Experiment & exptTpl(e),pv.exclude{r},'prm',pv.exclude{r+1}, 'atTrialTime',pv.atTrialTime)';
+                    isStayTrials = isStayTrials & ~ismember(excludeValue,pv.exclude{r+2});
+                end
+
+
+                valStr =valStr(isStayTrials,:);
+                stayTrials = find(isStayTrials);
+                valTbl= valTbl(isStayTrials,:);
+
                 % Find the unique combinations of parameters
-                [uValStr,ia,ic] =unique(valStr,'rows');                
+                [uValStr,ia,ic] =unique(valStr,'rows');
                 valTbl = valTbl(ia,:);
                 nrConditions = size(uValStr,1);
                 %% Create tuples
@@ -284,5 +308,136 @@ classdef Dimension < dj.Manual & dj.DJInstance
             end
             fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);
         end
+        
+        %{ 
+        %TODO better way to define dimensions. Main difference is that
+        %include/exclude is applied first and the full table is passed to
+        %the user for adjustments. Not functional yet due to mym issues
+        %with strings. 
+       function define2(expt,name,plgPrms,pv)
+            % Define a dimension ( a set of conditions) based on the values
+            % of a parameter in a plugin.
+            % EXAMPLE
+            % Define a dimension called frequency based on the frequency
+            % property in the flicker plugin:
+            % define(expt,"frequency", ["flicker" "frequency"])
+            % By default, conditions will be named after the parameter
+            % (e.g., flicker:frequency:10) but a user function can be used 
+            % to make arbitrary mappings based on the specified parameter values.  
+            % Prototype:
+            %   [value,conditionName,conditionPerTrial] = pv.fun(T);
+            % With value a table of parameter values, one per condition 
+            % conditionName a string array of names matching the value
+            % table, and conditionPerTrial a [nrTrials 1] vector mapping
+            % trials to conditions (e.g.  [1 1 2 3] maps trials 1 and 2 to
+            % condition 1 (row 1 in value) , trial 3 to condition 3, and trial 4 to
+            % condition 3.
+            arguments
+                expt (1,1) ns.Experiment
+                name (1,1) string
+                plgPrms (:,:) string {mustBeNonzeroLengthText}                
+                pv.include (1,:) cell = {} % Define only in this subset of trials by specifying a set of allowed values for a plugin parameter
+                pv.exclude (1,:) cell = {} % Define only in this subset of trials by specifying a set of disallowed values for a plugin parameter
+                pv.description (1,1) string ="" % A description to add to the table
+                pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and this dimension.
+                pv.atTrialTime (1,1) = 0 % By default a dimension is defined by the parameter value at the start of the trial. Set this to Inf to use the value at the end of the trial (or any other trial time).
+                pv.fun = [] % Function handle that takes a table of all parameter values and returns a table with condition values, names, and the conditionPerTrial.
+            end
+            if ~exists(expt)
+                fprintf('Empty experiment table; no dimensions addded.\n')
+                return;
+            end
+            pvSEPARATOR = ":"; % Between parm and value
+            ppSEPARATOR = "_"; % Between one parm and the next.
+            assert(mod(numel(plgPrms),2)==0,"plgPrms should specify plugin and property pairs.")
+            %% Cleanup before adding
+            existing = (ns.Dimension & 'dimension=''' + name + '''')  & expt ;
+            if pv.replace
+                delQuick(ns.DimensionCondition & existing);
+                delQuick(existing);
+            end
+            % Only process experiments in which this dimension has not already
+            % been defined.
+            expt = expt - proj(existing);
+            exptTpl = fetch(expt);
+            nrExpt = numel(exptTpl);
+            tic
+            fprintf('Defining Dimension %s for %d experiments...\n',name,nrExpt)
+            totalNrTpl=0;
+
+            % loop over experiments
+            for e =1:nrExpt
+                trial  = (1:fetch1(ns.Experiment&exptTpl(e),'nrtrials'))';
+                nrTrials = numel(trial);
+                T=table(trial);
+                % Construct a table with parameter values per trial
+                for i=1:2:numel(plgPrms)
+                    thisName = plgPrms(i) + pvSEPARATOR + plgPrms(i+1);
+                    prmValues = get(ns.Experiment & exptTpl(e),plgPrms(i),'prm',plgPrms(i+1),'atTrialTime',pv.atTrialTime)';
+                    T = addvars(T,prmValues,'NewVariableNames',thisName);
+                end
+
+
+                if isempty(pv.include)
+                    isStayTrials = true(nrTrials,1);
+                else
+                    % Determine which trials meet the specified condition
+                    isStayTrials = false(nrTrials,1);
+                    for r = 1:3:numel(pv.include)
+                        restrictValue = get(ns.Experiment & exptTpl(e),pv.include{r},'prm',pv.include{r+1}, 'atTrialTime',pv.atTrialTime)';
+                        isStayTrials = isStayTrials | ismember(restrictValue,pv.include{r+2});
+                    end
+                end
+                for r = 1:3:numel(pv.exclude)
+                    restrictValue = get(ns.Experiment & exptTpl(e),pv.exclude{r},'prm',pv.exclude{r+1}, 'atTrialTime',pv.atTrialTime)';
+                    isStayTrials = isStayTrials & ~ismember(restrictValue,pv.exclude{r+2});
+                end
+
+                T(~isStayTrials,:) =[];
+
+                if isempty(pv.fun)
+                    % Construct names and values from the table
+                    [value,~,conditionPerTrial] = unique(T(:,2:end),'rows');
+                    conditionName = value.Properties.VariableNames(1)+ pvSEPARATOR + string(value{:,1});
+                    for col =2:width(value)
+                        conditionName= conditionName + ppSEPARATOR + value.Properties.VariableNames(col)+ pvSEPARATOR + string(value{:,col});
+                    end
+                else
+                    % Create value/name using the user-specified function
+                    [value,conditionName,conditionPerTrial] = pv.fun(T);
+                end
+
+                nrConditions = height(value);
+                %% Create tuples
+                tplD = mergestruct(exptTpl(e), ...
+                    struct('dimension',char(name), ...
+                    'description',char(pv.description),...
+                    'plugin',{plgPrms(1:2:end)}, ...
+                    'parameter',{plgPrms(2:2:end)}));
+                tplC = repmat(exptTpl(e),[nrConditions 1]);
+                for c=1:nrConditions
+                    tplC(c).name = char(conditionName(c));
+                    tplC(c).dimension  = char(name);
+                    tplC(c).trials = T.trial(conditionPerTrial==c);
+                    tplC(c).value = table2cell(value(c,:)); % Must store as cell for mym
+                end
+                %% Insert the condition tuples for this experiment as one transaction
+                C =dj.conn;
+                C.startTransaction
+                try
+                    insert(ns.Dimension,tplD);
+                    insert(ns.DimensionCondition,tplC);
+                catch me
+                    C.cancelTransaction;
+                    rethrow(me)
+                end
+                C.commitTransaction;
+                totalNrTpl = totalNrTpl + numel(tplC);
+
+            end
+          
+            fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);
+        end
+        %}
     end
 end
