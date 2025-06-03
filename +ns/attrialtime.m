@@ -39,7 +39,10 @@ if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
             if ischar(out)
                 out = string(out);
             end
-            out = repmat(out,[1 numel(c.firstFrame)]);%  One per trial
+            if ~isnan(time)
+                % atTrialTime was specified- repmat to one per trial
+                out = repmat(out,[1 numel(c.firstFrame)]);%  One per trial
+            end
         case "trialtime"            
             if isfield(props,propName +"Time")
                 out = props.(propName +"Time");
