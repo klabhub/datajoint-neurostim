@@ -35,7 +35,7 @@ if envLoaded ~=env
         conda = getenv("NS_CONDA");
         if ~isempty(conda) && exist(conda,'dir')
             % Check for a conda environment called matlab.
-            f = fullfile(conda,'envs',env,'bin',exe;
+            f = fullfile(conda,'envs',env,'bin',exe);
             if exist(f,'file')
                 pyenv('Version',f);
             else
@@ -55,7 +55,7 @@ end
 pv =pyenv();
 envLoaded = extractAfter(pv.Home,['envs' +filesep]);
 if envLoaded ~= env
-    fprintf(2,'%s could not be loaded, instead we have %s. Hoping for the best.\n',env,envLoaded);
+    fprintf(2,'conda environment %s could not be loaded, instead we have %s. Hoping for the best.\n',env,envLoaded);
 end
 
 if isunix
