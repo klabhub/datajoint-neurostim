@@ -972,22 +972,24 @@ classdef C< dj.Computed
                 'info',recordingInfo));
             insert(tbl,tpl)
 
+            if nrChannels>0
             % Create tpls for each of the channels and insert
             channelsTpl = mergestruct(key,...
                 struct('signal',num2cell(single(signal),1)',...
                 'channel',num2cell(channels(:))));
-
-            if ~isempty(channelInfo)
-                for i=1:numel(channelInfo)
+            
+                for i=1:nrChannels
                     channelsTpl(i).channelinfo = channelInfo(i);
                     if isfield(channelInfo,'name')
                         channelsTpl(i).name = channelInfo(i).name;
                     end
                 end
+                % Chunking the inserts to avoid overloading the server
+                chunkedInsert(ns.CChannel,channelsTpl);
+            else
+                fprintf("No channels included for ");
+                key %#ok<NOPRT>
             end
-
-            % Chunking the inserts to avoid overloading the server
-            chunkedInsert(ns.CChannel,channelsTpl);
         end
     end
 end

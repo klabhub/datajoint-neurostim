@@ -16,6 +16,8 @@ arguments
     parms (1,1) struct % The preprocessing parameters
 end
 import ephys.ripple.*
+recordingInfo = struct;  % nothing yet.
+
 % Determine  which label to use
 switch upper(parms.type)
     case {'MUAE','RAW'}
@@ -79,8 +81,7 @@ if strcmpi(parms.type,'DIGIN')
     if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
     signal = bitValue';
     time =1000*polyval(clockParms,rippleBitTime);
-    channelInfo = struct('name',parms.name,'nr',parms.channel);
-    recordingInfo = struct;
+    channelInfo = struct('name',parms.name,'nr',parms.channel);    
 else
     % An analog channel
     %% Find relevant channels
@@ -94,6 +95,7 @@ else
         end
     end
     nrChannels = numel(entityIx);
+    assert(nrChannels>0,"No channels match the parms.channel specification in this file.")
     fprintf('%d channels from this Array in this file\n',nrChannels)
     if nrChannels ==0
         signal = []; time = [];channelInfo=[];
@@ -160,8 +162,7 @@ else
     % to time on the neurostim clock.
     time =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime (in seconds)
 
-    recordingInfo = struct;  % nothing yet.
-
+   
     
     %% Filter
     [signal,time] = ns.CFilter(signal,time,parms);
