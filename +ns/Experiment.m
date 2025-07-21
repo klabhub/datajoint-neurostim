@@ -291,13 +291,17 @@ classdef Experiment  < dj.Manual
                     end
 
                     %% Export all tables that have nwb functionality
+                    % A class that is not linked to the experiment but to
+                    % the session (sbx.PreprocessedRoi) needs information
+                    % on which experiment we are exporting. Pass it in the
+                    % pv.
+                    pv.experiment = e;
                     for cls=classesWithNwb
                         tbl = feval(cls) & e;
-                        nwb(tbl,nwbRoot,pv);
+                        nwb(tbl,nwbRoot,pv);                        
                     end
 
                     %% Export to file
-
                     fprintf('Exporting %s ...\n',fname); tic;
                     nwbExport(nwbRoot,fname);
                     fprintf('Export complete (%s)\n',seconds(toc));
@@ -308,10 +312,19 @@ classdef Experiment  < dj.Manual
 
             % Validate the local folder
             if ~isempty(pv.condaEnvironment)
+                condaFldr = getenv('NS_CONDA');
+                if isempty(condaFldr) || ~exist(condaFldr,"dir")
+                    error('Please set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
+                end
+                if ispc
+                    dandiCmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & conda activate %s & cd "%s" & nwbinspector --config dandi .',condaFldr,condaFldr,condaEnvironment,folder);                    
+                else                    
+                    %cmd = sprintf('bash "%s/nsnwb.sh" "%s" "%s"  "%s"',toolsPath,condaFldr, condaEnvironment,dandiCmd);
+                end
+
                 % Do validation in a conda environment
-                fprintf('**** Running nwbinspector...\n');
-                inspect = sprintf('cd %s && nwbinspector --config dandi .',pv.folder);
-                status =  system(wrap(inspect,pv.condaEnvironment),'-echo');
+                fprintf('**** Running nwbinspector...\n');                
+                status =  system(dandiCmd,'-echo');
                 if status == 0 && pv.dandiSet ~=""
                     % Dandi validation for  a specfied dataset
                     if pv.dandiStaging
@@ -364,22 +377,6 @@ classdef Experiment  < dj.Manual
                     end
                 else
                     fprintf(2,'nwbinspector validation failed. See above for command line output.\n')
-                end
-            end
-
-            function cmd = wrap(dandiCmd,condaEnvironment)
-                cfd = fileparts(mfilename('fullpath'));
-                toolsPath = fullfile(fileparts(cfd),'tools');
-                condaFldr = getenv('NS_CONDA');
-                if isempty(condaFldr) || ~exist(condaFldr,"dir")
-                    error('Please set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
-                end
-                % The batch command activates conda, then
-                % calls the dandiCMd
-                if ispc
-                    cmd = sprintf('"%s\\nsswb.bat" %s\\Scripts\\activate.bat %s "%s" ',toolsPath,condaFldr,condaEnvironment,dandiCmd);
-                else
-                    cmd = sprintf('bash "%s/nsnwb.sh" "%s" "%s"  "%s"',toolsPath,condaFldr, condaEnvironment,dandiCmd);
                 end
             end
 
