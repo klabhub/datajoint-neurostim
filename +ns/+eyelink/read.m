@@ -152,7 +152,7 @@ for b= 1:nrBlinks
     end
 end
 startBlinkTrialTime = startBlinkTime- trialStartTime(startBlinkTrial);
-% Create tpl and insert, pretendingthis is a regular plugin.
+% Create tpl and insert, pretending this is a regular plugin.
 plgTpl= fetch(ns.Experiment &key);
 plgTpl.plugin_name ="edf";
 prmTpl  = plgTpl;   

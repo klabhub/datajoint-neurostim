@@ -707,8 +707,7 @@ classdef C< dj.Computed
                 % grouping identifies a dimension
                 conditions = (ns.Dimension & groupingRestriction & exptTpl) *ns.DimensionCondition;
                 if ~exists(conditions)
-                    fprintf('No conditions in dimension %s. Nothing to plot.\n',groupingRestriction.dimension);
-                    return
+                    error('No conditions in dimension %s. No data to align .\n',groupingRestriction.dimension);
                 end
                 [trials,conditionName,conditionX] = fetchn(conditions,'trials','name','value');
                 conditionX = cat(1,conditionX{:}); % value can have multiple columns; cat along conditions
