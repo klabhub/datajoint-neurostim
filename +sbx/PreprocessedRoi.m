@@ -71,6 +71,7 @@ classdef PreprocessedRoi < dj.Part
                 'target', types.untyped.ObjectView(pixelMask), ...
                 'data', maskIndex);
 
+
             % Add to a plane segmentation
             imgPlane = get(nwbRoot.general_optophysiology,'imaging_plane');
             planeSegmentation = types.core.PlaneSegmentation(...
@@ -92,13 +93,14 @@ classdef PreprocessedRoi < dj.Part
             % the session.
             ctag = 'fluorescence';
             cChannelTbl = (ns.CChannel & struct('ctag',ctag) & (ns.Experiment & pv.experiment)) & proj(tbl,'subject','session_date','roi->channel');
-            if count(cChannelTbl) ~=nrRoi
-                fprintf("Skipped adding %s: Mismatch in the number of ROIs in the CChannel table (%d) and the ROI table (%d)\n",ctag, count(cChannelTbl),nrRoi);
-                return;
+            nrRoiToExport = count(cChannelTbl);
+            if  nrRoiToExport ~=nrRoi
+                fprintf("Exporting %s for %d out of %d ROIs \n",ctag, nrRoiToExport ,nrRoi);                
             end
-            signal = fetchn(cChannelTbl,'signal');
+            [signal,roiNr] = fetchn(cChannelTbl,'signal','channel');
+            
             signal = cat(2,signal{:})'; %[nrRoi nrFrames]
-            signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoi 1]);
+            signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoiToExport  1]);
             cTpl = fetch(ns.C&cChannelTbl,'time','ctag');
             assert(numel(cTpl.time)==3,'Time not regularly sampled?');
             nstime =fetch1(ns.PluginParameter  & (ns.Experiment &pv.experiment) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
@@ -108,7 +110,7 @@ classdef PreprocessedRoi < dj.Part
             roiTableRegion = types.hdmf_common.DynamicTableRegion( ...
                 'table',types.untyped.ObjectView(planeSegmentation), ...
                 'description','all rois', ...
-                'data',(0:nrRoi-1)');
+                'data',int64(roiNr-1));
             roiResponseSeries = types.core.RoiResponseSeries  ( ...
                 'rois',roiTableRegion, ...
                 'data',signal, ...

@@ -150,7 +150,8 @@ classdef Experiment  < dj.Manual
             % Create Neurodata without Borders objects for each experiment in a
             % ns.Experiment table.
             %
-            % folder = Folder where the data files will be saved.
+            % root = Folder where a subfolder export will be created with the
+            %           nwb data files.
             %
             % tz  - TimeZone to use for session_Start_time and
             % timestamps_reference_time ["local"]
@@ -176,21 +177,10 @@ classdef Experiment  < dj.Manual
             % see ns.Subject for an example
             %
             % nwbExport(ns.Experiment ,general=general, subjectMeta= subjectMeta,
-            %                               folder = "c:/temp");
+            %                               root = "c:/temp/dandi");
             %
             % If you have a conda environment with dandi installed, you can
-            % automate the NWB format validation
-            % condaEnvironment  : the name of the environment that has
-            % access to the nwbinspector and  dandi cli. Specify this to
-            % call nwbinspector. Its output will be written to the Matlab
-            % command line.
-            % In addition, you can do dandi validation, by
-            % specifying the dandi set number
-            % dandiSet : the number of the dandiSet
-            % And if you specify dandiUpload=true, this function will also
-            % try to upload to the dandiarchive.
-            % If you are using the gui-staging.dandiarchive (e.g., to test
-            % your uploading), set dandiStaging =true  (default).
+            % automate the NWB format validation; see dandi.m for details
             % EXAMPLE :
             %           nwbExport(ns.Experiment ,general=general, subjectMeta= subjectMeta,
             %                               folder = "c:/temp",
@@ -202,29 +192,27 @@ classdef Experiment  < dj.Manual
             % dandiset 10000 and then try to upload to dandiarchive.org.
             % See https://www.dandiarchive.org/handbook/13_upload/
             %
-            %  force can be set tot true to regenrate NWB fies, or false to
+            %  force can be set to true to regenerate NWB fies, or false to
             %  skip files that already exist.
-            %
-            % NOTE - if you switch between the staging archive and the real
-            % archive, make sure to delete the folder named after the
-            % dandiset number (otherwise the dandi validator will think you
-            % have multiple files with the same name). Using force will do
-            % this for you (but also recreate the nwb files).
+            %   
             %
             % BK - 2023,2024
             arguments
                 expt (1,1) ns.Experiment % The table of experiments
-                pv.folder (1,1)          % The folder here to save nwb files
+                pv.root (1,1)          % The folder to save nwb files ( in a subfolder called export)
                 pv.force (1,1) =false   % Force creaing the nwb files                                                               , even if it already exists.
                 pv.packages (1,:)= ""  % Inlcude nwb export from tables in these packages
                 pv.tz (1,1) string = "local"   % Time zone (used for data collection and subject dob)
                 pv.general (1,1) struct = struct();  % NWB general structure
-                pv.condaEnvironment (1,:) char  = ''  % The name of conda environment that can call dandi and nwbinspector
-                pv.dandiSet (1,1) string = ""    % The dandiset this is part of.
-                pv.dandiUpload (1,1) logical = false  % Set to true to upload to dandiarchive
-                pv.dandiStaging (1,1) logical = true % Use the dandi-staging site instead of the "real" site
                 pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties
                 pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example
+              
+                % Dandi calls
+                pv.condaEnvironment (1,1) string = ""  % The name of conda environment that can call dandi and nwbinspector
+                pv.dandiUpload (1,1) logical = false  % Set to true to upload to dandiarchive
+                pv.dandiStaging (1,1) logical = true % Use the dandi-staging site instead of the "real" site
+                pv.dandiSet (1,1) string = ""    % The dandiset this is part of.
+               
             end
 
             assert(~isempty(which('NwbFile')),'This function depends on the matnwb package. Install it from github and add it to the Matlab path');
@@ -232,20 +220,21 @@ classdef Experiment  < dj.Manual
             classesWithNwb =nwbFind("ns.Subject",pv.packages);
 
             % Create the local export folder
-            if exist(pv.folder,"dir") &&  pv.force
-                [success,message] = rmdir(pv.folder,'s');
-                if success
-                    mkdir(pv.folder);
-                else
-                    error('Failed to delete the folder %s (%s)',pv.folder,message);
+            folder = fullfile(pv.root,"export");
+            if exist(folder,"dir") 
+                if pv.force
+                    rmdir(folder,'s');
                 end
+            end
+            if ~exist(folder,"dir") 
+               mkdir(folder);
             end
             for e = fetch(expt,'*')'
                 try
                     % Loop over experiments (NWB refers to this as a "session", NS uses session to refer to all experiments for
                     % a subject on a given day)
                     uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
-                    fname = fullfile(pv.folder,[strrep(uniqueExperimentName,':','') '.nwb']);
+                    fname = fullfile(folder,[strrep(uniqueExperimentName,':','') '.nwb']);
                     if exist(fname,'file')
                         [~,f]=fileparts(fname);
                         fprintf('%s.nwb already exists, skipping.\n',f);
@@ -310,77 +299,12 @@ classdef Experiment  < dj.Manual
                 end
             end
 
-            % Validate the local folder
-            if ~isempty(pv.condaEnvironment)
-                condaFldr = getenv('NS_CONDA');
-                if isempty(condaFldr) || ~exist(condaFldr,"dir")
-                    error('Please set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
-                end
-                if ispc
-                    dandiCmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & conda activate %s & cd "%s" & nwbinspector --config dandi .',condaFldr,condaFldr,condaEnvironment,folder);                    
-                else                    
-                    %cmd = sprintf('bash "%s/nsnwb.sh" "%s" "%s"  "%s"',toolsPath,condaFldr, condaEnvironment,dandiCmd);
-                end
-
-                % Do validation in a conda environment
-                fprintf('**** Running nwbinspector...\n');                
-                status =  system(dandiCmd,'-echo');
-                if status == 0 && pv.dandiSet ~=""
-                    % Dandi validation for  a specfied dataset
-                    if pv.dandiStaging
-                        url = 'api-staging.dandiarchive.org/api';
-                    else
-                        url = 'dandiarchive.org';
-                    end
-                    dandiFolder = fullfile(pv.folder,pv.dandiSet);
-                    % Remove existing sub folder that contains symlinks to the
-                    % nwb files previously stored. Then validate fresh (without
-                    % this dandi validation fails as it thinks some of the
-                    % symlinks are files with the same identifiers).
-                    if exist(dandiFolder,"dir")
-                        rmdir(dandiFolder,'s')
-                    end
-                    mkdir(dandiFolder);
-                    % Download the yaml file.
-                    fprintf('**** Downloading dandiset yaml file ...\n');
-                    dandiDownload  = sprintf('cd %s && dandi download --download dandiset.yaml https://%s/dandiset/%s/draft/',pv.folder,url,pv.dandiSet);
-                    status =  system(wrap(dandiDownload  ,pv.condaEnvironment),'-echo');
-                    if status~=0
-                        fprintf(2,'dandi download failed. See above for command line output.\n')
-                    end
-
-                    fprintf('**** Organizing and validating dandiset %s ...\n',pv.dandiSet);
-                    % Force session_id in the name of the file as otherwise
-                    % dandi tries to rename the file to subject.nwb and
-                    % when later sessions are added, they get random
-                    % suffixes to disambiguate. This seems cleaner.
-                    dandiValidation  = sprintf('cd %s && dandi organize --required-field session_id .. && dandi validate .',dandiFolder);
-                    status =  system(wrap(dandiValidation  ,pv.condaEnvironment),'-echo');
-                    if status == 0 && pv.dandiUpload
-                        % Upload to dandiarchive
-                        if pv.dandiStaging
-                            opt = '-i dandi-staging';
-                        else
-                            opt = '-i dandi';
-                        end
-                        fprintf('**** Uploading dandiset %s ...\n',pv.dandiSet); tic;
-                        upload  = sprintf('cd %s && dandi upload %s .',dandiFolder,opt);
-                        [status,stdout] =  system(wrap(upload  ,pv.condaEnvironment));
-                        if status==0
-                            fprintf('*** Upload complete (%s)\n',seconds(toc));
-                        else
-                            fprintf('%s\n',stdout)
-                            fprintf(2,'dandi upload failed. See above for command line output.\n')
-                        end
-                    else
-                        fprintf(2,'dandi validation failed. See above for command line output.\n')
-                    end
-                else
-                    fprintf(2,'nwbinspector validation failed. See above for command line output.\n')
-                end
+            % Validate and organize the local folder and (optionally)
+            % upload to Dandi Archive using a CONDA installation of the
+            % NWB/Dandi tools
+            if pv.dandiSet ~=""
+                dandi(pv.dandiSet,pv.root,upload=pv.dandiUpload,staging=pv.dandiStaging,environment = pv.condaEnvironment);
             end
-
-
         end
 
         function showBehavior(tbl,behavior,pv)
