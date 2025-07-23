@@ -393,13 +393,20 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         end
 
-        function showConditions(tbl)
+        function showConditions(tbl,pv)
             % For each experiment in the table, show a schematic
             % representing the conditions per trial
             % This includes multiple dimensions (i.e., ways to define a
             % condition).
+            arguments
+                tbl (1,1) ns.Experiment {mustHaveRows(tbl)}
+                pv.max (1,1) double = Inf
+            end
             tiledlayout('flow');
+            cntr = 0;
             for tpl = fetch(tbl,'nrtrials')'
+                cntr = cntr+1;
+                if cntr>pv.max;break;end
                 nexttile;
                 dims = fetchtable(ns.Dimension & tpl,'*');
                 if isempty(dims)

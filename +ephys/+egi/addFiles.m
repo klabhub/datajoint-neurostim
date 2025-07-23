@@ -12,7 +12,7 @@ tbl = tbl - (ns.File & 'extension=".mff"') & 'not paradigm ="ZCheck"';
 if ~exists(tbl)
     fprintf('No EGI files need to be added.\n');
 end
-for key = fetch(tbl)'
+for key = fetch(tbl,'ORDER BY session_date')'
     try
         % Loop over the table of experiments
         fldr = folder(ns.Experiment &key);
