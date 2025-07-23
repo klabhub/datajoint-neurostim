@@ -35,8 +35,8 @@ end
 if numel(pv.restrict)>0
     % Restrictions - each must be a string
     assert(all(cellfun(@ischar,pv.restrict)),'Each element of the restriction must be a char')
-    r = ['''' strjoin(pv.restrict,''',''') ''''];
-    cmd = sprintf("parpopulate(%s,%s)",tbl.className,r);
+    restriction = ['''' strjoin(pv.restrict,''',''') ''''];
+    cmd = sprintf("parpopulate(%s,%s)",tbl.className,restriction);
 else
     % Unrestricted populate
     cmd = sprintf("parpopulate(%s)",tbl.className);
@@ -48,7 +48,7 @@ exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
 if pv.clearJobStatus~=""
     % Check the jobs table to see if something needs to be cleared
     jobsTable = extractBefore(tbl.className,'.') + ".Jobs";
-    if exist(jobsTable,"file")
+    if exist(jobsTable,"class")
     jt = feval(jobsTable);
     jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
     if count(jt)>0
@@ -62,7 +62,13 @@ if pv.clearJobStatus~=""
     end
 end
 
-nrToDo = count(getKeySource(tbl) - proj(tbl));
+restrict(tbl,pv.restrict);
+ks = getKeySource(tbl);
+restrict(ks,pv.restrict);
+nrParents= count(ks);
+restrict(tbl,pv.restrict);
+nrChildren = count(tbl);
+nrToDo = nrParents-nrChildren;
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
@@ -70,6 +76,6 @@ if nrToDo >0
         cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts);
     end
 else
-    fprintf("%s Nothing to populate for %s (table has %d rows)\n",drMsg,cmd,count(tbl));
+    fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);
 end
 
