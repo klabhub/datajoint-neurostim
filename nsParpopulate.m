@@ -48,6 +48,7 @@ exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
 if pv.clearJobStatus~=""
     % Check the jobs table to see if something needs to be cleared
     jobsTable = extractBefore(tbl.className,'.') + ".Jobs";
+    if exist(jobsTable,"file")
     jt = feval(jobsTable);
     jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
     if count(jt)>0
@@ -55,6 +56,9 @@ if pv.clearJobStatus~=""
         if ~pv.dryrun
             delQuick(jt)
         end
+    end
+    else
+        fprintf('No jobs table (%s) on disk. \n',jobsTable)
     end
 end
 
