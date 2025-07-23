@@ -63,6 +63,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         options.correlationWindowSeconds (1,1) {mustBeNumeric, mustBePositive} = 1
         options.correlationThreshold (1,1) {mustBeNumeric, mustBeInRange(options.correlationThreshold, 0, 1)} = 0.4
         options.correlationMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.correlationMaxBadWindows, 0, 1)} = 0.1
+        options.correlationUseMovingWindow (1,1) {mustBeNumericOrLogical} = false % Flag for centered moving window (step=1) vs. non-overlapping
 
         % HF Noise
         options.noiseFrequencyCutoff (1,1) {mustBeNumeric, mustBePositive} = 50
@@ -72,7 +73,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         options.EnableRansac (1,1) {mustBeNumericOrLogical} = true
         options.ransacWindowSeconds (1,1) {mustBeNumeric, mustBePositive} = 4
         options.ransacChannelFraction (1,1) {mustBeNumeric, mustBeInRange(options.ransacChannelFraction, 0, 1, 'exclusive')} = 0.1
-        options.ransacCorrelationThresholdMethod = 'absolute' % if 'robust z'
+        options.ransacCorrelationThresholdMethod = 'absolute' % if 'robust_z'
         options.ransacCorrelationThreshold (1,1) {mustBeNumeric} = 0.5 %, mustBeInRange(options.ransacCorrelationThreshold, 0, 1)} = 0.5
         options.ransacCorrelationMethod = 'Spearman' % Rank correlation ny default
         options.ransacMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.ransacMaxBadWindows, 0, 1)} = 0.5
@@ -86,7 +87,7 @@ function noisyChannels = find_noisy_channels(signal, options)
     % --- End of Argument Validation ---
 
     % Perform validations that depend on the size of 'signal'
-    [nChannels_sig, nTimepoints_sig] = size(signal);
+    nChannels_sig = size(signal,1);
     % if ~isempty(options.Timepoints) && length(options.Timepoints) ~= nTimepoints_sig
     %     error('find_noisy_channels:InvalidTimepoints', ...
     %           'Length of ''Timepoints'' (%d) must match the number of timepoints in ''signal'' (%d).', ...
@@ -185,7 +186,6 @@ function noisyChannels = find_noisy_channels(signal, options)
     end
 
     % --- Call Detection Functions Sequentially ---
-    % Nested functions access parent workspace variables implicitly
 
     [noisyChannels.badByNan, noisyChannels.badByFlat] = detect_bads_by_nan_flat();
     noisyInterim = unique([noisyChannels.badByNan, noisyChannels.badByFlat]);
@@ -193,7 +193,7 @@ function noisyChannels = find_noisy_channels(signal, options)
 
     interim_mean = median(processedSignal(goodChannelsForAmp_Idx,:), 1);
     processedSignal = processedSignal - interim_mean;
-    noisyChannels.badByAmplitude = detect_bad_by_amplitude(goodChannelsForAmp_Idx);
+    [noisyChannels.badByAmplitude, ~] = detect_bad_by_amplitude(goodChannelsForAmp_Idx);
     noisyInterim = unique([noisyInterim, noisyChannels.badByAmplitude]);
     goodChannelsForDeviation_Idx = setdiff(1:nChannels, noisyInterim);
 
@@ -204,7 +204,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         interim_mean = median(intpSignalForMean, 1);
     end
     processedSignal = processedSignal - interim_mean;
-    noisyChannels.badByDeviation = detect_bads_by_deviation(goodChannelsForDeviation_Idx);
+    [noisyChannels.badByDeviation, ~] = detect_bads_by_deviation(goodChannelsForDeviation_Idx);
     noisyInterim = unique([noisyInterim, noisyChannels.badByDeviation]);
     goodChannelsForHFNoise_Idx = setdiff(1:nChannels, noisyInterim);
     
@@ -214,9 +214,8 @@ function noisyChannels = find_noisy_channels(signal, options)
             goodChannelsForHFNoise_Idx, noisyInterim, interpParams{:});
         interim_mean = median(intpSignalForMean, 1);
     end
-    % interim_mean = median(processedSignal(goodChannelsForHFNoise_Idx,:),1);
     processedSignal = processedSignal - interim_mean;
-    noisyChannels.badByHFNoise = detect_bads_by_hf_noise(goodChannelsForHFNoise_Idx);
+    [noisyChannels.badByHFNoise, ~] = detect_bads_by_hf_noise(goodChannelsForHFNoise_Idx);
     noisyInterim = unique([noisyInterim, noisyChannels.badByDeviation, ...
                            noisyChannels.badByHFNoise]);
     goodChannelsForCorrelation_Idx = setdiff(1:nChannels, noisyInterim);
@@ -228,7 +227,7 @@ function noisyChannels = find_noisy_channels(signal, options)
         interim_mean = median(intpSignalForMean, 1);
     end
     processedSignal = processedSignal - interim_mean;
-    noisyChannels.badByCorrelation = detect_bads_by_correlation(goodChannelsForCorrelation_Idx);
+    [noisyChannels.badByCorrelation, ~] = detect_bads_by_correlation(goodChannelsForCorrelation_Idx);
     noisyInterim = unique([noisyInterim, noisyChannels.badByDeviation, ...
                            noisyChannels.badByCorrelation, noisyChannels.badByHFNoise]);
     goodChannelsForRansac_Idx = setdiff(1:nChannels, noisyInterim);
@@ -306,31 +305,35 @@ function noisyChannels = find_noisy_channels(signal, options)
     end % detect_bads_by_nan_flat
     
     % --- Amplitude Cut Off ---
-    function badAmp_Idx = detect_bad_by_amplitude(currentGood_Idx)
+    function [badAmp_Idx, mask] = detect_bad_by_amplitude(currentGood_Idx)
 
         fprintf('Checking amplitude criterion...\n');
         if isempty(currentGood_Idx), fprintf(' INFO: Skipping amplitude check (no good channels).\n'); return; end
-        signalSubset = processedSignal(currentGood_Idx, :);
-
-        badAmp_Idx = gen.make_row(find(mean(abs(signalSubset) > options.highAmplitudeCutOff, 2) > options.highAmplitudeMaxRatio));
+        originalIndicesSubset = currentGood_Idx;
+        mask = zeros(size(processedSignal)) == 1;
+        mask(currentGood_Idx,:) = abs(processedSignal(currentGood_Idx,:)) > options.highAmplitudeCutOff;       
+        badAmp_Idx = gen.make_row(originalIndicesSubset((mean(mask(currentGood_Idx,:), 2) > options.highAmplitudeMaxRatio)));
 
         fprintf(' Found %d channels failing amplitude criterion.\n', length(badAmp_Idx));
     end
 
     % --- Deviation ---
-    function badDeviation_Idx = detect_bads_by_deviation(currentGood_Idx)
+    function [badDeviation_Idx, mask] = detect_bads_by_deviation(currentGood_Idx)
         % Detects channels with abnormally high amplitude/deviation.
          fprintf('Checking deviation criterion...\n');
          badDeviation_Idx = [];
          if isempty(currentGood_Idx), fprintf(' INFO: Skipping deviation (no good channels).\n'); return; end
-         signalSubset = processedSignal(currentGood_Idx, :);
+         
+         signalSubset = processedSignal;
+         signalSubset(currentGood_Idx,:) = NaN;
          originalIndicesSubset = currentGood_Idx;
          try
              channelIQR = iqr(signalSubset, 2);
              channelRobustStd = 0.7413 * channelIQR;
              channelRobustStd(channelRobustStd < eps) = eps;
              deviationZ = robust_z_func(channelRobustStd, 1, "std"); % Z-score across channels in subset
-             badDeviation_Idx = gen.make_row(originalIndicesSubset(deviationZ > options.deviationThreshold)); % Map back
+             mask = deviationZ > options.deviationThreshold;
+             badDeviation_Idx = gen.make_row(originalIndicesSubset(mask)); % Map back
          catch ME 
              warning(ME.identifier, 'Deviation check failed: %s', ME.message); 
          end
@@ -338,7 +341,7 @@ function noisyChannels = find_noisy_channels(signal, options)
     end % detect_bads_by_deviation
 
     % --- Correlation ---
-    function badCorrelation_Idx = detect_bads_by_correlation(currentGood_Idx)
+    function [badCorrelation_Idx, mask] = detect_bads_by_correlation(currentGood_Idx)
         % Detects channels poorly correlated with other channels.
          fprintf('Checking correlation criterion...\n');
          badCorrelation_Idx = [];
@@ -358,12 +361,28 @@ function noisyChannels = find_noisy_channels(signal, options)
               if windowLengthSamples < 2 || windowLengthSamples > nTimepoints
                   error('Correlation window size invalid for signal length.');
               end
-              nWindows = floor(nTimepoints / windowLengthSamples);
+
+              if options.correlationUseMovingWindow
+
+                  nWindows = nTimepoints;
+                  win_mask_func = @(idx) [idx - floor(windowLengthSamples/2), idx - ceil(windowLengthSamples/2)];
+
+              else % Non-overlapping
+                  nWindows = floor(nTimepoints / windowLengthSamples);
+                  win_mask_func = @(idx) [(idx - 1) * windowLengthSamples + 1, idx*windowLengthSamples];
+              end
               if nWindows < 1, error('Signal too short for correlation windows.'); end
 
               maxCorrelationsWindowed = zeros(length(currentGood_Idx), nWindows);
               for iWin = 1:nWindows
-                  winStart = (iWin - 1) * windowLengthSamples + 1; winEnd = iWin * windowLengthSamples;
+
+                  win_idx = win_mask_func(iWin);
+                  winStart = win_idx(1); 
+                  winEnd = win_idx(2);
+                  if winStart <= 0 || winEnd > nWindows*windowLengthSamples
+                      % edge handling with moving windows
+                      continue;
+                  end
                   windowData = filteredSignalCorr(:, winStart:winEnd);
                   windowData(~isfinite(windowData)) = 0;
                   if size(windowData,1) <= 1, corrMatrix = 1; else, corrMatrix = corrcoef(windowData'); end
@@ -379,7 +398,9 @@ function noisyChannels = find_noisy_channels(signal, options)
                   end % iChan loop
               end % iWin loop
 
-              lowCorrFraction = sum(maxCorrelationsWindowed < options.correlationThreshold, 2) / nWindows;
+              mask = nan(nChannels, nWindows);
+              % mask(currentGood_Idx, :) = maxCorrelationsWindowed < options.correlationThreshold;
+              lowCorrFraction = sum(maxCorrelationsWindowed < options.correlationThreshold, 2, 'omitnan') / nWindows;
               badCorrelation_Idx = gen.make_row(originalIndicesSubset(lowCorrFraction > options.correlationMaxBadWindows)); % Map back
 
          catch ME
@@ -389,7 +410,7 @@ function noisyChannels = find_noisy_channels(signal, options)
     end % detect_bads_by_correlation
 
     % --- HF Noise ---
-    function badHFNoise_Idx = detect_bads_by_hf_noise(currentGood_Idx)
+    function [badHFNoise_Idx, mask] = detect_bads_by_hf_noise(currentGood_Idx)
         % Detects channels with excessive high-frequency noise relative to low-freq.
         fprintf('Checking noisiness criterion (HF noise)...\n');
         badHFNoise_Idx = [];
@@ -414,6 +435,7 @@ function noisyChannels = find_noisy_channels(signal, options)
                 noisinessRatio(~isfinite(noisinessRatio)) = max(noisinessRatio(isfinite(noisinessRatio)), 1);
             end
             noiseZ = robust_z_func(noisinessRatio, 1, "std"); % Z-score across subset
+            mask = zeros(nChannels, nTimepoints);
             badHFNoise_Idx = gen.make_row(originalIndicesSubset(noiseZ > options.noiseThreshold)); % Map back
          catch ME
              warning(ME.identifier, 'HF Noise check failed: %s', ME.message); 

@@ -11,22 +11,25 @@ flag : varchar(32)
 
 classdef Epoch < dj.Computed & dj.DJInstance
 
+    properties
+
+        data = []
+        frequencies = []
+
+    end
+
     properties (Dependent)
 
         C % ns.C table
         Experiment % ns.Experiment table
+        EpochParm % ns.EpochParm table
+        EpochChannel
 
         channels
-        timepoints
-        frequencies    
+        timepoints   
         conditions
 
         keySource
-
-    end
-
-    properties (Access = protected)
-
 
     end
 
@@ -47,12 +50,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             epTbl = ns.EpochParm & key;
             cTbl = ns.C & key;
-            dims = fetch(ns.DimensionCondition & key, '*');
 
             abs_onsets = expTbl.first_frame_onsets;
             rel_onsets = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trialtime');
                         
             if isempty(abs_onsets), return; end
+            
 
             % trials that were shown
 
@@ -66,11 +69,18 @@ classdef Epoch < dj.Computed & dj.DJInstance
             ep_win = epTbl{'epoch_win'};
             ep_timepoints = ep_win(1):dt:ep_win(2);
 
+            if isempty(trial_no)
+                fprintf("No epochs were detected for:\n");
+                disp(key);
+                return
+            else
+                fprintf("\t%d valid trials were found.", length(trial_no));
+            end
+
             t_export = gen.Timer().start("Exporting data from ns.CChannel...\n");
 
             signal = fetch(ns.CChannel & cTbl, 'signal');
             signal = horzcat(signal(:).signal)';
-            ch_list = cTbl.channels;
 
             t_export.stop("\tExporting is complete.");
             t_export.report();
@@ -78,6 +88,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             t_sgm = gen.Timer().start("Now segmenting...\n");
             
             ep = segment();
+            
 
             t_sgm.stop("\t\tSegmentation complete.");
             t_sgm.report();
@@ -219,28 +230,194 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 
                 flags = ns.detect_outlier_epochs(ep, cTbl.srate, 'epoch_no', trial_no, varargin{2:end});
 
-            end
-
+            end            
             
         end
-
         
-
     end
+    
     methods
 
-        function ep = retrieve(eTbl, varargin)
+        function varargout = transform(eTbl, varargin)
+            % Delete this in future, now all is done within EpochChannel
+                                
+                cTbl = eTbl.C;
+                epTbl = eTbl.EpochParm;
+                etags = unique(epTbl{'etag'},'rows');
+                ctags = unique(cTbl{'ctag'},'rows');
+                files = unique(cTbl{'filename'}, 'rows');
 
-            ep = ns.RetrievedEpochs(eTbl, varargin{:});
+
+                if size(etags,1)>1 || size(ctags,1)>1 || size(files,1) > 1
+                    error("Transformed data contains data from different files and/or preprocessing pipelines.");
+                end
+
+                if isempty(eTbl.data)
+
+                    ep = eTbl.load();
+
+                else
+
+                    ep = eTbl.data;
+
+                end
+                n_arg = nargin - 1;
+                ii = 1;
+
+                while ii <= n_arg
+
+                    argN = varargin{ii};
+                    ii = ii + 1;
+
+                    switch argN
+                        case 'include'
+
+                            argN = varargin{ii};
+                            ep = eTbl.include(ep, argN{:});
+                            
+                            ii = ii + 1;
+                            if ii > n_arg
+
+                                varargout{1} = ep;
+
+                            end
+                            
+                        case 'exclude'
+                        case 'baseline'
+                        case 'detrend'
+                        case 'fft'
+
+                            [ep, ph, fq] = eTbl.do_fft(ep, cTbl.srate, 3);
+                            eTbl.frequencies = fq;
+                            if ii > n_arg
+
+                                varargout{1} = ep;
+                                varargout{2} = ph;
+                                varargout{3} = fq;
+
+                            end
+                            
+                        case 'snr'    
+
+                            argN = varargin{ii}; %options
+                            ii = ii + 1;
+
+                            fq_res = eTbl.frequencies(2)-eTbl.frequencies(1);
+                            fq_bin_skip = argN{1};
+                            fq_bin = argN{2};
+                            
+                            n_bins = round(fq_bin/fq_res);
+                            n_bins_skip = round(fq_bin_skip/fq_res);
+                            mid_bin = n_bins + 1;
+                            kernel = true(1, 2*n_bins + 1);
+                            kernel(mid_bin-n_bins_skip : mid_bin+n_bins_skip) = false;
+
+                            if numel(argN) > 2
+                                method = argN{3};
+                            else
+                                method = @mean;
+                            end
+
+                            noise = eTbl.calculate_noise_(ep, kernel, 3, method);
+                            ep = ep./noise;
+
+                            if ii > n_arg
+                                varargout{1} = ep;
+                                varargout{2} = eTbl.frequencies;
+                            end
+
+                    end
+
+                end
+
+                eTbl.data = ep;
+                
+        end
+
+        function ep = load(eTbl, qry)
+
+            % loads data
+            if nargin < 2 || isempty(qry)
+
+                epTbl = eTbl.EpochChannel;
+
+            else
+
+                epTbl = eTbl.EpochChannel & qry;          
+
+            end
+            %% Fetch data                
+            t_fetch = gen.Timer().start('Fetching epochs...');
+
+            
+            ep = fetch(epTbl , 'signal');
+            ep = cat(1, ep(:).signal);
+
+            % get dimension size of the final ep matrix
+            n_ep = count(eTbl);
+            n_ch = count(ns.CChannel & eTbl.C);
+            n_t = size(ep,2);
+
+            % reshape ep to n_ch by n_ep by n_t
+            ep = reshape(ep, n_ch, n_ep, n_t);
+            %permute to get the desired shape n_ep n_ch, n_t
+            ep = permute(ep, [2, 1, 3]);
+
+            eTbl.data = ep;
+
+            t_fetch.stop("complete.\n");
+            t_fetch.report();
 
         end
 
+        function ep = include(eTbl, ep, pv)
 
-        
+            arguments
 
-    end
+                eTbl ns.Epoch
+                ep double
+                pv.channels = []
+                pv.time_window = []
+                
+                pv.trials = []
+                pv.conditions = []
+            
+            end
 
-    methods % GET Methods
+            if ~isempty(pv.channels)
+
+                isChIn = ismember(eTbl.channels, pv.channels);
+                ep = ep(:,isChIn,:);
+
+            end
+
+            if ~isempty(pv.time_window)
+
+                isTIn = gen.ifwithin(eTbl.timepoints, pv.time_window);
+                ep = ep(:,:,isTIn);
+
+            end
+
+            if ~isempty(pv.trials)
+
+                trl = fetch(eTbl,'trial');
+                trl = [trl(:).trial];
+                isTrlIn = ismember(trl, pv.trials);
+
+                ep = ep(isTrlIn, :, :);
+
+            end
+
+            if ~isempty(pv.conditions)
+
+                isTrlIn = ismember(eTbl.conditions, pv.conditions);
+                ep = ep(isTrlIn, :, :);
+
+            end
+            
+
+
+        end
 
         function c = get.C(eTbl)
 
@@ -254,15 +431,55 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
         end
 
+        function e = get.EpochParm(eTbl)
+
+            e = ns.EpochParm & eTbl;
+
+        end
+
+        function e = get.EpochChannel(eTbl)
+
+            e = ns.EpochChannel & eTbl;
+            
+        end
+
 
         function ch = get.channels(eTbl)
 
             ch = eTbl.C.channels;
             
         end
-                
-    end
 
+        function cond = get.conditions(eTbl)
+            
+            dTbl = ns.DimensionCondition & eTbl;
+            dTbl = fetch(dTbl,'trials');
+            trials = fetch(eTbl,'trial');
+            trials = [trials(:).trial]';
+
+            cond = repelem("",length(trials),1);
+            for ii = 1:length(dTbl)
+
+              
+                cond(ismember(trials,dTbl(ii).trials)) = dTbl(ii).name;
+            
+            end
+
+        end
+
+        function t = get.timepoints(eTbl)
+
+            cTbl = ns.C & eTbl;
+
+            epTbl = ns.EpochParm & eTbl;
+            ep_win = epTbl{'epoch_win'};
+            dt = cTbl.dt;
+            t = ep_win(1):dt:ep_win(2);
+
+        end
+      
+                
+    end  
 
     methods (Static)
 
@@ -287,6 +504,76 @@ classdef Epoch < dj.Computed & dj.DJInstance
             varargin = [varargin, 'channel_locations', chanLocs];
 
             ep = ns.rereference(ep, varargin{:});
+
+        end
+
+        function [amplitude, phase, frequencies] = do_fft(data, fs, n)
+            % fftSliceReal - Computes FFT amplitude and phase for each slice along the n'th dimension.
+            %                Only includes real frequencies.
+            %
+            % Inputs:
+            %   data: Input multi-dimensional data.
+            %   n: Dimension along which to slice and compute FFT.
+            %   fs: Sampling frequency (optional, default is 1).
+            %
+            % Outputs:
+            %   amplitude: Amplitude of the FFT.
+            %   phase: Phase of the FFT.
+            %   frequencies: Corresponding real frequencies.
+
+            n_dim = ndims(data);
+
+            % Compute FFT for each slice
+            fftResult = fft(data, [], n_dim);
+
+            idx = repmat({':'},1,n_dim);
+            % Calculate real frequencies
+            N = size(data, n);
+            if mod(N, 2) == 0
+                frequencies = (0:N/2) * fs / N;
+                idx{n_dim} = 1:N/2+1;
+            else
+                frequencies = (0:(N-1)/2) * fs / N;
+                idx{n_dim} = 1:(N+1)/2;
+            end
+
+            amplitude = 2*abs(fftResult(idx{:})/sqrt(N));
+            phase = angle(fftResult(idx{:}));
+
+
+        end
+
+        function noise_arr = calculate_noise_(arr, filter_kernel, n_dim, method)
+
+            if nargin < 3 || isempty(n_dim), n_dim = ndims(arr); end
+            if nargin < 4; method = @mean; end
+
+            idx_selector = repmat({':'}, 1, ndims(arr));
+            idx_assigner = repmat({':'}, 1, ndims(arr));
+            
+            n_points = size(arr, n_dim);
+            noise_arr = zeros(size(arr));
+            n_kernel = numel(filter_kernel);
+
+            for i = 1:n_points
+                idx_assigner{n_dim} = i;
+
+                if i <= n_kernel/2 || i > n_points - n_kernel/2
+
+                    noise_arr(idx_assigner{:}) = NaN;
+
+                else
+
+                    idxN = false(1, size(arr,n_dim));
+                    idxN(floor(i+1-n_kernel/2):floor(i+n_kernel/2)) = filter_kernel;
+
+                    idx_selector{n_dim} = idxN;
+
+                    noise_arr(idx_assigner{:}) = method(arr(idx_selector{:}), n_dim);
+
+                end
+
+            end
 
         end
 

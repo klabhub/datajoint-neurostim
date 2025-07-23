@@ -1,4 +1,4 @@
-function [perExpt,perChannel] = badBehavior(C,parms)
+function [perExpt,perChannel] = badBehavior(nsTbl,parms)
 % Find trials with bad behavior.
 % This function is meant to
 % be used as the 'fun' in ArtifactParms to fill the Artifact table.
@@ -20,11 +20,19 @@ function [perExpt,perChannel] = badBehavior(C,parms)
 % insertIfNew(ns.ArtifactParm,fixation);
 
 arguments
-    C (1,1) ns.C {mustHaveRows(C,1)}
+    nsTbl %(1,1) ns.C {mustHaveRows(C,1)}
     parms (1,1) struct
 end 
 
-expt = ns.Experiment & C; 
+if isa(nsTbl, "ns.Experiment")
+    expt = nsTbl;
+
+else
+
+    expt = ns.Experiment & nsTbl;
+
+end
+
 statePerTrial  = get(expt,parms.behavior,'prm','state','atTrialTime',parms.atTrialTime,'what','data');
 trials = get(expt,parms.behavior,'prm','state','atTrialTime',parms.atTrialTime,'what','trial');
 

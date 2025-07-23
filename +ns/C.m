@@ -235,7 +235,7 @@ classdef C < dj.Computed & dj.DJInstance
 
         function art = get.artifacts(cTbl)
 
-            cTbl.artifacts_.update(cTbl)
+            cTbl.artifacts_.update(cTbl);
             art = cTbl.artifacts_.value;
 
         end
