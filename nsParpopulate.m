@@ -52,7 +52,7 @@ if pv.clearJobStatus~=""
     jt = feval(jobsTable);
     jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
     if count(jt)>0
-        fprintf('%s %d related jobs in %s will be deleted',drMsg,count(jt),jobsTable)
+        fprintf('%s %d related jobs in %s will be deleted.\n',drMsg,count(jt),jobsTable)
         if ~pv.dryrun
             delQuick(jt)
         end
