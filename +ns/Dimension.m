@@ -213,8 +213,9 @@ classdef Dimension < dj.Manual & dj.DJInstance
                         assert(ismember('trial',cat(2,thisTbl.primaryKey,thisTbl.nonKeyFields)),"The %s table must have a column called trial to use it in a dimension definition.", plg{i})
                         [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');
                     else
-                        prmValues = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime)';
-                        prmTrials = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what','trial');
+                        ret = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what',["data" "trial"])';
+                        prmValues = ret.data;
+                        prmTrials = ret.trial; 
                     end
                     if isempty(prmTrials) && isscalar(prmValues)
                         % Global constant.

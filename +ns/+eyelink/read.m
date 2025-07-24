@@ -99,7 +99,7 @@ if isfield(parms,'fillmissing') && any(isMissing,'all')
     signal = fillmissing(signal,parms.fillmissing{:});
 end
 %% Downsample
-if isfield(parms,'downsample')
+if isfield(parms,'downsample')    
     R= ceil(data.RECORDINGS(1).sample_rate/parms.downsample);
     if R>1
         fprintf('Downsampling to %.0f Hz (decimate)...\n',parms.downsample);
@@ -107,7 +107,12 @@ if isfield(parms,'downsample')
         nrSamples = ceil(nrSamples/R);
         tmp = nan(nrSamples,nrChannels);
         for ch = 1:nrChannels
-            tmp(:,ch) =  decimate(signal(:,ch),R);
+            if ~all(isnan(signal(:,ch)))
+                % if fillmissing was successfull, then either all are NaN
+                % or none are Nan. If all are nan then the decimated signal
+                % should also be nan. 
+                tmp(:,ch) =  decimate(signal(:,ch),R);
+            end
         end
         signal =tmp;
         time = linspace(time(1),time(end),nrSamples)';
