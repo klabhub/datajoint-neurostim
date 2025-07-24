@@ -121,7 +121,7 @@ classdef Preprocessed < dj.Computed
                     gscatter(datetime(P.session_date),P.(y),P.strain,[],pv.markers(pcellCntr))
                     xlabel 'Date'
                     ylabel(y)
-                    yscale(pv.yscale)
+                    set(gca,'yscale',pv.yscale)
                 end
                 tStr = tStr + pv.markers(pcellCntr) + ": pCell>" + string(pcell) +" ";
             end
