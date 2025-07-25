@@ -33,8 +33,8 @@ function dandi(dandiSet, root, pv)
 %
 % This worked fine on a Windows/miniconda install, but on an HPC system it
 % failed due to a missing deno installation. There I had to install
-% dandi=0.60 to get it to work (this means no zarr files or other more
-% recent improvements to dandi/nwb.)
+% dandi=0.68.1 to get it to work.
+%
 % Note that just installing default dandi (using conda install) led to
 % run time errors due to a missing hdmf.array class. Not sure why.
 %
