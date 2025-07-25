@@ -180,23 +180,13 @@ classdef Experiment  < dj.Manual
             %                               root = "c:/temp/dandi");
             %
             % If you have a conda environment with dandi installed, you can
-            % automate the NWB format validation; see dandi.m for details
-            % EXAMPLE :
-            %           nwbExport(ns.Experiment ,general=general, subjectMeta= subjectMeta,
-            %                               folder = "c:/temp",
-            %                           condaEnvironment = "nwb",
-            %                           dandiSet = "10000",
-            %                           dandiUpload = true,
-            %                           dandiStaging = false);
-            % will check NWB validation, then dandi validation against
-            % dandiset 10000 and then try to upload to dandiarchive.org.
-            % See https://www.dandiarchive.org/handbook/13_upload/
+            % automate the NWB format validation; see dandi.m for details 
             %
             %  force can be set to true to regenerate NWB fies, or false to
             %  skip files that already exist.
             %   
             %
-            % BK - 2023,2024
+            % BK - 2023,2024, 2025
             arguments
                 expt (1,1) ns.Experiment % The table of experiments
                 pv.root (1,1)          % The folder to save nwb files ( in a subfolder called export)
@@ -205,14 +195,7 @@ classdef Experiment  < dj.Manual
                 pv.tz (1,1) string = "local"   % Time zone (used for data collection and subject dob)
                 pv.general (1,1) struct = struct();  % NWB general structure
                 pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties
-                pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example
-              
-                % Dandi calls
-                pv.condaEnvironment (1,1) string = ""  % The name of conda environment that can call dandi and nwbinspector
-                pv.dandiUpload (1,1) logical = false  % Set to true to upload to dandiarchive
-                pv.dandiStaging (1,1) logical = true % Use the dandi-staging site instead of the "real" site
-                pv.dandiSet (1,1) string = ""    % The dandiset this is part of.
-               
+                pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example                                       
             end
 
             assert(~isempty(which('NwbFile')),'This function depends on the matnwb package. Install it from github and add it to the Matlab path');
@@ -297,14 +280,7 @@ classdef Experiment  < dj.Manual
                 catch me
                     fprintf(2,"Failed on %s (%s).\n",fname,me.message)
                 end
-            end
-
-            % Validate and organize the local folder and (optionally)
-            % upload to Dandi Archive using a CONDA installation of the
-            % NWB/Dandi tools
-            if pv.dandiSet ~=""
-                dandi(pv.dandiSet,pv.root,upload=pv.dandiUpload,staging=pv.dandiStaging,condaEnvironment = pv.condaEnvironment);
-            end
+            end           
         end
 
         function showBehavior(tbl,behavior,pv)
