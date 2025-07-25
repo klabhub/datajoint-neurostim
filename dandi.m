@@ -10,8 +10,12 @@ function dandi(dandiSet, root, pv)
 %  This will validate, organize and upload the data in c:/temp/dandi/00170
 %  to the Dandi archive.
 % 
+% This function wil first call dandi download, then organize, then upload.
+% Each of those calls can be modified by specifying downloadOptions,
+% uploadOptions, or organizeOptions as strings. See dandi --help for details, but for
+% instance:
 % The uploadOptions can be set to 
-% --sync to  Delete assets on the server that do not
+% "--sync" to  Delete assets on the server that do not
 %                                  exist locally 
 % --existing OVERWRITE : force upload
 %                                  if either size or modification time differs
@@ -42,6 +46,8 @@ arguments
     pv.staging (1,1) logical = false    % Set to true if this is a staging DandiSet
     pv.upload (1,1) logical = true     % Set to false to skip the upload step 
     pv.uploadOptions (1,1) string = ""   % Provide additional verbatim input to the dandi upload commands
+    pv.downloadOptions (1,1) string = "--existing refresh" % Provide additional verbatim input to the dandi download commands
+    pv.organizeOptions (1,1) string = "--files-mode auto" % Provide additional verbatim input to the dandi organize commands
     pv.runNwbInspector (1,1) logical = true; % Set to false to skip the initial validation step. (Validation is always run after dandi organize)
 end
 if pv.staging 
@@ -68,7 +74,7 @@ end
 % This wil create the dandi set folder root\dandiSetNumber with 
 % the dandiset.yaml file in it.
 fprintf('**** Downloading dandiset ...\n');                    
-dandiCmd = sprintf("dandi download --existing refresh --output-dir .. --download dandiset.yaml https://%s/dandiset/%s/draft/",url,dandiSet);
+dandiCmd = sprintf("dandi download " + pv.downloadOptions + " --output-dir .. --download dandiset.yaml https://%s/dandiset/%s/draft/",url,dandiSet);
 runInConda(dandiCmd,exportFolder,pv.condaEnvironment);
     
 %% Organize the files and revalidate
@@ -82,18 +88,18 @@ runInConda(dandiCmd,exportFolder,pv.condaEnvironment);
 % conventions
 fprintf('**** Organizing and validating dandiset %s ...\n',dandiSet);                
 
-dandiCmd = sprintf("dandi organize --files-mode auto --dandiset-path ../%s --required-field session_id %s",dandiSet,exportFolder);
+dandiCmd = sprintf("dandi organize " + pv.organizeOptions + " --dandiset-path ../%s --required-field session_id %s",dandiSet,exportFolder);
 runInConda(dandiCmd,exportFolder,pv.condaEnvironment);    
 
          
 %% Upload
 fprintf('**** Uploading dandiset %s ...\n',dandiSet); tic;
 % On dandi 0.60 I had to add these command line arguments 
-v60Options = "--format PYOUT --path-type EXACT";
+
 if pv.staging
-    dandiCmd = "dandi upload " +v60Options + pv.uploadOptions  + " -i dandi-staging .";          
+    dandiCmd = "dandi upload " + pv.uploadOptions  + " -i dandi-staging .";          
 else
-    dandiCmd = "dandi upload " +v60Options + pv.uploadOptions  +  " -i dandi .";   
+    dandiCmd = "dandi upload " + pv.uploadOptions  +  " -i dandi .";   
 end
 
 runInConda(dandiCmd,dandiSetFolder,pv.condaEnvironment);
