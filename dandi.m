@@ -13,9 +13,9 @@ function dandi(dandiSet, root, pv)
 % The uploadOptions can be set to 
 % --sync to  Delete assets on the server that do not
 %                                  exist locally 
-% --existing overwrite : force upload
+% --existing OVERWRITE : force upload
 %                                  if either size or modification time differs
-% --existing refresh : upload only if local
+% --existing REFRESH : upload only if local
 %                                  modification time is ahead of the remote.
 %
 % This requires a CONDA installation defined by the NS_CONDA environment
@@ -29,8 +29,8 @@ function dandi(dandiSet, root, pv)
 %
 % This worked fine on a Windows/miniconda install, but on an HPC system it
 % failed due to a missing deno installation. There I had to install
-% dandi<0.60 to get it to work (this means no zarr files or other more
-% recent improvements to dandi/nwb. 
+% dandi=0.60 to get it to work (this means no zarr files or other more
+% recent improvements to dandi/nwb.)
 % Note that just installing default dandi (using conda install) led to
 % run time errors due to a missing hdmf.array class. Not sure why.
 %
@@ -88,10 +88,12 @@ runInConda(dandiCmd,exportFolder,pv.condaEnvironment);
          
 %% Upload
 fprintf('**** Uploading dandiset %s ...\n',dandiSet); tic;
+% On dandi 0.60 I had to add these command line arguments 
+v60Options = "--format PYOUT --path-type EXACT";
 if pv.staging
-    dandiCmd = "dandi upload " + pv.uploadOptions  + " -i dandi-staging .";          
+    dandiCmd = "dandi upload " +v60Options + pv.uploadOptions  + " -i dandi-staging .";          
 else
-    dandiCmd = "dandi upload " + pv.uploadOptions  +  " -i dandi .";   
+    dandiCmd = "dandi upload " +v60Options + pv.uploadOptions  +  " -i dandi .";   
 end
 
 runInConda(dandiCmd,dandiSetFolder,pv.condaEnvironment);
