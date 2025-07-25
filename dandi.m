@@ -1,7 +1,6 @@
 function dandi(dandiSet, root, pv)
 % Validate and upload a folder to the Dandi archive
-% Run this manually after nwbExport, or let nwbExport call it automatically
-% once it has created the .nwb files. 
+% Run this after ns.Experiment/nwbExport. 
 % 
 % Dandi documentation https://github.com/dandi/dandi-docs
 % 
