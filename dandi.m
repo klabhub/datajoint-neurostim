@@ -20,11 +20,19 @@ function dandi(dandiSet, root, pv)
 %
 % This requires a CONDA installation defined by the NS_CONDA environment
 % variable (e.g. /home/joe/miniconda3) and a CONDA environment with NWB/Dandi 
-% installed. Use something like this to install it. 
-% 
+% installed. 
+% I used this to install it:
 % conda create -n nwb python=3.10
-% conda activate nwb
-% conda install -c conda-forge dandi hdmf h5py numpy
+% conda activate nwb 
+% pip install nwbinspector
+% pip install "nwbinspector==0.6.3" "pynwb>=3.0" "dandi>=0.60"
+%
+% This worked fine on a Windows/miniconda install, but on an HPC system it
+% failed due to a missing deno installation. There I had to install
+% dandi<0.60 to get it to work (this means no zarr files or other more
+% recent improvements to dandi/nwb. 
+% Note that just installing default dandi (using conda install) led to
+% run time errors due to a missing hdmf.array class. Not sure why.
 %
 % SEE ALSO ns.Experiment/nwbExport
 arguments
@@ -74,7 +82,7 @@ runInConda(dandiCmd,exportFolder,pv.condaEnvironment);
 % conventions
 fprintf('**** Organizing and validating dandiset %s ...\n',dandiSet);                
 
-dandiCmd = sprintf("dandi organize --files-mode auto --dandiset-path %s --required-field session_id . && dandi validate %s",dandiSetFolder,dandiSetFolder);
+dandiCmd = sprintf("dandi organize --files-mode auto --dandiset-path ../%s --required-field session_id %s",dandiSet,exportFolder);
 runInConda(dandiCmd,exportFolder,pv.condaEnvironment);    
 
          
@@ -92,19 +100,24 @@ end
 
 %% Helper function to run a dandi command in a specified folder using a 
 % user defined conda environment.
-function status = runInConda(dandiCmd,dandiFldr,condaEnvironment)
+function status = runInConda(dandiCmd,wrkFldr,condaEnvironment)
 arguments
     dandiCmd (1,1) string  % Command to run
-    dandiFldr (1,1)  string   % Working folder for command    
+    wrkFldr (1,1)  string   % Working folder for command    
     condaEnvironment (1,1) string = "nwb" % Conda environment to use    
 end 
 condaFldr = getenv('NS_CONDA');
 assert(exist(condaFldr,"dir"),'Set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
                
 if ispc
-    cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & conda activate %s & cd "%s" & %s',condaFldr,condaFldr,condaEnvironment,dandiFldr,dandiCmd);                    
+    cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & conda activate %s & cd "%s" & %s',condaFldr,condaFldr,condaEnvironment,wrkFldr,dandiCmd);                    
 else
-    %cmd = sprintf('bash "%s/nsnwb.sh" "%s" "%s"  "%s"',toolsPath,condaFldr, condaEnvironment,dandiCmd);
+    cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
+    'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...
+    'elif [ -f "%s/etc/profile.d/conda.sh" ]; then source "%s/etc/profile.d/conda.sh"; ' ...
+    'else export PATH="%s/bin:$PATH"; fi; unset __conda_setup; ' ...
+    'conda activate %s; cd %s; eval "%s"'], ...
+    condaFldr, condaFldr, condaFldr, condaFldr, condaEnvironment, wrkFldr,dandiCmd);
 end
 
 status =  system(cmd,'-echo');

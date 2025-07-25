@@ -303,7 +303,7 @@ classdef Experiment  < dj.Manual
             % upload to Dandi Archive using a CONDA installation of the
             % NWB/Dandi tools
             if pv.dandiSet ~=""
-                dandi(pv.dandiSet,pv.root,upload=pv.dandiUpload,staging=pv.dandiStaging,environment = pv.condaEnvironment);
+                dandi(pv.dandiSet,pv.root,upload=pv.dandiUpload,staging=pv.dandiStaging,condaEnvironment = pv.condaEnvironment);
             end
         end
 
