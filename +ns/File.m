@@ -119,7 +119,13 @@ classdef File < dj.Imported
             end
         end
 
-
+        function addMissingFiles(tbl)
+            % Check for any files that should have been added by makeTuples
+            % but, for some reason, weren't. Add those.
+            for key = fetch(tbl)'
+                makeTuples(tbl,ns.stripToPrimary(ns.Experiment,key))
+            end
+        end
 
     end
 

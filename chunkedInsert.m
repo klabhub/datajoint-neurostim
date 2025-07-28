@@ -31,19 +31,9 @@ lineBreak = 1;
 while i <= nrTpls
     
     % Find optimal chunk size for this iteration without exceeding limit
-    currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);
-    
-    % Double check if the submission exceeds the limit or not
-    thisChunk = i:(i+currentChunkSize-1);
-    while get_mem_size(tpl(thisChunk)) > bytesPerInsert
-        
-        currentChunkSize = currentChunkSize - 1;
-        thisChunk = i:(i+currentChunkSize-1);
-
-    end
-
-    insert(tbl,tpl(thisChunk));
-    
+    currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);       
+    thisChunk = i:min(nrTpls,(i+currentChunkSize-1));    
+    insert(tbl,tpl(thisChunk));    
     fprintf('.')
     lineBreak =lineBreak+1;
     if lineBreak==80;fprintf('\n');lineBreak = 1;end
