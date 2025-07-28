@@ -37,7 +37,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(pv)
 % schedule - 'y' - Scan the year in which the date falls.
 %          - 'm' - Scan the month
 %          - ['d'] - Scan the specified day only.
-%
+%           - ["2022" "2023"] - scans these two years
 % readJson - Read the json files containing meta data and add to the tables
 %               [true]
 % metaDefinitionTag - Determines which meta definition files to use (e.g. for
@@ -104,7 +104,7 @@ function [tSubject,tSession,tExperiment,isLocked] = nsScan(pv)
 arguments
     pv.root (1,1) string = getenv('NS_ROOT')
     pv.date (1,1) datetime = datetime('now')
-    pv.schedule (1,1) string = "d"
+    pv.schedule (1,:) string = "d"
     pv.readJson (1,1) logical = true
     pv.paradigm (1,:) string = ""
     pv.subject (1,:) string =""
@@ -118,10 +118,12 @@ arguments
     pv.cicOnly (1,1) logical = false
     pv.safeMode (1,1) logical = true
     pv.metaDefinitionTag (1,1) string = ""
-    pv.minNrTrials (1,:) double = 1
+    pv.minNrTrials (1,:) double = 0
     pv.verbose (1,1) logical = true
     pv.fileType (1,1) string = "*.mat"
+    pv.analyze  (1,1) logical = true % Show files only when analyze= true
 end
+assert(exist(pv.root,"dir"),"The root folder (%s) does not exist.",pv.root);
 
 tExperiment = table;
 tSession = table;
@@ -160,9 +162,21 @@ switch (pv.schedule)
             tSession = [tSession;thisTSession];%#ok<AGROW>
             tExperiment = [tExperiment;thisTExperiment];%#ok<AGROW>
         end
-        return
+        return    
     otherwise
-        error('Unknown schedule %s',pv.schedule)
+        % Interpreting the pv.schedule as a vector of years.
+        tSubject =table;
+        tSession = table;
+        tExperiment =table;
+        % Then a recursive call to this function for each year.     
+        args = namedargs2cell(pv);
+        for yr = pv.schedule            
+            [thisTSubject,thisTSession,thisTExperiment,isLocked] = nsScan(args{:},'schedule','y','date',yr + "-01-01");
+            tSubject = [tSubject;thisTSubject]; %#ok<AGROW>
+            tSession = [tSession;thisTSession];%#ok<AGROW>
+            tExperiment = [tExperiment;thisTExperiment];%#ok<AGROW>
+        end
+        return
 end
 
 if pv.verbose
@@ -238,7 +252,9 @@ end
 % exclude a specific subject
 stay = stay &  ~ismember({meta.subject},pv.excludeSubject);
 % include based on paradigm
-if pv.paradigm==""
+if isempty(pv.paradigm)
+    pv.minNrTrials = [];
+elseif exists(ns.Paradigm) && pv.paradigm=="" 
     % Select on the basis of the ns.Paradigm table
     [pv.paradigm,pv.minNrTrials,from,to]= fetchn(ns.Paradigm,'name','mintrials','from','to');
     pv.paradigm= upper(string(pv.paradigm));
@@ -312,6 +328,7 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
             lasterr
             out(i)=true;
         end
+    if ~isempty(pv.paradigm) 
         % Find which minium number of trials to apply (paradigm dependent)
         thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
         % Remove if too few trials
@@ -320,10 +337,13 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
             fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
             out(i) =true;
         end
+    else 
+        out(i)  =false;
+    end
     end
     meta  =[tmpMeta{~out}];
     c = [c{~out}];
-    fullName(out) =[];
+    fullName(out) =[];        
     nrExperiments = numel(meta);
 else
     c= [];
@@ -334,11 +354,6 @@ if nrExperiments ==0
         fprintf('No relevant files found in %s\n',srcFolder);
     end
     return;
-else
-    if pv.verbose
-        fprintf('Found %d matching Neurostim files: \n',nrExperiments)
-        fullName %#ok<NOPRT>
-    end
 end
 
 %% A Experiments
@@ -429,7 +444,22 @@ if pv.readJson || pv.jsonOnly
 end
 % Sort to get a consistent order
 tExperiment =  sortrows(tExperiment,{'starttime','subject','paradigm'},'ascend');
+if ismember("analyze",tExperiment.Properties.VariableNames) && pv.analyze
+    % Remove experiments that are marked analyze = 0 in the json meta data file
+    tExperiment(tExperiment.analyze=="0",:)=[];
+    if height(tExperiment)==0
+        fprintf('No relevant Neurostim experiment files are marked for analysis\n');
+        return;
+    end
+end
 clear meta fullName %  These are sorted differently; prevent accidental use below.
+
+nrExperiments = height(tExperiment);    
+if pv.verbose
+     fprintf('Found %d matching Neurostim files: \n',nrExperiments)
+     tExperiment %#ok<NOPRT>
+end
+
 
 %% B. Session Meta Data
 % Retrieve definition and initialize table

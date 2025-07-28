@@ -100,12 +100,14 @@ function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun,ne
 % OUTPUT
 % tpl  - Tuples with new information
 % metaTpl - Tuples with new meta information.
-if isempty(tbl);return;end
+
 %% Determine whether there are entries that are not yet in the database
 newTpls = [];
 updateTpls = [];
 newMetaTpls = [];  %
 updateMetaTpls = []; % With an empty metaTpl defined we don't have to check for nr>0 below
+newTplsRows = [];
+if isempty(tbl);return;end
 
 pkey = djTbl.primaryKey;
 hdr  = djTbl.header;

@@ -24,23 +24,29 @@ end
 
 tic;
 nrTpls = numel(tpl);
-fprintf('Uploading to server ')
+fprintf('Uploading to server: ')
 
 i = 1;
-lineBreak = 1;
+progress_old = 0;
+
 while i <= nrTpls
-    
+
     % Find optimal chunk size for this iteration without exceeding limit
-    currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);       
-    thisChunk = i:min(nrTpls,(i+currentChunkSize-1));    
-    insert(tbl,tpl(thisChunk));    
+    currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);
+    thisChunk = i:min(nrTpls,(i+currentChunkSize-1));
+    insert(tbl,tpl(thisChunk));
     fprintf('.')
     lineBreak =lineBreak+1;
     if lineBreak==80;fprintf('\n');lineBreak = 1;end
-    
-    i = i + currentChunkSize;  % Move to the next chunk
 
+    i = i + currentChunkSize;  % Move to the next chunk
+    progress_new = round(100*(i-1)/nrTpls);
+    if (progress_new - progress_old) >= 10
+
+        fprintf("\t %d%%", progress_new);
+        progress_old = progress_new;
+    end
 end
 
-fprintf('Done in %d seconds.\n.',round(toc))
+fprintf('\n\tDone in %d seconds.\n.',round(toc))
 end

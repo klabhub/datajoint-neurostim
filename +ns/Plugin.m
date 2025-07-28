@@ -16,6 +16,23 @@ classdef Plugin < dj.Manual
             insert(self,key);
             make(ns.PluginParameter,key,plg.prms);
 
+            % CiC has some properties that are useful to store, but they
+            % are not regular properties (and therefore not added
+            % automatically via the pluginparameter make function). We
+            % handle those separately here.
+            if strcmpi(plg.name,'cic')
+                % 1.  create a blockName property that stores the names of
+                % the blocks.
+                blockNameTpl = fetch(ns.PluginParameter & key & 'property_name="block"','*');
+                blockNameTpl.property_name = 'blockName';
+                blockNr  = blockNameTpl.property_value ;
+                blockNameTpl.property_value = cell(size(blockNr));
+                stay =blockNr>0;
+                blockNames = {plg.blocks(blockNr(stay)).name};
+                [blockNameTpl.property_value{stay}] =deal(blockNames{:});
+                insert(ns.PluginParameter,blockNameTpl);
+                % 2. More can be added here
+            end
         end
 
         function what(tbl)

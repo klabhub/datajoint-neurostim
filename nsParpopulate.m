@@ -15,8 +15,8 @@ function nsParpopulate(tbl,cls,opts,pv)
 % The maximum number of workers is set to 64 by default. Be nice.
 %
 % Use dryrun = true to get a brief report of the jobs that would be started
-% with dryrun =false. 
-% 
+% with dryrun =false.
+%
 arguments
     tbl (1,1) dj.Relvar     % table to populate
     cls (1,1) mslurm        % slurm cluster to use
@@ -26,12 +26,12 @@ arguments
     pv.clearJobStatus (1,:) string = "error" %  string array of status flags that should be cleared from the jobs table.
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
 end
-if pv.dryrun 
+if pv.dryrun
     drMsg = "[DRYRUN]";
 else
     drMsg = "";
 end
-if ~isempty(tbl.restrictions)    
+if ~isempty(tbl.restrictions)
     fprintf(2,' The restriction currently specified on the table will be ignored. (You probably want to use pv.restrict )\n');
 end
 if numel(pv.restrict)>0
@@ -39,11 +39,9 @@ if numel(pv.restrict)>0
     assert(all(cellfun(@ischar,pv.restrict)),'Each element of the restriction must be a char')
     restriction = ['''' strjoin(pv.restrict,''',''') ''''];
     cmd = sprintf("parpopulate(%s,%s)",tbl.className,restriction);
-    restrictionString = strjoin(pv.restrict,' AND ') ;
 else
     % Unrestricted populate
     cmd = sprintf("parpopulate(%s)",tbl.className);
-    restrictionString = true;
 end
 % Construct a name for this expression (has to be a valid script name in
 % matlab)
@@ -52,17 +50,27 @@ exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
 if pv.clearJobStatus~=""
     % Check the jobs table to see if something needs to be cleared
     jobsTable = extractBefore(tbl.className,'.') + ".Jobs";
-    jt = feval(jobsTable);
-    jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
-    if count(jt)>0
-        fprintf('%s %d related jobs in %s will be deleted',drMsg,count(jt),jobsTable)
-        if ~pv.dryrun
-            delQuick(jt)
+    if exist(jobsTable,"class")
+        jt = feval(jobsTable);
+        jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
+        if count(jt)>0
+            fprintf('%s %d related jobs in %s will be deleted.\n',drMsg,count(jt),jobsTable)
+            if ~pv.dryrun
+                delQuick(jt)
+            end
         end
+    else
+        fprintf('No jobs table (%s) on disk. \n',jobsTable)
     end
 end
 
-nrToDo = count((getKeySource(tbl) & restrictionString) - proj(tbl));
+restrict(tbl,pv.restrict);
+ks = getKeySource(tbl);
+restrict(ks,pv.restrict);
+nrParents= count(ks);
+restrict(tbl,pv.restrict);
+nrChildren = count(tbl);
+nrToDo = nrParents-nrChildren;
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
@@ -70,6 +78,6 @@ if nrToDo >0
         cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts);
     end
 else
-    fprintf("%s Nothing to populate for %s (table has %d rows)\n",drMsg,cmd,count(tbl));
+    fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);
 end
 

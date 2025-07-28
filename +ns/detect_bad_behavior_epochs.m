@@ -1,4 +1,4 @@
-function [perExpt,perChannel] = badBehavior(nsTbl,parms)
+function flags = detect_bad_behavior_epochs(nsKey,parms)
 % Find trials with bad behavior.
 % This function is meant to
 % be used as the 'fun' in ArtifactParms to fill the Artifact table.
@@ -20,26 +20,32 @@ function [perExpt,perChannel] = badBehavior(nsTbl,parms)
 % insertIfNew(ns.ArtifactParm,fixation);
 
 arguments
-    nsTbl %(1,1) ns.C {mustHaveRows(C,1)}
-    parms (1,1) struct
+    nsKey (1,1)
+    parms.behavior (1,:) string
+    parms.bad (1,:) string
+    parms.atTrialTime (1,:) double
+
+    parms.exclude = [] % unused
 end 
 
-if isa(nsTbl, "ns.Experiment")
-    expt = nsTbl;
+if isa(nsKey, "ns.Experiment")
+    expt = nsKey;
 
 else
 
-    expt = ns.Experiment & nsTbl;
+    expt = ns.Experiment & nsKey;
 
 end
 
-statePerTrial  = get(expt,parms.behavior,'prm','state','atTrialTime',parms.atTrialTime,'what','data');
-trials = get(expt,parms.behavior,'prm','state','atTrialTime',parms.atTrialTime,'what','trial');
+n_bhv = numel(parms.behavior);
+flags = ns.NSFlags(parms);
+for ii = 1:n_bhv
 
-badTrial  = trials(ismember(upper(statePerTrial),upper(parms.bad)));
-perExpt.start=[];
-perExpt.stop = []; 
-perExpt.trial = badTrial(:)';
-perChannel = struct([]);  % No per channel artifacts
+    statePerTrial  = get(expt,parms.behavior(ii),'prm','state','atTrialTime',parms.atTrialTime(ii),'what','data');
+    trials = get(expt,parms.behavior(ii),'prm','state','atTrialTime',parms.atTrialTime(ii),'what','trial');    
+    flags.(parms.behavior(ii)) = trials(ismember(upper(statePerTrial),upper(parms.bad(ii))));
+
+end
+
 
 end
