@@ -36,13 +36,13 @@ if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
     for wh = what
         switch wh
             case "data"
-                ret.what = props.(propName);
-                if ischar(ret.what)
-                    ret.what = string(ret.what);
+                ret.data = props.(propName);
+                if ischar(ret.data)
+                    ret.data = string(ret.data);
                 end
                 if ~isnan(time)
                     % atTrialTime was specified- repmat to one per trial
-                    ret.what = repmat(ret.what,[1 numel(c.firstFrame)]);%  One per trial
+                    ret.data = repmat(ret.data,[1 numel(c.firstFrame)]);%  One per trial
                 end
             case "trialtime"
                 if isfield(props,propName +"Time")

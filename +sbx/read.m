@@ -19,6 +19,9 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 %               bacground corrected fluorescence (F-factor*Fneu)
 % .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset. 
 %               For instance 'pcell>0.75'
+
+ALLOWMISSINGBINHACK = false;
+
 prep = sbx.Preprocessed;
 ks = prep.keySource;
 if ~exists(ks&key)
@@ -43,9 +46,9 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
     nrFrames  = info.nrFrames;
     nrPlanes = info.nrPlanes;
     if strcmpi(exptThisSession.starttime,key.starttime)
-        mdaq = proj(ns.C & 'ctag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
-        assert(exists(mdaq),'%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)
-        laserOnTTL = fetch(mdaq,'signal','time');
+        mdaq = proj(ns.C & 'ctag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');        
+        if exists(mdaq)
+                 laserOnTTL = fetch(mdaq,'signal','time');
         laserOnIx = diff(laserOnTTL.signal)>0.5; % Transition from 0-1
         nstime = linspace(laserOnTTL.time(1),laserOnTTL.time(2),laserOnTTL.time(3));
         frameNsTime = nstime(laserOnIx);        % Time in ns time.
@@ -62,6 +65,17 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
         else
             % Assume there were additional extraneous TTLs at the start.
             frameNsTime=frameNsTime(-delta+1:end);
+        end 
+        elseif ALLOWMISSINGBINHACK
+            % Not really reliable; see mousetDCS/missingMDaq.m
+            sbxStartGrab  = get(ns.Experiment & exptThisSession,'scanbox','prm','grabbing','what',["clocktime" "data"]);
+            stay = ~cellfun(@(x)(isempty(x) || x==false),sbxStartGrab.data,'uni',true);
+            grabStartTime = sbxStartGrab.clocktime(stay);
+            OFFSET = 2.7767e+03; % Empirically derived offset between grabbing and first frame.
+            framerate = fetch1(sbx.Preprocessed & exptThisSession,'framerate');
+            frameNsTime = (grabStartTime +OFFSET)+(0:nrFrames-1)* 1000/framerate;
+        else
+          error('%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)           %#ok<UNRCH>
         end
         keepFrameIx = nrFramesPrevious+(1:nrFrames);
         break; % We have what we need; break the loop over experiments in this session

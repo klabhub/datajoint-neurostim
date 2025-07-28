@@ -35,10 +35,6 @@ while i <= nrTpls
     currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);
     thisChunk = i:min(nrTpls,(i+currentChunkSize-1));
     insert(tbl,tpl(thisChunk));
-    fprintf('.')
-    lineBreak =lineBreak+1;
-    if lineBreak==80;fprintf('\n');lineBreak = 1;end
-
     i = i + currentChunkSize;  % Move to the next chunk
     progress_new = round(100*(i-1)/nrTpls);
     if (progress_new - progress_old) >= 10
