@@ -76,7 +76,29 @@ classdef Preprocessed < dj.Computed
 
     end
     methods (Access=public)
-
+        function [mismatch] = nrFramesDelta(tbl)
+            %  Compares the number of frames in the preprocessed data
+            % and the frames assigned to each of the experiments from the
+            % session. If these are not the same, the key for the
+            % sbx.Preprocessed tuple is added to the output (together with
+            % a .delta field that represents the mismatch). Negative 
+            % numbers means that some frames are missing from sbx.Preprocessed. 
+            cntr =0;
+            for key =fetch(tbl,'nrframesinsession')'                
+                s = ns.Session & key;
+                %  Find the experiments that should be in the preprocessed data
+                exptWithSbx = (ns.Experiment & s) & (ns.File & 'extension=".sbx"');
+                % Determine number of frames per expt
+                info = sbx.readInfoFile(exptWithSbx);
+                framesInExpt = sum([info.nrFrames]);
+                % Compare to what is in the preprocessed data                      
+                delta = key.nrframesinsession - framesInExpt;
+                if delta ~=0
+                    cntr = cntr+1;
+                    mismatch(cntr) = mergestruct(key,struct('delta',delta)); %#ok<AGROW>
+                end
+            end
+        end
         function deleteFromDisk(tbl,pv)
             % Delete preprocessed data from disk. 
             % By default dryrun is true and will just show what would be
