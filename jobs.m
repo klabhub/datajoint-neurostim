@@ -8,6 +8,7 @@ arguments
     tbl (1,1) = ns.Jobs
     pv.status = {'error'}
 end
+if count(tbl)==0;fprintf('No jobs in the %s table\n',tbl.className);return;end
 [keys,tablename,status, message,stack,timestamp] = fetchn(tbl &struct('status',pv.status),'key','table_name','status','error_message','error_stack','timestamp');
 keyT  = struct2table(catstruct(1,keys{:})); % Add all elements of the key as columns to the table
 % Extract the top of the error stack (when relevant)

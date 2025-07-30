@@ -104,6 +104,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tbl (1,1) ns.Experiment
                 pv.strict (1,1) logical = false; % Set to true to require an explicit analyze =1 setting
             end
+            warnState= warning('query');
+            warning('off','DataJoint:longCondition');
             exptWithMetaAnalyze = tbl*ns.ExperimentMeta & proj(ns.ExperimentMeta & 'meta_name="analyze"');
 
             if pv.strict
@@ -120,7 +122,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 notAna = tbl  -fetch(ana);
                 %notAna = tbl & fetch(notAna);
             end
-
+            warning(warnState)
         end
         function v = folder(tbl,root)
             % Return the full path to the experiments in this table

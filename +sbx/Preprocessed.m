@@ -86,7 +86,7 @@ classdef Preprocessed < dj.Computed
                 pv.dryrun (1,1) = true
             end
             for key =fetch(tbl,'*')'
-                sessionPath=unique(folder(ns.Experiment & key));
+                sessionPath=unique(folder(ns.Session & key));
                 resultsFolder =fullfile(sessionPath,key.folder,'plane0');
                 fileFound =  exist(resultsFolder,"dir");
                 if pv.dryrun
@@ -329,8 +329,9 @@ classdef Preprocessed < dj.Computed
             end
             switch (parms.toolbox)
                 case 'suite2p'
-                    setupPython("suite2p");
-                    conda = extractBefore(pyenv().Home,'/envs');
+                    condaEnvironment = "suite2p";
+                    setupPython(condaEnvironment);
+                    condaFldr = extractBefore(pyenv().Home,'envs');
 
                     %% Check that each experiment used the same scaling
                     scale = [];
@@ -437,16 +438,18 @@ classdef Preprocessed < dj.Computed
                         dbFile = temp;
                         nssbx.save_dict_to_file(db,dbFile)
                         % The python file that will read these
-                        pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
+                        pyCmd = sprintf('"%s/nssbx_suite2p.py" "%s" "%s"',toolsPath,optsFile, dbFile);
                         % Construct a batch/bash command.
                         if ispc
-                            % The batch command activates conda, then
-                            % calls nssbx_suite2p.py to read the dicst
-                            % and then call suite2p.run_s2p
-                            cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
+                            cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & python %s',condaFldr,condaEnvironment,pyCmd);                    
                         else
-                            cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
-                        end
+                            cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
+                            'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...
+                            'elif [ -f "%s/etc/profile.d/conda.sh" ]; then source "%s/etc/profile.d/conda.sh"; ' ...
+                            'else export PATH="%s/bin:$PATH"; fi; unset __conda_setup; ' ...
+                            'conda activate %s; eval "%s"'], ...
+                             condaFldr, condaFldr, condaFldr, condaFldr, condaEnvironment, pyCmd);
+                        end                 
                         system(cmd ,'-echo')
 
                         % Couldn't figure out how to convert stat.npy so
