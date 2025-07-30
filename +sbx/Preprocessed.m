@@ -76,6 +76,30 @@ classdef Preprocessed < dj.Computed
 
     end
     methods (Access=public)
+
+        function deleteFromDisk(tbl,pv)
+            % Delete preprocessed data from disk. 
+            % By default dryrun is true and will just show what would be
+            % deleted. 
+            arguments
+                tbl (1,1) sbx.Preprocessed
+                pv.dryrun (1,1) = true
+            end
+            for key =fetch(tbl,'*')'
+                sessionPath=unique(folder(ns.Experiment & key));
+                resultsFolder =fullfile(sessionPath,key.folder,'plane0');
+                fileFound =  exist(resultsFolder,"dir");
+                if pv.dryrun
+                    pre = "[DRYRUN]" ;
+                    status = 1;
+                    msg= "";
+                else
+                   [status,msg] = rmdir(resultsFolder,'s');
+                   pre = "";
+                end
+                fprintf("%s Deleting %s  (status: %d , msg: %s, found: %d)\n",pre,resultsFolder,status,msg,fileFound>0);
+            end
+        end
         function   out = plot(tbl,pv)
             % Plot a timeline of cell counts, radius, compactness, and
             % aspect ratio grouped by strain. The pcell input can be used to

@@ -27,7 +27,31 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
-
+        % TODO: class to work with json files
+        % function updateJson(tbl,pv)
+        %     arguments
+        %         tbl (1,1) ns.Experiment
+        %         pv.root = getenv("NS_ROOT");
+        %         pv.metaDefinitionTag = ""
+        %     end
+        % 
+        %     definitionFile = fullfile(pv.root,"experiment_definition" +  pv.metaDefinitionTag + ".json");
+        %     assert(exist(definitionFile,"file"),"Meta definition file not found %s",definitionFile);
+        %     jsonDefinition = readJson(definitionFile);
+        %     experimentMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),jsonDefinition.Fields,'uni',false)));
+        % 
+        %     metaFields = fieldnames(jsonDefinition.Fields);
+        % 
+        %     for e = fetch(tbl)'
+        %             jsonFile = strrep(file(ns.Experiment &e),'.mat','.json');
+        %             if exist(jsonFile,"file")                       
+        %                 json = readJson(jsonFile);
+        %             else
+        %                 json = emptyJson;
+        %             end
+        % 
+        %     end
+        % end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
@@ -512,6 +536,40 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             end
 
 
+        end
+
+        function [v,refCntr] = relativeTime(expt,pdm,pv)
+            % Return the time (in seconds) when experiments started relative to the time
+            % when a specific (other) reference paradigm started in that session. 
+            % A negative time means that the expt started BEFORE the
+            % reference paradigm.
+            %
+            % If the reference paradigm never happened NaN is returned.
+            % If the reference paradigm happened more than once, NaN is
+            % returned if multiple=false (default) or the time relative to the nearest
+            % reference if multiple = true. The optional second output
+            % argument counts the number of reference paradigms
+            arguments
+                expt (1,1) ns.Experiment
+                pdm (1,1) string {mustBeNonzeroLengthText}                
+                pv.multiple (1,1) logical = false
+            end
+            nrExpt= count(expt);
+            v = NaN(nrExpt,1);
+            refCntr = ones(nrExpt,1);
+            cntr=0;
+            for e=fetch(expt)'
+                cntr= cntr+1;
+                referenceExpt = ((ns.Experiment-e) & (ns.Session & e)) & struct('paradigm',pdm);
+                refCntr(cntr) = count(referenceExpt);
+                if refCntr(cntr)==0
+                    %nothing to do
+                elseif refCntr(cntr)==1
+                    v(cntr) = seconds(datetime(e.starttime,'InputFormat','HH:mm:ss') - datetime(fetch1(referenceExpt,'starttime'),'InputFormat','HH:mm:ss'));
+                elseif pv.multiple
+                    v(cntr) = min(seconds(datetime(e.starttime,'InputFormat','HH:mm:ss') - datetime(fetch1(referenceExpt,'starttime'),'InputFormat','HH:mm:ss')),[],'ComparisonMethod','abs');
+                end                
+            end
         end
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)

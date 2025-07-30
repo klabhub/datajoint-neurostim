@@ -22,10 +22,12 @@ arguments
     cls (1,1) mslurm        % slurm cluster to use
     opts (1,:) cell = {'time','00:30:00','mem','16GB','cpus-per-task',1,'requeue',''}; % sbatch options for mslurm
     pv.maxWorkers = 64    % Never more than this number of workers
-    pv.restrict (1,:) cell = {}  % Restrict parpopulate(tbl, restrict{:})
+    pv.restrict (1,:)  = {}  % Restrict parpopulate(tbl, restrict{:})
     pv.clearJobStatus (1,:) string = "error" %  string array of status flags that should be cleared from the jobs table.
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
 end
+warnState = warning('query');
+warning('off','DataJoint:longCondition');
 if pv.dryrun
     drMsg = "[DRYRUN]";
 else
@@ -33,6 +35,9 @@ else
 end
 if ~isempty(tbl.restrictions)
     fprintf(2,' The restriction currently specified on the table will be ignored. (You probably want to use pv.restrict )\n');
+end
+if ischar(pv.restrict) || isstring(pv.restrict)
+    pv.restrict= {pv.restrict};
 end
 if numel(pv.restrict)>0
     % Restrictions - each must be a string
@@ -69,8 +74,9 @@ ks = getKeySource(tbl);
 restrict(ks,pv.restrict);
 nrParents= count(ks);
 restrict(tbl,pv.restrict);
+todo = ks-tbl;
 nrChildren = count(tbl);
-nrToDo = nrParents-nrChildren;
+nrToDo = count(todo);
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
@@ -81,3 +87,4 @@ else
     fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);
 end
 
+warning(warnState);
