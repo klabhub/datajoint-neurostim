@@ -90,12 +90,12 @@ classdef Preprocessed < dj.Computed
                 exptWithSbx = (ns.Experiment & s) & (ns.File & 'extension=".sbx"');
                 % Determine number of frames per expt
                 info = sbx.readInfoFile(exptWithSbx);
-                framesInExpt = sum([info.nrFrames]);
+                framesInExpt = [info.nrFrames];
                 % Compare to what is in the preprocessed data                      
-                delta = key.nrframesinsession - framesInExpt;
+                delta = key.nrframesinsession - sum(framesInExpt);
                 if delta ~=0
                     cntr = cntr+1;
-                    mismatch(cntr) = mergestruct(key,struct('delta',delta)); %#ok<AGROW>
+                    mismatch(cntr) = mergestruct(key,struct('delta',delta,'nrFramesInExpt',framesInExpt)); %#ok<AGROW>
                 end
             end
         end
