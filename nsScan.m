@@ -269,7 +269,7 @@ else
     from = cell(size(pv.paradigm));
     to = cell(size(pv.paradigm));
 end
-if ~isempty(pv.paradigm)
+if ~isempty(pv.paradigm) && (pv.paradigm ~="")
     % Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to
     pdmMatch = false(size(stay));
     for pdm=1:numel(pv.paradigm)
