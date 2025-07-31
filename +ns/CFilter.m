@@ -29,7 +29,7 @@ function varargout = CFilter(signal,time,parms)
 
 [nrSamples,nrChannels] = size(signal);
 sampleRate = 1./mode(diff(time));
-hasNoisyChannels = ~isempty(parms.badElectrodes);
+hasNoisyChannels = isfield(parms,'badElectrodes') && ~isempty(parms.badElectrodes);
 varargout = cell(1, nargout);
 fn =string(fieldnames(parms))';
 for f=fn
