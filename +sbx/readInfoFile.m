@@ -7,6 +7,8 @@ end
 % Loop over experiments
 for e=1:numel(expt)
     sbxFile = ((ns.File & expt(e)) & 'extension=''.sbx''');
+    % There should be exactly 1 sbx file per expt. We had 3 in at least one instance
+    assert(count(sbxFile)==1,"%d sbx files in experiment (%s on %s @ %s)",count(sbxFile),expt(e).subject,expt(e).session_date,expt(e).starttime);
     fname = fetch1(sbxFile & expt(e),'filename');
     fldr = folder(ns.Experiment & expt(e));
     ff =fldr + fname(1:end-3) + 'mat';

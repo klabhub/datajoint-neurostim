@@ -30,7 +30,9 @@ classdef Preprocessed < dj.Computed
     end
     methods
         function v = get.keySource(tbl) %#ok<MANU>
-            analyzeExpt = analyze(ns.Experiment ,strict=false);
+            % Restrict to sessions that have analyzeable experiments with
+            % sbx files.
+            analyzeExpt = analyze(ns.Experiment & (ns.File & 'extension=".sbx"') ,strict=false);
             v = (ns.Session & analyzeExpt)*sbx.PreprocessedParm;
         end
 
@@ -341,6 +343,8 @@ classdef Preprocessed < dj.Computed
                 error('NIY');
             end
             analyzeExptThisSession = analyze(allExptThisSession,strict=false);
+            assert(exists(analyzeExptThisSession),"No analyzable experiments in this session %s on %s",key.subject,key.session_date); % Should not really happen with proper keysource.
+            
             dataFldr = file(analyzeExptThisSession);
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
