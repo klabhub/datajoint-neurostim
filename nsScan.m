@@ -118,7 +118,7 @@ arguments
     pv.cicOnly (1,1) logical = false
     pv.safeMode (1,1) logical = true
     pv.metaDefinitionTag (1,1) string = ""
-    pv.minNrTrials (1,:) double = 1
+    pv.minNrTrials (1,:) double = 0
     pv.verbose (1,1) logical = true
     pv.fileType (1,1) string = "*.mat"
     pv.analyze  (1,1) logical = true % Show files only when analyze= true
@@ -252,7 +252,9 @@ end
 % exclude a specific subject
 stay = stay &  ~ismember({meta.subject},pv.excludeSubject);
 % include based on paradigm
-if pv.paradigm==""
+if isempty(pv.paradigm)
+    pv.minNrTrials = [];
+elseif exists(ns.Paradigm) && pv.paradigm=="" 
     % Select on the basis of the ns.Paradigm table
     [pv.paradigm,pv.minNrTrials,from,to]= fetchn(ns.Paradigm,'name','mintrials','from','to');
     pv.paradigm= upper(string(pv.paradigm));
@@ -326,6 +328,7 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
             lasterr
             out(i)=true;
         end
+    if ~isempty(pv.paradigm) 
         % Find which minium number of trials to apply (paradigm dependent)
         thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
         % Remove if too few trials
@@ -334,10 +337,13 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
             fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
             out(i) =true;
         end
+    else 
+        out(i)  =false;
+    end
     end
     meta  =[tmpMeta{~out}];
     c = [c{~out}];
-    fullName(out) =[];
+    fullName(out) =[];        
     nrExperiments = numel(meta);
 else
     c= [];
