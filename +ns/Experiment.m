@@ -27,11 +27,7 @@ classdef Experiment  < dj.Manual
     end
 
     methods (Access = public)
-
-        function o = Experiment(varargin)
-            o = o@dj.Manual(varargin{:});
-        end
-
+       
         % TODO: class to work with json files
         % function updateJson(tbl,pv)
         %     arguments

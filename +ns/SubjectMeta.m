@@ -12,13 +12,5 @@ meta_value : varchar(2048)   # The value of the meta data
 classdef SubjectMeta < dj.Part
     properties (SetAccess=protected)
         master =ns.Subject;
-    end
-    
-    methods
-        function o = SubjectMeta(varargin)
-            o = o@dj.Part(varargin{:});
-        end
-    end
-
-
+    end       
 end

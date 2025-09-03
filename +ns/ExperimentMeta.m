@@ -13,11 +13,4 @@ classdef ExperimentMeta < dj.Part
     properties (SetAccess = protected)
         master = ns.Experiment;  % Part  table for the Experiment
     end
-
-    methods
-        function o = ExperimentMeta(varargin)
-            o = o@dj.Part(varargin{:});
-        end
-    end
-
 end
