@@ -7,7 +7,14 @@ dob = NULL : date                  # date of birth (ISO 8601)
 species = NULL : varchar(100)      # Species
 %}
 % BK  - April 2022
-classdef Subject < dj.Manual
+classdef Subject < dj.Manual 
+
+    methods (Access=public)
+        function o=Subject(varargin)
+            o =o@dj.Manual(varargin{:});
+        end
+    end 
+    
     methods (Access = ?ns.Experiment)
         function subject = nwb(tbl,nwbRoot,pv)      
             % nwb export function, called from ns.Experiment nwbExport.      

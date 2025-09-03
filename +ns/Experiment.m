@@ -18,7 +18,7 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 %
 % BK - April 2022.
 
-classdef Experiment  < dj.Manual & dj.DJInstance
+classdef Experiment  < dj.Manual 
 
     properties (Dependent)
 
@@ -27,6 +27,11 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
+
+        function o = Experiment(varargin)
+            o = o@dj.Manual(varargin{:});
+        end
+
         % TODO: class to work with json files
         % function updateJson(tbl,pv)
         %     arguments

@@ -14,4 +14,11 @@ classdef SubjectMeta < dj.Part
         master =ns.Subject;
     end
     
+    methods
+        function o = SubjectMeta(varargin)
+            o = o@dj.Part(varargin{:});
+        end
+    end
+
+
 end

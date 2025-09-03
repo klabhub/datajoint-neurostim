@@ -12,5 +12,12 @@ meta_value : varchar(2048)       # The value of the meta data
 classdef ExperimentMeta < dj.Part
     properties (SetAccess = protected)
         master = ns.Experiment;  % Part  table for the Experiment
-    end   
+    end
+
+    methods
+        function o = ExperimentMeta(varargin)
+            o = o@dj.Part(varargin{:});
+        end
+    end
+
 end

@@ -12,5 +12,12 @@ classdef SessionMeta < dj.Part
     properties (SetAccess=protected)
         master =ns.Session;
     end
+
+    methods
+        function o = SessionMeta(varargin)
+            o = o@dj.Part(varargin{:});
+        end
+    end
+
     
 end
