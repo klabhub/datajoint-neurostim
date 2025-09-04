@@ -162,15 +162,15 @@ switch (pv.schedule)
             tSession = [tSession;thisTSession];%#ok<AGROW>
             tExperiment = [tExperiment;thisTExperiment];%#ok<AGROW>
         end
-        return    
+        return
     otherwise
         % Interpreting the pv.schedule as a vector of years.
         tSubject =table;
         tSession = table;
         tExperiment =table;
-        % Then a recursive call to this function for each year.     
+        % Then a recursive call to this function for each year.
         args = namedargs2cell(pv);
-        for yr = pv.schedule            
+        for yr = pv.schedule
             [thisTSubject,thisTSession,thisTExperiment,isLocked] = nsScan(args{:},'schedule','y','date',yr + "-01-01");
             tSubject = [tSubject;thisTSubject]; %#ok<AGROW>
             tSession = [tSession;thisTSession];%#ok<AGROW>
@@ -254,7 +254,7 @@ stay = stay &  ~ismember({meta.subject},pv.excludeSubject);
 % include based on paradigm
 if isempty(pv.paradigm)
     pv.minNrTrials = [];
-elseif exists(ns.Paradigm) && pv.paradigm=="" 
+elseif exists(ns.Paradigm) && pv.paradigm==""
     % Select on the basis of the ns.Paradigm table
     [pv.paradigm,pv.minNrTrials,from,to]= fetchn(ns.Paradigm,'name','mintrials','from','to');
     pv.paradigm= upper(string(pv.paradigm));
@@ -269,7 +269,7 @@ else
     from = cell(size(pv.paradigm));
     to = cell(size(pv.paradigm));
 end
-if ~isempty(pv.paradigm) && (pv.paradigm ~="")
+if ~isempty(pv.paradigm) && ~(isscalar(pv.paradigm) && pv.paradigm == "")
     % Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to
     pdmMatch = false(size(stay));
     for pdm=1:numel(pv.paradigm)
@@ -328,22 +328,22 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
             lasterr
             out(i)=true;
         end
-    if ~isempty(pv.paradigm) 
-        % Find which minium number of trials to apply (paradigm dependent)
-        thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
-        % Remove if too few trials
-        tooFew = c{i}.nrTrialsCompleted < thisMinNrTrials;
-        if tooFew && pv.verbose
-            fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
-            out(i) =true;
+        if ~isempty(pv.paradigm)
+            % Find which minium number of trials to apply (paradigm dependent)
+            thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
+            % Remove if too few trials
+            tooFew = c{i}.nrTrialsCompleted < thisMinNrTrials;
+            if tooFew && pv.verbose
+                fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
+                out(i) =true;
+            end
+        else
+            out(i)  =false;
         end
-    else 
-        out(i)  =false;
-    end
     end
     meta  =[tmpMeta{~out}];
     c = [c{~out}];
-    fullName(out) =[];        
+    fullName(out) =[];
     nrExperiments = numel(meta);
 else
     c= [];
@@ -454,10 +454,10 @@ if ismember("analyze",tExperiment.Properties.VariableNames) && pv.analyze
 end
 clear meta fullName %  These are sorted differently; prevent accidental use below.
 
-nrExperiments = height(tExperiment);    
+nrExperiments = height(tExperiment);
 if pv.verbose
-     fprintf('Found %d matching Neurostim files: \n',nrExperiments)
-     tExperiment %#ok<NOPRT>
+    fprintf('Found %d matching Neurostim files: \n',nrExperiments)
+    tExperiment %#ok<NOPRT>
 end
 
 
@@ -594,7 +594,7 @@ if pv.addToDatajoint
         tExperiment = removevars(tExperiment,'cic');
     else
         cic =[];
-    end   
+    end
     nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',pv.safeMode, ...
         'root',pv.root,'populateFile',pv.populateFile, ...
         'newOnly',pv.newOnly  && ~pv.jsonOnly);
