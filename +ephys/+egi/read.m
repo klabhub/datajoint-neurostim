@@ -42,9 +42,20 @@ code = {MFF.event.code};
 brec = MFF.event(strcmpi('BREC',code)); % neurostim sends this BREC event
 assert(~isempty(brec),"No BREC event found in " +  mffFilename + ". Cannot match this EGI file to Neurostim");
 MFF.event(strcmpi('BREC',code)).mffkey_TRIA= '1'; % Force it to be in TRIAL 1 (not defined)
-[~,nsFile,~] = fileparts(file(ns.Experiment &key));
+[fldr,nsFile,~] = fileparts(file(ns.Experiment &key));
  % Check that this MFF file was created by the current neurostim file.
-assert(contains(brec.mffkey_FLNM,nsFile),sprintf('The MFF file (%s) was created by a different Neurostim file (%s)',brec.mffkey_FLNM,nsFile));
+if ~contains(brec.mffkey_FLNM,nsFile)
+    % No match. Check if the file was renamed with nsMeta
+    jsonFile = fullfile(fldr,nsFile + ".json");
+    if exist(jsonFile,"file")
+        json = readJson(jsonFile);
+        originalFilename = fliplr(extractBefore(fliplr(brec.mffkey_FLNM),'\'));
+        ok= contains(json.provenance,originalFilename);  % OK: this was renamed after recording
+    else
+        ok =false;
+    end
+    assert(ok ,sprintf('The MFF file (%s) was created by a different Neurostim file (%s)',brec.mffkey_FLNM,nsFile));
+end   
 
 %% Preprocess the events to get trial and time.
 nrEvts = numel(MFF.event);
