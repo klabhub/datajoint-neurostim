@@ -89,14 +89,7 @@ classdef File < dj.Imported
             % other file,s that don't match that format.
             linkedFiles([linkedFiles.isdir])=[];
             pth =  folder(ns.Experiment &key);
-            for f=1:numel(linkedFiles)
-
-                % Add byte counts and checksum
-                ff = fullfile(linkedFiles(f).folder,linkedFiles(f).name);
-                md5Hash = ns.File.checksum(ff);
-                d = dir(ff);
-                bytes = d.bytes;
-
+            for f=1:numel(linkedFiles)              
                 [~,~,ext] =fileparts(linkedFiles(f).name);
                 % Remove the part of the path that points to the folder
                 % with the neurostim file, but keep subfolders deeper than
@@ -110,7 +103,15 @@ classdef File < dj.Imported
                 filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
                 qry = mergestruct(key,struct('filename',filename));
                 thisFile = ns.File & qry;
-                if ~thisFile.exists
+                if thisFile.exists
+                    %fprintf('%s already exists in the database. Not changed.\n',filename);
+                else
+                    % Add byte counts and checksum
+                    ff = fullfile(linkedFiles(f).folder,linkedFiles(f).name);
+                    md5Hash = ns.File.checksum(ff);
+                    d = dir(ff);
+                    bytes = d.bytes;                    
+                    fprintf('Adding %s to the database (%d bytes).\n',filename,bytes);
                     qry.extension = ext;
                     qry.bytes =bytes;
                     qry.checksum = md5Hash;
@@ -119,14 +120,12 @@ classdef File < dj.Imported
             end
         end
 
-        function addMissingFiles(tbl)
-            % Check for any files that should have been added by makeTuples
-            % but, for some reason, weren't. Add those.
-            for key = fetch(tbl)'
-                makeTuples(tbl,ns.stripToPrimary(ns.Experiment,key))
-            end
-        end
 
+       function addMissingFiles(tbl,key)
+            % For rerunning makeTuples to add files that were missed.
+            % Called from ns.Experiment
+            makeTuples(tbl,key)            
+        end
     end
 
 
