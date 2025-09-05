@@ -29,23 +29,19 @@ function varargout = CFilter(signal,time,parms)
 
 [nrSamples,nrChannels] = size(signal);
 sampleRate = 1./mode(diff(time));
-hasNoisyChannels = ~isempty(parms.badElectrodes);
+hasNoisyChannels = isfield(parms,'badElectrodes') && ~isempty(parms.badElectrodes);
 varargout = cell(1, nargout);
 fn =string(fieldnames(parms))';
 for f=fn
-
     % In order to apply same transformations multiple times at different
     % orders the parms field can end with an identifier number, which is
     % removed at this step.
     f = char(f);
     command = f;
     isNumInF = isstrprop(f, 'digit');
-
     if isNumInF(end)
-
         last_digit_idx = find(~isNumInF,1,'last')+1;
         command(last_digit_idx:end) = '';
-
     end
 
     switch command
@@ -111,44 +107,30 @@ for f=fn
             fprintf('Done in %d seconds.\n',round(toc));
 
         case "reference"
-
             ref_opts = parms.(f);
             isBadsArg = ismember(ref_opts, "bads");
             if any(isBadsArg) && hasNoisyChannels
-
-                handle_bads = ref_opts{find(isBadsArg) + 1};
-                
+                handle_bads = ref_opts{find(isBadsArg) + 1};                
             elseif hasNoisyChannels
-
                 handle_bads = "exclude";
-
             else
-
                 handle_bads = [];
-
             end
 
             if ~isempty(handle_bads) && strcmp(handle_bads, "interpolate")
-
                 %% Fix here, add option for interpParms{:} and chosing interp_func
                 signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
                     setdiff(1:size(signal,1), parms.badElectrodes), parms.badElectrodes);
-
             end
 
             switch parms.(f){1}
                 case "average"
-
                     disp('Applying rereferencing to the average channel activity.');
                     signal = signal - mean(signal,2, 'omitnan', true);
-
                 case "channel"
                 case "laplacian"
-
                     disp('Applying Laplacian re-referencing channel activity.');
-                    signal = laplacian_reference(signal, parms.layout.neighbors);
-
-                    
+                    signal = laplacian_reference(signal, parms.layout.neighbors);                   
                 otherwise
                     continue
             end
@@ -166,9 +148,7 @@ end
 %% Subtract mean of neighbors from each channel
 function tmp = laplacian_reference(signal, neighbors)
     tmp = zeros(size(signal));
-    for iCh = 1:width(neighbors)
-    
-        tmp(:, iCh) = signal(:,iCh) - mean(signal(:,neighbors(iCh).neighbors), 2);
-    
+    for iCh = 1:width(neighbors)    
+        tmp(:, iCh) = signal(:,iCh) - mean(signal(:,neighbors(iCh).neighbors), 2);    
     end
 end
