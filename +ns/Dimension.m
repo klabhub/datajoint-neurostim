@@ -214,6 +214,13 @@ classdef Dimension < dj.Manual & dj.DJInstance
                         [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');
                     else
                         ret = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what',["data" "trial"])';
+                        if isempty(ret)
+                            % This experiment did not use the plugin; error in
+                            % the condition specification, skip to the next
+                            % experiment
+                            prmValues = struct([]); % Force a skip
+                            continue;
+                        end
                         prmValues = ret.data;
                         prmTrials = ret.trial; 
                     end

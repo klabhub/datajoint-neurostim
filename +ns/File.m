@@ -36,23 +36,19 @@ classdef File < dj.Imported
                 fprintf('NS_ROOT is empty. Most likely no files will be found.\n')
             end
             nrFiles = count(tbl);
-            exists = false(nrFiles,1);
-            filename =repmat("",[nrFiles 1]);
-            expt = repmat("",[nrFiles 1]);
-            T=table(filename ,exists,expt);
+            T=fetchtable(tbl);
+            T =addvars(T,false(nrFiles,1),'newVariableNames','exists');
             if pv.bytes
-                T =addvars(T,false(nrFiles,1),'newVariableNames','bytes');
+                T =addvars(T,nan(nrFiles,1),'newVariableNames','deltaBytes');
             end
             if pv.checksum
-                T =addvars(T,false(nrFiles,1),'NewVariableNames','checksum');
+                T =addvars(T,false(nrFiles,1),'NewVariableNames','checksumOK');
             end
             fCntr=0;
             for f = tbl.fetch('bytes','checksum')'
                 fCntr =fCntr+1;
                 fldr = folder(ns.Experiment &f);                
-                full = fullfile(fldr,f.filename);
-                T.expt(fCntr) = fetch(ns.Experiment &f);  
-                T.filename(fCntr)= full;
+                full = fullfile(fldr,f.filename);                
                 T.exists(fCntr)= exist(full,"file")==2;
                 if T.exists(fCntr)
                     % File exists
@@ -62,7 +58,7 @@ classdef File < dj.Imported
 
                         else
                             d = dir(full);
-                            T.bytes(fCntr) = f.bytes==d.bytes;
+                            T.deltaBytes(fCntr) = d.bytes-f.bytes;
                         end
                     end
                     if pv.checksum
@@ -71,7 +67,7 @@ classdef File < dj.Imported
 
                         else
                             md5 = ns.File.checksum(full);
-                            T.checksum(fCntr) = string(f.checksum)==md5;
+                            T.checksumOK(fCntr) = string(f.checksum)==md5;
                         end
                     end
                 end
