@@ -20,7 +20,6 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset.
 %               For instance 'pcell>0.75'
 
-ALLOWMISSINGBINHACK = false;
 
 prep = sbx.Preprocessed;
 ks = prep.keySource;

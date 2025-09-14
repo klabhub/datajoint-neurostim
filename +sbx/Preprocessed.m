@@ -2,7 +2,7 @@
 # A complete preprocessed data set of the SBX data obtained in a single session.
 -> ns.Session
 -> sbx.PreprocessedParm     # Preprocessing parameters
-depth : float               # Knobby recording depth z
+depth : decimal(6,2)        # Knobby recording depth z in micron
 ---
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
@@ -82,7 +82,7 @@ classdef Preprocessed < dj.Computed
         function [tpl] = mismatch(tbl,pv)
             arguments 
                 tbl (1,1) sbx.Preprocessed
-                pv.verbose (1,1) logical
+                pv.verbose (1,1) logical = true
             end 
             %  Compares the number of frames in the preprocessed data
             % and the frames assigned to each of the experiments from the
@@ -402,6 +402,7 @@ classdef Preprocessed < dj.Computed
                         ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
                     end
                     assert(all(ttl==frames+1),"Mismatch between the TTLs in mdaq and frames in sbx.")
+                    depth = round(100*depth)/100; % Two decimal points. 
                     [grp,grpDepth]    =    findgroups(depth);
                     nrDepths= numel(grpDepth);
                     % At each depth there can be multiple planes
