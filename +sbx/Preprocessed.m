@@ -531,7 +531,7 @@ classdef Preprocessed < dj.Computed
                             % and I don't want to delete the .npy files because
                             % they are useful to view in the suite2p gui.
                             for p=1:uNrPlanes
-                                statFile = fullfile(sessionPath,resultsFolder,depthFolder,sprintf('plane%d',p-1),'stat.npy');
+                                statFile = fullfile(sessionPath,resultsFolder,depthSubFolder,sprintf('plane%d',p-1),'stat.npy');
                                 npyToMat(statFile);
                             end
                             fprintf('Completed at %s\n',datetime('now'));
