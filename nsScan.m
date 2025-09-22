@@ -269,7 +269,7 @@ else
     from = cell(size(pv.paradigm));
     to = cell(size(pv.paradigm));
 end
-if ~isempty(pv.paradigm)
+if ~isempty(pv.paradigm) && pv.paradigm ~=""
     % Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to
     pdmMatch = false(size(stay));
     for pdm=1:numel(pv.paradigm)
@@ -290,20 +290,26 @@ meta = meta(stay);
 fullName=fullName(stay);
 nrExperiments = numel(meta);
 
-if pv.newOnly || pv.jsonOnly
+
+if pv.newOnly || pv.jsonOnly    
+    djTable = fetchtable(ns.Experiment & meta);
+    eInDj = ns.Experiment;    
+    pk = eInDj.primaryKey;
+    metaTable = struct2table(meta);
+    metaTable = metaTable(:,pk);
     if pv.jsonOnly
         % Update json based meta information for existing files only
-        stay = false(1,nrExperiments);
-        for i=1:nrExperiments
-            stay(i) = exists(ns.Experiment & meta(i));
+        stay  = ismember(metaTable,djTable);    
+        if pv.verbose
+            fprintf('Skipping %d files not in database \n',sum(~stay));
         end
     elseif pv.newOnly
         % Ignore experiments that are already in datajoint
-        stay = true(1,nrExperiments);
-        for i=1:numel(meta)
-            stay(i) = ~exists(ns.Experiment & meta(i));
+        stay = ~ismember(metaTable,djTable);        
+        if pv.verbose
+            fprintf('Skipping %d files already in database \n',sum(~stay));
         end
-    end
+    end    
     meta = meta(stay);
     fullName=fullName(stay);
     nrExperiments = numel(meta);
@@ -325,7 +331,7 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
             if pv.verbose
                 fprintf(2,'Failed to read %s. Skipping\n',meta(i).file);
             end
-            lasterr
+            lasterr %#ok<LERR>
             out(i)=true;
         end
     if ~isempty(pv.paradigm) 
