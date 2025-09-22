@@ -79,12 +79,12 @@ arguments
     % --- Options ---
     options.SurfaceStyle (1,1) string {mustBeMember(options.SurfaceStyle, ["trisurf", "off"])} = "trisurf"
     options.SurfaceColor {validatecolor} = .99*[1 1 1] % Default light gray
-    options.SurfaceAlpha (1,1) {mustBeNumeric, mustBeReal, mustBeInRange(options.SurfaceAlpha, 0, 1)} = 0.9
+    options.SurfaceAlpha (1,1) {mustBeNumeric, mustBeReal, mustBeInRange(options.SurfaceAlpha, 0, 1)} = 0.6
     options.MarkerSize (1,1) {mustBeNumeric, mustBePositive} = 50
     options.DefaultMarkerColor {validatecolor} = 'k' % Default white
     options.annotate (1,1) struct = struct()
     options.ChannelLabels (:,1) cell = {}
-    options.AnnotationFontSize (1,1) {mustBeNumeric, mustBePositive} = 8
+    options.AnnotationFontSize (1,1) {mustBeNumeric, mustBePositive} = 10
     options.LabelOffset (1,1) {mustBeNumeric, mustBeReal} = 0.02
     options.AxesHandle = gobjects(0) % Use gobjects(0) as default for optional handle
 end
@@ -212,7 +212,7 @@ if doAnnotation
                                      z(idx) + options.LabelOffset, ...
                                      labelStr, ...
                                      'FontSize', options.AnnotationFontSize, ...
-                                     'Color', groupColor, ...
+                                     'Color', 'k', ...
                                      'Interpreter', 'none'); % Avoid TeX interpretation
         end
         H.GroupLabels.(groupName) = h_labels_group;
