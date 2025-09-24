@@ -671,6 +671,14 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
             end
         end
+
+        function addMissingFiles(tbl)
+            % Check for any files that should have been added by populate(ns.File)
+            % but, for some reason, weren't. 
+            for key = fetch(tbl)'
+                addMissingFiles(ns.File,key)
+            end
+        end
     end
 
     % Get methods

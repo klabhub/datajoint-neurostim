@@ -35,7 +35,23 @@ for key = fetch(tbl,'ORDER BY session_date')'
                 brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event with the ns file name
                 brec = brec(1); % Sometimes there is a duplicate (with the same filename)
                 egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '\.' pdm '\.\d{6,6}'],'match');
-                assert(~isempty(egiProducingNsFile),'This MFF file has an incorrectly formatted NS file in its BREC',candidateMff(f).name);
+                if isempty(egiProducingNsFile) 
+                    % No match. Check if the file was renamed with nsMeta
+                    jsonFile = fullfile(fldr,nsFile + ".json");
+                    if exist(jsonFile,"file")
+                        json = readJson(jsonFile);
+                        originalFilename = fliplr(extractBefore(fliplr(brec.mffkey_FLNM),'\'));
+                        if contains(json.provenance,originalFilename)
+                            % OK: this was renamed after recording
+                            egiProducingNsFile = {nsFile}; % Force match below
+                            fprintf(2,"This file was renamed from %s\n",brec.mffkey_FLNM);
+                        end      
+                    else
+                        % Warn and force a nonmatch.
+                            fprintf(2,"Skipping unmatched MFF with internal ns file name of %s\n",brec.mffkey_FLNM);
+                            egiProducingNsFile  = {'!@#!@$$'};
+                    end
+                end
                 if contains(nsFile,egiProducingNsFile{1})
                     % Match found - no need to continue.
                     coreMff = candidateMff(f);

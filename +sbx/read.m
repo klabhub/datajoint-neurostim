@@ -11,16 +11,15 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The parms struct contains the following fields
 % .prep -  A unique name to identify the preprocessing instructions (= a row in sbx.PreprocessedParm)
 % .what - 'F'    - Fluorescence
-%         'Fneu'  - Neuropil 
+%         'Fneu'  - Neuropil
 %         'spks'  - deconvolved spikes from suite2p's OASIS
 %         any 'stag' from sbx.SpikesParm  will retrieve the spikes
 %         deconvolved with MLSpike (See sbx.Spikes)
 % .neuropilfactor - If .what ="F" then setting this to a non-zero value will compute
 %               bacground corrected fluorescence (F-factor*Fneu)
-% .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset. 
+% .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset.
 %               For instance 'pcell>0.75'
 
-ALLOWMISSINGBINHACK = false;
 
 prep = sbx.Preprocessed;
 ks = prep.keySource;
@@ -46,37 +45,13 @@ for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
     nrFrames  = info.nrFrames;
     nrPlanes = info.nrPlanes;
     if strcmpi(exptThisSession.starttime,key.starttime)
-        mdaq = proj(ns.C & 'ctag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');        
-        if exists(mdaq)
-                 laserOnTTL = fetch(mdaq,'signal','time');
-        laserOnIx = diff(laserOnTTL.signal)>0.5; % Transition from 0-1
-        nstime = linspace(laserOnTTL.time(1),laserOnTTL.time(2),laserOnTTL.time(3));
-        frameNsTime = nstime(laserOnIx);        % Time in ns time.
-
-        % There always appears to be 1 extraneous TTL at the start
-        frameNsTime(1) =[];
+        frameNsTime = get(ns.Experiment & exptThisSession,'mdaq','prm','laserOnDigHigh','what',"clocktime");
         nrTTL = numel(frameNsTime);
-
-        % Sanity check
-        delta = nrFrames- floor(nrTTL/nrPlanes) ;
-        % Allow a slack of 3 ttls. TODO: make a prep parameter.
-        if delta >0 || delta <=-3
-            error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
-        else
-            % Assume there were additional extraneous TTLs at the start.
-            frameNsTime=frameNsTime(-delta+1:end);
-        end 
-        elseif ALLOWMISSINGBINHACK
-            % Not really reliable; see mousetDCS/missingMDaq.m
-            sbxStartGrab  = get(ns.Experiment & exptThisSession,'scanbox','prm','grabbing','what',["clocktime" "data"]);
-            stay = ~cellfun(@(x)(isempty(x) || x==false),sbxStartGrab.data,'uni',true);
-            grabStartTime = sbxStartGrab.clocktime(stay);
-            OFFSET = 2.7767e+03; % Empirically derived offset between grabbing and first frame.
-            framerate = fetch1(sbx.Preprocessed & exptThisSession,'framerate');
-            frameNsTime = (grabStartTime +OFFSET)+(0:nrFrames-1)* 1000/framerate;
-        else
-          error('%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)           %#ok<UNRCH>
-        end
+        % There always appears to be 1 extraneous TTL; check the match with
+        % this assumption
+        assert((nrFrames+1)==floor(nrTTL/nrPlanes),'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);        
+        % Remove it from the start
+        frameNsTime(1) =[];       
         keepFrameIx = nrFramesPrevious+(1:nrFrames);
         break; % We have what we need; break the loop over experiments in this session
     else

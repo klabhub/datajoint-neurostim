@@ -70,7 +70,7 @@ for e=1:numel(expt)
         % file?
         fprintf(2,"Half frames (nrPlanes = %d) in %s?? Flooring.\n",nrPlanes,ff)
         info.nrFrames = floor(info.nrFrames);
-    end
+    end  
     out(e) = info; %#ok<AGROW>
 end
 end

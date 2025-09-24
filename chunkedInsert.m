@@ -18,7 +18,7 @@ maxElementsPerChunk = floor(bytesPerInsert / elementSize);
 % Handle cases where individual element is too large.
 if maxElementsPerChunk < 1
     maxElementsPerChunk = 1;  % Ensure at least one element is sent.
-    warning('Individual struct element exceeds bytesPerInsert. Sending one element at a time.');
+    fprintf('Individual struct element exceeds bytesPerInsert. Sending one element at a time.\n');
 end
 
 

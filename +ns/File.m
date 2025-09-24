@@ -36,23 +36,19 @@ classdef File < dj.Imported
                 fprintf('NS_ROOT is empty. Most likely no files will be found.\n')
             end
             nrFiles = count(tbl);
-            exists = false(nrFiles,1);
-            filename =repmat("",[nrFiles 1]);
-            expt = repmat("",[nrFiles 1]);
-            T=table(filename ,exists,expt);
+            T=fetchtable(tbl);
+            T =addvars(T,false(nrFiles,1),'newVariableNames','exists');
             if pv.bytes
-                T =addvars(T,false(nrFiles,1),'newVariableNames','bytes');
+                T =addvars(T,nan(nrFiles,1),'newVariableNames','deltaBytes');
             end
             if pv.checksum
-                T =addvars(T,false(nrFiles,1),'NewVariableNames','checksum');
+                T =addvars(T,false(nrFiles,1),'NewVariableNames','checksumOK');
             end
             fCntr=0;
             for f = tbl.fetch('bytes','checksum')'
                 fCntr =fCntr+1;
                 fldr = folder(ns.Experiment &f);                
-                full = fullfile(fldr,f.filename);
-                T.expt(fCntr) = fetch(ns.Experiment &f);  
-                T.filename(fCntr)= full;
+                full = fullfile(fldr,f.filename);                
                 T.exists(fCntr)= exist(full,"file")==2;
                 if T.exists(fCntr)
                     % File exists
@@ -62,7 +58,7 @@ classdef File < dj.Imported
 
                         else
                             d = dir(full);
-                            T.bytes(fCntr) = f.bytes==d.bytes;
+                            T.deltaBytes(fCntr) = d.bytes-f.bytes;
                         end
                     end
                     if pv.checksum
@@ -71,7 +67,7 @@ classdef File < dj.Imported
 
                         else
                             md5 = ns.File.checksum(full);
-                            T.checksum(fCntr) = string(f.checksum)==md5;
+                            T.checksumOK(fCntr) = string(f.checksum)==md5;
                         end
                     end
                 end
@@ -89,14 +85,7 @@ classdef File < dj.Imported
             % other file,s that don't match that format.
             linkedFiles([linkedFiles.isdir])=[];
             pth =  folder(ns.Experiment &key);
-            for f=1:numel(linkedFiles)
-
-                % Add byte counts and checksum
-                ff = fullfile(linkedFiles(f).folder,linkedFiles(f).name);
-                md5Hash = ns.File.checksum(ff);
-                d = dir(ff);
-                bytes = d.bytes;
-
+            for f=1:numel(linkedFiles)              
                 [~,~,ext] =fileparts(linkedFiles(f).name);
                 % Remove the part of the path that points to the folder
                 % with the neurostim file, but keep subfolders deeper than
@@ -110,7 +99,15 @@ classdef File < dj.Imported
                 filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
                 qry = mergestruct(key,struct('filename',filename));
                 thisFile = ns.File & qry;
-                if ~thisFile.exists
+                if thisFile.exists
+                    %fprintf('%s already exists in the database. Not changed.\n',filename);
+                else
+                    % Add byte counts and checksum
+                    ff = fullfile(linkedFiles(f).folder,linkedFiles(f).name);
+                    md5Hash = ns.File.checksum(ff);
+                    d = dir(ff);
+                    bytes = d.bytes;                    
+                    fprintf('Adding %s to the database (%d bytes).\n',filename,bytes);
                     qry.extension = ext;
                     qry.bytes =bytes;
                     qry.checksum = md5Hash;
@@ -119,14 +116,12 @@ classdef File < dj.Imported
             end
         end
 
-        function addMissingFiles(tbl)
-            % Check for any files that should have been added by makeTuples
-            % but, for some reason, weren't. Add those.
-            for key = fetch(tbl)'
-                makeTuples(tbl,ns.stripToPrimary(ns.Experiment,key))
-            end
-        end
 
+       function addMissingFiles(tbl,key)
+            % For rerunning makeTuples to add files that were missed.
+            % Called from ns.Experiment
+            makeTuples(tbl,key)            
+        end
     end
 
 
