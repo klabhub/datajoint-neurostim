@@ -48,11 +48,11 @@ for f=fn
         case "decimate"
             %% Downsampling using decimate
             tic
-            if numel(parms.(f))==2 & strcmpi(parms.(f){1},"frequency")
+            if iscell(parms.(f)) && strcmpi(parms.(f){1},"frequency")
                 targetRate = parms.(f){2};
                 R = round(sampleRate/targetRate);                
             else
-                R=  parms.(f){1}; % First input to decimate is the R factor
+                R=  parms.(f); % parms.decimate is the R factor
                 targetRate =  sampleRate/R;
             end
             fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',sampleRate,targetRate);                        

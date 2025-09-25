@@ -143,18 +143,18 @@ signal  = single(signal);
 
 %% Parse events to add as plugin parameter
 trialStartTime = get(ns.Experiment & key,'cic','prm','firstFrame','what','clocktime');
-nrBlinks = numel(startBlink);
-startBlinkTrial = nan(nrBlinks,1);
-% Assign to trial
-for b= 1:nrBlinks
-    tmp = find(trialStartTime > startBlinkTime(b),1,'first');
-    if isempty(tmp)
-        startBlinkTrial(b)= nrTrials;
-    else
-        startBlinkTrial(b) =max(1,tmp-1);
-    end
-end
-startBlinkTrialTime = startBlinkTime- trialStartTime(startBlinkTrial);
+% nrBlinks = numel(startBlink);
+% startBlinkTrial = nan(nrBlinks,1);
+% % Assign to trial
+% for b= 1:nrBlinks
+%     tmp = find(trialStartTime > startBlinkTime(b),1,'first');
+%     if isempty(tmp)
+%         startBlinkTrial(b)= nrTrials;
+%     else
+%         startBlinkTrial(b) =max(1,tmp-1);
+%     end
+% end
+% startBlinkTrialTime = startBlinkTime- trialStartTime(startBlinkTrial);
 % Create tpl and insert, pretending this is a regular plugin.
 plgTpl= fetch(ns.Experiment &key);
 plgTpl.plugin_name ="edf";

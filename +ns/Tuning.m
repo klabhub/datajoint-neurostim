@@ -187,15 +187,18 @@ classdef Tuning <dj.Computed
             %% Retrieve sources
             parms = fetch1(ns.TuningParm &key,'parms');
             conditions = fetch(ns.DimensionCondition & key,'trials','value');
-            assert(numel(conditions)>0,"No conditions in %s group",key.dimension)
+            nrConditions= numel(conditions);
+            assert(nrConditions>0,"No conditions in %s group",key.dimension)
             %% Find indepdent variable values from the name assigned to the condition (which is
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
 
+            onset = get(ns.Experiment & key,parms.stimulus,'prm','startTime','what','trialtime');
             % Get the spikes for all trials (some may not be part of this
             % condition group)
-            [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
-            spk =spk{1,:};
+            T= align(ns.C & key,channel =key.channel, align=onset, start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation,crossTrial=true);
+            response = timetableToDouble(T);
+            nrTrials = size(response,2);
             xValue= [conditions.value];
             if iscell(xValue)
                 xValue = [xValue{:}];
@@ -206,8 +209,13 @@ classdef Tuning <dj.Computed
             trialsPerCondition = {conditions.trials};
 
             % Average
-            tuningCurve = cellfun(@(x) mean(spk(x),"omitnan"),trialsPerCondition);
-            tuningCurveSd = cellfun(@(x) std(spk(x),0,"omitnan"),trialsPerCondition);
+            tuningCurve = nan(nrConditions,1);
+            tuningCurveSd = nan(nrConditions,1);
+            mPerTrial= mean(response(2:end,:),1);
+            for c =1:numel(conditions)                
+                tuningCurve(c) = mean(mPerTrial(trialsPerCondition{c}),[1 2],"omitnan");
+                tuningCurveSd(c) = std(mPerTrial(trialsPerCondition{c}),0,2,"omitnan");
+            end
             nrTrialsPerCondition = cellfun(@numel,trialsPerCondition);
             [peak,ix] = max(tuningCurve);
             preferred = xValue(ix);
@@ -215,21 +223,21 @@ classdef Tuning <dj.Computed
             mi = min(tuningCurve);
 
             % Map trials to conditions to do anova.
-            conditionIx = nan(1,size(spk,2));
+            conditionIx = nan(1,nrTrials);
             for i=1:numel(conditions)
                 conditionIx(conditions(i).trials)=i;
             end
             stayTrials = ~isnan(conditionIx);
             conditionIx(~stayTrials) = [];
-            pAnova = anovan(spk(stayTrials),conditionIx','display','off');
+            pAnova = anovan(response(1,stayTrials),conditionIx','display','off');
             if isnan(pAnova);pAnova=1;end
 
             % Extract baseline (use only trials that are alos used for the
             % tuning).
-            [spkBaseline,~] = align(ns.C&key,channel=key.channel,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation);
-            spkBaseline = spkBaseline{1,:};
-            baseline = mean(spkBaseline(stayTrials),"all","omitnan");
-            baselineStd = std(spkBaseline(stayTrials),0,"all","omitnan");
+            [baselineT,~] = align(ns.C&key,channel=key.channel,align = onset,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation,crossTrial =true);
+            baselineResponse = timetableToDouble(baselineT);
+            baseline = mean(baselineResponse(1,stayTrials),"all","omitmissing");
+            baselineStd = std(baselineResponse(1,stayTrials),0,"all","omitmissing");
 
             % Combine results into a struct
             estimate = struct('peak',peak,...
@@ -248,17 +256,14 @@ classdef Tuning <dj.Computed
             % If fun is specified; do a parametric fit using the specified function
             if isfield(parms,'fun')
                 x = xValue(conditionIx);
-                y = spk(stayTrials);
-                out = isnan(y); % Remove trials with NaN estimates (happens for first trial sometimes)
-                x(out)=[];
-                y(out)=[];
+                y = response(:,stayTrials);                
                 estimate.fit = feval(parms.fun,x,y,parms,estimate);
             end
 
 
             %% Insert in table.
-            tpl = mergestruct(key, estimate);
-            insert(tbl,tpl);
+           % tpl = mergestruct(key, estimate);
+           % insert(tbl,tpl);
 
         end
     end

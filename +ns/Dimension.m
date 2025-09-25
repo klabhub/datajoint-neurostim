@@ -222,7 +222,11 @@ classdef Dimension < dj.Manual & dj.DJInstance
                             continue;
                         end
                         prmValues = ret.data;
-                        prmTrials = ret.trial; 
+                        if isempty(ret.trial) && isscalar(unique(ret.data))
+                            prmTrials = (1:nrTrials)';
+                        else    
+                            prmTrials = ret.trial; 
+                        end
                     end
                     if isempty(prmTrials) && isscalar(prmValues)
                         % Global constant.
