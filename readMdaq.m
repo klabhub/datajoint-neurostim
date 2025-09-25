@@ -63,6 +63,10 @@ if exists(ns.Plugin & key & 'plugin_name="scanbox"')
     info = sbx.readInfoFile(ns.Experiment & key);    
     laserLowToHigh = find([T.laserOnDig(1);diff(T.laserOnDig)>0]);
     laserHighToLow =  find([false;diff(T.laserOnDig)<0]);
+    % A ttl pulse is sent for each plane in multiplane recordings. Trim
+    % down to 1 per stack. (All ttls will be stored as events below)
+    laserLowToHigh = laserLowToHigh(1:info.nrPlanes:end);
+    laserHighToLow = laserHighToLow(1:info.nrPlanes:end);
     nrTTL = numel(laserLowToHigh);
     if nrTTL >  info.nrFrames +1 
         % 1 extra is expected and handled in sbx.read. Try to remove
