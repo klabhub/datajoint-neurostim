@@ -46,54 +46,59 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
         function makeTuples(eTbl, key)
 
+            % --- Prep tables, parameters, and check for trials ---
+            % access tables
             expTbl = ns.Experiment & key;           
-
             epTbl = ns.EpochParm & key;
             cTbl = ns.C & key;
 
+            % Absolute clock time in seconds of the first frames of the
+            % trials
             abs_onsets = expTbl.first_frame_onsets;
-            rel_onsets = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trialtime');
-                        
-            if isempty(abs_onsets), return; end
+            if isempty(abs_onsets),
+                fprintf('No trials were detected for:\n');
+                disp(key);
+                fprintf('Moving on to the next key...\n');
+                return;
+            end
             
+            % Start time of trials of interest ('plugin') relative to
+            % first_frame_onsets
+            rel_onsets = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trialtime');                                                      
+            isVld = ~isinf(rel_onsets) & ~isnan(rel_onsets); % trials that were displayed
 
-            % trials that were shown
-
-            isVld = ~isinf(rel_onsets) & ~isnan(rel_onsets);
+            % get the actual trial numbers, onset times
             trial_no = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trial');
-            trial_no = trial_no(isVld);
-            onsets = abs_onsets(trial_no) + rel_onsets(trial_no);
-            
-            t = cTbl.timepoints;
-            dt = cTbl.dt;
-            ep_win = epTbl{'epoch_win'};
-            ep_timepoints = ep_win(1):dt:ep_win(2);
-
+            trial_no = trial_no(isVld); % valid subset
             if isempty(trial_no)
                 fprintf("No epochs were detected for:\n");
                 disp(key);
-                return
+                return;
             else
                 fprintf("\t%d valid trials were found.", length(trial_no));
             end
+            onsets = abs_onsets(trial_no) + rel_onsets(trial_no); % absolute onsets of trials              
+            t = cTbl.timepoints; % sampling times
+            dt = cTbl.dt; % temporal resolution                  
+            ep_win = epTbl{'epoch_win'}; % Epoch time relative to trial onset
+            ep_timepoints = ep_win(1):dt:ep_win(2);           
 
+            % --- Export signal --
             t_export = gen.Timer().start("Exporting data from ns.CChannel...\n");
-
+            % fetch as table and concatenate (n_channel, n_timepoints)
             signal = fetch(ns.CChannel & cTbl, 'signal');
             signal = horzcat(signal(:).signal)';
-
             t_export.stop("\tExporting is complete.");
             t_export.report();
 
-            t_sgm = gen.Timer().start("Now segmenting...\n");
-            
-            ep = segment();
-            
-
+            % --- Epoch Segmentation ---
+            t_sgm = gen.Timer().start("Now segmenting...\n");            
+            ep = segment();          
             t_sgm.stop("\t\tSegmentation complete.");
             t_sgm.report();
 
-            pv = epTbl{'pv'};
+            % --- Epoch Preprocessing ---
+            pv = epTbl{'pv'}; % parametes containing processing steps
             
             if pv.detrend
 
@@ -114,23 +119,34 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             end
 
-            n_art_fun = length(pv.artifact_parm);
-            flags = cell(1,n_art_fun);
-            excludeN = [];
+            % --- Artifact/Outlier Rejection ---
+            % Artifact rejection functions
+            n_art_fun = length(pv.artifact_parm); % could be multiple
+            flags = cell(1,n_art_fun);            
             epoch_flags = repmat("", length(isVld), 1);
 
+            excludeN = []; % to keep track of the excluded epochs after each artifact rejection function
             for iFun = 1:n_art_fun
                 
                 fun_str = pv.artifact_parm(iFun).fun;
 
                 t_artN = gen.Timer().start("Finding artifacts through: %s.", fun_str);
-                if strcmp(fun_str, 'detect_outliers')
-
-                    %make sure handle refers to the nested function
-
+                if strcmp(fun_str, 'detect_outliers') 
+                    % staple function for artifact rejection, calls
+                    % ns.prep.detect_outlier_epochs within the nested
+                    % function below
                     funN = @detect_outliers;
 
-                else
+                else % custom function
+
+                    % flags = custom_artifact_rejection_function(key, option1=opt_args1, ...)
+                    % within the function:
+                    % function flags = custom_artifact_rejection_function(key, options)
+                    % arguments
+                    % key
+                    % options.exclude = []
+                    % ...
+                    % end
 
                     funN = str2func(fun_str);
                 end
@@ -152,31 +168,29 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             end
 
-            %% Submission
+            % --- Submission to the server ---
             t_sub = gen.Timer().start("\tNow submitting to the server\n");
-
-            % Create epoch tuple (n_epochs,1)
+            % Create epoch tuple (n_epochs,1) that contains flags
             epoch_tpl = mergestruct(key, struct( ...
                 trial = num2cell(trial_no),...
                 onset = num2cell(rel_onsets(isVld)),...
                 flag = num2cell(epoch_flags(isVld))...
                 ));
+            % Insert to Epoch table
             chunkedInsert(ns.Epoch, epoch_tpl);
 
-            [n_epochs, n_channels, n_timepoints] = size(ep);
-            
+            % Create EpochChannel tuple that contains the actual epoch data
+            [n_epochs, n_channels, n_timepoints] = size(ep);            
             % reshape epoch to flatten the first two dimensions, channels
             % unravel first, then epochs
-            ep = reshape(permute(ep, [2, 1, 3]), n_epochs*n_channels, n_timepoints);
-            
-            nonprimKey = setdiff(fieldnames(epoch_tpl), eTbl.primaryKey);
+            ep = reshape(permute(ep, [2, 1, 3]), n_epochs*n_channels, n_timepoints);            
+            nonPrimKey = setdiff(fieldnames(epoch_tpl), eTbl.primaryKey); % only keep the primary keys
             epoch_tpl = mergestruct( ...
-                repelem(rmfield(epoch_tpl, nonprimKey), n_channels),...
+                repelem(rmfield(epoch_tpl, nonPrimKey), n_channels),...
                 struct(channel = repmat(gen.make_column(num2cell(cTbl.channels)), n_epochs, 1),...
                 signal = num2cell(ep, 2)...
             ));
-            chunkedInsert(ns.EpochChannel, epoch_tpl)
-
+            chunkedInsert(ns.EpochChannel, epoch_tpl);
             t_sub.stop("\t\tSubmission is complete.\n");
             t_sub.report();
 
@@ -228,7 +242,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             function flags = detect_outliers(varargin)
                 
-                flags = ns.detect_outlier_epochs(ep, cTbl.srate, 'epoch_no', trial_no, varargin{2:end});
+                flags = ns.prep.detect_outlier_epochs(ep, cTbl.srate, 'epoch_no', trial_no, varargin{2:end});
 
             end            
             
@@ -517,7 +531,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             varargin = [varargin, 'channel_locations', chanLocs];
 
-            ep = ns.rereference(ep, varargin{:});
+            ep = ns.prep.rereference(ep, varargin{:});
 
         end
 

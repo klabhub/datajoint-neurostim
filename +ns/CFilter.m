@@ -104,7 +104,7 @@ for f=fn
                 parmsN = rmfield(parmsN, "epoch_buffer");
             end
             parmsN = gen.struct_to_varargin(parmsN);
-            varargout{3} = ns.find_noisy_channels(signal(ep_mask,:)', parmsN{:});
+            varargout{3} = ns.prep.find_noisy_channels(signal(ep_mask,:)', parmsN{:});
             varargout{3}.parameters = rmfield(varargout{3}.parameters, 'ChannelLocations'); % duplicate
             hasNoisyChannels = ~isempty(varargout{3}.all);
             parms.badElectrodes = unique(horzcat(parms.badElectrodes, varargout{3}.all));
