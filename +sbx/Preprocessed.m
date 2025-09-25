@@ -2,6 +2,7 @@
 # A complete preprocessed data set of the SBX data obtained in a single session.
 -> ns.Session
 -> sbx.PreprocessedParm     # Preprocessing parameters
+depth : decimal(6,2)        # Knobby recording depth z in micron
 ---
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
@@ -78,7 +79,11 @@ classdef Preprocessed < dj.Computed
 
     end
     methods (Access=public)
-        function [tpl] = mismatch(tbl)
+        function [tpl] = mismatch(tbl,pv)
+            arguments 
+                tbl (1,1) sbx.Preprocessed
+                pv.verbose (1,1) logical = true
+            end 
             %  Compares the number of frames in the preprocessed data
             % and the frames assigned to each of the experiments from the
             % session. If these are not the same, the key for the
@@ -91,6 +96,9 @@ classdef Preprocessed < dj.Computed
                 s = ns.Session & key;
                 %  Find the experiments that should be in the preprocessed data
                 exptWithSbx = (ns.Experiment & s) & (ns.File & 'extension=".sbx"');
+                if pv.verbose
+                    exptWithSbx %#ok<NOPRT>
+                end
                 % Determine number of frames per expt
                 info = sbx.readInfoFile(exptWithSbx);
                 framesInExpt = [info.nrFrames];
@@ -98,7 +106,7 @@ classdef Preprocessed < dj.Computed
                 delta = key.nrframesinsession - sum(framesInExpt);
                 if delta ~=0
                     cntr = cntr+1;
-                    tpl(cntr) = mergestruct(key,struct('delta',delta,'nrframesinexpt',framesInExpt)); %#ok<AGROW>
+                    tpl(cntr) = mergestruct(key,struct('delta',delta,'nrframesinexpt',framesInExpt)); 
                 end
             end
         end
@@ -346,6 +354,22 @@ classdef Preprocessed < dj.Computed
             analyzeExptThisSession = analyze(allExptThisSession,strict=false);
             assert(exists(analyzeExptThisSession),"No analyzable experiments in this session %s on %s",key.subject,key.session_date); % Should not really happen with proper keysource.
 
+            %% Check that the TTLs and frames match
+            % If setup propertly, the mdaq plugins laserOnDig events have
+            % been stored as plugin events:
+            ttlQry = ns.PluginParameter & 'plugin_name = "mdaq"' & 'property_name LIKE "laserOnDig%"' & analyzeExptThisSession;
+            if ~exists(ttlQry)
+                % Fallback option: use the thresholded analog laserOn
+                % signals
+                ttlQry = ns.PluginParameter & 'plugin_name = "mdaq"' & 'property_name LIKE "laserOn%"' & analyzeExptThisSession;
+            end
+
+            if count(ttlQry) ~= count(analyzeExptThisSession)*2                
+                ttlQry %#ok<NOPRT>
+                analyzeExptThisSession %#ok<NOPRT>
+                error("LaserOn TTL events not found for all experiments: \n")
+            end
+
             dataFldr = file(analyzeExptThisSession);
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
@@ -365,40 +389,52 @@ classdef Preprocessed < dj.Computed
                     nrPlanes = [];
                     depth = [];
                     xy = [];
+                    frames =[];
+                    ttl = [];
                     for e=fetch(analyzeExptThisSession)'
-                        info = sbx.readInfoFile(e);
-                        scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
-                        nrPlanes = [nrPlanes info.nrPlanes]; %#ok<AGROW>
-                        depth  = [depth info.config.knobby.pos.z]; %#ok<AGROW>
-                        xy = [xy; info.config.knobby.pos.x info.config.knobby.pos.y]; %ok<AGROW>
+                        info        = sbx.readInfoFile(e);
+                        scale       =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
+                        nrPlanes    = [nrPlanes info.nrPlanes]; %#ok<AGROW>
+                        depth       = [depth info.config.knobby.pos.z]; %#ok<AGROW>
+                        xy          = [xy; info.config.knobby.pos.x info.config.knobby.pos.y]; %#ok<AGROW> 
+                        frames      = [frames; info.nrFrames]; %#ok<AGROW>
+                        thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;                      
+                        ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
                     end
+                    assert(all(ttl==frames+1),"Mismatch between the TTLs in mdaq and frames in sbx.")
+                    depth = round(100*depth)/100; % Two decimal points. 
                     [grp,grpDepth]    =    findgroups(depth);
-                    nrDepths= numel(grp);
-                    plane =0;
-                    for g = 1:nrDepths
-                        thisGrp = grp==g;
+                    nrDepths= numel(grpDepth);
+                    % At each depth there can be multiple planes
+                    for depthNr = 1:nrDepths
+                        thisGrp = grp==depthNr;                       
                         thisScale = scale(thisGrp,:);
                         thisNrPlanes = nrPlanes(thisGrp);
-                        thisDepth = grpDepth(thisGrp);
+                        thisDepth = grpDepth(depthNr);
                         thisDataFldr = dataFldr(thisGrp);
                         % Sanity checks
                         uScale = unique(thisScale,'rows');
                         assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
                         uNrPlanes= unique(thisNrPlanes);
                         assert(isscalar(uNrPlanes),"Different number of planes across experiments in this session.");
-
+                                        
                         %% Check whether preprocessing has already completed for this plane/depth
-                        for planeOffset = 0:uNrPlanes-1
-                            opsFile =fullfile(sessionPath,resultsFolder,sprintf('plane%d',plane+planeOffset),'ops.npy');
-                            outFiles = fullfile(sessionPath,resultsFolder,sprintf('plane%d',plane+planeOffset),{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
+                        for plane = 0:uNrPlanes-1
+                            if nrDepths ==1
+                                depthSubFolder = '';
+                            else
+                                depthSubFolder = sprintf('depth%d',depthNr-1);
+                            end
+                            planeSubFolder = sprintf('plane%d',plane);
+                            opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
+                            outFiles = fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
                             prepComplete = exist(opsFile,"file");
                             for of =1:numel(outFiles)
                                 prepComplete = prepComplete & exist(outFiles(of),'file');
                             end
                         end
-
                         if prepComplete
-                            fprintf('Preprocessing results already exists for %d planes at depth  %.1f. Importing %s\n',opsFile,uNrPlanes,thisDepth);
+                            fprintf('Preprocessing results already exists for %d planes at depth  %.1f. \n Importing %s\n',uNrPlanes,thisDepth,opsFile);
                         else
                             % Read installation default ops
                             opts = py.suite2p.default_ops();
@@ -450,7 +486,7 @@ classdef Preprocessed < dj.Computed
                                 end
                             end
                             db= py.dict(pyargs('save_path0',sessionPath, ...
-                                'save_folder',resultsFolder, ...
+                                'save_folder',fullfile(resultsFolder,depthSubFolder), ...
                                 'data_path',py.list(thisDataFldr), ...
                                 'fast_disk',fastDisk, ...
                                 'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
@@ -496,7 +532,7 @@ classdef Preprocessed < dj.Computed
                             % and I don't want to delete the .npy files because
                             % they are useful to view in the suite2p gui.
                             for p=1:uNrPlanes
-                                statFile = fullfile(sessionPath,resultsFolder,sprintf('plane%d',p-1),'stat.npy');
+                                statFile = fullfile(sessionPath,resultsFolder,depthSubFolder,sprintf('plane%d',p-1),'stat.npy');
                                 npyToMat(statFile);
                             end
                             fprintf('Completed at %s\n',datetime('now'));
@@ -506,26 +542,18 @@ classdef Preprocessed < dj.Computed
                         img = ndarrayToArray(opts.item{'meanImg'},single=true);
                         N = double(opts.item{'nframes'});
                         fs = double(opts.item{'fs'});
-                        tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
+                        key.depth = thisDepth;
+                        tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
                         insert(tbl,tpl);
-
-                        % Suite2p will always write to
-                        % resultsFolder/plane0..uNrPlanes, I could not find
-                        % a way to tell it to start at an offset. Hence if
-                        % we know go to the next depth, plane 0  will be
-                        % overwritten. To fix this, I rename the folders
-                        % that were just created. For instance, in the case
-                        % of single plane recordings at two depths, plane0 -> plane1
-
-
+                        % Create the part table with per ROI information
+                        makeTuples(sbx.PreprocessedRoi,key)
                     end
                 case 'caiman'
                     % TODO
                 otherwise
                     error('Unknown preprocessing toolbox %s',parms.toolbox);
             end
-            % Create the part table with per ROI information
-            makeTuples(sbx.PreprocessedRoi,key)
+            
         end
     end
 end

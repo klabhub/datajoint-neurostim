@@ -450,19 +450,33 @@ classdef Epoch < dj.Computed & dj.DJInstance
             
         end
 
-        function cond = get.conditions(eTbl)
+        function all_conds = get.conditions(eTbl)
             
-            dTbl = ns.DimensionCondition & eTbl;
-            dTbl = fetch(dTbl,'trials');
-            trials = fetch(eTbl,'trial');
-            trials = [trials(:).trial]';
-
-            cond = repelem("",length(trials),1);
-            for ii = 1:length(dTbl)
-
-              
-                cond(ismember(trials,dTbl(ii).trials)) = dTbl(ii).name;
+            cTbl = ns.C & eTbl;
+            n_c_rows = count(cTbl);
             
+            all_conds = repelem("",count(eTbl),1);
+            prev_ep_idx = 0;
+            for ii = 1:n_c_rows
+
+                eTblN = eTbl & cTbl(ii);
+                n_epN = count(eTblN);
+                dTbl = ns.DimensionCondition & eTblN;
+                dTbl = fetch(dTbl,'trials');
+                trials = fetch(eTblN,'trial');
+                trials = [trials(:).trial]';
+                ep_idx = prev_ep_idx + (1:n_epN);
+    
+                for jj = 1:length(dTbl)
+    
+                  
+                    all_conds(ep_idx(ismember(trials,dTbl(jj).trials))) = dTbl(jj).name;
+                
+                end
+
+                prev_ep_idx = prev_ep_idx + n_epN;
+
+
             end
 
         end
