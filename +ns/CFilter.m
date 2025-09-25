@@ -3,7 +3,8 @@ function varargout = CFilter(signal,time,parms)
 % Can be called from read functions (see intan.read for an example)
 % The user passes a parms struct with any of the following fields.
 % These filtering operations are applied in order (i.e. as ordered by
-% fieldnames(parms)
+% fieldnames(parms). To apply the same filter multiple times, suffix the
+% name with a number (1-9).
 %
 % parms.detrend  - a cell array of parameters passed to detrend.m
 %                   Detrend the signal
@@ -17,7 +18,12 @@ function varargout = CFilter(signal,time,parms)
 %                           filtfilt, sequentiallly in the order in which they are
 %                           defined in parms.filtfilt
 %
+% parms.noisyChannels  - Find noise EEG channels using PREP criteria  (See
+% find_noisy_channels.m)
 %
+% parms.reference  - Rereference all channels using the average, or
+%                   laplacian.
+% 
 % Example :
 % First Reduce sampling by a factor of 4 (e.g. from 1kHz to 250Hz)
 % parms.decimate = {4}; 
@@ -36,12 +42,11 @@ for f=fn
     % In order to apply same transformations multiple times at different
     % orders the parms field can end with an identifier number, which is
     % removed at this step.
-    f = char(f);
-    command = f;
-    isNumInF = isstrprop(f, 'digit');
-    if isNumInF(end)
-        last_digit_idx = find(~isNumInF,1,'last')+1;
-        command(last_digit_idx:end) = '';
+    match = regexp(f,'(?<command>\w+)(?<nr>\d+$)','names');
+    if isempty(match)
+        command =f;
+    else
+        command =match.command;
     end
 
     switch command

@@ -144,7 +144,6 @@ if isfield(parms, "noisy_channels")
     [signal,neurostimTime, noisyChannels] = ns.CFilter(signal,neurostimTime/1000,parms);
 else
     [signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
-
 end
 
 %% Package output
