@@ -23,8 +23,6 @@ nrRoi = count(allF);
 
 info = sbx.readInfoFile(fetch(ns.Experiment & key,'LIMIT 1')); % Read one info to get the number of planes
 parms.deconv.dt = 1./(fetch1(sbx.Preprocessed & key,'framerate')/info.nrPlanes); % Match dt to framerate
-parms.deconv.algo.dogpu = true;
-parms.calibration.dogpu =true;
 if pv.calibration
     % Call from Mlspikecalibration - run calibration
     assert(all(isfield(parms.calibration,["amin" "amax" "taumin" "taumax" "maxamp" "nrRoi"])),'The %s SpikesParm does not have the required calibration parameters\n',parms.stag)
@@ -66,8 +64,7 @@ else
             parms.deconv.finetune.sigma = calibration.sigma;
         end
     end
-    pool = nsParPool;
-    nrRoi =10;
+    pool = nsParPool;    
     if ~isempty(pool)
         parfor i=1:nrRoi
             [signal(:,i),quality(i),sigma(i)] = deconvolve(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv);
