@@ -61,6 +61,8 @@ if pv.clearJobStatus~=""
         if count(jt)>0
             fprintf('%s %d related jobs in %s will be deleted.\n',drMsg,count(jt),jobsTable)
             if ~pv.dryrun
+                deletedErrorJobs = jobs(jt);
+                deletedErrorJobs(:,:)
                 delQuick(jt)
             end
         end

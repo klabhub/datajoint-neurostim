@@ -2,28 +2,30 @@
 #  Preprocessing instructions for Spikes deconvolution
 stag         :  varchar(255)     # A  unique name for these preprocessing instructions
 ---
-parms       : longblob          # struct containing all parameters used by packages such as mlspike.
+deconv      : blob          # struct containing deconvolution parameters 
+calibration = NULL : blob          # struct containing calibration parameters
 %}
+% Currently only for mlspike purposes
+%  deconv.fluorescence can be used to indicate which ns.C ctag contains the
+%  fluorescence data (defaults to "fluorescence")
 %
-% EXAMPLE
-%
-%mlParms =struct;
-%mlParms.restrict = 'pcell>0.75 AND radius> 2.185';
-%mlParms.deconv = sbx.SpikesParm.defaults("DENEUX2012") % Defaults defined in the class
-%mlParms.deconv.dographsummary = false;
-% Note that the "true" values for CA indicators often do not match the ones
-% that lead to the best results ; autocalibration should help to find the best 
-% parametsrs. 
-% mlParms.deconv.algo.nspikemax =4;  % Allow 4 spikes per bin (15 Hz)
-% To use autocalibration; define its parameters like this:
-% mlParms.autocalibration = struct('amin',0.035,...
+%  Use a convenience function to setup the deconv struct with defaults
+%  from the literature. 
+%  
+% mlparms = sbx.SpikesParm.defaults("DENEUX16","gcamp6s") 
+% mlparms.deconv.algo.nspikemax =4;  % Allow 4 spikes per bin (15 Hz)
+% autocalpamrs = struct('amin',0.035,...
 %                'amax',0.2,...
 %                 'taumin',0.25,...
 %                 'taumax',2,...
 %                 'maxamp',4);  % A maxamp of 4 seems necessary in our data.
-% insertIfNew(sbx.SpikesParm,struct('stag','mlspikeautocal','parms',mlParms);
+% autocalparms.nrRoi = 20  % Maximum number of ROI to use for autocalibration of a session
 %
-% SEE ALSO sbx.Spikes
+% insertIfNew(sbx.SpikesParm,struct('stag','deneux16','deconv',mlparms,'calibration',autocalparms);
+%
+% 
+% SEE ALSO sbx.mlspikecompute, Mlspikecalibration
+
 classdef SpikesParm < dj.Lookup
 
     methods (Static)

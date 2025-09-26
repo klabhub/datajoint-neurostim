@@ -1,8 +1,7 @@
 %{
 # Deconvolved Spikes of a ROI in a session, based on a Preprocessed set.
--> sbx.Preprocessed
+-> ns.CChannel         
 -> sbx.SpikesParm
-roi : smallint
 ---
 quality : float #
 nanfrac : float #
