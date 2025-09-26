@@ -1,12 +1,12 @@
 function [varargout] = mlspike(key,cparms,pv)
 arguments
     key (1,1) struct
-    cparms struct  = struct([]) %#ok<INUSA>
+    cparms (1,:) struct  = struct([]) %#ok<INUSA> % This is not used, just a placeholder so that it can be called from ns.C/maketuples
     pv.calibration (1,1) logical = false
 end
 
-%assert(exist('bricks.fn_structmerge','file'),"The brick repository must be on the path for mlSpike");
-assert(exist('spk_est.m','file'),"The spikes repository must be on the path for mlSpike");
+assert(exist('xplor.m','file'),"The xplor repository must be on the path for sbx.mlspike");
+assert(exist('spk_est.m','file'),"The spikes repository must be on the path for sbx.mlspike");
 warning('off','backtrace');
 
 parms = fetch(sbx.SpikesParm& struct('stag',key.ctag),'deconv','calibration');

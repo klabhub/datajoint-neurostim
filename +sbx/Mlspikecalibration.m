@@ -106,8 +106,8 @@ classdef Mlspikecalibration < dj.Computed
             % autocalibration and then pick the median of the calibrated 
             % amplitude,sigma, tau and store this in the table for later use 
             % when populating the sbx.Spikes table.
-            key.ctag = key.stag;
-            calResults = sbx.mlspike(key,struct([]),calibration =true);
+            key.ctag = key.stag; % mlspike expects a ctag 
+            calResults = sbx.mlspike(key,calibration =true);
             key.tau = mean([calResults.tau],"omitmissing");
             key.sigma  =mean([calResults.sigma],"omitmissing");
             key.a = mean([calResults.a],"omitmissing");
