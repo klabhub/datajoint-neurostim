@@ -1,11 +1,11 @@
 function [varargout] = mlspike(key,cparms,pv)
 arguments
     key (1,1) struct
-    cparms (1,1) struct  = struct([]) %#ok<INUSA>
+    cparms struct  = struct([]) %#ok<INUSA>
     pv.calibration (1,1) logical = false
 end
 
-assert(exist('fn_structmerge','file'),"The brick repository must be on the path for mlSpike");
+%assert(exist('bricks.fn_structmerge','file'),"The brick repository must be on the path for mlSpike");
 assert(exist('spk_est.m','file'),"The spikes repository must be on the path for mlSpike");
 warning('off','backtrace');
 
