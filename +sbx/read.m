@@ -13,13 +13,11 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % .what - 'F'    - Fluorescence
 %         'Fneu'  - Neuropil
 %         'spks'  - deconvolved spikes from suite2p's OASIS
-%         any 'stag' from sbx.SpikesParm  will retrieve the spikes
-%         deconvolved with MLSpike (See sbx.Spikes)
+%         
 % .neuropilfactor - If .what ="F" then setting this to a non-zero value will compute
 %               bacground corrected fluorescence (F-factor*Fneu)
 % .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset.
 %               For instance 'pcell>0.75'
-
 
 prep = sbx.Preprocessed;
 ks = prep.keySource;
@@ -64,7 +62,7 @@ end
 %% Read the .npy or .mat Output
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 planes = dir(fullfile(fldr,'plane*'));
-recordingInfo =sbx.readInfoFile(key);  % Store the info struct
+recordingInfo =info; % Store the info struct
 signal=[];
 rois = [];
 maxRoi = 0;
@@ -79,6 +77,8 @@ for pl = 1:numel(planes)
             error('File %s does not exist',thisFile);
         end
         thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+        framesNotInFile = sum(keepFrameIx > size(thisSignal,2));
+        assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",thisFile,framesNotInFile,exptThisSession.starttime, exptThisSession.session_date);
         thisSignal = thisSignal(:,keepFrameIx)';
         if  parms.what=="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
             % Compute background/neuropil corrected fluorescence
@@ -87,20 +87,12 @@ for pl = 1:numel(planes)
             Fneu = Fneu(:,keepFrameIx)';
             thisSignal = thisSignal - parms.neuropilfactor*Fneu;
         end
-        rois = [rois ;(1:size(thisSignal,2))'+maxRoi];
+        rois = [rois ;(1:size(thisSignal,2))'+maxRoi]; %#ok<AGROW>
         maxRoi = max(rois);
     else
-        %ML Spike files
-        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.mat']);
-        if ~exist(thisFile,"file")
-            error('File %s does not exist',thisFile);
-        end
-        s = load(thisFile,'spikeCount');
-        thisSignal = s.spikeCount(keepFrameIx,:);
-        rois = [rois;fetchn(sbx.Spikes & key,'roi')];        %#ok<*AGROW>
+        error('Unknown what (%s) for sbx.read ',parms.what);
     end
-
-    signal = [signal  thisSignal];
+    signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
 
 end

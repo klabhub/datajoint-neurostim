@@ -91,14 +91,12 @@ classdef Preprocessed < dj.Computed
             % a .delta field that represents the mismatch). Negative
             % numbers means that some frames are missing from sbx.Preprocessed.
             cntr =0;
-            tpl = struct('session_date',[],'subject',[],'prep',[],'nrframesinsession',[],'delta',[],'nrframesinexpt',[]);
+            tpl = struct('session_date',[],'subject',[],'prep',[],'depth',[],'nrframesinsession',[],'delta',[],'nrframesinexpt',[]);
             for key =fetch(tbl,'nrframesinsession')'
                 s = ns.Session & key;
                 %  Find the experiments that should be in the preprocessed data
                 exptWithSbx = (ns.Experiment & s) & (ns.File & 'extension=".sbx"');
-                if pv.verbose
-                    exptWithSbx %#ok<NOPRT>
-                end
+            
                 % Determine number of frames per expt
                 info = sbx.readInfoFile(exptWithSbx);
                 framesInExpt = [info.nrFrames];
@@ -107,6 +105,9 @@ classdef Preprocessed < dj.Computed
                 if delta ~=0
                     cntr = cntr+1;
                     tpl(cntr) = mergestruct(key,struct('delta',delta,'nrframesinexpt',framesInExpt)); 
+                    if pv.verbose
+                        exptWithSbx %#ok<NOPRT>
+                    end
                 end
             end
         end
