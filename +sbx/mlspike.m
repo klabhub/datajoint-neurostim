@@ -28,8 +28,7 @@ if pv.calibration
     assert(all(isfield(parms.calibration,["amin" "amax" "taumin" "taumax" "maxamp" "nrRoi"])),'The %s SpikesParm does not have the required calibration parameters\n',parms.stag)
     nrCalibrationRoi = min(nrRoi,parms.calibration.nrRoi);
     parms.calibration.dt = parms.deconv.dt; % Match to the framerate
-    parms.calibration = rmfield(parms.calibration,"nrRoi");
-    parms.calibration.mlspikepar.dographsummary = false;
+    parms.calibration = rmfield(parms.calibration,"nrRoi");    
     out = repmat(struct('quality',[],'tau',[],'a',[],'sigma',[]),[nrCalibrationRoi 1]);
     % Get a random subset
     fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrCalibrationRoi));
@@ -101,6 +100,7 @@ pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autoc
 % Copy values from parms.autocalibration struct to pax
 pax = brick.structmerge(pax,autocalparms,'strict','recursive','type');
 pax.mlspikepar = mlparms;
+pax.mlspikepar.dographsummary = false;
 [tauEst,ampEst,sigmaEst,events] = spk_autocalibration(F,pax);
 if isempty(events)
     % If events is empty, calibration was not possible
