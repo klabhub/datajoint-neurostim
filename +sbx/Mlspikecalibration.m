@@ -114,7 +114,9 @@ classdef Mlspikecalibration < dj.Computed
             key.quality = mean([calResults.quality],"omitmissing");
             key.failed = sum(isnan([calResults.quality]));
             % Store the calibration results             
+            key =rmfield(key,'ctag');
             insert(tbl, key);
+
 
         end
     end
