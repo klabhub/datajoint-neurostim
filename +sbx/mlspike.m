@@ -29,6 +29,7 @@ if pv.calibration
     nrCalibrationRoi = min(nrRoi,parms.calibration.nrRoi);
     parms.calibration.dt = parms.deconv.dt; % Match to the framerate
     parms.calibration = rmfield(parms.calibration,"nrRoi");
+    parms.calibration.mlspikepar.dographsummary = false;
     out = repmat(struct('quality',[],'tau',[],'a',[],'sigma',[]),[nrCalibrationRoi 1]);
     % Get a random subset
     fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrCalibrationRoi));
