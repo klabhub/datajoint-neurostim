@@ -39,6 +39,7 @@ warning('off','backtrace');
             out = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan);
         else 
             % Rerun with calibrated parms
+            pax = mlparms;
             pax.finetune.sigma = sigmaEst; % Always estimated
             pax.tau = tauEst;
             pax.a = ampEst;
