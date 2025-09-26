@@ -101,7 +101,7 @@ F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this s
 % Autocalibration with the specified parameters
 pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibration
 % Copy values from parms.autocalibration struct to pax
-pax = fn_structmerge(pax,autocalparms,'strict','recursive','type');
+pax = brick.structmerge(pax,autocalparms,'strict','recursive','type');
 pax.mlspikepar = mlparms;
 [tauEst,ampEst,sigmaEst,events] = spk_autocalibration(F,pax);
 if isempty(events)
