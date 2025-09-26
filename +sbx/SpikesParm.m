@@ -39,6 +39,16 @@ classdef SpikesParm < dj.Lookup
 
             deconv = tps_mlspikes('par');
             switch (publication)
+                case "KPOP25"
+                    % Values that gave good qualtiy for KPOP data
+                    % (ran autocalibrate with DENEUX16 on a large set and then took the
+                    % average a/tau/)
+                    deconv.hill = 1; % Using polynomial pnonlin instead
+                    deconv.a = 0.13;  % Amplitude
+                    deconv.tau  = 0.9; % Decay tau in s
+                    deconv.ton = 0.02; % Rise tau (t_on) in s
+                    deconv.pnonlin =  [0.73, -0.05];  % Deneux values for Gcamp6s;
+                    deconv.drift.parameter = 0.1;
                 case "RUPPRECHT25"
                     % Return parameters for Gcamp6s based on Rupprecht et al. 2025.
                     switch upper(indicator)
