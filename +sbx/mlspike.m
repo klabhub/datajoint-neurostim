@@ -5,6 +5,9 @@ arguments
     pv.calibration (1,1) logical = false
 end
 
+global BRICKPROGRESS %#ok<GVMIS>
+BRICKPROGRESS = false;
+
 assert(exist('xplor.m','file'),"The xplor repository must be on the path for sbx.mlspike");
 assert(exist('spk_est.m','file'),"The spikes repository must be on the path for sbx.mlspike");
 warning('off','backtrace');
