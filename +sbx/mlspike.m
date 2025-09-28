@@ -5,9 +5,6 @@ arguments
     pv.calibration (1,1) logical = false
 end
 
-global BRICKPROGRESS %#ok<GVMIS>
-BRICKPROGRESS = false;
-
 assert(exist('xplor.m','file'),"The xplor repository must be on the path for sbx.mlspike");
 assert(exist('spk_est.m','file'),"The spikes repository must be on the path for sbx.mlspike");
 warning('off','backtrace');
@@ -24,6 +21,11 @@ end
 allF = (ns.C & struct('ctag',fluorescence) )* (ns.CChannel &  proj(sbx.PreprocessedRoi & key,'roi->channel'));
 nrRoi = count(allF);
 
+dq = parallel.pool.DataQueue;
+afterEach(dq, @(x) updateMessage(x));
+counter =0;
+
+
 info = sbx.readInfoFile(fetch(ns.Experiment & key,'LIMIT 1')); % Read one info to get the number of planes
 parms.deconv.dt = 1./(fetch1(sbx.Preprocessed & key,'framerate')/info.nrPlanes); % Match dt to framerate
 if pv.calibration
@@ -31,28 +33,35 @@ if pv.calibration
     assert(all(isfield(parms.calibration,["amin" "amax" "taumin" "taumax" "maxamp" "nrRoi"])),'The %s SpikesParm does not have the required calibration parameters\n',parms.stag)
     nrCalibrationRoi = min(nrRoi,parms.calibration.nrRoi);
     parms.calibration.dt = parms.deconv.dt; % Match to the framerate
-    parms.calibration = rmfield(parms.calibration,"nrRoi");    
+    parms.calibration = rmfield(parms.calibration,"nrRoi");
     out = repmat(struct('quality',[],'tau',[],'a',[],'sigma',[]),[nrCalibrationRoi 1]);
     % Get a random subset
     fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrCalibrationRoi));
     pool = nsParPool;
     if ~isempty(pool)
         parfor i=1:nrCalibrationRoi
+            dj.conn; % Need to refresh connection in each worker
+            warning('off','backtrace'); % Needs to be set on each worker
+            tic
+            send(dq,{i,false,0})
             out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);
+            send(dq,{i,true,seconds(toc)});
         end
     else
-        for i=1:nrCalibrationRoi           
+        for i=1:nrCalibrationRoi
+            tic
+            send(dq,{i,false,0});
             out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);
+            send(dq,{i,true,seconds(toc)});
         end
     end
     varargout{1} = out;
 else
     fTpls = fetch(allF);
-    nrSamples= fetch1(allF,'nrsamples','LIMIT 1');    
+    nrSamples= fetch1(allF,'nrsamples','LIMIT 1');
     signal = nan(nrSamples,nrRoi);
     quality = nan(nrRoi,1);
     sigma = nan(nrRoi,1);
-    
     if  ~isempty(parms.calibration)
         % This SpikesParm specifies a calibration. Look up the results
         calibration = sbx.Mlspikecalibration & struct('stag',parms.stag) & key;
@@ -67,16 +76,24 @@ else
             parms.deconv.finetune.sigma = calibration.sigma;
         end
     end
-    pool = nsParPool;    
+    pool = nsParPool;
     if ~isempty(pool)
         parfor i=1:nrRoi
+            dj.conn; % Need to refresh connection in each worker
+            warning('off','backtrace'); % Needs to be set on each worker
+            tic
+            send(dq,{i,false,0})
             [signal(:,i),quality(i),sigma(i)] = deconvolve(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv);
+            send(dq,{i,true,seconds(toc)});
         end
     else
-        for i=1:nrRoi            
-            F =fetch1(ns.CChannel & fTpls(i),'signal');            
+        for i=1:nrRoi
+            tic
+            send(dq,{i,false,0});
+            F =fetch1(ns.CChannel & fTpls(i),'signal');
             %F = gpuArray(F); % Tried this but it does not speed up much
-           [signal(:,i),quality(i),sigma(i)]  = deconvolve(F,parms.deconv);           
+            [signal(:,i),quality(i),sigma(i)]  = deconvolve(F,parms.deconv);
+            send(dq,{i,true,seconds(toc)});
         end
     end
     % Make output for ns.C
@@ -86,6 +103,21 @@ else
     recordingInfo = struct('stag',parms.stag);
     varargout = {signal,time,channelInfo,recordingInfo};
 end
+
+
+warning('on','backtrace');
+    function updateMessage(x)
+        [channel,done,thisDuration] =deal(x{:});
+        if done
+            counter= counter+1;
+            secs = toc(tStart);
+            eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);
+            fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
+        else
+            fprintf("Starting channel #%d\n",channel);
+        end
+    end
+
 end
 
 function [out] = calibrate(F,mlparms, autocalparms)
@@ -94,10 +126,17 @@ arguments
     mlparms (1,1) struct
     autocalparms (1,1) struct
 end
-
+global BRICKPROGRESS %#ok<GVMIS>
+BRICKPROGRESS = false;
 isNaN = isnan(F);
 F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
-
+isNegative  = F<0;
+% F is supposed to be F/F0 and therefore positive, but the neuropil
+% correction can occasionally generate negative F.  Set those to zero.
+if any(isNegative)
+    fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
+    F(isNegative) = 0;
+end
 % Autocalibration with the specified parameters
 pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibration
 % Copy values from parms.autocalibration struct to pax
@@ -139,9 +178,17 @@ arguments
     F (:,1) double
     mlparms (1,1) struct
 end
-
+global BRICKPROGRESS %#ok<GVMIS>
+BRICKPROGRESS = false;
 isNaN = isnan(F);
-F(isNaN) = 0; 
+F(isNaN) = 0;
+isNegative  = F<0;
+% F is supposed to be F/F0 and therefore positive, but the neuropil
+% correction can occasionally generate negative F.  Set those to zero.
+if any(isNegative)
+    fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
+    F(isNegative) = 0;
+end
 [spikeTimes,estimatedF,~,parEst] = spk_est(F,mlparms);
 % estimated of the F signal at each sample - used to estimate quality
 quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
