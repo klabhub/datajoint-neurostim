@@ -3,11 +3,13 @@
 -> sbx.Preprocessed
 -> sbx.SpikesParm
 ---
-quality = NULL: float             # Correlation between reconstructed F and F
+quality = NULL: float           # Correlation between reconstructed F and F
 a       = NULL: float           # Calibrated F per spike
-sigma   = NULL: float               # Calibrated noise level    
-tau     = NULL: float                 # Calibrated decay parameter
-failed  : smallint           # Number of ROIs where calibration failed.
+sigma   = NULL: float           # Calibrated noise level    
+tau     = NULL: float           # Calibrated decay parameter
+failed  : smallint              # Number of ROIs where calibration failed.
+neg     : float                 # Fraction of samples with negative F
+nan     : float                 # Fraction of samples with NaN value
 %}
 classdef Mlspikecalibration < dj.Computed
     properties (Dependent)
@@ -113,6 +115,8 @@ classdef Mlspikecalibration < dj.Computed
             key.a = mean([calResults.a],"omitmissing");
             key.quality = mean([calResults.quality],"omitmissing");
             key.failed = sum(isnan([calResults.quality]));
+            key.neg = mean([calResults.neg],"omitmissing");
+            key.nan = mean([calResults.nan],"omitmissing");
             % Store the calibration results             
             key =rmfield(key,'ctag');
             insert(tbl, key);

@@ -31,28 +31,28 @@ parms.deconv.dt = 1./(fetch1(sbx.Preprocessed & key,'framerate')/info.nrPlanes);
 if pv.calibration
     % Call from Mlspikecalibration - run calibration
     assert(all(isfield(parms.calibration,["amin" "amax" "taumin" "taumax" "maxamp" "nrRoi"])),'The %s SpikesParm does not have the required calibration parameters\n',parms.stag)
-    nrCalibrationRoi = min(nrRoi,parms.calibration.nrRoi);
+    nrRoi = min(nrRoi,parms.calibration.nrRoi);
     parms.calibration.dt = parms.deconv.dt; % Match to the framerate
     parms.calibration = rmfield(parms.calibration,"nrRoi");
-    out = repmat(struct('quality',[],'tau',[],'a',[],'sigma',[]),[nrCalibrationRoi 1]);
+    out = repmat(struct('quality',[],'tau',[],'a',[],'sigma',[],'neg',[],'nan',[]),[nrRoi 1]);
     % Get a random subset
-    fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrCalibrationRoi));
+    fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrRoi));
     pool = nsParPool;
     if ~isempty(pool)
-        parfor i=1:nrCalibrationRoi
+        parfor i=1:nrRoi
             dj.conn; % Need to refresh connection in each worker
             warning('off','backtrace'); % Needs to be set on each worker
             tic
-            send(dq,{i,false,0})
+            send(dq,{fTpls(i).channel,false,0})
             out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);
-            send(dq,{i,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,true,seconds(toc)});
         end
     else
-        for i=1:nrCalibrationRoi
+        for i=1:nrRoi
             tic
-            send(dq,{i,false,0});
+            send(dq,{fTpls(i).channel,false,0});
             out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);
-            send(dq,{i,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,true,seconds(toc)});
         end
     end
     varargout{1} = out;
@@ -82,18 +82,18 @@ else
             dj.conn; % Need to refresh connection in each worker
             warning('off','backtrace'); % Needs to be set on each worker
             tic
-            send(dq,{i,false,0})
+            send(dq,{fTpls(i).channel,false,0})
             [signal(:,i),quality(i),sigma(i)] = deconvolve(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv);
-            send(dq,{i,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,true,seconds(toc)});
         end
     else
         for i=1:nrRoi
             tic
-            send(dq,{i,false,0});
+            send(dq,{fTpls(i).channel,false,0});
             F =fetch1(ns.CChannel & fTpls(i),'signal');
             %F = gpuArray(F); % Tried this but it does not speed up much
             [signal(:,i),quality(i),sigma(i)]  = deconvolve(F,parms.deconv);
-            send(dq,{i,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,true,seconds(toc)});
         end
     end
     % Make output for ns.C
@@ -146,7 +146,7 @@ pax.mlspikepar.dographsummary = false;
 [tauEst,ampEst,sigmaEst,events] = spk_autocalibration(F,pax);
 if isempty(events)
     % If events is empty, calibration was not possible
-    out = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan);
+    out = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
 else
     % Rerun with calibrated parms
     pax = mlparms;
@@ -160,6 +160,8 @@ else
     out.tau =tauEst;
     out.a =ampEst;
     out.sigma =parEst.finetune.sigma;
+    out.neg = mean(isNegative);
+    out.nan = mean(isNaN);
 end
 end
 
