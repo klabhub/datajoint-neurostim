@@ -93,11 +93,11 @@ classdef C < dj.Computed & dj.DJInstance
 
     properties (Access = protected)
 
-        channels_ ns.C_channels = ns.C_channels()
-        time_ ns.C_time = ns.C_time()
-        layout_ ns.C_layout = ns.C_layout()
-        channel_coordinates_ ns.C_channel_coordinates = ns.C_channel_coordinates()
-        artifacts_ ns.C_artifacts = ns.C_artifacts()
+        channels_ dj.DJProperty
+        timepoints_ dj.DJProperty
+        layout_ dj.DJProperty
+        channel_coordinates_ dj.DJProperty
+        artifacts_ dj.DJProperty
     
     end
 
@@ -172,14 +172,26 @@ classdef C < dj.Computed & dj.DJInstance
         end     
        
     end
-
+    
     % Get methods
     methods
 
         function ch = get.channels(cTbl)
-            
-            cTbl.channels_.update(cTbl);
+                        
             ch = cTbl.channels_.value;            
+
+        end
+
+        function set.channels(cTbl, value)
+
+            cTbl.channels_ = value;
+
+        end
+
+        function ch = getChannels(self, key)
+
+            ch = fetch(ns.CChannel & self & key, 'channel');
+            ch = [ch.channel];
 
         end
 
