@@ -1082,7 +1082,7 @@ classdef C < dj.Computed & dj.DJInstance
             assert(nrSamples==numel(time) || (numel(time)==3 &&time(3)==nrSamples),'The number of rows in the preprocessed signal does not match the number of time points ')
             assert(nrChannels==numel(channelInfo),'The number of columns in the preprocessed signal does not match the number of channels')
 
-            channels =[channelInfo.nr];
+            thisChannels =[channelInfo.nr];
 
             % Create tuples and insert.
             tpl = mergestruct(key,...
@@ -1095,13 +1095,19 @@ classdef C < dj.Computed & dj.DJInstance
             % Create tpls for each of the channels and insert
             channelsTpl = mergestruct(key,...
                 struct('signal',num2cell(single(signal),1)',...
-                'channel',num2cell(channels(:))));
+                'channel',num2cell(thisChannels(:))));
             
                 for i=1:nrChannels
                     channelsTpl(i).channelinfo = channelInfo(i);
                     if isfield(channelInfo,'name')
                         channelsTpl(i).name = channelInfo(i).name;
-                    end
+                    end                    
+                    channelsTpl(i).min = min(channelsTpl(i).signal,[],"omitmissing");
+                    channelsTpl(i).max = max(channelsTpl(i).signal,[],"omitmissing");
+                    channelsTpl(i).mean = mean(channelsTpl(i).signal,"omitmissing");
+                    channelsTpl(i).median = median(channelsTpl(i).signal,"omitmissing");
+                    channelsTpl(i).stdev = stdev(channelsTpl(i).signal,0,"omitmissing");
+                    channelsTpl(i).nan = mean(isnan(channelsTpl(i).signal));
                 end
                 % Chunking the inserts to avoid overloading the server
                 chunkedInsert(ns.CChannel,channelsTpl);
