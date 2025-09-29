@@ -134,7 +134,7 @@ warning('on','backtrace');
             secs = toc(tStart);
             if msg ==""
                 eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);
-                fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
+                fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(seconds(secs)),eta);
             else
                 fprintf("Deconvolution failed (%d out of %d : %.0f s; %s) \n",counter,nrRoi,seconds(thisDuration),msg);
             end
