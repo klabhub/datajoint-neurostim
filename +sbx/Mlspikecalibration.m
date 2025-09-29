@@ -18,7 +18,10 @@ classdef Mlspikecalibration < dj.Computed
 
     methods 
         function v = get.keySource(tbl)
-            v = sbx.Preprocessed * (sbx.SpikesParm & 'calibration IS NOT NULL ');
+            % Restrict to spikesparm that have a non null calibration
+            % parameter and sessions with a fluorescence entry in the C
+            % table.
+            v = (sbx.Preprocessed * (sbx.SpikesParm & 'calibration IS NOT NULL ')) & (ns.C & proj(sbx.SpikesParm,'fluorescence->ctag'));
         end
     end
     methods (Access=public)

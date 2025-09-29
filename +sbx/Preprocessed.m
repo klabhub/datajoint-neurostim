@@ -10,6 +10,7 @@ nrframesinsession : int     # Total number of frames in the session.
 framerate : double          # Acquisition framerate
 xscale : float              # Scale factor of xpixels (micron/pixel)
 yscale : float              # Scale factor of ypixels  (micron/pixels)
+nrplanes : int              # Number of planes
 %}
 %
 % Calls to python require environment variable NS_CONDA to point to a conda
@@ -543,8 +544,9 @@ classdef Preprocessed < dj.Computed
                         img = ndarrayToArray(opts.item{'meanImg'},single=true);
                         N = double(opts.item{'nframes'});
                         fs = double(opts.item{'fs'});
+                        nrPlanes = double(opts.item{'nplanes'});
                         key.depth = thisDepth;
-                        tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
+                        tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'nrplanes',nrPlanes,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
                         insert(tbl,tpl);
                         % Create the part table with per ROI information
                         makeTuples(sbx.PreprocessedRoi,key)

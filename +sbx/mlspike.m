@@ -9,16 +9,9 @@ assert(exist('xplor.m','file'),"The xplor repository must be on the path for sbx
 assert(exist('spk_est.m','file'),"The spikes repository must be on the path for sbx.mlspike");
 warning('off','backtrace');
 
-parms = fetch(sbx.SpikesParm& struct('stag',key.ctag),'deconv','calibration');
-if isfield(parms.deconv,'fluorescence')
-    % Identifies a specific ns.C row
-    fluorescence = parms.deconv.fluorescence;
-else
-    % Default name for F
-    fluorescence = "fluorescence";
-end
+parms = fetch(sbx.SpikesParm& struct('stag',key.ctag),'deconv','calibration','fluorescence');
 % Query the CChannel table for fluorescence time series
-allF = (ns.C & struct('ctag',fluorescence) )* (ns.CChannel &  proj(sbx.PreprocessedRoi & key,'roi->channel'));
+allF = (ns.C & struct('ctag',parms.fluorescence) )* (ns.CChannel &  proj(sbx.PreprocessedRoi & key,'roi->channel'));
 nrRoi = count(allF);
 
 dq = parallel.pool.DataQueue;
@@ -26,7 +19,7 @@ afterEach(dq, @(x) updateMessage(x));
 counter =0;tStart =tic;
 
 
-info = sbx.readInfoFile(fetch(ns.Experiment & key,'LIMIT 1')); % Read one info to get the number of planes
+info = sbx.readInfoFile(fetch(ns.Experiment & allF,'LIMIT 1')); % Read one info to get the number of planes
 parms.deconv.dt = 1./(fetch1(sbx.Preprocessed & key,'framerate')/info.nrPlanes); % Match dt to framerate
 if pv.calibration
     % Call from Mlspikecalibration - run calibration
@@ -98,7 +91,7 @@ else
     end
     % Make output for ns.C
     cKey = rmfield(key,"ctag");
-    time  =fetch1(ns.C & struct('ctag',fluorescence) & cKey ,'time');  % Same time as the fluorescence
+    time  =fetch1(ns.C & struct('ctag',parms.fluorescence) & cKey ,'time');  % Same time as the fluorescence
     channelInfo = struct('quality',quality,'sigma',sigma);
     recordingInfo = struct('stag',parms.stag);
     varargout = {signal,time,channelInfo,recordingInfo};

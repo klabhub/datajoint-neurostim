@@ -4,6 +4,7 @@ stag         :  varchar(255)     # A  unique name for these preprocessing instru
 ---
 deconv      : blob          # struct containing deconvolution parameters 
 calibration = NULL : blob          # struct containing calibration parameters
+fluorescence ="fluorescence" : varchar(32) # Name (ctag) of the fluorescence data
 %}
 % Currently only for mlspike purposes
 %  deconv.fluorescence can be used to indicate which ns.C ctag contains the
