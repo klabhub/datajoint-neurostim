@@ -1106,7 +1106,7 @@ classdef C < dj.Computed & dj.DJInstance
                     channelsTpl(i).max = max(channelsTpl(i).signal,[],"omitmissing");
                     channelsTpl(i).mean = mean(channelsTpl(i).signal,"omitmissing");
                     channelsTpl(i).median = median(channelsTpl(i).signal,"omitmissing");
-                    channelsTpl(i).stdev = stdev(channelsTpl(i).signal,0,"omitmissing");
+                    channelsTpl(i).stdev = std(channelsTpl(i).signal,0,"omitmissing");
                     channelsTpl(i).nan = mean(isnan(channelsTpl(i).signal));
                 end
                 % Chunking the inserts to avoid overloading the server
