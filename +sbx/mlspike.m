@@ -30,20 +30,32 @@ if pv.calibration
     fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrRoi));
     pool = nsParPool;
     if ~isempty(pool)
-        parfor i=1:nrRoi
+        parfor i=1:nrRoi            
             dj.conn; % Need to refresh connection in each worker
             warning('off','backtrace'); % Needs to be set on each worker
             tic
-            send(dq,{fTpls(i).channel,false,0})
-            out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);
-            send(dq,{fTpls(i).channel,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,false,0,""})
+            try
+                out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);         
+                send(dq,{fTpls(i).channel,true,seconds(toc),""});
+            catch me                
+                out(i) = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
+                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
+            end
+            
         end
     else
-        for i=1:nrRoi
+        for i=1:nrRoi                        
             tic
-            send(dq,{fTpls(i).channel,false,0});
-            out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);
-            send(dq,{fTpls(i).channel,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,false,0,""});
+            try
+                out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);                
+                send(dq,{fTpls(i).channel,true,seconds(toc),""});
+            catch me                
+                out(i) = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
+                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
+            end
+
         end
     end
     varargout{1} = out;
@@ -69,22 +81,36 @@ else
     end
     pool = nsParPool;
     if ~isempty(pool)
-        parfor i=1:nrRoi
+        parfor i=1:nrRoi            
             dj.conn; % Need to refresh connection in each worker
             warning('off','backtrace'); % Needs to be set on each worker
             tic
-            send(dq,{fTpls(i).channel,false,0})
-            [signal(:,i),quality(i),sigma(i)] = deconvolve(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv);
-            send(dq,{fTpls(i).channel,true,seconds(toc)});
+            send(dq,{fTpls(i).channel,false,0,""})
+            try
+                [signal(:,i),quality(i),sigma(i)] = deconvolve(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv);                
+                send(dq,{fTpls(i).channel,true,seconds(toc),""});
+            catch me
+                quality(i)= NaN;
+                sigma(i) = NaN;
+                signal(:,i) = sparse(size(F,1),1,0);
+                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
+            end
         end
     else
-        for i=1:nrRoi
+        for i=1:nrRoi            
             tic
-            send(dq,{fTpls(i).channel,false,0});
+            send(dq,{fTpls(i).channel,false,0,""});
             F =fetch1(ns.CChannel & fTpls(i),'signal');
             %F = gpuArray(F); % Tried this but it does not speed up much
-            [signal(:,i),quality(i),sigma(i)]  = deconvolve(F,parms.deconv);
-            send(dq,{fTpls(i).channel,true,seconds(toc)});
+            try
+                [signal(:,i),quality(i),sigma(i)]  = deconvolve(F,parms.deconv);            
+                send(dq,{fTpls(i).channel,true,seconds(toc),""});
+            catch me
+                quality(i)= NaN;
+                sigma(i) = NaN;
+                signal(:,i) = sparse(size(F,1),1,0);
+                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
+            end
         end
     end
     % Make output for ns.C
@@ -97,13 +123,21 @@ end
 
 
 warning('on','backtrace');
+
+
     function updateMessage(x)
-        [channel,done,thisDuration] =deal(x{:});
+        % Messaging function, mainly for parfor workers (but used for
+        % regular for too)
+        [channel,done,thisDuration,msg] =deal(x{:});
         if done
             counter= counter+1;
             secs = toc(tStart);
-            eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);
-            fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
+            if msg ==""
+                eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);
+                fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(secs),eta);
+            else
+                fprintf("Deconvolution failed (%d out of %d : %.0f s; %s) \n",counter,nrRoi,seconds(thisDuration),msg);
+            end
         else
             fprintf("Starting channel #%d\n",channel);
         end
@@ -119,7 +153,7 @@ arguments
 end
 global BRICKPROGRESS %#ok<GVMIS>
 BRICKPROGRESS = false;
-try 
+
 isNaN = isnan(F);
 F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
 isNegative  = F<0;
@@ -156,10 +190,6 @@ else
     out.neg = mean(isNegative);
     out.nan = mean(isNaN);
 end
-catch me    
-    me.message
-    out = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
-end
 end
 
 function [signal,quality,sigma] = deconvolve(F,mlparms)
@@ -188,17 +218,9 @@ if any(isNegative)
     fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
     F(isNegative) = 0;
 end
-try
 [spikeTimes,estimatedF,~,parEst] = spk_est(F,mlparms);
 % estimated of the F signal at each sample - used to estimate quality
 quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
 sigma =parEst.finetune.sigma;
 signal = sparse(round(spikeTimes./mlparms.dt),1,1,size(F,1),1);
-catch me
-    me.message
-    quality = NaN;
-    sigma = NaN;
-    signal = sparse(size(F,1),1,0);
-
-end
 end
