@@ -119,6 +119,7 @@ arguments
 end
 global BRICKPROGRESS %#ok<GVMIS>
 BRICKPROGRESS = false;
+try 
 isNaN = isnan(F);
 F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
 isNegative  = F<0;
@@ -128,6 +129,7 @@ if any(isNegative)
     fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
     F(isNegative) = 0;
 end
+
 % Autocalibration with the specified parameters
 pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocalibration
 % Copy values from parms.autocalibration struct to pax
@@ -153,6 +155,10 @@ else
     out.sigma =parEst.finetune.sigma;
     out.neg = mean(isNegative);
     out.nan = mean(isNaN);
+end
+catch me    
+    me.message
+    out = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
 end
 end
 
@@ -182,9 +188,17 @@ if any(isNegative)
     fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
     F(isNegative) = 0;
 end
+try
 [spikeTimes,estimatedF,~,parEst] = spk_est(F,mlparms);
 % estimated of the F signal at each sample - used to estimate quality
 quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
 sigma =parEst.finetune.sigma;
 signal = sparse(round(spikeTimes./mlparms.dt),1,1,size(F,1),1);
+catch me
+    me.message
+    quality = NaN;
+    sigma = NaN;
+    signal = sparse(size(F,1),1,0);
+
+end
 end
