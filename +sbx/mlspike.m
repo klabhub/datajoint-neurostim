@@ -17,10 +17,8 @@ nrRoi = count(allF);
 dq = parallel.pool.DataQueue;
 afterEach(dq, @(x) updateMessage(x));
 counter =0;tStart =tic;
-
-
-info = sbx.readInfoFile(fetch(ns.Experiment & allF,'LIMIT 1')); % Read one info to get the number of planes
-parms.deconv.dt = 1./(fetch1(sbx.Preprocessed & key,'framerate')/info.nrPlanes); % Match dt to framerate
+prep = fetch(sbx.Preprocessed & key,'framerate','nrplanes');
+parms.deconv.dt = 1./(prep.framerate/prep.nrplanes); % Match dt to framerate
 if pv.calibration
     % Call from Mlspikecalibration - run calibration
     assert(all(isfield(parms.calibration,["amin" "amax" "taumin" "taumax" "maxamp" "nrRoi"])),'The %s SpikesParm does not have the required calibration parameters\n',parms.stag)
