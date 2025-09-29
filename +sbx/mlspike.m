@@ -23,7 +23,7 @@ nrRoi = count(allF);
 
 dq = parallel.pool.DataQueue;
 afterEach(dq, @(x) updateMessage(x));
-counter =0;
+counter =0;tStart =tic;
 
 
 info = sbx.readInfoFile(fetch(ns.Experiment & key,'LIMIT 1')); % Read one info to get the number of planes
