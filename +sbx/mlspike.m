@@ -13,61 +13,27 @@ parms = fetch(sbx.SpikesParm& struct('stag',key.ctag),'deconv','calibration','fl
 % Query the CChannel table for fluorescence time series
 allF = (ns.C & struct('ctag',parms.fluorescence) )* (ns.CChannel &  proj(sbx.PreprocessedRoi & key,'roi->channel'));
 nrRoi = count(allF);
-
-dq = parallel.pool.DataQueue;
-afterEach(dq, @(x) updateMessage(x));
-counter =0;tStart =tic;
 prep = fetch(sbx.Preprocessed & key,'framerate','nrplanes');
 parms.deconv.dt = 1./(prep.framerate/prep.nrplanes); % Match dt to framerate
+nrSamples= fetch1(allF,'nrsamples','LIMIT 1');
+
 if pv.calibration
     % Call from Mlspikecalibration - run calibration
     assert(all(isfield(parms.calibration,["amin" "amax" "taumin" "taumax" "maxamp" "nrRoi"])),'The %s SpikesParm does not have the required calibration parameters\n',parms.stag)
     nrRoi = min(nrRoi,parms.calibration.nrRoi);
     parms.calibration.dt = parms.deconv.dt; % Match to the framerate
     parms.calibration = rmfield(parms.calibration,"nrRoi");
-    out = repmat(struct('quality',[],'tau',[],'a',[],'sigma',[],'neg',[],'nan',[]),[nrRoi 1]);
-    % Get a random subset
+    % Get a random subset of ROIS and prepare arguments for the parfeval
     fTpls = fetch(allF,sprintf('ORDER BY rand() LIMIT %d',nrRoi));
-    pool = nsParPool;
-    if ~isempty(pool)
-        parfor i=1:nrRoi            
-            dj.conn; % Need to refresh connection in each worker
-            warning('off','backtrace'); % Needs to be set on each worker
-            tic
-            send(dq,{fTpls(i).channel,false,0,""})
-            try
-                out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);         
-                send(dq,{fTpls(i).channel,true,seconds(toc),""});
-            catch me                
-                out(i) = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
-                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
-            end
-            
-        end
-    else
-        for i=1:nrRoi                        
-            tic
-            send(dq,{fTpls(i).channel,false,0,""});
-            try
-                out(i) = calibrate(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv,parms.calibration);                
-                send(dq,{fTpls(i).channel,true,seconds(toc),""});
-            catch me                
-                out(i) = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
-                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
-            end
-
-        end
-    end
-    varargout{1} = out;
+    fun= @calibrate;
+    nrOut = 1;
+    inputArgs = {parms.deconv,parms.calibration};
 else
-    fTpls = fetch(allF);
-    nrSamples= fetch1(allF,'nrsamples','LIMIT 1');
-    signal = nan(nrSamples,nrRoi);
-    quality = nan(nrRoi,1);
-    sigma = nan(nrRoi,1);
+    fTpls = fetch(allF);   
     if  ~isempty(parms.calibration)
         % This SpikesParm specifies a calibration. Look up the results
         calibration = sbx.Mlspikecalibration & struct('stag',parms.stag) & key;
+       %{
         assert(exists(calibration),"No %s calibration found for %s on %s at %s. \n Populate the sbx.Mlspikecalibration table first. ",parms.stag,key.subject,key.session_date,key.starttime);
         calibration =fetch(calibration,'*');
         if isnan(calibration.quality)
@@ -78,71 +44,49 @@ else
             parms.deconv.tau = calibration.tau;
             parms.deconv.finetune.sigma = calibration.sigma;
         end
+       %}
     end
-    pool = nsParPool;
-    if ~isempty(pool)
-        parfor i=1:nrRoi            
-            dj.conn; % Need to refresh connection in each worker
-            warning('off','backtrace'); % Needs to be set on each worker
-            tic
-            send(dq,{fTpls(i).channel,false,0,""})
-            try
-                [signal(:,i),quality(i),sigma(i)] = deconvolve(fetch1(ns.CChannel & fTpls(i),'signal'),parms.deconv);                
-                send(dq,{fTpls(i).channel,true,seconds(toc),""});
-            catch me
-                quality(i)= NaN;
-                sigma(i) = NaN;
-                signal(:,i) = sparse(size(F,1),1,0);
-                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
-            end
-        end
-    else
-        for i=1:nrRoi            
-            tic
-            send(dq,{fTpls(i).channel,false,0,""});
-            F =fetch1(ns.CChannel & fTpls(i),'signal');
-            %F = gpuArray(F); % Tried this but it does not speed up much
-            try
-                [signal(:,i),quality(i),sigma(i)]  = deconvolve(F,parms.deconv);            
-                send(dq,{fTpls(i).channel,true,seconds(toc),""});
-            catch me
-                quality(i)= NaN;
-                sigma(i) = NaN;
-                signal(:,i) = sparse(size(F,1),1,0);
-                send(dq,{fTpls(i).channel,true,seconds(toc),me.message});
-            end
-        end
-    end
-    % Make output for ns.C
+    fun= @deconvolve;
+    nrOut = 3;
+    inputArgs = {parms.deconv};
+end
+
+%Do the work on a parpool (or serial if nsParPool returns empty)
+pool = nsParPool;
+fprintf('Queue %d channels with %d samples for %s at %s\n',nrRoi,nrSamples,func2str(fun),datetime("now"))
+for i=1:5 %nrRoi
+    future(i) = parfeval(pool,fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
+end
+afterEach(future,@done,0,PassFuture = true);  % Update the command line
+wait(future); % Wait for all to complete
+keep = cellfun(@isempty,{future.Error});% Remove errors
+assert(any(keep),'All %s failed on %s on %s @ %s ',func2str(fun),key.subject,key.session_date);
+if pv.calibration
+    % Single struct output
+    varargout{1} = fetchOutputs(future(keep));    % Collect results
+else
+    % Deconvolve call from ns.C/maketuples 
+    [signal,quality,sigma] = fetchOutputs(future(keep),UniformOutput=false);    % Collect results
+    % Convert to necessary output for ns.C/makeTuples
     cKey = rmfield(key,"ctag");
     time  =fetch1(ns.C & struct('ctag',parms.fluorescence) & cKey ,'time');  % Same time as the fluorescence
     channelInfo = struct('quality',quality,'sigma',sigma);
     recordingInfo = struct('stag',parms.stag);
-    varargout = {signal,time,channelInfo,recordingInfo};
+    varargout = {cat(2,signal{:}),time,channelInfo,recordingInfo};
 end
 
 
 warning('on','backtrace');
 
-
-    function updateMessage(x)
-        % Messaging function, mainly for parfor workers (but used for
-        % regular for too)
-        [channel,done,thisDuration,msg] =deal(x{:});
-        if done
-            counter= counter+1;
-            secs = toc(tStart);
-            if msg ==""
-                eta =   datetime("now") + seconds((nrRoi-counter)*secs/counter);
-                fprintf("Deconvolution complete (%d out of %d : %.0f s, cumulative %s min. ETA: %s) \n",counter,nrRoi,seconds(thisDuration),minutes(seconds(secs)),eta);
-            else
-                fprintf("Deconvolution failed (%d out of %d : %.0f s; %s) \n",counter,nrRoi,seconds(thisDuration),msg);
-            end
+    function done(ftr)
+        % Message to comman line that a job is done or errored out
+        if ~isempty(ftr.Error)
+            fprintf("%s failed after %s - (Error: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.Error);
+            ftr.Diary
         else
-            fprintf("Starting channel #%d\n",channel);
+            fprintf("%s is done after %s - (State: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.State);
         end
     end
-
 end
 
 function [out] = calibrate(F,mlparms, autocalparms)
@@ -205,10 +149,11 @@ function [signal,quality,sigma] = deconvolve(F,mlparms)
 %
 arguments
     F (:,1) double
-    mlparms (1,1) struct
+    mlparms (1,1) struct   
 end
 global BRICKPROGRESS %#ok<GVMIS>
 BRICKPROGRESS = false;
+
 isNaN = isnan(F);
 F(isNaN) = 0;
 isNegative  = F<0;
