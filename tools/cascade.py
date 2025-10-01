@@ -167,14 +167,14 @@ def main():
     
     # Optional arguments
     parser.add_argument('--cascade_folder', type=str, 
-                       default='C:/Users/bartk/OneDrive - Rutgers University/Documents/common/github/Cascade',
+                       default='~/Cascade',
                        help='Path to CASCADE installation folder')
     parser.add_argument('--model_folder', type=str, default='Pretrained_models',
                        help='Path to folder containing CASCADE models (default: "Pretrained_models")')
     parser.add_argument('--threshold', type=int, default=0, choices=[0, 1],
                        help='Thresholding option: 0=negative to zero, 1=spike threshold (default: 0)')
-    parser.add_argument('--verbosity', type=int, default=1, choices=[0, 1],
-                       help='Verbosity level: 0=quiet, 1=verbose (default: 1)')
+    parser.add_argument('--verbosity', type=int, default=0, choices=[0, 1],
+                       help='Verbosity level: 0=quiet, 1=verbose (default: 0)')
     
     args = parser.parse_args()
     

@@ -33,12 +33,13 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % Define a row in ns.CParm with the following parms struct 
 % 
 % parms.model = 'Global_EXC_15Hz_smoothing100ms'; 
+% See https://github.com/HelmchenLabSoftware/Cascade/blob/master/Pretrained_models/available_models.yaml
+% for a list of available models.
 % parms.baseline = 'maximin' % How to determine F0
 % parms.sigma = 10; % In seconds ; Gaussian sigma for F0
 % parms.window = 60 ; % in seconds; window for maximim
 % parms.count    = false; % Predict spike counts instead of spike  probability
 % parms.fluorescence = 'fluorescence' ;  % The C channel with the neuropil corrected, raw  F
-%
 % And add this to the CParm table with a call like this
 % cascade = struct('ctag','cascade',...       % Name of this C
 %                  'description','Cascade inferred spikes',... 
@@ -54,8 +55,12 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % suite2p), then the fluorescence rows in ns.C (neuropil corrected F, see
 % sbx.read), and then do spike inference to fill the "cascade" rows of
 % ns.C.
+% parms.options  is  an optional struct with parameters that will be passed to the
+% cascade.py script:
+% parms.options.verbosity  (defaults to 0)
+% parms.options.model_folder  (defaults to 'Pretrained_models')
+% parms.options.threshold (defaults to 0)
 %
-% 
 % BK - Oct 2025
 arguments
     key (1,1) struct
@@ -125,12 +130,22 @@ cfd = fileparts(mfilename('fullpath'));
 toolsPath = strrep(fullfile(fileparts(cfd),'tools'),"\","/");
 cascadeFolder = strrep(cascadeFolder,"\","/");
 pyCmd = sprintf('"%s/cascade.py" "%s" "%s" --cascade_folder "%s"',toolsPath,dffFile,parms.model,cascadeFolder);
+% add options
+if isfield(parms,'options')
+    fn = fieldnames(parms.options);
+    opts  ="";
+    for i=1:numel(fn)
+     opts = opts + " --" + fn{i} + " " + string(parms.options.(fn{i}));
+    end
+    pyCmd =pyCmd + opts;
+end
 pyEnv = pythonRunner + " run -n cascade python ";
 cmd = sprintf('%s %s',pyEnv,pyCmd);
 % Execute
+fprintf('Starting Cascade with %s on %d ROIs @%s\n',parms.model,nrRoi,datetime('now'));
 [status,msg] = system(cmd ,'-echo');
 assert(status==0,'Cascade failed with message %s',msg);
-
+fprintf('Cascade completed successfully.\n');
 %% Read the results file 
 % The cascade.py script in the tools folder puts its output in a file with
 % the same name as the dffFile but _cascade.mat suffix.
@@ -139,7 +154,7 @@ assert(status==0,'Cascade failed with message %s',msg);
 % nrNeurons] with each cell the samples in F at which a spike occurred. 
 
 resultsFile = strrep(dffFile,".mat","_cascade.mat");
-assert(exist(resultsFile,"file"),"The cascade output file %s could not be found.",resultsFile);
+assert(exist(resultsFile,"file"),"The Cascade output file %s could not be found.",resultsFile);
 if parms.count    
     % Convert spike times into a time course of counts.
     sSpike  = load(resultsFile,'sSpike').sSpike;
