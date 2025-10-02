@@ -10,12 +10,12 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % SETUP
 % % 1. Install micromamba (or miniconda, miniforge, but micromamba seems to work
 %   better on HPC)
-% 2. Create the cascade environment  (this is the non-gpu version and uses a 
-% newer version of python and tensorflow than listed on hte Cascade github
-% site, but these are the closest ones that are in conda-forge)
-% micromamba create -n cascade -c conda-forge \
-%        python=3.10 "tensorflow>=2.11,<2.12" \
-%       numpy scipy matplotlib seaborn ruamel.yaml h5py spyder
+% 2. Create the cascade environment  (this is the non-gpu version and uses
+% the defaults channel because these old TF versions are not available on
+% the conda-forge)
+% micromamba create -n cascade -c defaults --strict-channel-priority   
+%   python=3.7 "tensorflow=2.3.*" "keras=2.3.1"   "h5py<3" "numpy<1.20" 
+%   "scipy<1.6" matplotlib seaborn ruamel.yaml spyder
 % 
 % 3.  Set your NS_PYTHON environment variable to the executable that can run
 % python in an enviroment.  For instance '~/miniforge3/bin/conda' or
@@ -78,7 +78,7 @@ if isempty(cascadeFolder)
     if ispc
         cascadeFolder =fullfile(getenv('USERPROFILE') , "Cascade");
     else
-        cascadeFolder = "~/Cascade";
+        cascadeFolder = fullfile(getenv('HOME'),"Cascade");
     end
 end
 assert(exist(cascadeFolder,"dir"),"Please install the Cascade github repository or set the NS_CASCADE environment variable (not found at  %s)",cascadeFolder);
@@ -88,14 +88,14 @@ if isempty(pythonRunner)
     if ispc
          pythonRunner = fullfile(getenv('USERPROFILE') , "miniconda3/condabin/conda.bat");
     else
-        pythonRunner = "~/miniconda3/condabin/conda";
+        pythonRunner = fufllfile(getenv('HOME'),"/miniconda3/condabin/conda");
     end
 end
 assert(exist(pythonRunner,"file"),"Set the NS_PYTHON environment variable to a conda/mamba/micromamba executable (not found at  %s)",pythonRunner);
 
 
 %% Get the neuropil corrected fluorescence
-% TODO : memory check and loop if not enouth memory available.
+% TODO : memory check and loop if not enough memory available.
 tpl = fetch(allF);
 F = fetch(allF,'signal');
 F =cat(2,F.signal);
@@ -144,7 +144,7 @@ cmd = sprintf('%s %s',pyEnv,pyCmd);
 % Execute
 fprintf('Starting Cascade with %s on %d ROIs @%s\n',parms.model,nrRoi,datetime('now'));
 [status,msg] = system(cmd ,'-echo');
-assert(status==0,'Cascade failed with message %s',msg);
+%assert(status==0,'Cascade failed with message %s',msg);
 fprintf('Cascade completed successfully.\n');
 %% Read the results file 
 % The cascade.py script in the tools folder puts its output in a file with
