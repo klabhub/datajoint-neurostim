@@ -109,20 +109,20 @@ classdef Tuning <dj.Computed
                 if pv.average
                     tpl = fetch(tbl,'*');
                     x = tpl(1).tcx';
-                    tc = cat(1,tpl.tc);
-                    pk = cat(1,tpl.peak);
+                    tc = cat(2,tpl.tc);
+                    pk = cat(2,tpl.peak);
                     tc = tc./pk;
-                    y = mean(tc,1)';
-                    n = size(tc,1);
-                    e = std(tc,0,1)'./sqrt(n);
+                    y = mean(tc,2);
+                    n = size(tc,2);
+                    e = std(tc,0,2)./sqrt(n);
                     base= cat(1,tpl.baseline)./pk;
                     b = mean(base);
                     be = std(base)./sqrt(n);
                 else
                     tpl =fetch(tbl,'*',sprintf('LIMIT 1 OFFSET %d',roi-1));
                     x =tpl.tcx';
-                    y =tpl.tc';
-                    e = tpl.tcstd'./sqrt(numel(tpl.nrtrialspercondition));
+                    y =tpl.tc;
+                    e = tpl.tcstd./sqrt(numel(tpl.nrtrialspercondition));
                     b = tpl.baseline;
                     be = tpl.baselinesd/sqrt(tpl.nrtrials);
                 end
@@ -152,8 +152,16 @@ classdef Tuning <dj.Computed
                     end
                     % Prediction on top
                     if isfield(tpl.fit,'estimate')
-                        predictedTuningCurve = feval(tpl.fit.fun,tpl.tcx,tpl.fit.estimate)';
-                        plot(tpl.tcx,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+                        xi =linspace(min(tpl.tcx),max(tpl.tcx),100);
+                        predictedTuningCurve = feval(tpl.fit.fun,xi,tpl.fit.estimate)';
+                        plot(xi,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+                    end
+                    fitTxt  ="";
+                    if isfield(tpl.fit,'r')
+                        fitTxt = sprintf("gof=%.2f ",tpl.fit.r);
+                    end
+                    if isfield(tpl.fit,'splitHalves')
+                        fitTxt = fitTxt + sprintf("split/2=%.2f",tpl.fit.splitHalves);
                     end
                 end
 
@@ -164,10 +172,13 @@ classdef Tuning <dj.Computed
                 % Show parameters in the title
                 if pv.average
                 else
-                    txt=  sprintf('%s (%d trials)- Roi#%d \n', ...
+                    txt=  sprintf("%s (%d trials)- Roi#%d \n", ...
                         tpl.tuningtag,...
                         tpl.nrtrials,...
                         tpl.channel);
+                    if exist("fitTxt","var")
+                        txt = txt + fitTxt;
+                    end
                     title(txt,'Interpreter','None');
                 end
 
@@ -194,10 +205,10 @@ classdef Tuning <dj.Computed
             % double..
 
             onset = get(ns.Experiment & key,parms.stimulus,'prm','startTime','what','trialtime');
-            % Get the spikes for all trials (some may not be part of this
+            % Get the responses for all trials (some may not be part of this
             % condition group)
-            T= align(ns.C & key,channel =key.channel, align=onset, start=parms.start,stop=parms.stop,step=parms.step,interpolation = parms.interpolation,crossTrial=true);
-            response = timetableToDouble(T);
+            T= align(ns.C & key,channel =key.channel, align=onset, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation,crossTrial=true);
+            response = timetableToDouble(T(1:end-1,:));% Last row is nan
             nrTrials = size(response,2);
             xValue= [conditions.value];
             if iscell(xValue)
@@ -211,7 +222,7 @@ classdef Tuning <dj.Computed
             % Average
             tuningCurve = nan(nrConditions,1);
             tuningCurveSd = nan(nrConditions,1);
-            mPerTrial= mean(response(2:end,:),1);
+            mPerTrial= mean(response,1,"omitmissing");
             for c =1:numel(conditions)                
                 tuningCurve(c) = mean(mPerTrial(trialsPerCondition{c}),[1 2],"omitnan");
                 tuningCurveSd(c) = std(mPerTrial(trialsPerCondition{c}),0,2,"omitnan");
@@ -235,7 +246,7 @@ classdef Tuning <dj.Computed
             % Extract baseline (use only trials that are alos used for the
             % tuning).
             [baselineT,~] = align(ns.C&key,channel=key.channel,align = onset,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation,crossTrial =true);
-            baselineResponse = timetableToDouble(baselineT);
+            baselineResponse = timetableToDouble(baselineT(1,:)); % 2nd = last row = nan.
             baseline = mean(baselineResponse(1,stayTrials),"all","omitmissing");
             baselineStd = std(baselineResponse(1,stayTrials),0,"all","omitmissing");
 
@@ -262,8 +273,8 @@ classdef Tuning <dj.Computed
 
 
             %% Insert in table.
-           % tpl = mergestruct(key, estimate);
-           % insert(tbl,tpl);
+            tpl = mergestruct(key, estimate);
+            insert(tbl,tpl);
 
         end
     end

@@ -25,6 +25,7 @@ arguments
     pv.restrict (1,:)  = {}  % Restrict parpopulate(tbl, restrict{:})
     pv.clearJobStatus (1,:) string = "error" %  string array of status flags that should be cleared from the jobs table.
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
+    pv.env (1,:) string = "" % Additions to the environment on the cluster for this call only
 end
 warnState = warning('query');
 warning('off','DataJoint:longCondition');
@@ -83,7 +84,12 @@ nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
     if ~pv.dryrun
-        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts);
+        if pv.env ==""
+            env = pv.env;
+        else
+            env = [o.env pv.env];
+        end
+        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env);        
     end
 else
     fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);
