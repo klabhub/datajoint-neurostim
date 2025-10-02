@@ -1,9 +1,10 @@
-function failed = addFiles(tbl)
+function failed = addFiles(tbl,pv)
 % Given a table of ns.Experiment, populate ns.File with associated EGI files.
 % If this fails on any of the experimtns in the tbl, their tpls are
 % returned in failed.
 arguments
     tbl (1,1) ns.Experiment
+    pv.folder (1,1) string = "" % Look in this folder for EGI mff files/folders 
 end
 failed = [];
 % Process only the experiments that do not have MFF files associated
@@ -15,7 +16,11 @@ end
 for key = fetch(tbl,'ORDER BY session_date')'
     try
         % Loop over the table of experiments
+        if pv.folder ==""
         fldr = folder(ns.Experiment &key);
+        else
+            fldr = pv.folder;
+        end
         [~,nsFile] = fileparts(file(ns.Experiment & key));
         pdm = fetch1(ns.Experiment &key,'paradigm');
         %% Find the core MFF file linked to this experiment
