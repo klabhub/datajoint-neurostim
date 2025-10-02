@@ -148,7 +148,7 @@ cmd = sprintf('%s %s',pyEnv,pyCmd);
 nrSamples  = time(3);
 samples= 0:nrSamples;
 signal = zeros(nrSamples,nrRoi);
-CHUNK = 200;
+CHUNK = 200; % With 70k samples, this results in <20GB of Ram and ~ 20 cores
 for ix =1:CHUNK:nrRoi
     thisRoi = ix:min(ix+CHUNK-1,nrRoi);
     thisNrRoi = numel(thisRoi);
@@ -187,4 +187,3 @@ recordingInfo =struct('source','cascade');
 %% Clean up temp files.
 delete(dffFile);
 delete(resultsFile);
-
