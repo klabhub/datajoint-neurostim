@@ -18,7 +18,8 @@ def run_cascade_inference(dffFile, model_name,
                          padding=np.nan, 
                          trace_noise_levels=None, 
                          verbosity=1,
-                         cascade_folder=None):
+                         cascade_folder=None,
+                         discrete_spikes=True):
     """
     Run CASCADE spike inference on dF/F data from MATLAB files.
     
@@ -44,6 +45,8 @@ def run_cascade_inference(dffFile, model_name,
         Noise levels of traces. If None, calculated automatically (default: None)
     verbosity : int, optional
         Verbosity level (0 or 1, default: 1)
+    discrete_spikes : bool, optional
+        Whether to run discrete spike inference (default: True)
             
     Returns
     -------
@@ -117,31 +120,39 @@ def run_cascade_inference(dffFile, model_name,
             verbosity=verbosity
         )
         
-        discrete, spikeSample = infer_discrete_spikes(
-            spike_prob, model_name, 
-            model_folder=model_folder, 
-            verbosity=verbosity)
-        
-        # Convert spikeSample to cell array format for MATLAB
-        # Each cell contains spike samples as a column vector
-        # Handle both matrix and list formats from infer_discrete_spikes
-        spikeSample_cell = []
-        if isinstance(spikeSample, np.ndarray):
-            # Convert matrix to list of arrays (one per neuron)
-            spikeSample = [spikeSample[i, :] for i in range(spikeSample.shape[0])]
-        for neuron_spikes in spikeSample:
-            if len(neuron_spikes) > 0:
-                spikeSample_cell.append(neuron_spikes.reshape(-1, 1))  # Column vector
-            else:
-                spikeSample_cell.append(np.array([]).reshape(0, 1))   # Empty column vector
-        spikeSample = spikeSample_cell
-       
+        # Conditionally run discrete spike inference
+        if discrete_spikes:
+            if verbosity >= 1:
+                print("Running discrete spike inference...")
+            discrete, spikeSample = infer_discrete_spikes(
+                spike_prob, model_name, 
+                model_folder=model_folder, 
+                verbosity=verbosity)
+            
+            # Convert spikeSample to cell array format for MATLAB
+            # Each cell contains spike samples as a column vector
+            # Handle both matrix and list formats from infer_discrete_spikes
+            spikeSample_cell = []
+            if isinstance(spikeSample, np.ndarray):
+                # Convert matrix to list of arrays (one per neuron)
+                spikeSample = [spikeSample[i, :] for i in range(spikeSample.shape[0])]
+            for neuron_spikes in spikeSample:
+                if len(neuron_spikes) > 0:
+                    spikeSample_cell.append(neuron_spikes.reshape(-1, 1))  # Column vector
+                else:
+                    spikeSample_cell.append(np.array([]).reshape(0, 1))   # Empty column vector
+            spikeSample = spikeSample_cell
         
         # Save results
         # Create output path by replacing extension with _cascade.mat
         base_name = os.path.splitext(dffFile)[0]
         output_path = base_name + '_cascade.mat'
-        sio.savemat(output_path, {'pSpike': spike_prob.T , 'sSpike': spikeSample})
+        
+        # Save different data depending on whether discrete spikes were computed
+        if discrete_spikes:
+            sio.savemat(output_path, {'pSpike': spike_prob.T , 'sSpike': spikeSample})
+        else:
+            sio.savemat(output_path, {'pSpike': spike_prob.T})
 
         if verbosity >= 1:
             print(f"Results saved to: {output_path}")            
@@ -175,6 +186,8 @@ def main():
                        help='Thresholding option: 0=negative to zero, 1=spike threshold (default: 0)')
     parser.add_argument('--verbosity', type=int, default=0, choices=[0, 1],
                        help='Verbosity level: 0=quiet, 1=verbose (default: 0)')
+    parser.add_argument('--discrete_spikes', action='store_true', default=False,
+                       help='Run discrete spike inference (default: False)')
     
     args = parser.parse_args()
     
@@ -185,7 +198,8 @@ def main():
         cascade_folder=args.cascade_folder,
         model_folder=args.model_folder,
         threshold=args.threshold,
-        verbosity=args.verbosity
+        verbosity=args.verbosity,
+        discrete_spikes=args.discrete_spikes
     )
     
     if args.verbosity >= 1:
