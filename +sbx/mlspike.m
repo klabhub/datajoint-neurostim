@@ -33,7 +33,6 @@ else
     if  ~isempty(parms.calibration)
         % This SpikesParm specifies a calibration. Look up the results
         calibration = sbx.Mlspikecalibration & struct('stag',parms.stag) & key;
-       %{
         assert(exists(calibration),"No %s calibration found for %s on %s at %s. \n Populate the sbx.Mlspikecalibration table first. ",parms.stag,key.subject,key.session_date,key.starttime);
         calibration =fetch(calibration,'*');
         if isnan(calibration.quality)
@@ -44,18 +43,22 @@ else
             parms.deconv.tau = calibration.tau;
             parms.deconv.finetune.sigma = calibration.sigma;
         end
-       %}
+       
     end
     fun= @deconvolve;
     nrOut = 3;
-    inputArgs = {parms.deconv};
+    inputArgs = {parms.deconv};    
 end
 
 %Do the work on a parpool (or serial if nsParPool returns empty)
 pool = nsParPool;
 fprintf('Queue %d channels with %d samples for %s at %s\n',nrRoi,nrSamples,func2str(fun),datetime("now"))
 for i=1:nrRoi
-    future(i) = parfeval(pool,fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
+    if isempty(pool)
+        future(i) = parfeval(fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
+    else
+        future(i) = parfeval(pool,fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
+    end
 end
 afterEach(future,@done,0,PassFuture = true);  % Update the command line
 wait(future); % Wait for all to complete
@@ -70,7 +73,7 @@ else
     % Convert to necessary output for ns.C/makeTuples
     cKey = rmfield(key,"ctag");
     time  =fetch1(ns.C & struct('ctag',parms.fluorescence) & cKey ,'time');  % Same time as the fluorescence
-    channelInfo = struct('quality',quality,'sigma',sigma);
+    channelInfo = struct('quality',quality,'sigma',sigma,'nr',{fTpls(1:nrRoi).channel}');
     recordingInfo = struct('stag',parms.stag);
     varargout = {cat(2,signal{:}),time,channelInfo,recordingInfo};
 end
@@ -79,10 +82,12 @@ end
 warning('on','backtrace');
 
     function done(ftr)
-        % Message to comman line that a job is done or errored out
+        % Message to command line that a job is done or errored out
         if ~isempty(ftr.Error)
-            fprintf("%s failed after %s - (Error: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.Error);
-            ftr.Diary
+            fprintf("%s failed after %s - (Error: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.Error.message);
+            if ~isempty(ftr.Diary)
+                ftr.Diary
+            end
         else
             fprintf("%s is done after %s - (State: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.State);
         end
@@ -153,7 +158,6 @@ arguments
 end
 global BRICKPROGRESS %#ok<GVMIS>
 BRICKPROGRESS = false;
-
 isNaN = isnan(F);
 F(isNaN) = 0;
 isNegative  = F<0;
@@ -167,5 +171,7 @@ end
 % estimated of the F signal at each sample - used to estimate quality
 quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
 sigma =parEst.finetune.sigma;
-signal = sparse(round(spikeTimes./mlparms.dt),1,1,size(F,1),1);
+% Sparse would be nice here, but mym cannot handle those.
+signal = brick.timevector(spikeTimes,(0:numel(F)-1)*mlparms.dt,'count');
+
 end
