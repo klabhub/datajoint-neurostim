@@ -71,13 +71,14 @@ if pv.clearJobStatus~=""
             retriedJobs = innerjoin(jobs(sameTableJobs),keysourceTable,'Keys',keysourceTable.Properties.VariableNames,'LeftVariables',["table_name" "key_hash"]);
             fprintf("%s Deleting %d jobs from %s to retry\n",drMsg,height(retriedJobs),jobsTableName)
             if ~pv.dryrun
-                delQuick( sameTableJobs & table2struct(retriedJobs) )                    
-            end            
-        else
-            fprintf('No jobs table (%s) on disk. \n',jobsTable)
+                delQuick( sameTableJobs & table2struct(retriedJobs) )
+            end
         end
+    else
+        fprintf('No jobs table (%s) on disk. \n',jobsTableName)
     end
 end
+
 
 
 nrChildren = count(tbl);
@@ -89,9 +90,9 @@ if nrToDo >0
         if pv.env ==""
             env = pv.env;
         else
-            env = [o.env pv.env];
+            env = [cls.env pv.env];
         end
-        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);        
+        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);
     end
 else
     fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);
