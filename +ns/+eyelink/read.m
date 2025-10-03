@@ -68,18 +68,23 @@ trialIDTimeEyelink  = nan(nrTrials,1);
 trialIDTimeEyelink(trials) = [trialIDEvents.sttime]; % The time of all TRIALID events on the eyelink clock
 % Get the equivalent time from Neurostim.
 trialIDTimeNeurostim = get(ns.Experiment & key,'eye','prm','eyeClockTime','atTrialTime',0,'what','clocktime');
-% Fit a line to translate eyelink time to nsTime. Even though some TRIALID
-% events can be lost or delayed, a linear fit does a good job linking the
-% two
-clockParms =  polyfit(trialIDTimeEyelink(~missingTrials),trialIDTimeNeurostim(~missingTrials),1);
-resid = polyval(clockParms,trialIDTimeEyelink(~missingTrials))-trialIDTimeNeurostim(~missingTrials);
-slope = clockParms(1);
-fprintf('Clock residuals: %3.3f ms +/- %3.3f ms, drift %3.3f ms/ms. %d missing TRIALID messages. \n',mean(resid),std(resid),slope-1,sum(missingTrials));
-if (abs(slope-1)>0.5)
-    error('Neurostim-Eyelink Clock skew larger than 0.5 ms/ms detected in edf file %s',filename);
-end
-if (mean(missingTrials)>0.1)
-    warning('More than 10% TRIALIDs are missing from edf file %s. ',filename);
+if nrTrials >3
+    % Fit a line to translate eyelink time to nsTime. Even though some TRIALID
+    % events can be lost or delayed, a linear fit does a good job linking the
+    % two
+    clockParms =  polyfit(trialIDTimeEyelink(~missingTrials),trialIDTimeNeurostim(~missingTrials),1);
+    resid = polyval(clockParms,trialIDTimeEyelink(~missingTrials))-trialIDTimeNeurostim(~missingTrials);
+    slope = clockParms(1);
+    fprintf('Clock residuals: %3.3f ms +/- %3.3f ms, drift %3.3f ms/ms. %d missing TRIALID messages. \n',mean(resid),std(resid),slope-1,sum(missingTrials));
+    if (abs(slope-1)>0.5)
+        error('Neurostim-Eyelink Clock skew larger than 0.5 ms/ms detected in edf file %s',filename);
+    end
+    if (mean(missingTrials)>0.1)
+        warning('More than 10% TRIALIDs are missing from edf file %s. ',filename);
+    end
+else
+    fprintf('Too few trials for a clock fit. Assuming zero drift (almost certainly ok!).\n')
+    clockParms = [1 trialIDTimeNeurostim(1) - trialIDTimeEyelink(1)];
 end
 % Convert eyelink sample time to neurostim time
 time  = polyval(clockParms,double(data.FSAMPLE.time))';
