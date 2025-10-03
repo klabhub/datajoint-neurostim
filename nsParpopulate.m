@@ -26,6 +26,7 @@ arguments
     pv.clearJobStatus (1,:) string = "error" %  string array of status flags that should be cleared from the jobs table.
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
     pv.env (1,:) string = "" % Additions to the environment on the cluster for this call only
+    pv.jobName (1,1) string = "" % Informative name for the job used in SLURM sacct. Does not need to be unique
 end
 warnState = warning('query');
 warning('off','DataJoint:longCondition');
@@ -53,33 +54,34 @@ end
 % matlab)
 exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
 
+keysource =(tbl.getKeySource & pv.restrict) -tbl;
+
 if pv.clearJobStatus~=""
     % Check the jobs table to see if something needs to be cleared
-    jobsTable = extractBefore(tbl.className,'.') + ".Jobs";
-    if exist(jobsTable,"class")
-        jt = feval(jobsTable);
-        jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
-        if count(jt)>0
-            fprintf('%s %d related jobs in %s will be deleted.\n',drMsg,count(jt),jobsTable)
+    jobsTableName = extractBefore(tbl.className,'.') + ".Jobs";
+    if exist(jobsTableName,"class")
+        % Find related jobs (i.e. filling the same table and the specified status)
+        sameTableJobs = feval(jobsTableName) & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
+        if count(sameTableJobs)>0
+            % Determine which of these jobs will be retried by the current
+            % populate call
+            keysourceTable = fetchtable(keysource);
+            % Get the complete jobs table as a matlab table and join with
+            % the keysrouce to get the jobs that will be retried
+            retriedJobs = innerjoin(jobs(sameTableJobs),keysourceTable,'Keys',keysourceTable.Properties.VariableNames,'LeftVariables',["table_name" "key_hash"]);
+            fprintf("%s Deleting %d jobs from %s to retry\n",drMsg,height(retriedJobs),jobsTableName)
             if ~pv.dryrun
-                deletedErrorJobs = jobs(jt);
-                deletedErrorJobs(:,:)
-                delQuick(jt)
-            end
+                delQuick( sameTableJobs & table2struct(retriedJobs) )                    
+            end            
+        else
+            fprintf('No jobs table (%s) on disk. \n',jobsTable)
         end
-    else
-        fprintf('No jobs table (%s) on disk. \n',jobsTable)
     end
 end
 
-restrict(tbl,pv.restrict);
-ks = getKeySource(tbl);
-restrict(ks,pv.restrict);
-nrParents= count(ks);
-restrict(tbl,pv.restrict);
-todo = ks-tbl;
+
 nrChildren = count(tbl);
-nrToDo = count(todo);
+nrToDo = count(keysource);
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
@@ -89,7 +91,7 @@ if nrToDo >0
         else
             env = [o.env pv.env];
         end
-        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env);        
+        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);        
     end
 else
     fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);

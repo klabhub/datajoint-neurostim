@@ -34,7 +34,7 @@ arguments
     parms (1,1) struct  % The preprocessing parameters
 end
 
-%% Fetch the file to read (ns.Cont has already checked that it exists)
+%% Fetch the file to read (ns.C has already checked that it exists)
 filename = fullfile(folder(ns.Experiment &key),fetch1(ns.File &key,'filename'));
 
 

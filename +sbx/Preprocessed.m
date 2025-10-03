@@ -369,7 +369,7 @@ classdef Preprocessed < dj.Computed
             if count(ttlQry) ~= count(analyzeExptThisSession)*2                
                 ttlQry %#ok<NOPRT>
                 analyzeExptThisSession %#ok<NOPRT>
-                error("LaserOn TTL events not found for all experiments: \n")
+                error("LaserOn TTL events not found for all experiments (populate(ns.c,ctag=""mdaq"")): \n")
             end
 
             dataFldr = file(analyzeExptThisSession);
@@ -544,9 +544,9 @@ classdef Preprocessed < dj.Computed
                         img = ndarrayToArray(opts.item{'meanImg'},single=true);
                         N = double(opts.item{'nframes'});
                         fs = double(opts.item{'fs'});
-                        nrPlanes = double(opts.item{'nplanes'});
+                        nplanes = double(opts.item{'nplanes'});
                         key.depth = thisDepth;
-                        tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'nrplanes',nrPlanes,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
+                        tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'nrplanes',nplanes,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
                         insert(tbl,tpl);
                         % Create the part table with per ROI information
                         makeTuples(sbx.PreprocessedRoi,key)
