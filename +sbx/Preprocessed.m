@@ -81,10 +81,10 @@ classdef Preprocessed < dj.Computed
     end
     methods (Access=public)
         function [tpl] = mismatch(tbl,pv)
-            arguments 
+            arguments
                 tbl (1,1) sbx.Preprocessed
                 pv.verbose (1,1) logical = true
-            end 
+            end
             %  Compares the number of frames in the preprocessed data
             % and the frames assigned to each of the experiments from the
             % session. If these are not the same, the key for the
@@ -97,7 +97,7 @@ classdef Preprocessed < dj.Computed
                 s = ns.Session & key;
                 %  Find the experiments that should be in the preprocessed data
                 exptWithSbx = (ns.Experiment & s) & (ns.File & 'extension=".sbx"');
-            
+
                 % Determine number of frames per expt
                 info = sbx.readInfoFile(exptWithSbx);
                 framesInExpt = [info.nrFrames];
@@ -105,7 +105,7 @@ classdef Preprocessed < dj.Computed
                 delta = key.nrframesinsession - sum(framesInExpt);
                 if delta ~=0
                     cntr = cntr+1;
-                    tpl(cntr) = mergestruct(key,struct('delta',delta,'nrframesinexpt',framesInExpt)); 
+                    tpl(cntr) = mergestruct(key,struct('delta',delta,'nrframesinexpt',framesInExpt));
                     if pv.verbose
                         exptWithSbx %#ok<NOPRT>
                     end
@@ -366,7 +366,7 @@ classdef Preprocessed < dj.Computed
                 ttlQry = ns.PluginParameter & 'plugin_name = "mdaq"' & 'property_name LIKE "laserOn%"' & analyzeExptThisSession;
             end
 
-            if count(ttlQry) ~= count(analyzeExptThisSession)*2                
+            if count(ttlQry) ~= count(analyzeExptThisSession)*2
                 ttlQry %#ok<NOPRT>
                 analyzeExptThisSession %#ok<NOPRT>
                 error("LaserOn TTL events not found for all experiments (populate(ns.c,ctag=""mdaq"")): \n")
@@ -380,36 +380,45 @@ classdef Preprocessed < dj.Computed
                 dataFldr{noDir} %#ok<NOPRT>
                 error('SBX file folder not found');
             end
+
+            scale = [];
+            nrPlanes = [];
+            depth = [];
+            xy = [];
+            frames =[];
+            ttl = [];
+            for e=fetch(expts)'
+                info        = sbx.readInfoFile(e);
+                scale       =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
+                nrPlanes    = [nrPlanes info.nrPlanes]; %#ok<AGROW>
+                depth       = [depth info.config.knobby.pos.z]; %#ok<AGROW>
+                xy          = [xy; info.config.knobby.pos.x info.config.knobby.pos.y]; %#ok<AGROW>
+                frames      = [frames; info.nrFrames]; %#ok<AGROW>
+                thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;
+                ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
+                metaE = ns.ExperimentMeta & e & struct('meta_name',{'nrframes','nrplanes'}');
+                if exists(metaE)
+                    del(metaE); % Replace
+                end
+                tpl = mergestruct(e,struct('meta_name',{'nrframes','nrplanes'}','meta_value',{num2str(info.nrFrames),num2str(info.nrPlanes)}'));
+                insert(ns.ExperimentMeta,tpl);
+
+            end
+
+            assert(all(ttl==frames+1),"Mismatch between the TTLs in mdaq and frames in sbx.")
+            depth = round(100*depth)/100; % Two decimal points used in sql
+            [grp,grpDepth]    =    findgroups(depth);
+            nrDepths= numel(grpDepth);
+
             switch (parms.toolbox)
                 case 'suite2p'
                     condaEnvironment = "suite2p";
                     setupPython(condaEnvironment);
                     condaFldr = extractBefore(pyenv().Home,'envs');
 
-                    %% Check that each experiment used the same scaling
-                    scale = [];
-                    nrPlanes = [];
-                    depth = [];
-                    xy = [];
-                    frames =[];
-                    ttl = [];
-                    for e=fetch(analyzeExptThisSession)'
-                        info        = sbx.readInfoFile(e);
-                        scale       =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
-                        nrPlanes    = [nrPlanes info.nrPlanes]; %#ok<AGROW>
-                        depth       = [depth info.config.knobby.pos.z]; %#ok<AGROW>
-                        xy          = [xy; info.config.knobby.pos.x info.config.knobby.pos.y]; %#ok<AGROW> 
-                        frames      = [frames; info.nrFrames]; %#ok<AGROW>
-                        thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;                      
-                        ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
-                    end
-                    assert(all(ttl==frames+1),"Mismatch between the TTLs in mdaq and frames in sbx.")
-                    depth = round(100*depth)/100; % Two decimal points. 
-                    [grp,grpDepth]    =    findgroups(depth);
-                    nrDepths= numel(grpDepth);
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
-                        thisGrp = grp==depthNr;                       
+                        thisGrp = grp==depthNr;
                         thisScale = scale(thisGrp,:);
                         thisNrPlanes = nrPlanes(thisGrp);
                         thisDepth = grpDepth(depthNr);
@@ -419,7 +428,7 @@ classdef Preprocessed < dj.Computed
                         assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
                         uNrPlanes= unique(thisNrPlanes);
                         assert(isscalar(uNrPlanes),"Different number of planes across experiments in this session.");
-                                        
+
                         %% Check whether preprocessing has already completed for this plane/depth
                         for plane = 0:uNrPlanes-1
                             if nrDepths ==1
@@ -556,7 +565,7 @@ classdef Preprocessed < dj.Computed
                 otherwise
                     error('Unknown preprocessing toolbox %s',parms.toolbox);
             end
-            
+
         end
     end
 end
