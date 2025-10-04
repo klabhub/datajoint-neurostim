@@ -554,6 +554,7 @@ classdef Preprocessed < dj.Computed
                         opts =py.numpy.load(opsFile,allow_pickle=true);
                         img = ndarrayToArray(opts.item{'meanImg'},single=true);
                         N = double(opts.item{'nframes'});
+                        assert(N==sum(frames),"The number of frames in the npy file does not match the frames across experiments. ")
                         fs = double(opts.item{'fs'});
                         nplanes = double(opts.item{'nplanes'});
                         key.depth = thisDepth;
