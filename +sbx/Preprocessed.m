@@ -396,13 +396,25 @@ classdef Preprocessed < dj.Computed
                 frames      = [frames; info.nrFrames]; %#ok<AGROW>
                 thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;
                 ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
+                % Store the nrframes and nrplanes as meta data for quicker
+                % access and sanity checks.
                 metaE = ns.ExperimentMeta & e & struct('meta_name',{'nrframes','nrplanes'}');
                 if exists(metaE)
-                    del(metaE); % Replace
+                    del(metaE); % Replace below
                 end
                 tpl = mergestruct(e,struct('meta_name',{'nrframes','nrplanes'}','meta_value',{num2str(info.nrFrames),num2str(info.nrPlanes)}'));
                 insert(ns.ExperimentMeta,tpl);
-
+                % Because meta data are assumed to originate from json,
+                % best to save to json too.
+                jsonFile = strrep(file(ns.Experiment &e),'.mat','.json');
+                if exist(jsonFile,"file")
+                    metaData = readJson(jsonFile);
+                    metaData.nrframes= info.nrFrames;
+                    metaData.nrplanes = info.nrPlanes;
+                else
+                    metaData = struct('nrframes',info,nrFrames,'nrplanes',info,nrPlanes);
+                end
+                writeJson(metaData,jsonFile);                
             end
 
             assert(all(ttl==frames+1),"Mismatch between the TTLs in mdaq and frames in sbx.")
