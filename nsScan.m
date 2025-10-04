@@ -424,9 +424,11 @@ if pv.readJson || pv.jsonOnly
             thisJson = struct;
         end
         metaFieldsFromJson = fieldnames(thisJson);
+        warning('off','MATLAB:table:RowsAddedNewVars')
         for j=1:numel(metaFieldsFromJson)
             tExperiment{i,metaFieldsFromJson{j}} = thisJson.(metaFieldsFromJson{j});
         end
+        warning('on','MATLAB:table:RowsAddedNewVars')
         % If a definition file is used the default meta is "" but if this
         % is meta data read from a json file without a definition, then
         % every meta without a json will be initialized as []. Here we

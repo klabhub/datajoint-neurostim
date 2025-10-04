@@ -333,6 +333,18 @@ classdef Preprocessed < dj.Computed
                 end
             end
         end
+
+        function addMeta(tbl)
+            for key =fetch(tbl)'
+                thisSession =(ns.Session & key);
+                allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+                analyzeExptThisSession = analyze(allExptThisSession,strict=false);
+                for e=fetch(analyzeExptThisSession)'
+                    info        = sbx.readInfoFile(e);
+                    sbx.Preprocessed.addMetaForExpt(e,info);
+                end
+            end
+        end
     end
     methods (Access=protected)
 
@@ -342,17 +354,14 @@ classdef Preprocessed < dj.Computed
             % Set the output folder to be
             % subject.suite2p.preprocessing
             % in the session folder
-            resultsFolder = [key.subject '.' parms.toolbox '.' key.prep];
+            resultsFolder = sprintf('%s.%s.%s',key.subject,parms.toolbox,key.prep);
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
 
             thisSession =(ns.Session & key);
-            if strcmpi(parms.toolbox,'suite2p')
-                allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
-            else
-                error('NIY');
-            end
+            allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+
             analyzeExptThisSession = analyze(allExptThisSession,strict=false);
             assert(exists(analyzeExptThisSession),"No analyzable experiments in this session %s on %s",key.subject,key.session_date); % Should not really happen with proper keysource.
 
@@ -396,27 +405,8 @@ classdef Preprocessed < dj.Computed
                 frames      = [frames; info.nrFrames]; %#ok<AGROW>
                 thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;
                 ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
-                % Store the nrframes and nrplanes as meta data for quicker
-                % access and sanity checks.
-                metaE = ns.ExperimentMeta & e & struct('meta_name',{'nrframes','nrplanes'}');
-                if exists(metaE)
-                    del(metaE); % Replace below
-                end
-                tpl = mergestruct(e,struct('meta_name',{'nrframes','nrplanes'}','meta_value',{num2str(info.nrFrames),num2str(info.nrPlanes)}'));
-                insert(ns.ExperimentMeta,tpl);
-                % Because meta data are assumed to originate from json,
-                % best to save to json too.
-                jsonFile = strrep(file(ns.Experiment &e),'.mat','.json');
-                if exist(jsonFile,"file")
-                    metaData = readJson(jsonFile);
-                    metaData.nrframes= info.nrFrames;
-                    metaData.nrplanes = info.nrPlanes;
-                else
-                    metaData = struct('nrframes',info,nrFrames,'nrplanes',info,nrPlanes);
-                end
-                writeJson(metaData,jsonFile);                
+                sbx.Preprocessed.addMetaForExpt(e,info);
             end
-
             assert(all(ttl==frames+1),"Mismatch between the TTLs in mdaq and frames in sbx.")
             depth = round(100*depth)/100; % Two decimal points used in sql
             [grp,grpDepth]    =    findgroups(depth);
@@ -578,6 +568,39 @@ classdef Preprocessed < dj.Computed
                     error('Unknown preprocessing toolbox %s',parms.toolbox);
             end
 
+        end
+    end
+
+    methods (Static, Access =  public)
+        function  addMetaForExpt(expt,info)
+            % Store the nrframes and nrplanes as meta data for quicker
+            % access and sanity checks. Called from makeTuples when data
+            % are preprocessed (or from addMeta() to posthoc correct).
+            arguments
+                expt (1,1) struct   
+                info (1,1) struct
+            end
+
+            metaE = ns.ExperimentMeta & expt & struct('meta_name',{'nrframes','nrplanes','depth'}');
+            if exists(metaE)
+                delQuick(metaE); % Replace below
+            end            
+            tpl = mergestruct(expt,struct('meta_name',{'nrframes','nrplanes','depth'}','meta_value',{num2str(info.nrFrames),num2str(info.nrPlanes),num2str(info.config.knobby.pos.z)}'));
+            insert(ns.ExperimentMeta,tpl);
+            % Because meta data are assumed to originate from json (and are
+            % sometimes deleted to be replaced with values from json) 
+            % save to json too so that any del/replace operation will work.
+            jsonFile = strrep(file(ns.Experiment &expt),'.mat','.json');
+            if exist(jsonFile,"file")
+                metaData = readJson(jsonFile);
+                metaData(1).nrframes= info.nrFrames; % use (1) in case the metaDat read from file is empty struct
+                metaData(1).nrplanes = info.nrPlanes;
+                metaData(1).depth =info.config.knobby.pos.z;
+            else
+                metaData = struct('nrframes',info,nrFrames,'nrplanes',info,nrPlanes,'depth',info.config.knobby.pos.z);
+            end
+            writeJson(metaData,jsonFile);
+            fprintf("Wrote %s\n",jsonFile);
         end
     end
 end
