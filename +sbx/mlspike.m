@@ -54,6 +54,7 @@ end
 pool = nsParPool;
 fprintf('Queue %d channels with %d samples for %s at %s\n',nrRoi,nrSamples,func2str(fun),datetime("now"))
 tStart = tic;
+nrRoiDone = 0;
 for i=1:nrRoi
     future(i) = parfeval(pool,fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
 end
@@ -80,14 +81,18 @@ warning('on','backtrace');
 
     function done(ftr)
         % Message to command line that a job is done or errored out
+        nrRoiDone = nrRoiDone +1;
         if ~isempty(ftr.Error)
             fprintf("%s failed after %s - (Error: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.Error.message);
             if ~isempty(ftr.Diary)
                 ftr.Diary
             end
         else
-            cumTime= seconds(toc(tStart));cumTime.Format = "hh:mm:ss";
-            fprintf("%s is done after %s - (State: %s). Cumulative time: %s.\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.State,cumTime);
+            cumTime= seconds(toc(tStart));
+            cumTime.Format = "hh:mm:ss";
+            secsPer = cumTime/nrRoiDone;
+            timeRemaining = (nrRoi-nrRoiDone)*secsPer;
+            fprintf("%s is done (%d/%d) after %s - (State: %s). Cumulative time: %s. Remaining: %s \n ",func2str(ftr.Function),nrRoiDone,nrRoi,ftr.RunningDuration,ftr.State,cumTime,timeRemaining);
         end
     end
 end
