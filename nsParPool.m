@@ -42,7 +42,7 @@ if isnan(pv.nrWorkers)
     % exists     
 elseif pv.nrWorkers==0
     % Explicitly disallow using a pool (but do not close it).
-    pool = [];
+    pool = parallel.Pool.empty;
 elseif isempty(pool)
     % create a pool with the requested number of workers
     pool = parpool('Processes',pv.nrWorkers,'SpmdEnabled',pv.spmdEnabled);
