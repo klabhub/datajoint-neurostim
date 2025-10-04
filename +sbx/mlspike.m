@@ -54,11 +54,7 @@ end
 pool = nsParPool;
 fprintf('Queue %d channels with %d samples for %s at %s\n',nrRoi,nrSamples,func2str(fun),datetime("now"))
 for i=1:nrRoi
-    if isempty(pool)
-        future(i) = parfeval(fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
-    else
-        future(i) = parfeval(pool,fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
-    end
+    future(i) = parfeval(pool,fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
 end
 afterEach(future,@done,0,PassFuture = true);  % Update the command line
 wait(future); % Wait for all to complete

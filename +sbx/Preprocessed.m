@@ -387,7 +387,7 @@ classdef Preprocessed < dj.Computed
             xy = [];
             frames =[];
             ttl = [];
-            for e=fetch(expts)'
+            for e=fetch(analyzeExptThisSession)'
                 info        = sbx.readInfoFile(e);
                 scale       =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
                 nrPlanes    = [nrPlanes info.nrPlanes]; %#ok<AGROW>

@@ -187,3 +187,4 @@ recordingInfo =struct('source','cascade');
 %% Clean up temp files.
 delete(dffFile);
 delete(resultsFile);
+
