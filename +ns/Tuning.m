@@ -82,7 +82,7 @@ classdef Tuning <dj.Computed
                 end
             end
             % And then restrict the full table by the set of found tuples.
-            v = (ns.CChannel*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;
+            v = (proj(ns.CChannel)*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;
         end
     end
 
