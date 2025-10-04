@@ -20,7 +20,7 @@ for i=1:numel(stack)
 end
 % Combine and sort
 keyT =addvars(keyT,table_name,status,message,errfile, stack,timestamp,key_hash);
-keyT = convertvars(keyT,@iscellstr,'string');
+keyT = convertvars(keyT,@(x) iscellstr(x) || ischar(x),'string');
 keyT = movevars(keyT,["errfile","message"],"Before",1);
 keyT = sortrows(keyT,"timestamp","descend");
 end
