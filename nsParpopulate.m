@@ -56,7 +56,7 @@ exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
 
 keysource =(tbl.getKeySource & pv.restrict) -tbl;
 
-if pv.clearJobStatus~=""
+if exists(keysource) &&  pv.clearJobStatus~=""
     % Check the jobs table to see if something needs to be cleared
     jobsTableName = extractBefore(tbl.className,'.') + ".Jobs";
     if exist(jobsTableName,"class")
@@ -95,7 +95,7 @@ if nrToDo >0
         cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);
     end
 else
-    fprintf("%s Nothing to populate for %s (table has %d key source rows and %d already computed)\n",drMsg,cmd,nrParents,nrChildren);
+    fprintf("%s Nothing to populate for %s (table has %d rows already computed)\n",drMsg,cmd,nrChildren);
 end
 
 warning(warnState);

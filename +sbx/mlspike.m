@@ -53,6 +53,7 @@ end
 %Do the work on a parpool (or serial if nsParPool returns empty)
 pool = nsParPool;
 fprintf('Queue %d channels with %d samples for %s at %s\n',nrRoi,nrSamples,func2str(fun),datetime("now"))
+tStart = tic;
 for i=1:nrRoi
     if isempty(pool)
         future(i) = parfeval(fun,nrOut,fetch1(ns.CChannel & fTpls(i),'signal'),inputArgs{:}); %#ok<AGROW>
@@ -89,7 +90,8 @@ warning('on','backtrace');
                 ftr.Diary
             end
         else
-            fprintf("%s is done after %s - (State: %s)\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.State);
+            cumTime= seconds(toc(tStart));cumTime.Format = "hh:mm:ss";
+            fprintf("%s is done after %s - (State: %s). Cumulative time: %s.\n ",func2str(ftr.Function),ftr.RunningDuration,ftr.State,cumTime);
         end
     end
 end
@@ -167,11 +169,17 @@ if any(isNegative)
     fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
     F(isNegative) = 0;
 end
-[spikeTimes,estimatedF,~,parEst] = spk_est(F,mlparms);
-% estimated of the F signal at each sample - used to estimate quality
-quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
-sigma =parEst.finetune.sigma;
-% Sparse would be nice here, but mym cannot handle those.
-signal = brick.timevector(spikeTimes,(0:numel(F)-1)*mlparms.dt,'count');
-
+if mean(isNegative)>0.05
+    % Fail if more than 5% are negative
+    signal = nan(size(F));
+    quality = 0;
+    sigma   = 100;
+else
+    [spikeTimes,estimatedF,~,parEst] = spk_est(F,mlparms);
+    % estimated of the F signal at each sample - used to estimate quality
+    quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
+    sigma =parEst.finetune.sigma;
+    % Sparse would be nice here, but mym cannot handle those.
+    signal = brick.timevector(spikeTimes,(0:numel(F)-1)*mlparms.dt,'count');
+end
 end
