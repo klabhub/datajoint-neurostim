@@ -11,7 +11,7 @@ warning('off','backtrace');
 
 parms = fetch(sbx.SpikesParm& struct('stag',key.ctag),'deconv','calibration','fluorescence');
 % Query the CChannel table for fluorescence time series
-allF = (ns.C & struct('ctag',parms.fluorescence) )* (ns.CChannel &  proj(sbx.PreprocessedRoi & key,'roi->channel'));
+allF = (ns.C & struct('ctag',parms.fluorescence) & rmfield(key,'ctag') )* (ns.CChannel &  proj(sbx.PreprocessedRoi,'roi->channel'));
 nrRoi = count(allF);
 prep = fetch(sbx.Preprocessed & key,'framerate','nrplanes');
 parms.deconv.dt = 1./(prep.framerate/prep.nrplanes); % Match dt to framerate
