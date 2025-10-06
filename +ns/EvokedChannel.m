@@ -1,6 +1,6 @@
 %{
 # ns.EvokedChannel is part table of ns.Evoked
--> ns.EvokedChannel
+-> ns.Evoked
 channel: int
 ---
 signal: blob
