@@ -25,7 +25,7 @@ classdef Evoked < dj.Computed & dj.DJInstance
         trials
 
     end
-    
+
 
     methods
 
@@ -59,8 +59,13 @@ classdef Evoked < dj.Computed & dj.DJInstance
 
             % epoch table
             eTbl = ns.Epoch & key & trl_qry & 'flag=""'; %only clean epochs
+            if count(eTbl)==0
 
-            % check group_fun            
+                fprintf("\t No clean epochs were found. Skipping...");
+                return;
+
+            end
+            % check group_fun
             evp_tpl = fetch(ns.EvokedParm & key, '*');
 
             if isempty(evp_tpl.group_fun)
@@ -72,20 +77,25 @@ classdef Evoked < dj.Computed & dj.DJInstance
                 % struct scalar whose fields are the split eTbl instances, and whose
                 % fieldnames are the group label. Transform this to a cell
                 % vector {fieldname1, fieldvalue1,...}
-                groups = namedargs2cell(feval(evp_tpl.group_fun, eTbl, key));
+                groups = feval(evp_tpl.group_fun, eTbl, key);
+                groups = namedargs2cell(groups);
 
             end
 
             % create a tpl per group
             n_gru = numel(groups)/2;
             evk_tpl = repmat(key, n_gru, 1);
-            evkch_tpl = {};           
+            evkch_tpl = {};
 
             for iGru = 1:2:2*n_gru
-                
+
                 t_fetch = tic;
                 gru_no = ceil(iGru/2);
                 fprintf("\tFetching signal for Group %d/%d and preparing submission...", gru_no, n_gru);
+                if count(groups{iGru})==1;
+                    fprintf("\t\t No clean epochs were found. Skipping the group...\n");
+                    continue;
+                end
                 evk_tpl(gru_no).group = groups{iGru};
                 evk_tpl(gru_no).n_epoch = count(groups{iGru+1});
 
@@ -99,7 +109,7 @@ classdef Evoked < dj.Computed & dj.DJInstance
                 evkch_tpl{gru_no} = mergestruct(repmat(rmfield(evk_tpl(gru_no), 'n_epoch'), numel(ch_id), 1),...
                     struct(channel = num2cell(ch_id), ...
                     signal =  mat2cell( ...
-                    splitapply(@(x) mean(x,1), ec_tbl.signal, gru_idx), ones(numel(ch_id),1) ...
+                    splitapply(@(x) mean(x,1, 'omitmissing'), ec_tbl.signal, gru_idx), ones(numel(ch_id),1) ...
                     )));
 
             end
@@ -117,4 +127,7 @@ classdef Evoked < dj.Computed & dj.DJInstance
 
     end
 
+   
+
 end
+
