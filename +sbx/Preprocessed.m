@@ -598,7 +598,7 @@ classdef Preprocessed < dj.Computed
                 metaData(1).nrplanes = info.nrPlanes;
                 metaData(1).depth =info.config.knobby.pos.z;
             else
-                metaData = struct('nrframes',info,nrFrames,'nrplanes',info,nrPlanes,'depth',info.config.knobby.pos.z);
+                metaData = struct('nrframes',info.nrFrames,'nrplanes',info.nrPlanes,'depth',info.config.knobby.pos.z);
             end
             writeJson(metaData,jsonFile);
             fprintf("Wrote %s\n",jsonFile);
