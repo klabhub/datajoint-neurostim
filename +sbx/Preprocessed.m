@@ -339,6 +339,9 @@ classdef Preprocessed < dj.Computed
         function makeTuples(tbl,key)
             sessionPath=unique(folder(ns.Experiment & key));
             parms = fetch1(sbx.PreprocessedParm & key,'parms');
+            if ~isfield(parms,'zslack')
+                parms.zslack = 2; % sbx files with a dZ less than this are segmented as one.
+            end
             % Set the output folder to be
             % subject.suite2p.preprocessing
             % in the session folder
@@ -397,8 +400,8 @@ classdef Preprocessed < dj.Computed
                 assert(ttl(end)==frames(end)+1,"Mismatch in %s/%s@%s between the TTLs in mdaq (%d) and frames in sbx (%d).",e.subject,e.session_date,e.starttime,ttl(end),frames(end));
             end
             
-            depth = round(100*depth)/100; % Two decimal points used in sql
-            [grp,grpDepth]    =    findgroups(depth);
+            [grp,~,depthRange] = sbx.Preprocessed.findgroups_slack(depth,parms.zslack);
+            grpDepth = mean(depthRange,2);
             nrDepths= numel(grpDepth);
 
             switch (parms.toolbox)
@@ -559,5 +562,50 @@ classdef Preprocessed < dj.Computed
             end
 
         end
+    end
+
+
+    methods (Static)
+        function [G, ID, ranges] = findgroups_slack(x, slack)
+% Group elements of vector x so that every pair in a group differs by ≤ slack.
+% Returns:
+%   G      : group index per element (like findgroups)
+%   ID     : representative value per group (group mean)
+%   ranges : [min max] for each group
+
+    if ~isvector(x), error('x must be a vector'); end
+    if slack < 0,    error('slack must be >= 0'); end
+
+    x = x(:);
+    [xs, ord] = sort(x);                % sort to make contiguous ranges
+    n = numel(xs);
+
+    Gs   = zeros(n,1);
+    lohi = NaN(n,2);                    % will trim later
+    k = 0; i = 1;
+
+    while i <= n
+        k = k + 1;
+        anchor = xs(i);                 % group’s minimum (current start)
+        % include all following points whose distance from the group min ≤ slack
+        j = i + find(xs(i+1:end) - anchor > slack, 1, 'first');
+        if isempty(j), j = n + 1; end
+        j = j - 1;                      % last index in this group
+
+        Gs(i:j)      = k;
+        lohi(k, :)   = [anchor, xs(j)];
+        i            = j + 1;
+    end
+
+    lohi = lohi(1:k, :);                % [min max] per group
+    ID   = mean(lohi, 2);               % representative (group mean)
+
+    % map group labels back to original order/shape
+    G = zeros(n,1);
+    G(ord) = Gs;
+    G = reshape(G, size(x));            % same shape as input
+    ranges = lohi;
+end
+
     end
 end
