@@ -71,7 +71,7 @@ assert(all(ismember(["model" "baseline" "sigma" "window" "fluorescence"],fieldna
 dffFile = tempname + ".mat"; % This will be a temp save file for dFF
 resultsFile = strrep(dffFile,".mat","_cascade.mat"); % File where the cascade python code saves the results
 % Query the CChannel table for fluorescence time series
-allF = (ns.C & struct('ctag',parms.fluorescence) )* (ns.CChannel &  proj(sbx.PreprocessedRoi & key,'roi->channel'));
+allF = (ns.C & struct('ctag',parms.fluorescence) & rmfield(key,'ctag') )* (ns.CChannel &  proj(sbx.PreprocessedRoi,'roi->channel'));
 nrRoi = count(allF);
 assert(nrRoi>0,"No fluorescence data (ctag=%s) found for %s on %s at %s",parms.fluorescence,key.subject,key.session_date,key.starttime)
 % Check that cascade is installed

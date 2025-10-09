@@ -13,6 +13,7 @@ parms = fetch(sbx.SpikesParm& struct('stag',key.ctag),'deconv','calibration','fl
 % Query the CChannel table for fluorescence time series
 allF = (ns.C & struct('ctag',parms.fluorescence) & rmfield(key,'ctag') )* (ns.CChannel &  proj(sbx.PreprocessedRoi,'roi->channel'));
 nrRoi = count(allF);
+assert(nrRoi>0,"No %s data in ns.C. Populate it before calling sbx.mlspike.",parms.fluorescence);
 prep = fetch(sbx.Preprocessed & key,'framerate','nrplanes');
 parms.deconv.dt = 1./(prep.framerate/prep.nrplanes); % Match dt to framerate
 nrSamples= fetch1(allF,'nrsamples','LIMIT 1');
