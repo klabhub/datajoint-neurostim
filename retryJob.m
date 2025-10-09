@@ -1,4 +1,4 @@
-function T= retryJob(row)
+function T= retryJob(row,tbl)
 % Retry populating an item in the Jobs table that caused an error. This
 % retry will put a breakpoint on the line where the previous attempt
 % failed and stop execution there. 
@@ -11,9 +11,10 @@ function T= retryJob(row)
 % returen table to clear those errors.
 arguments
     row  = 1  % The row of the Jobs table to process
+    tbl = ns.Jobs
 end
 
-tpl = fetch(ns.Jobs ,'*',sprintf('LIMIT 1 OFFSET %d',row-1));
+tpl = fetch(tbl ,'*',sprintf('LIMIT 1 OFFSET %d',row-1));
 
 %% Setup the break point
 if isempty(tpl.error_stack)
