@@ -35,29 +35,26 @@ end
 %% Determine nstime of each frame in this session
 thisSession =(ns.Session & key);
 allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
-analyzeExptThisSession = analyze(allExptThisSession,strict=false);
-nrFramesPrevious = 0;
-for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
-    % Get the info structure that sbx saves
-    info = sbx.readInfoFile(exptThisSession);
-    nrFrames  = info.nrFrames;
-    nrPlanes = info.nrPlanes;
-    if strcmpi(exptThisSession.starttime,key.starttime)
-        frameNsTime = get(ns.Experiment & exptThisSession,'mdaq','prm','laserOnDigHigh','what',"clocktime");
-        nrTTL = numel(frameNsTime);
-        % There always appears to be 1 extraneous TTL; check the match with
-        % this assumption
-        assert((nrFrames+1)==floor(nrTTL/nrPlanes),'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);        
-        % Remove it from the start
-        frameNsTime(1) =[];       
-        keepFrameIx = nrFramesPrevious+(1:nrFrames);
-        break; % We have what we need; break the loop over experiments in this session
-    else
-        nrFramesPrevious = nrFramesPrevious +nrFrames;
-    end
+analyzeExptThisSession  = analyze(allExptThisSession,strict=false);
+% Use the metadata added to the experiment by sbx.Preprocessed to match
+% frames to experiments
+analyzeExptThisSessionT = ns.getMeta(analyzeExptThisSession ,["nrframes" "nrplanes"]);
+analyzeExptThisSessionT = sortrows(analyzeExptThisSessionT,"starttime");
+analyzeExptThisSessionT =convertvars(analyzeExptThisSessionT,["nrframes" "nrplanes"],"double");
+row = find(key.starttime==analyzeExptThisSessionT.starttime);
+cumFrames = cumsum(analyzeExptThisSessionT.nrframes);
+if row>1
+    start = cumFrames(row-1);
+else
+    start = 0;
 end
-
-
+keepFrameIx =start + (1:analyzeExptThisSessionT.nrframes(row));
+frameNsTime = get(ns.Experiment & key,'mdaq','prm','laserOnDigHigh','what',"clocktime");
+nrTTL = numel(frameNsTime);
+% There always appears to be 1 extraneous TTL; check the match with
+% this assumption
+assert((analyzeExptThisSessionT.nrframes(row)+1)==floor(nrTTL/analyzeExptThisSessionT.nrplanes(row)),'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,analyzeExptThisSessionT.nrframes(row));        
+frameNsTime(1) =[];      
 
 %% Read the .npy or .mat Output
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));

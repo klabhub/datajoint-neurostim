@@ -1,8 +1,8 @@
 %{ 
 # Calibrated MLSpike parameters for a session.
 -> sbx.Preprocessed
--> sbx.SpikesParm
 ---
+ctag    :  varchar(32)          # ctag for which this was computed. 
 quality = NULL: float           # Correlation between reconstructed F and F
 a       = NULL: float           # Calibrated F per spike
 sigma   = NULL: float           # Calibrated noise level    
@@ -11,19 +11,12 @@ failed  : smallint              # Number of ROIs where calibration failed.
 neg     : float                 # Fraction of samples with negative F
 nan     : float                 # Fraction of samples with NaN value
 %}
-classdef Mlspikecalibration < dj.Computed
-    properties (Dependent)
-        keySource
-    end
+% Manual class - it is filled by sbx.mlspike when populating a ns.C 
+% row for mlspike deconvolved spikes that use autocalibration.
+%
+% SEE ALSO sbx.mlspike sbx.mlspikeDefaults
 
-    methods 
-        function v = get.keySource(tbl)
-            % Restrict to spikesparm that have a non null calibration
-            % parameter and sessions with a fluorescence entry in the C
-            % table.
-            v = (sbx.Preprocessed * (sbx.SpikesParm & 'calibration IS NOT NULL ')) & (ns.C & proj(sbx.SpikesParm,'fluorescence->ctag'));
-        end
-    end
+classdef Mlcalibration < dj.Manual    
     methods (Access=public)
          function G = plot(tbl,pv)
             % Show meta data on MLspike deconvolution. Autocal should be
@@ -103,28 +96,5 @@ classdef Mlspikecalibration < dj.Computed
             end
         end
 
-    end
-
-    methods (Access = protected)
-        function makeTuples(tbl,key)
-            % Select a subset of the roi in the session, run
-            % autocalibration and then pick the median of the calibrated 
-            % amplitude,sigma, tau and store this in the table for later use 
-            % when populating the sbx.Spikes table.
-            key.ctag = key.stag; % mlspike expects a ctag 
-            calResults = sbx.mlspike(key,calibration =true);
-            key.tau = mean([calResults.tau],"omitmissing");
-            key.sigma  =mean([calResults.sigma],"omitmissing");
-            key.a = mean([calResults.a],"omitmissing");
-            key.quality = mean([calResults.quality],"omitmissing");
-            key.failed = sum(isnan([calResults.quality]));
-            key.neg = mean([calResults.neg],"omitmissing");
-            key.nan = mean([calResults.nan],"omitmissing");
-            % Store the calibration results             
-            key =rmfield(key,'ctag');
-            insert(tbl, key);
-
-
-        end
     end
 end
