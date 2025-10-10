@@ -387,7 +387,8 @@ classdef Preprocessed < dj.Computed
             xy = [];
             frames =[];
             ttl = [];
-            for e=fetch(analyzeExptThisSession)'
+            analyzeExptTpls = fetch(analyzeExptThisSession)';
+            for e=analyzeExptTpls
                 info        = sbx.readInfoFile(e);
                 scale       =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
                 nrPlanes    = [nrPlanes info.nrPlanes]; %#ok<AGROW>
@@ -397,12 +398,14 @@ classdef Preprocessed < dj.Computed
                 thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;
                 ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
                 sbx.addMeta(e,info,"newOnly",true);
-                assert(ttl(end)==frames(end)+1,"Mismatch in %s/%s@%s between the TTLs in mdaq (%d) and frames in sbx (%d).",e.subject,e.session_date,e.starttime,ttl(end),frames(end));
+                mismatch = abs(ttl(end)-frames(end)*nrPlanes(end));
+                assert(mismatch<=2,"Mismatch (%d)in %s/%s@%s between the TTLs in mdaq (%d) and frames in sbx (%d).",mismatch,e.subject,e.session_date,e.starttime,ttl(end),nrPlanes(end)*frames(end));
             end
             
             [grp,~,depthRange] = sbx.Preprocessed.findgroups_slack(depth,parms.zslack);
             grpDepth = mean(depthRange,2);
             nrDepths= numel(grpDepth);
+            
 
             switch (parms.toolbox)
                 case 'suite2p'
@@ -542,16 +545,36 @@ classdef Preprocessed < dj.Computed
                             end
                             fprintf('Completed at %s\n',datetime('now'));
                         end
-                        % Load the save ops.npy to extract the mean image
-                        opts =py.numpy.load(opsFile,allow_pickle=true);
-                        img = ndarrayToArray(opts.item{'meanImg'},single=true);
-                        N = double(opts.item{'nframes'});
-                        assert(N==sum(frames),"The number of frames in the npy file (%d) does not match the frames across experiments (%d). ",N,sum(frames))
-                        fs = double(opts.item{'fs'});
-                        nplanes = double(opts.item{'nplanes'});
+
+                      
+                        % Load the save ops.npy to extract mean image and do
+                        % sanity checks
+                        for plane = 0:uNrPlanes-1
+                            if nrDepths ==1
+                                depthSubFolder = '';
+                            else
+                                depthSubFolder = sprintf('depth%d',depthNr-1);
+                            end
+                            planeSubFolder = sprintf('plane%d',plane);
+                            opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
+                            opts =py.numpy.load(opsFile,allow_pickle=true);
+                            N = double(opts.item{'nframes'});
+                            assert(N==sum(frames),"The number of frames in the npy file (%d) does not match the frames across experiments (%d). ",N,sum(frames))
+                            fs = double(opts.item{'fs'});           % These are constant across planes- the last one is added to the table
+                            nplanes = double(opts.item{'nplanes'});                            
+                            img{plane+1} = ndarrayToArray(opts.item{'meanImg'},single=true); %#ok<AGROW> % Each plane has its own mean image                            
+                        end
+
+                        % Insert into sbx.Preprocessed
                         key.depth = thisDepth;
                         tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'nrplanes',nplanes,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
                         insert(tbl,tpl);
+                        % Create part table that links with the experiments
+                        % at this depth
+                        tpls = analyzeExptTpls(thisGrp);
+                        tpls = mergestruct(tpls,struct('depth',thisDepth,'prep',key.prep));                             
+                        insert(sbx.PreprocessedExperiment,tpls)                                           
+
                         % Create the part table with per ROI information
                         makeTuples(sbx.PreprocessedRoi,key)
                     end
