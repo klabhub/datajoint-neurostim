@@ -51,6 +51,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             expTbl = ns.Experiment & key;           
             epTbl = ns.EpochParm & key;
             cTbl = ns.C & key;
+            srate = cTbl.srate;
 
             % Absolute clock time in seconds of the first frames of the
             % trials
@@ -99,20 +100,26 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             % --- Epoch Preprocessing ---
             pv = epTbl{'pv'}; % parametes containing processing steps
+
+            if isfield(pv, 'resample') && pv.resample &&  pv.resample ~= srate % if sampling rate is different than the resampled rate
+
+                ep = eTbl.resample(ep, srate, pv.resample, pv.resample_opts{:});
+                
+            end
             
-            if pv.detrend
+            if isfield(pv, 'detrend') && pv.detrend
 
                 ep = eTbl.detrend(ep);
 
             end
 
-            if pv.baseline
+            if isfield(pv, 'baseline') && pv.baseline
 
                 ep = eTbl.baseline(ep, gen.ifwithin(ep_timepoints, pv.baseline_win));
 
             end
 
-            if pv.rereference
+            if isfield(pv, 'rereference') && pv.rereference
 
                 ep(:, cTbl.artifacts.all,:) = NaN; % exclude noisy channels
                 ep = eTbl.rereference(ep, cTbl.channel_coordinates, pv.ref_opts{:});
@@ -510,6 +517,21 @@ classdef Epoch < dj.Computed & dj.DJInstance
     end  
 
     methods (Static)
+
+        function ep = resample(ep, old_srate, new_srate, options)
+
+            arguments
+
+                ep
+                old_srate (1,1) {mustBeInteger}
+                new_srate (1,1) {mustBeInteger}
+                options = {}
+
+            end
+
+            ep = resample(ep, new_srate, old_srate, options{:}, Dimension=ndims(ep));
+
+        end
 
         function ep = detrend(ep, varargin)
 
