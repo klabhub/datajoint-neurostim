@@ -72,7 +72,6 @@ for pl=0:prep.nrplanes-1
     plane = repmat(pl,nrRoiThisPlane,1);
     roiToDo = [roiToDo ; table(filename,done,roi,plane)]; %#ok<AGROW>
 end
-roiToDo = roiToDo(1:2,:);
 if any(~roiToDo.done)
     % For the files that do not yet exist, check whether a calibration exists
     % (if requested)
@@ -208,7 +207,6 @@ for pl = unique(roiT.plane)
 end
 %% Use parallel pool if requested
 pool = nsParPool;
-F  = F(1:3000,:);
 [nrSamples, nrRoi] = size(F);
 fprintf('Queue %d channels with %d samples for deconvolution at %s\n',nrRoi,nrSamples,datetime("now"))
 tStart = tic;
