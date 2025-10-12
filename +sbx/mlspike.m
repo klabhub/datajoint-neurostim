@@ -110,7 +110,7 @@ if any(~roiToDo.done)
         % Replace values in mlparms with calibrated values
         parms.mlparms.tau = calibration.tau;
         parms.mlparms.a  =calibration.a;
-        parms.mlparms.finetune.sigma = calibration.sigma;
+        % parms.mlparms.finetune.sigma = Not set- reestimated for each ROI (cheap);
     else
         % Run uncalibrated. Keep parms.mlparms as is.
     end
@@ -253,7 +253,7 @@ arguments
     calibrate (1,1) logical = false  % Set to true to perform autocal 
 end
 
-pax = parms.mlparms;
+
 isNaN = isnan(F);
 F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
 isNegative  = F<0;
@@ -285,18 +285,19 @@ else
             return;
         end
         % Replace fixed with calibrated parms
-        pax.finetune.sigma = sigmaEst; % Always estimated
-        pax.tau = tauEst;
-        pax.a = ampEst;
+        parms.mlparms.finetune.sigma = sigmaEst; 
+        parms.mlparms.tau = tauEst;
+        parms.mlparms.a = ampEst;
     end
 
+   
     % Run with parms (or rerun with calibrated parms)
-    [spikeTimes,estimatedF,~,parEst] = spk_est(F,pax);
+    [spikeTimes,estimatedF,~,parEst] = spk_est(F,parms.mlparms);
 
     % fit - fit of the F signal at each sample - used to estimate quality
     result.quality = double(corr(estimatedF(~isNaN),F(~isNaN),Type="Pearson"));
-    result.tau =pax.tau;
-    result.a =pax.a;
+    result.tau =parms.mlparms.tau;
+    result.a =parms.mlparms.a;
     result.sigma =parEst.finetune.sigma;
     result.neg = mean(isNegative);
     result.nan = mean(isNaN);
