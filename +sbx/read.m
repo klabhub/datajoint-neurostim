@@ -33,33 +33,13 @@ end
 % Read the npy results from the suite2p folder and store them in
 % the table.
 %% Determine nstime of each frame in this session
-thisSession =(ns.Session & key);
-allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
-analyzeExptThisSession  = analyze(allExptThisSession,strict=false);
-% Use the metadata added to the experiment by sbx.Preprocessed to match
-% frames to experiments
-analyzeExptThisSessionT = ns.getMeta(analyzeExptThisSession ,["nrframes" "nrplanes"]);
-analyzeExptThisSessionT = sortrows(analyzeExptThisSessionT,"starttime");
-analyzeExptThisSessionT =convertvars(analyzeExptThisSessionT,["nrframes" "nrplanes"],"double");
-row = find(key.starttime==analyzeExptThisSessionT.starttime);
-cumFrames = cumsum(analyzeExptThisSessionT.nrframes);
-if row>1
-    start = cumFrames(row-1);
-else
-    start = 0;
-end
-keepFrameIx =start + (1:analyzeExptThisSessionT.nrframes(row));
-frameNsTime = get(ns.Experiment & key,'mdaq','prm','laserOnDigHigh','what',"clocktime");
-nrTTL = numel(frameNsTime);
-% There always appears to be 1 extraneous TTL; check the match with
-% this assumption
-assert((analyzeExptThisSessionT.nrframes(row)+1)==floor(nrTTL/analyzeExptThisSessionT.nrplanes(row)),'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,analyzeExptThisSessionT.nrframes(row));        
-frameNsTime(1) =[];      
+[keepFrameIx,frameNsTime] = sbx.framesForExperiment(key);
+      
 
 %% Read the .npy or .mat Output
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 planes = dir(fullfile(fldr,'plane*'));
-recordingInfo =info; % Store the info struct
+
 signal=[];
 rois = [];
 maxRoi = 0;
@@ -75,7 +55,7 @@ for pl = 1:numel(planes)
         end
         thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
         framesNotInFile = sum(keepFrameIx > size(thisSignal,2));
-        assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",thisFile,framesNotInFile,exptThisSession.starttime, exptThisSession.session_date);
+        assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",thisFile,framesNotInFile,key.starttime, key.session_date);
         thisSignal = thisSignal(:,keepFrameIx)';
         if  parms.what=="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
             % Compute background/neuropil corrected fluorescence
@@ -106,4 +86,5 @@ time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
 channelInfo =  struct('nr',num2cell(rois)');
+recordingInfo =struct('dummy',true); 
 end
