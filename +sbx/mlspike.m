@@ -104,7 +104,7 @@ if any(~roiToDo.done)
             insert(sbx.Mlcalibration, tpl);
         end
         % Calibration should be available now
-        calibration = fetch(sbx.Mlspikecalibration & key, '*');
+        calibration = fetch(sbx.Mlcalibration & key, '*');
         assert(~isempty(calibration),"ML Spike calibration must have failed?");
         % Replace values in mlparms with calibrated values
         parms.mlparms.tau = calibration.tau;
