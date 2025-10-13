@@ -35,11 +35,12 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % parms.model = 'Global_EXC_15Hz_smoothing100ms';
 % See https://github.com/HelmchenLabSoftware/Cascade/blob/master/Pretrained_models/available_models.yaml
 % for a list of available models.
-% parms.baseline = 'maximin' % How to determine F0
+% parms.prep = 'suite2p'; % Which sbx.Preprocessed to use
+% parms.restrict = 'pcell>0.9'; % Optional restriction on which rois to do
+% parms.baseline = 'maximin'; % How to determine F0
 % parms.sigma = 10; % In seconds ; Gaussian sigma for F0
 % parms.window = 60 ; % in seconds; window for maximim
 % parms.count    = false; % Predict spike counts instead of spike  probability
-% parms.fluorescence = 'fluorescence' ;  % The C channel with the neuropil corrected, raw  F
 % And add this to the CParm table with a call like this
 % cascade = struct('ctag','cascade',...       % Name of this C
 %                  'description','Cascade inferred spikes',...
@@ -49,12 +50,11 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % insertIfNew(ns.CParm,cascade);
 %
 % This instructs populate(ns.C,'ctag="cascade"') to fill the ns.C table
-% with spiking probabilities (count=false) for each sbx file. If such file
-% does not have a "fluorescence" row in ns.C, this will fail.
+% with spiking probabilities (count=false) for each sbx file.
 % The typical workflow is to populate sbx.Preprocessed first (e.g. using
-% suite2p), then the fluorescence rows in ns.C (neuropil corrected F, see
-% sbx.read), and then do spike inference to fill the "cascade" rows of
+% suite2p), and then do spike inference to fill the "cascade" rows of
 % ns.C.
+%
 % parms.options  is  an optional struct with parameters that will be passed to the
 % cascade.py script:
 % parms.options.verbosity  (defaults to 0)
@@ -67,13 +67,11 @@ arguments
     parms (1,:) struct
 end
 
-assert(all(ismember(["model" "baseline" "sigma" "window" "fluorescence"],fieldnames(parms))),"The parms struct is missing essential elements.")
-dffFile = tempname + ".mat"; % This will be a temp save file for dFF
-resultsFile = strrep(dffFile,".mat","_cascade.mat"); % File where the cascade python code saves the results
-% Query the CChannel table for fluorescence time series
-allF = (ns.C & struct('ctag',parms.fluorescence) & rmfield(key,'ctag') )* (ns.CChannel &  proj(sbx.PreprocessedRoi,'roi->channel'));
-nrRoi = count(allF);
-assert(nrRoi>0,"No fluorescence data (ctag=%s) found for %s on %s at %s",parms.fluorescence,key.subject,key.session_date,key.starttime)
+%% Prepare to run
+prep = fetch(sbx.Preprocessed & key & struct('prep', parms.prep),'*');
+assert(~isempty(prep),'No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);
+warning('off','backtrace');
+assert(all(isfield(parms,["model" "baseline" "sigma" "window" "count"])),'cascade parameters incomplete.');
 % Check that cascade is installed
 cascadeFolder = getenv("NS_CASCADE");
 if isempty(cascadeFolder)
@@ -95,39 +93,13 @@ if isempty(pythonRunner)
 end
 assert(exist(pythonRunner,"file"),"Set the NS_PYTHON environment variable to a conda/mamba/micromamba executable (not found at  %s)",pythonRunner);
 
-
-%% Get the neuropil corrected fluorescence
-% TODO : memory check and loop if not enough memory available.
-tpl = fetch(allF);
-F = fetch(allF,'signal');
-F =cat(2,F.signal);
-prep = fetch(sbx.Preprocessed & key,'framerate','nrplanes');
-time =  fetch1(allF,'time','LIMIT 1'); %[start stop nrSamples]
-
-%% Determine dFF
-% Replacing F to save a bit of memory
-switch upper(parms.baseline)
-    case "MAXIMIN"
-        [~,F]= sbx.baseline_maximin(F,prep.framerate/prep.nrplanes,parms.sigma,parms.window);
-    otherwise
-        error('Not implemented yet')
-end
-
-% Calculate the noise level using the Cascade formula:
-% the median absolute dF/F difference between two subsequent time points.
-% This is a outlier-robust measurement that converges to the simple
-% standard deviation of the dF/F trace for  uncorrelated and outlier-free dF/F traces.
-% The value is divided by the square root of the frame rate to make it comparable across recordings with different frame rates.
-
-noiseLevel = 100*median(abs(diff(F,1,1)),1,"omitmissing")./sqrt(prep.framerate);
-
-
 %% Construct the python command.
 cfd = fileparts(mfilename('fullpath'));
 toolsPath = strrep(fullfile(fileparts(cfd),'tools'),"\","/");
 cascadeFolder = strrep(cascadeFolder,"\","/");
+dffFile = tempname + ".mat"; % This will be a temp save file for dFF
 pyCmd = sprintf('"%s/cascade.py" "%s" "%s" --cascade_folder "%s"',toolsPath,dffFile,parms.model,cascadeFolder);
-if parms.count 
+if parms.count
     % Only add this step if we're computing the count (and not the
     % probability)
     pyCmd = pyCmd + " --discrete_spikes ";
@@ -144,18 +116,104 @@ end
 pyEnv = pythonRunner + " run -n cascade python ";
 cmd = sprintf('%s %s',pyEnv,pyCmd);
 
+
+rate  = (prep.framerate/prep.nrplanes); % Match dt to framerate
+match = regexp(parms.model,'_(?<rate>\d+)Hz','names');
+assert(~isempty(match),'Cannot extract sampling rate from model name %s',parms.model)
+modelRate =str2double(match.rate);
+ratio = modelRate/rate;
+if ratio >2 || ratio < .5
+    warning('Large mismatch between sampling rate %.2f and Cascade model %.2f',rate,modelRate);
+end
+
+%% Get the frames for this experiment
+[keepFrameIx,frameNsTime] = sbx.framesForExperiment(key);
+nrFrames = numel(keepFrameIx);
+fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
+allPlanesSignal = [];
+allPlanesChannelInfo = [];
+for pl=0:prep.nrplanes-1
+    planeFolder = fullfile(fldr,"plane" +  string(pl));
+    cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat")
+    if exist(cascadeResultsFilename,"file")
+        fprintf('Cascade results already exist for plane %d in %s. Skipping.\n',pl,fldr);
+        load(cascadeResultsFilename,'signal','channelInfo');
+    else
+        if isfield(parms,'restrict')
+            % Restrict with a query on sbx.PreprocessedRoi
+            roi = [fetch((sbx.PreprocessedRoi & parms.restrict & struct('plane',pl)) & key ,'roi').roi]';
+        end
+        [signal,channelInfo]= runCascade(roi,parms,prep,planeFolder,cascadeResultsFilename,cmd,dffFile);
+        fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
+    end
+    framesNotInFile = sum(keepFrameIx > height(signal));
+    assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",cascadeResultsFilename,framesNotInFile,key.starttime, key.session_date);
+    % Concatenate across planes
+    allPlanesSignal = [allPlanesSignal  signal(keepFrameIx,:)]; %#ok<AGROW>
+    allPlanesChannelInfo = [allPlanesChannelInfo  channelInfo]; %#ok<AGROW>
+end
+
+% Rename for output values
+signal = allPlanesSignal;
+channelInfo = allPlanesChannelInfo;
+time = [frameNsTime(1) frameNsTime(end) nrFrames];
+recordingInfo = struct('dummy',true);
+
+end
+
+function [signal,channelInfo] = runCascade(keepRoi,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile)
+% Run cascade on the fluorescence data in planeFolder for the rois in keepRoi
+% and save the results in cascadeResultsFilename
+arguments
+    keepRoi(:,1) double % List of rois that have not been done yet
+    parms (1,1) struct
+    prep (1,1) struct
+    planeFolder (1,1) string
+    cascadeResultsFilename (1,1) string
+    cmd (1,1) string
+    tmpDffFile (1,1) string
+end
+
+%% Load the F data per plane
+
+thisFile = fullfile(planeFolder,'F.npy');
+if ~exist(thisFile,"file")
+    error('File %s does not exist',thisFile);
+end
+F =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+F = F(keepRoi,:)';
+
+%% Determine dFF
+% Replacing F to save a bit of memory
+switch upper(parms.baseline)
+    case "MAXIMIN"
+        [F0,F]= sbx.baseline_maximin(F,prep.framerate/prep.nrplanes,parms.sigma,parms.window);
+    otherwise
+        error('Not implemented yet')
+end
+
+% Calculate the noise level using the Cascade formula:
+% the median absolute dF/F difference between two subsequent time points.
+% This is a outlier-robust measurement that converges to the simple
+% standard deviation of the dF/F trace for  uncorrelated and outlier-free dF/F traces.
+% The value is divided by the square root of the frame rate to make it comparable across recordings with different frame rates.
+
+noiseLevel = 100*median(abs(diff(F,1,1)),1,"omitmissing")./sqrt(prep.framerate/prep.nrplanes);
+channelInfo =  struct('nr',num2cell(keepRoi),'noiseLevel',num2cell(noiseLevel'));
+
 %% Run cascade in chunks
-nrSamples  = time(3);
-samples= 0:nrSamples;
-signal = zeros(nrSamples,nrRoi);
+nrRoi = size(F,2);
+samples= 0:prep.nrframesinsession;
+signal = [];
 CHUNK = 200; % With 70k samples, this results in <20GB of Ram and ~ 20 cores
+tmpResultsFile = strrep(tmpDffFile,".mat","_cascade.mat"); % File where the cascade python code saves the results
 for ix =1:CHUNK:nrRoi
     thisRoi = ix:min(ix+CHUNK-1,nrRoi);
     thisNrRoi = numel(thisRoi);
     dFF = F(:,thisRoi);
-    save(dffFile,"dFF");
+    save(tmpDffFile,"dFF");
     % Execute
-    fprintf('Starting Cascade with %s on %d ROIs with %d samples @%s\n',parms.model,thisNrRoi,nrSamples,datetime('now'));
+    fprintf('Starting Cascade with %s on %d ROIs with %d samples @%s\n',parms.model,thisNrRoi,prep.nrframesinsession,datetime('now'));
     [status,msg] = system(cmd ,'-echo');
     assert(status==0,'Cascade failed with message %s',msg);
     fprintf('Cascade completed successfully.\n');
@@ -165,26 +223,29 @@ for ix =1:CHUNK:nrRoi
     % It containst pSpike ; a matrix with spiking probabilities for each time
     % point (row) and neuron (col) - matching F. And sSpike; a cell array [1
     % nrNeurons] with each cell the samples in F at which a spike occurred.
-    assert(exist(resultsFile,"file"),"The Cascade output file %s could not be found.",resultsFile);
+    assert(exist(tmpResultsFile,"file"),"The Cascade output file %s could not be found.",tmpResultsFile);
     if parms.count
         % Convert spike times into a time course of counts.
-        sSpike  = load(resultsFile,'sSpike').sSpike;
+        sSpike  = load(tmpResultsFile,'sSpike').sSpike;
         assert(thisNrRoi == numel(sSpike),'Missing roi from cascade results?')
         for j=1:numel(sSpike)
-            signal(:,thisRoi(j)) = groupcounts(sSpike{j},samples,IncludeEmptyGroups=true);
+            signal  = [signal  groupcounts(sSpike{j},samples,IncludeEmptyGroups=true)]; %#ok<AGROW>
         end
-        name = 'spikeCount';
     else
-        % Return the spiking probability as the signal
-        load(resultsFile,'pSpike');
+        % Use the spiking probability as the signal
+        load(tmpResultsFile,'pSpike');
         assert(thisNrRoi == size(pSpike,2),'Missing roi from cascade results?')
-        signal(:,thisRoi) = pSpike;
-        name = 'spikeProbability';
+        signal = [signal pSpike]; %#ok<AGROW>
     end
 end
-channelInfo =struct('name',name,'nr',{tpl.channel}','noiseLevel',num2cell(noiseLevel)');
-recordingInfo =struct('source','cascade');
+
+%% Save results for future reference
+save(cascadeResultsFilename, 'signal','channelInfo','F0');
+fprintf('Saved results to %s\n',cascadeResultsFilename);
+
 %% Clean up temp files.
-delete(dffFile);
-delete(resultsFile);
+delete(tmpDffFile);
+delete(tmpResultsFile);
+end
+
 

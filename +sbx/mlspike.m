@@ -1,16 +1,16 @@
 function [signal,time,channelInfo,recordingInfo] = mlspike(key,parms)
 % Function that uses the spikes and xplor repositories from Deneux et al.
 % 2016 to run spike deconvolution.
-% 
+%
 % This function is called when populating ns.C with the appropriate
-% parameters. 
+% parameters.
 %
 % With autocalibration defined, one calibration is run (with nrRoiForCal
-% randomly chosen rois), and the tau, amplitude, and sigma that result from
-% this are used for all subsequent roi. This is done to reduce the time spent
-% on calibration. If you prefer to run autocalibration on every roi, set
-% nrRoiForCal to inf. 
-% 
+% randomly chosen rois), and the tau, amplitude, that result from
+% this are used for all subsequent roi. This is done to reduce the time spent on calibration.
+% The sigma is always estimated per roi. If you prefer to run autocalibration on every roi, set
+% nrRoiForCal to inf.
+%
 % EXAMPLE
 % Setup the parameters for the alogrithm (see spikes/spk_demo.m)
 %
@@ -18,31 +18,31 @@ function [signal,time,channelInfo,recordingInfo] = mlspike(key,parms)
 %mlparms.algo.nspikemax =4;  % Allow 4 spikes per bin (15 Hz)
 %mlparms.dographsummary = false;
 %mlparms.display = 'none';
-% 
+%
 %autocalparms.amin = 0.05;
 %autocalparms.amax =0.2;
-%autocalparms.taumin = 0.25;                 
+%autocalparms.taumin = 0.25;
 %autocalparms.taumax = 2;
 %autocalparms.maxamp =4  % A maxamp of 4 seems necessary in our data.
 %autocalparms.display = 'none'; % No figures
 %
 % Create a ns.CParm struct that uses these parms
-% deneux = struct('ctag','deneux16',...       % Name of this C 
-%                   'description','Deneux spikes',... 
-%                    'extension','.sbx',...  
-%                    'fun','sbx.mlspike',...      
+% deneux = struct('ctag','deneux16',...       % Name of this C
+%                   'description','Deneux spikes',...
+%                    'extension','.sbx',...
+%                    'fun','sbx.mlspike',...
 %                    'parms',struct( 'prep','gcamp6s',... % Which preprocessed set to use (links to sbx.Preprocessed)
 %                                    'restrict','pcell>0.75 AND radius>2.185',...
 %                                    'mlparms',mlparms,...
 %                                    'autocal',autocalparms,...
-%                                     'nrRoiForCal',20)); % Use 20 ROIs per session to calibrate 
-% 
+%                                     'nrRoiForCal',20)); % Use 20 ROIs per session to calibrate
+%
 % insertIfNew(ns.CParm,deneux);
 % Start filling the table (restricted to sessions with preprocessed data)
-% populate(ns.C,'ctag="deneux16"',sbx.Preprocessed) 
+% populate(ns.C,'ctag="deneux16"',sbx.Preprocessed)
 arguments
     key (1,1) struct
-    parms (1,:) struct    
+    parms (1,:) struct
 end
 
 assert(exist('xplor.m','file'),"The xplor repository must be on the path for sbx.mlspike");
@@ -90,7 +90,7 @@ if any(~roiToDo.done)
             % Calibrate based on this subset
             calResults = loop(roiToDo(useRoi,:),parms,fldr,true);
             % This only has the parameters (and the quality); the data have
-            % been saved to disk. 
+            % been saved to disk.
             % Store the calibration result
             tpl = ns.stripToPrimary(sbx.Preprocessed,prep);
             tpl.ctag= key.ctag;
@@ -104,7 +104,7 @@ if any(~roiToDo.done)
             insert(sbx.Mlcalibration, tpl);
         end
         % Calibration should be available now
-        calibration = fetch(sbx.Mlspikecalibration & key, '*');
+        calibration = fetch(sbx.Mlcalibration & key, '*');
         assert(~isempty(calibration),"ML Spike calibration must have failed?");
         % Replace values in mlparms with calibrated values
         parms.mlparms.tau = calibration.tau;
@@ -117,7 +117,7 @@ if any(~roiToDo.done)
     for i=1:height(roiToDo)
         roiToDo.done(i) = exist(roiToDo.filename(i),"file");
     end
-    deconResults = loop(roiToDo(~roiToDo.done,:),parms,fldr,false); 
+    deconResults = loop(roiToDo(~roiToDo.done,:),parms,fldr,false);
     mQuality = mean([deconResults.quality],"omitmissing");
     fprintf('Completed mlspike deconvolution on %d rois. Mean quality %.2f\n',height(roiToDo),mQuality)
 end
@@ -135,35 +135,16 @@ roiToDo = roiToDo(roiToDo.done,:); % Crop
 % Now files with spiketimes exist on disk. Load and extract the relevant frames for the
 % current experiment to return to the ns.C caller.
 
-% Use the metadata added to the experiment by sbx.Preprocessed to match
-% frames to experiments
-exptT = ns.getMeta(ns.Experiment & key ,["nrframes" "nrplanes"]);
-exptT = sortrows(exptT,"starttime");
-exptT = convertvars(exptT,["nrframes" "nrplanes"],"double");
-row = find(key.starttime==exptT.starttime);
-cumFrames = cumsum(exptT.nrframes);
-if row>1
-    start = cumFrames(row-1);
-else
-    start = 0;
-end
-keepFrameIx =start + (1:exptT.nrframes(row));
-frameNsTime = get(ns.Experiment & key,'mdaq','prm','laserOnDigHigh','what',"clocktime");
-nrTTL = numel(frameNsTime);
-% There always appears to be 1 extraneous TTL; check the match with
-% this assumption
-assert((exptT.nrframes(row)+1)==floor(nrTTL/exptT.nrplanes(row)),'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,exptT.nrframes(row));        
-frameNsTime(1) =[];      
-signal = [];
-nrFrames = numel(frameNsTime);
-
+[keepFrameIx,frameNsTime] = sbx.framesForExperiment(key);
+nrFrames = numel(keepFrameIx);
+signal = nan(nrFrames,height(roiToDo));
 channelInfo =  struct('nr',num2cell(roiToDo.roi),'quality',NaN,'tau',NaN,'sigma',NaN,'neg',NaN,'nan',NaN);
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
 for i = 1:height(roiToDo)
     %% Read saved results
-    fprintf('Reading spikeml mat files...\n')      
+    fprintf('Reading spikeml mat files...\n')
     load(roiToDo.filename(i),'spikeTimes','result');
     channelInfo(i).quality = result.quality;
     channelInfo(i).tau= result.tau;
@@ -174,9 +155,8 @@ for i = 1:height(roiToDo)
     thisSignal = brick.timevector(spikeTimes,(0:nrFrames-1)*parms.mlparms.dt,'count');
     framesNotInFile = sum(keepFrameIx > numel(thisSignal));
     assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",roiToDo.filename(i),framesNotInFile,key.starttime, key.session_date);
-    thisSignal = thisSignal(keepFrameIx);        
-    signal = [signal  thisSignal]; %#ok<AGROW>
-
+    thisSignal = thisSignal(keepFrameIx);
+    signal(:,i) = thisSignal;
     fprintf('Done in %s.\n',seconds(toc))
 end
 
@@ -201,7 +181,7 @@ for pl = unique(roiT.plane)
     if ~exist(thisFile,"file")
         error('File %s does not exist',thisFile);
     end
-     thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+    thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
     keepRoi = roiT.roi(roiT.plane==pl);
     F = [F;thisSignal(keepRoi,:)']; %#ok<AGROW>
 end
@@ -219,7 +199,7 @@ afterEach(future,@afterDone,0,PassFuture = true);  % Update the command line
 wait(future); % Wait for all to complete
 keep = cellfun(@isempty,{future.Error});% Remove errors
 assert(any(keep),'All %d ROI mlspike deconvolve failed in %s ',nrRoi,fldr);
-out = fetchOutputs(future(keep)); 
+out = fetchOutputs(future(keep));
 
 warning('on','backtrace');
 
@@ -248,7 +228,7 @@ arguments
     F (:,1) single  % Fluorescence signal
     parms (1,1) struct   % parms
     filename  (1,1) string
-    calibrate (1,1) logical = false  % Set to true to perform autocal 
+    calibrate (1,1) logical = false  % Set to true to perform autocal
 end
 
 
@@ -272,7 +252,7 @@ else
         % Autocalibration with the specified parameters
         pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocal
         % Copy values from parms.autocal struct to pax
-        pax = brick.structmerge(pax,parms.autocal,'strict','recursive','type');        
+        pax = brick.structmerge(pax,parms.autocal,'strict','recursive','type');
         pax.dt = parms.mlparms.dt;
         pax.mlspikepar = parms.mlparms;
         pax.mlspikepar.dographsummary = false;
@@ -283,12 +263,12 @@ else
             return;
         end
         % Replace fixed with calibrated parms
-        parms.mlparms.finetune.sigma = sigmaEst; 
+        parms.mlparms.finetune.sigma = sigmaEst;
         parms.mlparms.tau = tauEst;
         parms.mlparms.a = ampEst;
     end
 
-   
+
     % Run with parms (or rerun with calibrated parms)
     [spikeTimes,estimatedF,~,parEst] = spk_est(F,parms.mlparms);
 
