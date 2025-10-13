@@ -136,8 +136,9 @@ roiToDo = roiToDo(roiToDo.done,:); % Crop
 % current experiment to return to the ns.C caller.
 
 [keepFrameIx,frameNsTime] = sbx.framesForExperiment(key);
-nrFrames = numel(keepFrameIx);
-signal = nan(nrFrames,height(roiToDo));
+nrFramesThisExpt = numel(keepFrameIx);
+nrFramesInSession = prep.nrframesinsession; % Total frames across all experiments in the session
+signal = nan(nrFramesThisExpt,height(roiToDo));
 channelInfo =  struct('nr',num2cell(roiToDo.roi),'quality',NaN,'tau',NaN,'sigma',NaN,'neg',NaN,'nan',NaN);
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
@@ -152,15 +153,17 @@ for i = 1:height(roiToDo)
     channelInfo(i).neg= result.neg;
     channelInfo(i).nan = result.nan;
     % Convert spike times to a signal with counts
-    thisSignal = brick.timevector(spikeTimes,(0:nrFrames-1)*parms.mlparms.dt,'count');
+    % Important: spikeTimes are for the ENTIRE SESSION, so create time vector for all session frames
+    thisSignal = brick.timevector(spikeTimes,(0:nrFramesInSession-1)*parms.mlparms.dt,'count');
     framesNotInFile = sum(keepFrameIx > numel(thisSignal));
     assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",roiToDo.filename(i),framesNotInFile,key.starttime, key.session_date);
+    % Extract only the frames for this specific experiment
     thisSignal = thisSignal(keepFrameIx);
     signal(:,i) = thisSignal;
     fprintf('Done in %s.\n',seconds(toc))
 end
 
-time = [frameNsTime(1) frameNsTime(end) nrFrames];
+time = [frameNsTime(1) frameNsTime(end) nrFramesThisExpt];
 recordingInfo = struct('dummy',true);
 
 end
