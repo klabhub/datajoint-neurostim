@@ -184,7 +184,7 @@ function [data, var_names] = add_factors_to_table(data, factors_struct)
         temp_table = table();
         for i = 1:numel(var_names)
             factor_name = var_names(i);
-            factor_data = factors_struct.(factor_name);
+            factor_data = cat(1,factors_struct.(factor_name));
 
             if size(factor_data, 1) ~= height(data)
                 error('Factor "%s" has %d rows, but y has %d rows.', ...
