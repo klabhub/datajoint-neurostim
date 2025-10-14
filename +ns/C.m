@@ -136,39 +136,52 @@ classdef C < dj.Computed & dj.DJInstance
         function v = get.keySource(~)
             % Restricted to files with the extenstion specified in CParm
             % and the include/exclude specs in CParm.
-            % This seems cumbersome, but I could not get a simpler join to work
-            allTpl = [];
-            for thisPrm= fetch(ns.CParm,'extension','include','exclude')'
-                % Loop over the rows in CParm
-                restrict  =struct('extension',thisPrm.extension);
-                tbl = ns.File & restrict & analyze(ns.Experiment,strict=false); % Only files in experiments that should be analyzed
-                if ~isempty(thisPrm.include)
-                    inc = strsplit(thisPrm.include,',');
-                    for i=1:numel(inc)
-                        tbl = tbl & ['filename LIKE ''' inc{i} ''''];
-                    end
-                end
 
-                if ~isempty(thisPrm.exclude)
-                    exc = strsplit(thisPrm.exclude,',');
-                    for i=1:numel(exc)
-                        tbl = tbl & ['filename NOT LIKE ''' exc{i} ''''];
+            allFiles = ns.File & analyze(ns.Experiment,strict=false); % Only files in experiments that should be analyzed 
+            % Fetch all CParm rows at once for efficiency
+            allParms = fetch(ns.CParm, 'ctag', 'extension', 'include', 'exclude');
+            if isempty(allParms)
+                % No CParm rows - return empty result
+                v = ns.File & 'FALSE';
+                return;
+            end
+    
+            % Build a combined WHERE clause for all CParms using OR
+            parmClauses = cell(numel(allParms), 1);            
+            for p = 1:numel(allParms)
+                thisPrm = allParms(p);
+                
+                % Build conditions for this CParm
+                conditions = {sprintf('extension = "%s"', thisPrm.extension)};                
+                if ~isempty(thisPrm.include)
+                    inc = strsplit(thisPrm.include, ',');
+                    incParts = cell(1, numel(inc));
+                    for i = 1:numel(inc)
+                        incParts{i} = sprintf('filename LIKE "%s"', strtrim(inc{i}));
+                    end
+                    if isscalar(incParts)
+                        conditions{end+1} = incParts{1}; %#ok<AGROW>
+                    else
+                        conditions{end+1} = ['(' strjoin(incParts, ' OR ') ')']; %#ok<AGROW>
                     end
                 end
-                % Table for one row in CParm
-                tbl = tbl*proj(ns.CParm&ns.stripToPrimary(ns.CParm,thisPrm));
-                % Would like to concatenate this tbl with the next row but
-                % this does not work with the | operator. Instead, concatenate
-                % tuples of primary keys
-                thisTpl = fetch(tbl);
-                if isempty(allTpl)
-                    allTpl = thisTpl;
-                else
-                    allTpl  = catstruct(1,allTpl,thisTpl);
+                
+                if ~isempty(thisPrm.exclude)
+                    exc = strsplit(thisPrm.exclude, ',');
+                    for i = 1:numel(exc)
+                        conditions{end+1} = sprintf('filename NOT LIKE "%s"', strtrim(exc{i})); %#ok<AGROW>
+                    end
                 end
+                
+                % Combine conditions for this CParm with AND, then add ctag condition
+                parmClauses{p} = ['(' strjoin(conditions, ' AND ') sprintf(' AND ctag = "%s"', thisPrm.ctag) ')'];
             end
-            % And then restrict the full table by the set of found tuples.
-            v = (ns.File*proj(ns.CParm,'fun','description','parms')) & allTpl;
+            
+            % Combine all CParm clauses with OR
+            combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
+            
+            % Apply combined restriction to get matching File+CParm combinations
+            v = (allFiles * proj(ns.CParm)) & combinedWhere;
         end     
        
     end
