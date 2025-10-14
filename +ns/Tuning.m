@@ -70,19 +70,30 @@ classdef Tuning <dj.Computed
     methods
 
         function v = get.keySource(~)
-            % Restricted to Dimensions listedin TuningParm
-            dimTpl= [];
-            for thisPrm = fetch(ns.TuningParm,'dimension')'
-                restrict  =struct('dimension',thisPrm.dimension);
-                thisTpl = fetch((ns.Dimension & restrict));
-                if isempty(dimTpl)
-                    dimTpl = thisTpl;
-                else
-                    dimTpl  = catstruct(1,dimTpl,thisTpl);
-                end
+            % Restricted to Dimensions listed in TuningParm
+            % Fetch all TuningParm rows at once
+            allParms = fetch(ns.TuningParm, 'tuningtag', 'dimension');
+            
+            if isempty(allParms)
+                % No TuningParm rows - return empty result
+                v = proj(ns.CChannel) * ns.TuningParm * proj(ns.Dimension) & 'FALSE';
+                return;
             end
-            % And then restrict the full table by the set of found tuples.
-            v = (proj(ns.CChannel)*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;
+            
+            % Build a combined WHERE clause for all TuningParm rows using OR
+            parmClauses = cell(numel(allParms), 1);
+            
+            for p = 1:numel(allParms)
+                % Each clause needs both tuningtag and dimension
+                parmClauses{p} = sprintf('(tuningtag = "%s" AND dimension = "%s")', ...
+                    allParms(p).tuningtag, allParms(p).dimension);
+            end
+            
+            % Combine all clauses with OR
+            combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
+            
+            % Apply combined restriction
+            v = (proj(ns.CChannel) * ns.TuningParm * proj(ns.Dimension)) & combinedWhere;
         end
     end
 
