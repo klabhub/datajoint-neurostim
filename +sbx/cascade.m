@@ -35,6 +35,11 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % parms.model = 'Global_EXC_15Hz_smoothing100ms';
 % See https://github.com/HelmchenLabSoftware/Cascade/blob/master/Pretrained_models/available_models.yaml
 % for a list of available models.
+% Use a ? wildcard (e.g., parms.model = 'Global_EXC_?Hz_smoothing100ms') to
+% use  a model with the frequency that is closest to the actual sampling frequency of the
+% data. For instance, this allows automatic adjustment to the 7.5 Hz model
+% for 2 plane recordings at 15Hz.
+% 
 % parms.prep = 'suite2p'; % Which sbx.Preprocessed to use
 % parms.restrict = 'pcell>0.9'; % Optional restriction on which rois to do
 % parms.neuropilFactor = 0.7; % Subtract 0.7*Fneu from F.
@@ -97,6 +102,30 @@ if isempty(pythonRunner)
 end
 assert(exist(pythonRunner,"file"),"Set the NS_PYTHON environment variable to a conda/mamba/micromamba executable (not found at  %s)",pythonRunner);
 
+rate  = (prep.framerate/prep.nrplanes); % Match dt to framerate
+if contains(parms.model,"?Hz")
+    % Find the model with the closest matching frequency (mainly intended to adjust
+    % for two plane recordings that have an effective sampling rate that
+    % is half the 15Hz of the microscope)
+    models = getCascadeModels(cascadeFolder);
+    match = regexp(models,strrep(parms.model,'?Hz','(?<rate>\d+)Hz'),'names');
+    availableRate= cellfun(@(x) str2double(x.rate),match(~cellfun(@isempty,match)));
+    assert(~isempty(availableRate),'No matching Cascade models for %s',parms.model);    
+    [~,ix] =min(abs(rate-availableRate));
+    parms.model = strrep(parms.model,'?',num2str(availableRate(ix)));
+end
+
+match = regexp(parms.model,'_(?<rate>\d+)Hz','names');
+assert(~isempty(match),'Cannot extract sampling rate from model name %s',parms.model)
+modelRate =str2double(match.rate);
+ratio = modelRate/rate;
+if ratio >2 || ratio < .5
+    warning('Large mismatch between sampling rate %.2f and Cascade model %.2f',rate,modelRate);
+end
+
+
+
+
 %% Construct the python command.
 cfd = fileparts(mfilename('fullpath'));
 toolsPath = strrep(fullfile(fileparts(cfd),'tools'),"\","/");
@@ -121,14 +150,6 @@ pyEnv = pythonRunner + " run -n cascade python ";
 cmd = sprintf('%s %s',pyEnv,pyCmd);
 
 
-rate  = (prep.framerate/prep.nrplanes); % Match dt to framerate
-match = regexp(parms.model,'_(?<rate>\d+)Hz','names');
-assert(~isempty(match),'Cannot extract sampling rate from model name %s',parms.model)
-modelRate =str2double(match.rate);
-ratio = modelRate/rate;
-if ratio >2 || ratio < .5
-    warning('Large mismatch between sampling rate %.2f and Cascade model %.2f',rate,modelRate);
-end
 
 %% Get the frames for this experiment
 [keepFrameIx,frameNsTime] = sbx.framesForExperiment(key);
@@ -209,7 +230,7 @@ end
 % The value is divided by the square root of the frame rate to make it comparable across recordings with different frame rates.
 
 noiseLevel = 100*median(abs(diff(F,1,1)),1,"omitmissing")./sqrt(prep.framerate/prep.nrplanes);
-channelInfo =  struct('nr',num2cell(keepRoi),'noiseLevel',num2cell(noiseLevel'));
+channelInfo =  struct('nr',num2cell(keepRoi),'noiseLevel',num2cell(noiseLevel'),'model',char(parms.model));
 
 %% Run cascade in chunks
 nrRoi = size(F,2);
@@ -256,6 +277,33 @@ fprintf('Saved results to %s\n',cascadeResultsFilename);
 %% Clean up temp files.
 delete(tmpDffFile);
 delete(tmpResultsFile);
+end
+
+
+
+function modelNames = getCascadeModels(cascadePath)
+    % Read available CASCADE models from YAML file
+    
+    filePath = fullfile(cascadePath,'Pretrained_models','available_models.yaml');
+    
+    % Read file
+    fileID = fopen(filePath, 'r');
+    fileText = fread(fileID, '*char')';
+    fclose(fileID);
+    
+    % Extract model names
+    lines = splitlines(fileText);
+    modelNames = {};
+    
+    for i = 1:length(lines)
+        line = strtrim(lines{i});
+        % Model names are at the start of line and end with ':'
+        if ~isempty(line) && ~startsWith(line, '#') && ...
+           ~startsWith(line, ' ') && endsWith(line, ':')
+            modelName = strrep(line, ':', '');
+            modelNames{end+1} = modelName; %#ok<AGROW>
+        end
+    end
 end
 
 
