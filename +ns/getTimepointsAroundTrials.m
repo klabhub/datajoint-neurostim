@@ -32,7 +32,7 @@ for ii = 1:n_trl
 
     buffer_winN = [trl_start_t(ii), trl_stop_t(ii)] + [-1, 1]*buffer_t;
 
-    isInSubsamp = gen.ifwithin(t, buffer_winN) | isInSubsamp;
+    isInSubsamp = do.ifwithin(t, buffer_winN) | isInSubsamp;
 
 end
 

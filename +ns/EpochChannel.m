@@ -179,8 +179,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             end
             %% Fetch data                
-            t_fetch = gen.Timer().start('Fetching epochs...');
-
+            t_fetch = tic;
+            fprintf('Fetching epochs...');
             % Change it so that ep, trl, and ch is separate for every ctag
             % and etag, currently it should only load when that is the case
             dat = fetch(ecTbl , 'signal');
@@ -200,8 +200,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             ecTbl.data = ep;
 
-            t_fetch.stop("complete.\n");
-            t_fetch.report();
+            fprintf("completed.\n"); toc(t_fetch);
 
         end
 
@@ -223,7 +222,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             if ~isempty(pv.time_window)
 
-                isTIn = gen.ifwithin(ecTbl.timepoints, pv.time_window);
+                isTIn = do.ifwithin(ecTbl.timepoints, pv.time_window);
                 ecTbl.timepoints_ = ecTbl.timepoints(isTIn);
                 ep = ep(:,:,isTIn);
 
@@ -231,7 +230,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             if ~isempty(pv.frequency_window)
 
-                isTIn = gen.ifwithin(ecTbl.frequencies, pv.frequencies_window);
+                isTIn = do.ifwithin(ecTbl.frequencies, pv.frequencies_window);
                 ecTbl.frequencies_ = ecTbl.frequencies(isTIn);
                 ep = ep(:,:,isTIn);
 

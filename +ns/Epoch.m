@@ -85,18 +85,18 @@ classdef Epoch < dj.Computed & dj.DJInstance
             ep_timepoints = ep_win(1):dt:ep_win(2);           
 
             % --- Export signal --
-            t_export = gen.Timer().start("Exporting data from ns.CChannel...\n");
+            t_export = tic;
+            fprintf("Exporting data from ns.CChannel...\n");
             % fetch as table and concatenate (n_channel, n_timepoints)
             signal = fetch(ns.CChannel & cTbl, 'signal');
             signal = horzcat(signal(:).signal)';
-            t_export.stop("\tExporting is complete.");
-            t_export.report();
+            fprintf("\tExporting is complete..."); toc(t_export);
 
             % --- Epoch Segmentation ---
-            t_sgm = gen.Timer().start("Now segmenting...\n");            
+            t_sgm = tic;
+            fprintf("Now segmenting...\n");
             ep = segment();          
-            t_sgm.stop("\t\tSegmentation complete.");
-            t_sgm.report();
+            fprintf("\t\tSegmentation complete."); toc(t_sgm);
 
             % --- Epoch Preprocessing ---
             pv = epTbl{'pv'}; % parametes containing processing steps
@@ -115,7 +115,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             if isfield(pv, 'baseline') && pv.baseline
 
-                ep = eTbl.baseline(ep, gen.ifwithin(ep_timepoints, pv.baseline_win));
+                ep = eTbl.baseline(ep, do.ifwithin(ep_timepoints, pv.baseline_win));
 
             end
 
@@ -137,7 +137,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 
                 fun_str = pv.artifact_parm(iFun).fun;
 
-                t_artN = gen.Timer().start("Finding artifacts through: %s.", fun_str);
+                t_artN = tic;
+                fprintf("Finding artifacts through: %s.\n", fun_str);
                 if strcmp(fun_str, 'detect_outliers') 
                     % staple function for artifact rejection, calls
                     % ns.prep.detect_outlier_epochs within the nested
@@ -170,13 +171,13 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 excludeN = [excludeN; flags{iFun}.all];
                 % update epoch flags
                 epoch_flags = flags{iFun}.flag(epoch_flags);
-                t_artN.stop("\tArtifact detection '%s' complete.", fun_str);
-                t_artN.report();
+                fprintf("\tArtifact detection '%s' complete.", fun_str); toc(t_artN);
 
             end
 
             % --- Submission to the server ---
-            t_sub = gen.Timer().start("\tNow submitting to the server\n");
+            t_sub = tic;
+            fprintf("\tNow submitting to the server\n");
             % Create epoch tuple (n_epochs,1) that contains flags
             epoch_tpl = mergestruct(key, struct( ...
                 trial = num2cell(trial_no),...
@@ -192,14 +193,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % unravel first, then epochs
             ep = reshape(permute(ep, [2, 1, 3]), n_epochs*n_channels, n_timepoints);            
             nonPrimKey = setdiff(fieldnames(epoch_tpl), eTbl.primaryKey); % only keep the primary keys
+            ch_list = num2cell(cTbl.channels);
             epoch_tpl = mergestruct( ...
                 repelem(rmfield(epoch_tpl, nonPrimKey), n_channels),...
-                struct(channel = repmat(gen.make_column(num2cell(cTbl.channels)), n_epochs, 1),...
+                struct(channel = repmat(ch_list(:), n_epochs, 1),...
                 signal = num2cell(ep, 2)...
             ));
             chunkedInsert(ns.EpochChannel, epoch_tpl);
-            t_sub.stop("\t\tSubmission is complete.\n");
-            t_sub.report();
+            fprintf("\t\tSubmission is complete.\n"); toc(t_sub);
 
             function ep = segment()
                 
@@ -209,7 +210,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 nChannels = size(signal,1);
                 nEpochSamples = length(ep_timepoints);
                 nSample = size(t, 2);
-                iStart = arrayfun(@(i) gen.absargmin(t - (onsets(i) + ep_win(1))), 1:nTrials);
+                                
+                iStart = arrayfun(@(i) do.argmin(abs(t - (onsets(i) + ep_win(1)))), 1:nTrials);
                 % iOnset = iStart + find(ep_timepoints >= 0, 1, 'first') - 1;
                 iEnd = iStart + nEpochSamples - 1;
                
@@ -368,8 +370,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             end
             %% Fetch data                
-            t_fetch = gen.Timer().start('Fetching epochs...');
-
+            t_fetch = tic;
+            fprintf('Fetching epochs...');
             
             ep = fetch(epTbl , 'signal');
             ep = cat(1, ep(:).signal);
@@ -385,9 +387,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             ep = permute(ep, [2, 1, 3]);
 
             eTbl.data = ep;
-
-            t_fetch.stop("complete.\n");
-            t_fetch.report();
+            fprintf("completed.\n"); toc(t_fetch);
 
         end
 
@@ -414,7 +414,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             if ~isempty(pv.time_window)
 
-                isTIn = gen.ifwithin(eTbl.timepoints, pv.time_window);
+                isTIn = do.ifwithin(eTbl.timepoints, pv.time_window);
                 ep = ep(:,:,isTIn);
 
             end

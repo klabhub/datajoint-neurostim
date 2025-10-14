@@ -96,7 +96,7 @@ classdef NSFlags < dynamicprops
                 % p_data.SetObservable = true; % Optional
                 % p_data.GetObservable = true; % Optional
             end
-            obj.(finalPropName) = int32(gen.make_column(value(:)));
+            obj.(finalPropName) = int32(value(:));
 
             countPropertyName = ['n_', finalPropName];
             if ~isprop(obj, countPropertyName)

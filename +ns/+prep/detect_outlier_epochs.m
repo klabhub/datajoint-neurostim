@@ -182,7 +182,7 @@ fprintf('  Correlation check complete with %d of %d epochs flagged.\n', sum(isFl
 
         if ~all(isnan(variance_metrics))
             % Calculate Z-scores based on max variance across ALL channels
-            variance_zscores = gen.robust_z(variance_metrics, 1, 'std');
+            variance_zscores = do.robust_z(variance_metrics, 1, 'std');
             % Identify epochs exceeding the Z-score threshold
             flags = variance_zscores > options.variance_z_threshold;
             flags(isnan(variance_zscores)) = false; % Treat NaN Z-scores as non-outliers
@@ -226,7 +226,7 @@ fprintf('  Correlation check complete with %d of %d epochs flagged.\n', sum(isFl
 
         if ~all(isnan(hf_noise_metrics))
             % Calculate Z-scores based on max HF noise across ALL channels
-            hf_noise_zscores = gen.robust_z(hf_noise_metrics, 1, 'std');
+            hf_noise_zscores = do.robust_z(hf_noise_metrics, 1, 'std');
              % Identify epochs exceeding the Z-score threshold
             flags = hf_noise_zscores > options.hf_z_threshold;
             flags(isnan(hf_noise_zscores)) = false; % Treat NaN Z-scores as non-outliers
@@ -256,11 +256,11 @@ fprintf('  Correlation check complete with %d of %d epochs flagged.\n', sum(isFl
         end
 
         if ~all(isnan(correlation_metrics))
-            correlation_zscores = gen.robust_z(correlation_metrics, 1, 'std');
+            correlation_zscores = do.robust_z(correlation_metrics, 1, 'std');
              % Handle potential NaNs in Z-score output
             nan_z_corr = isnan(correlation_zscores);
             if any(nan_z_corr)
-                warning('gen.robust_z returned NaN for %d correlation scores. These epochs will not be flagged by correlation.', sum(nan_z_corr));
+                warning('do.robust_z returned NaN for %d correlation scores. These epochs will not be flagged by correlation.', sum(nan_z_corr));
                 correlation_zscores(nan_z_corr) = -inf; % Ensure NaNs don't exceed threshold
             end
             % Flag if Z-score is GREATER than the threshold (one-sided test)
