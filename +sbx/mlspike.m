@@ -53,7 +53,9 @@ warning('off','backtrace');
 assert(isfield(parms,"mlparms"),'mlspike parameters must define mlparms.');
 
 parms.mlparms.dt = 1./(prep.framerate/prep.nrplanes); % Match dt to framerate
-
+if ~isfield(parms,'neuropilFactor')
+    parms.neuropilFactor = 0.7; % Default neuropil correction factor
+end
 %% Session based
 % Check what has already been done
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
@@ -184,9 +186,16 @@ for pl = unique(roiT.plane)
     if ~exist(thisFile,"file")
         error('File %s does not exist',thisFile);
     end
-    thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+    thisF=  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
     keepRoi = roiT.roi(roiT.plane==pl);
-    F = [F;thisSignal(keepRoi,:)']; %#ok<AGROW>
+
+    thisFile = fullfile(fldr,"plane" +  string(pl) ,'Fneu.npy');
+    if ~exist(thisFile,"file")
+        error('File %s does not exist',thisFile);
+    end
+    thisFNeu=  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+
+    F = [F;(thisF(keepRoi,:)-parms.neuropilFactor*thisFNeu(keepRoi,:))']; %#ok<AGROW>
 end
 %% Use parallel pool if requested
 pool = nsParPool;

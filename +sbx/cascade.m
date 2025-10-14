@@ -37,6 +37,7 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % for a list of available models.
 % parms.prep = 'suite2p'; % Which sbx.Preprocessed to use
 % parms.restrict = 'pcell>0.9'; % Optional restriction on which rois to do
+% parms.neuropilFactor = 0.7; % Subtract 0.7*Fneu from F.
 % parms.baseline = 'maximin'; % How to determine F0
 % parms.sigma = 10; % In seconds ; Gaussian sigma for F0
 % parms.window = 60 ; % in seconds; window for maximim
@@ -72,6 +73,9 @@ prep = fetch(sbx.Preprocessed & key & struct('prep', parms.prep),'*');
 assert(~isempty(prep),'No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);
 warning('off','backtrace');
 assert(all(isfield(parms,["model" "baseline" "sigma" "window" "count"])),'cascade parameters incomplete.');
+if ~isfield(parms,'neuropilFactor')
+    parms.neuropilFactor = 0.7; % Default neuropil correction factor
+end
 % Check that cascade is installed
 cascadeFolder = getenv("NS_CASCADE");
 if isempty(cascadeFolder)
@@ -134,7 +138,7 @@ allPlanesSignal = [];
 allPlanesChannelInfo = [];
 for pl=0:prep.nrplanes-1
     planeFolder = fullfile(fldr,"plane" +  string(pl));
-    cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat")
+    cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat");
     if exist(cascadeResultsFilename,"file")
         fprintf('Cascade results already exist for plane %d in %s. Skipping.\n',pl,fldr);
         load(cascadeResultsFilename,'signal','channelInfo');
@@ -146,7 +150,7 @@ for pl=0:prep.nrplanes-1
         [signal,channelInfo]= runCascade(roi,parms,prep,planeFolder,cascadeResultsFilename,cmd,dffFile);
         fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
     end
-    framesNotInFile = sum(keepFrameIx > height(signal));
+    framesNotInFile = sum(keepFrameIx > size(signal,1));
     assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",cascadeResultsFilename,framesNotInFile,key.starttime, key.session_date);
     % Concatenate across planes
     allPlanesSignal = [allPlanesSignal  signal(keepFrameIx,:)]; %#ok<AGROW>
@@ -174,14 +178,20 @@ arguments
     tmpDffFile (1,1) string
 end
 
-%% Load the F data per plane
-
+%% Load the F data and subtract neuropil
 thisFile = fullfile(planeFolder,'F.npy');
 if ~exist(thisFile,"file")
     error('File %s does not exist',thisFile);
 end
 F =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
 F = F(keepRoi,:)';
+thisFile = fullfile(planeFolder,'Fneu.npy');
+if ~exist(thisFile,"file")
+    error('File %s does not exist',thisFile);
+end
+Fneu =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+Fneu = Fneu(keepRoi,:)';
+F = F-parms.neuropilFactor*Fneu;
 
 %% Determine dFF
 % Replacing F to save a bit of memory
