@@ -72,7 +72,7 @@ classdef Tuning <dj.Computed
         function v = get.keySource(~)
             % Restricted to Dimensions listed in TuningParm
             % Fetch all TuningParm rows at once
-            allParms = fetch(ns.TuningParm, 'tuningtag', 'dimension');
+            allParms = fetch(ns.TuningParm, 'tuningtag', 'dimension','ctag');
             
             if isempty(allParms)
                 % No TuningParm rows - return empty result
@@ -85,15 +85,15 @@ classdef Tuning <dj.Computed
             
             for p = 1:numel(allParms)
                 % Each clause needs both tuningtag and dimension
-                parmClauses{p} = sprintf('(tuningtag = "%s" AND dimension = "%s")', ...
-                    allParms(p).tuningtag, allParms(p).dimension);
+                parmClauses{p} = sprintf('(ctag="%s" AND tuningtag = "%s" AND parmDimension = "%s" AND dimension = "%s")', ...
+                    allParms(p).ctag,allParms(p).tuningtag, allParms(p).dimension,allParms(p).dimension);
             end
             
             % Combine all clauses with OR
             combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
             
             % Apply combined restriction
-            v = (proj(ns.CChannel) * ns.TuningParm * proj(ns.Dimension)) & combinedWhere;
+            v = (proj(ns.CChannel) * proj(ns.TuningParm,'dimension->parmDimension') * proj(ns.Dimension)) & combinedWhere;
         end
     end
 

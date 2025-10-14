@@ -164,10 +164,8 @@ for i = 1:height(roiToDo)
     signal(:,i) = thisSignal;
     fprintf('Done in %s.\n',seconds(toc))
 end
-
 time = [frameNsTime(1) frameNsTime(end) nrFramesThisExpt];
 recordingInfo = struct('dummy',true);
-
 end
 
 function [out] = loop(roiT,parms,fldr,calibrate)
@@ -243,11 +241,10 @@ arguments
     calibrate (1,1) logical = false  % Set to true to perform autocal
 end
 
-
 isNaN = isnan(F);
 F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this should be rare (missing F)
 isNegative  = F<0;
-% F is supposed to be F/F0 and therefore positive, but the neuropil
+% F is supposed to be raw fluoresence and therefore positive, but the neuropil
 % correction can occasionally generate negative F.  Set those to zero.
 
 if mean(isNegative)>0.05
@@ -268,7 +265,17 @@ else
         pax.dt = parms.mlparms.dt;
         pax.mlspikepar = parms.mlparms;
         pax.mlspikepar.dographsummary = false;
-        [tauEst,ampEst,sigmaEst,events] = spk_autocalibration(F,pax);
+        if isfield(parms,'secsForCal')
+            % Use a subset of the F to determine calibration.
+            % secsForCal at the start, middle, and end of the session
+            nrSamples = size(F,1);
+            t = (0:nrSamples-1)*pax.dt;
+            useForCal = t < parms.secsForCal | t>(t(nrSamples)-parms.secsForCal) |  abs(t-t(round(nrSamples/2))) < 0.5*parms.secsForCal;
+            [tauEst,ampEst,sigmaEst,events] = spk_autocalibration(F(useForCal),pax);
+        else
+            % Calibrate using the full F
+            [tauEst,ampEst,sigmaEst,events] = spk_autocalibration(F,pax);
+        end
         if isempty(events)
             % If events is empty, calibration was not possible
             result = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);

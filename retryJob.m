@@ -13,7 +13,7 @@ arguments
     row  = 1  % The row of the Jobs table to process
     tbl = ns.Jobs
 end
-
+import dj.*
 tpl = fetch(tbl ,'*',sprintf('LIMIT 1 OFFSET %d',row-1));
 
 %% Setup the break point
