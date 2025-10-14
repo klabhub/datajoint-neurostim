@@ -5,3 +5,6 @@
 [submodule "zapline-plus"]
 	path = zapline-plus
 	url = git@github.com:mert-ozkan/zapline-plus.git
+[submodule "dataop"]
+	path = dataop
+	url = git@github.com:mert-ozkan/dataop.git
