@@ -2,6 +2,3 @@
 	path = datajoint-matlab
 	url = https://github.com/klabhub/datajoint-matlab.git
 	branch = sub-djmatlab
-[submodule "dataop"]
-	path = dataop
-	url = git@github.com:mert-ozkan/dataop.git
