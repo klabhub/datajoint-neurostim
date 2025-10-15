@@ -75,7 +75,7 @@ arguments (Input)
     options.exclude (:,1) {mustBeNumeric, mustBeInteger, mustBePositive} = [] % Epochs to exclude from analysis
 end
 arguments (Output)
-    flags (1, 1) ns.NSFlags
+    flags (1, 1) ns.prep.NSFlags
 end
 
 
@@ -110,7 +110,7 @@ end
     end
 
 % --- Initialization ---
-flags = ns.NSFlags(options);
+flags = ns.prep.NSFlags(options);
 
 % =========================================================================
 % --- Calculate Flags using Nested Functions ---

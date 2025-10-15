@@ -81,23 +81,36 @@ classdef C < dj.Computed & dj.DJInstance
         % constant across different rows. If their value differs, the
         % property will take the form of a table with distinguishing keys
         % preceding the property variable.
+        % channels
+        % timepoints        
+        % artifacts
+        % dt
+        % srate
+        % layout
+        % channel_coordinates      
+
+    end
+
+    properties (Dependent)
+
         channels
-        timepoints        
+        timepoints 
+        layout
+        channel_coordinates
         artifacts
         dt
         srate
-        layout
-        channel_coordinates      
 
     end
 
     properties (Access = protected)
 
-        channels_ ns.C_channels = ns.C_channels()
-        time_ ns.C_time = ns.C_time()
-        layout_ ns.C_layout = ns.C_layout()
-        channel_coordinates_ ns.C_channel_coordinates = ns.C_channel_coordinates()
-        artifacts_ ns.C_artifacts = ns.C_artifacts()
+        channels_ dj.DJProperty = dj.DJProperty.empty
+        timepoints_ dj.DJProperty = dj.DJProperty.empty
+        layout_ dj.DJProperty = dj.DJProperty.empty
+        channel_coordinates_ dj.DJProperty = dj.DJProperty.empty
+        artifacts_ dj.DJProperty = dj.DJProperty.empty
+        srate_ dj.DJProperty = dj.DJProperty.empty
     
     end
 
@@ -185,28 +198,46 @@ classdef C < dj.Computed & dj.DJInstance
         end     
        
     end
-
+    
     % Get methods
+    % If DJProperty, call static get_dj_property(djPropObject, getMethodHandle[, DJPropertyOptions...]) method from DJInstance 
+    
     methods
 
         function ch = get.channels(cTbl)
-            
-            cTbl.channels_.update(cTbl);
-            ch = cTbl.channels_.value;            
+
+            ch = cTbl.get_dj_property(cTbl.channels_, @cTbl.getChannels);        
+
+        end
+        
+
+        function ch = get.timepoints(cTbl)
+                        
+            ch = cTbl.get_dj_property(cTbl.timepoints_, @cTbl.getTimepoints);             
 
         end
 
-        function t = get.timepoints(cTbl)
+        function ch = get.layout(cTbl)
+                        
+            ch = cTbl.get_dj_property(cTbl.layout_, @cTbl.getLayout);             
 
-            cTbl.time_.update(cTbl);
-            
-            t = cTbl.time_.value;           
-            
+        end
+
+        function coord = get.channel_coordinates(cTbl)
+
+            coord = cTbl.get_dj_property(cTbl.channel_coordinates_, @cTbl.getChannelCoordinates);
+
+        end
+
+        function art = get.artifacts(cTbl)
+
+            art = cTbl.get_dj_property(cTbl.artifacts_, @cTbl.getArtifacts);
+
         end
 
         function t = get.dt(cTbl)
 
-            cTbl.time_.update(cTbl);
+            % Compute from timepoints directly
             t = cTbl.timepoints;
             if istable(t)
 
@@ -219,10 +250,74 @@ classdef C < dj.Computed & dj.DJInstance
             end
 
         end
-
+        
         function srate = get.srate(cTbl)
 
-            info = fetch(cTbl,'info');
+            srate = cTbl.get_dj_property(cTbl.srate_, @cTbl.getSRate);
+
+        end
+
+    end
+
+    % --- Custom get methods to pass to DJProperty ---
+    % These methods access property values per row in the cTbl instance
+    methods (Static)
+
+        function ch = getChannels(key)
+
+            ch = fetch(ns.CChannel & key, 'channel');
+            ch = [ch.channel];
+
+        end
+        
+        function t = getTimepoints(key)
+
+            t = fetch(key, 'time');
+            t = t.time;
+
+            if numel(t)==3
+                t = linspace(t(1),t(2),t(3))';
+            end
+
+        end
+
+        function l = getLayout(key)
+
+            l = getfield(fetch(key, 'info'), 'info');
+            if isfield(l, 'layout')
+                l = l.layout;
+            else
+                l = [];
+            end
+
+        end
+
+        function coord = getChannelCoordinates(key)
+
+            ccTbl = fetch(ns.CChannel & key,'channelinfo');
+            info = [ccTbl.channelinfo];
+            coord = [info.X; info.Y; info.Z]';
+
+        end
+
+        function art = getArtifacts(key)
+
+            info = fetch(key, 'info');
+            if isfield(info.info, 'noisyChannels')
+
+                art = info.info.noisyChannels;
+
+            else
+
+                art = struct.empty();
+
+            end
+        
+        end
+
+        function srate = getSRate(key)
+
+            info = fetch(key,'info');
             if numel(info) > 1
                 srate = arrayfun(@(s) s.info.srate, info);
                 if isscalar(unique(srate)), srate = unique(srate); end
@@ -232,27 +327,7 @@ classdef C < dj.Computed & dj.DJInstance
 
         end
 
-        function l = get.layout(cTbl)
-
-            cTbl.layout_.update(cTbl);
-            l = cTbl.layout_.value;
-
-        end
-
-        function coord = get.channel_coordinates(cTbl)
-
-            cTbl.channel_coordinates_.update(cTbl);
-            coord = cTbl.channel_coordinates_.value;
-            
-        end
-
-        function art = get.artifacts(cTbl)
-
-            cTbl.artifacts_.update(cTbl);
-            art = cTbl.artifacts_.value;
-
-        end
-
+               
     end
     
 

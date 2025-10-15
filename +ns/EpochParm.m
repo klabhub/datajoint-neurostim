@@ -40,6 +40,8 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
 
             arguments
 
+                pv.resample (1,1) {mustBeNumeric} = 0
+                pv.resample_opts = {}
                 pv.detrend (1,1) {mustBeLogicalOrNumeric} = 0
                 pv.baseline (1,1) {mustBeLogicalOrNumeric} = 0
                 pv.baseline_win {validateBaselineWin} = []
