@@ -5,37 +5,37 @@ function [signal,time,channelInfo,recordingInfo] = mlspike(key,parms)
 % This function is called when populating ns.C with the appropriate
 % parameters.
 %
-% With autocalibration defined, one calibration is run (with nrRoiForCal
-% randomly chosen rois), and the tau, amplitude, that result from
-% this are used for all subsequent roi. This is done to reduce the time spent on calibration.
-% The sigma is always estimated per roi. If you prefer to run autocalibration on every roi, set
-% nrRoiForCal to inf.
+% With autocalibration defined it can be restricted to a subset of the samples
+% to reduce the time spent on calibration. The sigma is always estimated per roi. 
+% If autocalibration is requested and fails, the ROI will not be added to
+% the C table. 
 %
 % EXAMPLE
 % Setup the parameters for the alogrithm (see spikes/spk_demo.m)
 %
-%mlparms = sbx.mlspikeDefaults("DENEUX16","gcamp6s");
-%mlparms.algo.nspikemax =4;  % Allow 4 spikes per bin (15 Hz)
-%mlparms.dographsummary = false;
-%mlparms.display = 'none';
+%parms.mlparms = sbx.mlspikeDefaults("DENEUX16","gcamp6s");
+%parms.mlparms.algo.nspikemax =4;  % Allow 4 spikes per bin (15 Hz)
+%parms.mlparms.dographsummary = false;
+%parms.mlparms.display = 'none';
 %
-%autocalparms.amin = 0.05;
-%autocalparms.amax =0.2;
-%autocalparms.taumin = 0.25;
-%autocalparms.taumax = 2;
-%autocalparms.maxamp =4  % A maxamp of 4 seems necessary in our data.
-%autocalparms.display = 'none'; % No figures
+%parms.autocal.amin = 0.05;
+%parms.autocal.amax =0.2;
+%parms.autocal.taumin = 0.25;
+%parms.autocal.taumax = 2;
+%parms.autocal.maxamp =4  % A maxamp of 4 seems necessary in our data.
+%parms.autocal.display = 'none'; % No figures
+%
+% parms.secsForCal = 300; % Use 300 seconds at the beginning, middle, and end for autocal.
+% parms.prep = 'gcamp6s'
+% parms.restrict = 'pcell>0.75 AND radius>2.185'
+% parms.neuropilFactor = 0.7; % Substract neuropil with this factor
 %
 % Create a ns.CParm struct that uses these parms
 % deneux = struct('ctag','deneux16',...       % Name of this C
 %                   'description','Deneux spikes',...
 %                    'extension','.sbx',...
 %                    'fun','sbx.mlspike',...
-%                    'parms',struct( 'prep','gcamp6s',... % Which preprocessed set to use (links to sbx.Preprocessed)
-%                                    'restrict','pcell>0.75 AND radius>2.185',...
-%                                    'mlparms',mlparms,...
-%                                    'autocal',autocalparms,...
-%                                     'nrRoiForCal',20)); % Use 20 ROIs per session to calibrate
+%                    'parms',parms);
 %
 % insertIfNew(ns.CParm,deneux);
 % Start filling the table (restricted to sessions with preprocessed data)
@@ -56,6 +56,12 @@ parms.mlparms.dt = 1./(prep.framerate/prep.nrplanes); % Match dt to framerate
 if ~isfield(parms,'neuropilFactor')
     parms.neuropilFactor = 0.7; % Default neuropil correction factor
 end
+if ~isfield(parms,'secsForCal')
+    parms.secsForCal  = inf; % Calibrate on the entire timecourse
+end
+if ~isfield(parms,'allowNegative')
+    parms.allowNegative = 0.05; % 5% negative samples allowed by default
+end
 %% Session based
 % Check what has already been done
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
@@ -66,6 +72,7 @@ for pl=0:prep.nrplanes-1
         roi = [fetch((sbx.PreprocessedRoi & parms.restrict & struct('plane',pl)) & key ,'roi').roi]';
     end
     nrRoiThisPlane  = numel(roi);
+    % Results will be saved in this file:
     filename = fullfile(fldr,"plane" + string(pl), string(roi) + "." + key.ctag + ".mlspike.mat");
     done = false(nrRoiThisPlane,1);
     for i=1:nrRoiThisPlane
@@ -75,53 +82,8 @@ for pl=0:prep.nrplanes-1
     roiToDo = [roiToDo ; table(filename,done,roi,plane)]; %#ok<AGROW>
 end
 if any(~roiToDo.done)
-    % For the files that do not yet exist, check whether a calibration exists
-    % (if requested)
-    needCalibration = isfield(parms,'autocal') && ~isempty(parms.autocal);
-    if needCalibration
-        haveCalibration = exists(sbx.Mlcalibration & key);
-        if ~haveCalibration
-            % Run calibration for the session
-            nrRoi = height(roiToDo);
-            assert(all(isfield(parms.autocal,["amin" "amax" "taumin" "taumax" "maxamp"])),'The %s does not have the required calibration parameters\n',key.ctag)
-            if isfield(parms,'nrRoiForCal')
-                nrRoi = min(nrRoi,parms.nrRoiForCal);
-            end
-            % Select rois from the roiT
-            useRoi = randperm(height(roiToDo),nrRoi);
-            % Calibrate based on this subset
-            calResults = loop(roiToDo(useRoi,:),parms,fldr,true);
-            % This only has the parameters (and the quality); the data have
-            % been saved to disk.
-            % Store the calibration result
-            tpl = ns.stripToPrimary(sbx.Preprocessed,prep);
-            tpl.ctag= key.ctag;
-            tpl.tau = mean([calResults.tau],"omitmissing");
-            tpl.sigma  =mean([calResults.sigma],"omitmissing");
-            tpl.a = mean([calResults.a],"omitmissing");
-            tpl.quality = mean([calResults.quality],"omitmissing");
-            tpl.failed = sum(isnan([calResults.quality]));
-            tpl.neg = mean([calResults.neg],"omitmissing");
-            tpl.nan = mean([calResults.nan],"omitmissing");
-            insert(sbx.Mlcalibration, tpl);
-        end
-        % Calibration should be available now
-        calibration = fetch(sbx.Mlcalibration & key, '*');
-        assert(~isempty(calibration),"ML Spike calibration must have failed?");
-        % Replace values in mlparms with calibrated values
-        parms.mlparms.tau = calibration.tau;
-        parms.mlparms.a  =calibration.a;
-        % parms.mlparms.finetune.sigma = Not set- reestimated for each ROI (cheap);
-    else
-        % Run uncalibrated. Keep parms.mlparms as is.
-    end
-    % Recheck files as the calibration may have created some
-    for i=1:height(roiToDo)
-        roiToDo.done(i) = exist(roiToDo.filename(i),"file");
-    end
-    deconResults = loop(roiToDo(~roiToDo.done,:),parms,fldr,false);
-    mQuality = mean([deconResults.quality],"omitmissing");
-    fprintf('Completed mlspike deconvolution on %d rois. Mean quality %.2f\n',height(roiToDo),mQuality)
+    % Run deconvolution for the ROI that do not have a file on disk yet.
+    deconResults = loop(roiToDo(~roiToDo.done,:),parms,fldr);    
 end
 
 %% Check that all are now done
@@ -129,9 +91,10 @@ for i=1:height(roiToDo)
     roiToDo.done(i) = exist(roiToDo.filename(i),"file");
 end
 if any(~roiToDo.done)
-    fprintf('The following ROIs were not deconvolved:\n')
+    fprintf('Deconvolution failed on the following ROIs :\n')
     roiToDo(~roiToDo.done,:)
 end
+failFraction = mean(~roiToDo.done);
 roiToDo = roiToDo(roiToDo.done,:); % Crop
 %% Experiment specific
 % Now files with spiketimes exist on disk. Load and extract the relevant frames for the
@@ -141,39 +104,45 @@ roiToDo = roiToDo(roiToDo.done,:); % Crop
 nrFramesThisExpt = numel(keepFrameIx);
 nrFramesInSession = prep.nrframesinsession; % Total frames across all experiments in the session
 signal = nan(nrFramesThisExpt,height(roiToDo));
-channelInfo =  struct('nr',num2cell(roiToDo.roi),'quality',NaN,'tau',NaN,'sigma',NaN,'neg',NaN,'nan',NaN);
+channelInfo =  struct('nr',num2cell(roiToDo.roi),'quality',NaN,'tau',NaN,'sigma',NaN,'neg',NaN,'nan',NaN,'autocal',NaN);
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
+tic;
+fprintf('Reading spikeml mat files...\n')
+%% Read saved results    
 for i = 1:height(roiToDo)
-    %% Read saved results
-    fprintf('Reading spikeml mat files...\n')
     load(roiToDo.filename(i),'spikeTimes','result');
     channelInfo(i).quality = result.quality;
     channelInfo(i).tau= result.tau;
     channelInfo(i).a= result.a;
     channelInfo(i).neg= result.neg;
     channelInfo(i).nan = result.nan;
+    channelInfo(i).autocal = result.autocal;
     % Convert spike times to a signal with counts
-    % Important: spikeTimes are for the ENTIRE SESSION, so create time vector for all session frames
+    % spikeTimes are for the ENTIRE SESSION, so create time vector for all session frames
     thisSignal = brick.timevector(spikeTimes,(0:nrFramesInSession-1)*parms.mlparms.dt,'count');
     framesNotInFile = sum(keepFrameIx > numel(thisSignal));
     assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",roiToDo.filename(i),framesNotInFile,key.starttime, key.session_date);
     % Extract only the frames for this specific experiment
     thisSignal = thisSignal(keepFrameIx);
-    signal(:,i) = thisSignal;
-    fprintf('Done in %s.\n',seconds(toc))
+    signal(:,i) = thisSignal;    
 end
+fprintf('Done in %s.\n',seconds(toc))
 time = [frameNsTime(1) frameNsTime(end) nrFramesThisExpt];
-recordingInfo = struct('dummy',true);
+% Store the mean quality and fail fraction for this experiment (session
+% really)
+mQuality = mean([channelInfo.quality],"omitmissing");
+recordingInfo = struct('quality',mQuality,'fail',failFraction);
 end
 
-function [out] = loop(roiT,parms,fldr,calibrate)
+function [out] = loop(roiT,parms,fldr)
+% Function to read the F/Fneu and start a pool of workers to run spikeml on
+% each roi. Update messages are provided after each. 
 arguments
     roiT table % List of rois that have not been done yet
     parms (1,1) struct
     fldr (1,1) string
-    calibrate (1,1) logical
 end
 global BRICKPROGRESS %#ok<GVMIS>
 BRICKPROGRESS = false;
@@ -192,7 +161,6 @@ for pl = unique(roiT.plane)
         error('File %s does not exist',thisFile);
     end
     thisFNeu=  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
-
     F = [F;(thisF(keepRoi,:)-parms.neuropilFactor*thisFNeu(keepRoi,:))']; %#ok<AGROW>
 end
 %% Use parallel pool if requested
@@ -201,9 +169,8 @@ pool = nsParPool;
 fprintf('Queue %d channels with %d samples for deconvolution at %s\n',nrRoi,nrSamples,datetime("now"))
 tStart = tic;
 nrRoiDone = 0;
-
 for i=1:nrRoi
-    future(i) = parfeval(pool,@deconvolve,1,F(:,i),parms,roiT.filename(i),calibrate); %#ok<AGROW>
+    future(i) = parfeval(pool,@deconvolve,1,F(:,i),parms,roiT.filename(i)); %#ok<AGROW>
 end
 afterEach(future,@afterDone,0,PassFuture = true);  % Update the command line
 wait(future); % Wait for all to complete
@@ -232,13 +199,13 @@ warning('on','backtrace');
 
 end
 
-function result = deconvolve(F,parms,filename,calibrate)
-% Function that does the actual mlspike deconvolution.
+function result = deconvolve(F,parms,filename)
+% Function that does the actual mlspike deconvolution and saves the results
+% to disk in a file named after the ctag. 
 arguments
     F (:,1) single  % Fluorescence signal
     parms (1,1) struct   % parms
-    filename  (1,1) string
-    calibrate (1,1) logical = false  % Set to true to perform autocal
+    filename  (1,1) string    
 end
 
 isNaN = isnan(F);
@@ -246,18 +213,19 @@ F(isNaN) = 0; % Could remove samples instead or linearly interpolate, but this s
 isNegative  = F<0;
 % F is supposed to be raw fluoresence and therefore positive, but the neuropil
 % correction can occasionally generate negative F.  Set those to zero.
+F(isNegative) = 0;
 
-if mean(isNegative)>0.05
+doAutoCal = isfield(parms,'autocal') ;
+
+if mean(isNegative)>parms.allowNegative
     % Fail if more than 5% are negative
-    result = struct('quality',0,'tau',nan,'a',nan,'sigma',nan,'neg',mean(isNegative),'nan',mean(isNaN));
+    result = struct('quality',0,'tau',nan,'a',nan,'sigma',nan,'neg',mean(isNegative),'nan',mean(isNaN),'autocal',nan);
     return;
 else
     if any(isNegative)
-        fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));
-        F(isNegative) = 0;
-    end
-
-    if calibrate
+        fprintf('%.2f %% of samples have negative F. Set to 0.\n',100*mean(isNegative));        
+    end    
+    if doAutoCal
         % Autocalibration with the specified parameters
         pax = spk_autocalibration('par'); % Get defaults, then overrule with parms.autocal
         % Copy values from parms.autocal struct to pax
@@ -265,7 +233,7 @@ else
         pax.dt = parms.mlparms.dt;
         pax.mlspikepar = parms.mlparms;
         pax.mlspikepar.dographsummary = false;
-        if isfield(parms,'secsForCal')
+        if isfinite(parms.secsForCal)
             % Use a subset of the F to determine calibration.
             % secsForCal at the start, middle, and end of the session
             nrSamples = size(F,1);
@@ -278,7 +246,7 @@ else
         end
         if isempty(events)
             % If events is empty, calibration was not possible
-            result = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1);
+            result = struct('quality',nan,'tau',nan,'a',nan,'sigma',nan,'neg',0,'nan',1,'autocal',true);
             return;
         end
         % Replace fixed with calibrated parms
@@ -298,11 +266,11 @@ else
     result.sigma =parEst.finetune.sigma;
     result.neg = mean(isNegative);
     result.nan = mean(isNaN);
+    result.autocal = doAutoCal;
 
     % Save spike times and parameters to file for later use.
     save(filename,"spikeTimes","result");
     assert(exist(filename,"file"),"Could not save mlspike results to  %s",filename);
-
 end
 end
 
