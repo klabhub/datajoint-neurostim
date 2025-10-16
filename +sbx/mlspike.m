@@ -113,12 +113,16 @@ fprintf('Reading spikeml mat files...\n')
 %% Read saved results    
 for i = 1:height(roiToDo)
     load(roiToDo.filename(i),'spikeTimes','result');
+    if ~isfield(result,'autocal')
+        result.autocal = NaN;
+    end
     channelInfo(i).quality = result.quality;
     channelInfo(i).tau= result.tau;
     channelInfo(i).a= result.a;
     channelInfo(i).neg= result.neg;
     channelInfo(i).nan = result.nan;
     channelInfo(i).autocal = result.autocal;
+    
     % Convert spike times to a signal with counts
     % spikeTimes are for the ENTIRE SESSION, so create time vector for all session frames
     thisSignal = brick.timevector(spikeTimes,(0:nrFramesInSession-1)*parms.mlparms.dt,'count');

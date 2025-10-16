@@ -1,7 +1,9 @@
 function [keepFrameIx,frameNsTime] = framesForExperiment(key)
 % Use the metadata added to the experiment by sbx.Preprocessed to match
 % frames to experiments
-exptT = ns.getMeta(ns.Experiment & key ,["nrframes" "nrplanes"]);
+% Restrict to experiments that sbx.Preprocessed uses.
+analyzeExptThisSession = analyze(ns.Experiment & (ns.Session & key),strict=false);
+exptT = ns.getMeta( analyzeExptThisSession,["nrframes" "nrplanes"]);
 exptT = sortrows(exptT,"starttime");
 exptT = convertvars(exptT,["nrframes" "nrplanes"],"double");
 row = find(key.starttime==exptT.starttime);

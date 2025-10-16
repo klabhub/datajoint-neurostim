@@ -81,6 +81,9 @@ assert(all(isfield(parms,["model" "baseline" "sigma" "window" "count"])),'cascad
 if ~isfield(parms,'neuropilFactor')
     parms.neuropilFactor = 0.7; % Default neuropil correction factor
 end
+if ~isfield(parms,'perExperiment')
+    parms.perExperiment = false;
+end
 % Check that cascade is installed
 cascadeFolder = getenv("NS_CASCADE");
 if isempty(cascadeFolder)
@@ -130,8 +133,8 @@ end
 cfd = fileparts(mfilename('fullpath'));
 toolsPath = strrep(fullfile(fileparts(cfd),'tools'),"\","/");
 cascadeFolder = strrep(cascadeFolder,"\","/");
-dffFile = tempname + ".mat"; % This will be a temp save file for dFF
-pyCmd = sprintf('"%s/cascade.py" "%s" "%s" --cascade_folder "%s"',toolsPath,dffFile,parms.model,cascadeFolder);
+tmpDffFile = tempname + ".mat"; % This will be a temp save file for dFF
+pyCmd = sprintf('"%s/cascade.py" "%s" "%s" --cascade_folder "%s"',toolsPath,tmpDffFile,parms.model,cascadeFolder);
 if parms.count
     % Only add this step if we're computing the count (and not the
     % probability)
@@ -159,7 +162,11 @@ allPlanesSignal = [];
 allPlanesChannelInfo = [];
 for pl=0:prep.nrplanes-1
     planeFolder = fullfile(fldr,"plane" +  string(pl));
-    cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat");
+    if parms.perExperiment 
+        cascadeResultsFilename = fullfile(planeFolder ,key.starttime + "." + key.ctag + ".cascade.mat");
+    else
+        cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat");
+    end
     if exist(cascadeResultsFilename,"file")
         fprintf('Cascade results already exist for plane %d in %s. Skipping.\n',pl,fldr);
         load(cascadeResultsFilename,'signal','channelInfo');
@@ -168,13 +175,21 @@ for pl=0:prep.nrplanes-1
             % Restrict with a query on sbx.PreprocessedRoi
             roi = [fetch((sbx.PreprocessedRoi & parms.restrict & struct('plane',pl)) & key ,'roi').roi]';
         end
-        [signal,channelInfo]= runCascade(roi,parms,prep,planeFolder,cascadeResultsFilename,cmd,dffFile);
+        [signal,channelInfo]= runCascade(roi,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
         fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
     end
-    framesNotInFile = sum(keepFrameIx > size(signal,1));
-    assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",cascadeResultsFilename,framesNotInFile,key.starttime, key.session_date);
+
+    if parms.perExperiment
+        % results file only contains the relevant frames - no selection
+        % needed.
+    else
+        % Select the frames for this experiment from the signal
+        framesNotInFile = sum(keepFrameIx > size(signal,1)); %#ok<*UNRCH>
+        assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",cascadeResultsFilename,framesNotInFile,key.starttime, key.session_date);
+        signal = signal(keepFrameIx,:);
+    end
     % Concatenate across planes
-    allPlanesSignal = [allPlanesSignal  signal(keepFrameIx,:)]; %#ok<AGROW>
+    allPlanesSignal = [allPlanesSignal  signal]; %#ok<AGROW>
     allPlanesChannelInfo = [allPlanesChannelInfo  channelInfo]; %#ok<AGROW>
 end
 
@@ -186,7 +201,7 @@ recordingInfo = struct('dummy',true);
 
 end
 
-function [signal,channelInfo] = runCascade(keepRoi,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile)
+function [signal,channelInfo] = runCascade(keepRoi,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx)
 % Run cascade on the fluorescence data in planeFolder for the rois in keepRoi
 % and save the results in cascadeResultsFilename
 arguments
@@ -197,6 +212,7 @@ arguments
     cascadeResultsFilename (1,1) string
     cmd (1,1) string
     tmpDffFile (1,1) string
+    keepFrameIx (1,:) double; % Only used when parms.perExperiment =true
 end
 
 %% Load the F data and subtract neuropil
@@ -213,6 +229,14 @@ end
 Fneu =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
 Fneu = Fneu(keepRoi,:)';
 F = F-parms.neuropilFactor*Fneu;
+
+if parms.perExperiment
+    % Per Experiment mode
+    % Select the frames for this experiment from the signal
+    framesNotInFile = sum(keepFrameIx > size(F,1)); %#ok<*UNRCH>
+    assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",cascadeResultsFilename,framesNotInFile);
+    F= F(keepFrameIx,:);
+end
 
 %% Determine dFF
 % Replacing F to save a bit of memory
