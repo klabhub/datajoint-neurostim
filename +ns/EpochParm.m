@@ -25,7 +25,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 'Dimension table does not contain dimension value of "%s"', tuples.dimension);
             assert(ismember(tuples.plugin, dimTbl{"plugin"}), ...
                 'Dimension table does not contain plugin value of "%s"', tuples.plugin);
-            pv = gen.struct_to_varargin(tuples.pv);
+            pv = namedargs2cell(tuples.pv);
             tuples.pv = self.validate_pv(pv{:});
 
             % Inherited function after validation

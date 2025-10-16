@@ -1,7 +1,8 @@
 [submodule "datajoint-matlab"]
 	path = datajoint-matlab
 	url = https://github.com/klabhub/datajoint-matlab.git
-	branch = master
-[submodule "zapline-plus"]
-	path = zapline-plus
-	url = git@github.com:mert-ozkan/zapline-plus.git
+	branch = sub-djmatlab
+[submodule "fooofer"]
+	path = fooofer
+	url = git@github.com:mert-ozkan/fooofer.git
+	branch = submod-dj
