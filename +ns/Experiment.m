@@ -27,31 +27,6 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
-        % TODO: class to work with json files
-        % function updateJson(tbl,pv)
-        %     arguments
-        %         tbl (1,1) ns.Experiment
-        %         pv.root = getenv("NS_ROOT");
-        %         pv.metaDefinitionTag = ""
-        %     end
-        % 
-        %     definitionFile = fullfile(pv.root,"experiment_definition" +  pv.metaDefinitionTag + ".json");
-        %     assert(exist(definitionFile,"file"),"Meta definition file not found %s",definitionFile);
-        %     jsonDefinition = readJson(definitionFile);
-        %     experimentMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),jsonDefinition.Fields,'uni',false)));
-        % 
-        %     metaFields = fieldnames(jsonDefinition.Fields);
-        % 
-        %     for e = fetch(tbl)'
-        %             jsonFile = strrep(file(ns.Experiment &e),'.mat','.json');
-        %             if exist(jsonFile,"file")                       
-        %                 json = readJson(jsonFile);
-        %             else
-        %                 json = emptyJson;
-        %             end
-        % 
-        %     end
-        % end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
