@@ -414,12 +414,13 @@ classdef Preprocessed < dj.Computed
                     condaFldr = extractBefore(pyenv().Home,'envs');
 
                     % At each depth there can be multiple planes
-                    for depthNr = 1:nrDepths
+                    for depthNr = 1:nrDepths                        
                         thisGrp = grp==depthNr;
                         thisScale = scale(thisGrp,:);
                         thisNrPlanes = nrPlanes(thisGrp);
                         thisDepth = grpDepth(depthNr);
                         thisDataFldr = dataFldr(thisGrp);
+                        thisFrames = frames(thisGrp);
                         % Sanity checks
                         uScale = unique(thisScale,'rows');
                         assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
@@ -559,7 +560,7 @@ classdef Preprocessed < dj.Computed
                             opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
                             opts =py.numpy.load(opsFile,allow_pickle=true);
                             N = double(opts.item{'nframes'});
-                            assert(N==sum(frames),"The number of frames in the npy file (%d) does not match the frames across experiments (%d). ",N,sum(frames))
+                            assert(N==sum(thisFrames),"The number of frames in the npy file (%d) does not match the frames across experiments (%d). ",N,sum(thisFrames))
                             fs = double(opts.item{'fs'});           % These are constant across planes- the last one is added to the table
                             nplanes = double(opts.item{'nplanes'});                            
                             img{plane+1} = ndarrayToArray(opts.item{'meanImg'},single=true); %#ok<AGROW> % Each plane has its own mean image                            
