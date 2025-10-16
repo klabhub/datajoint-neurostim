@@ -99,8 +99,9 @@ classdef Evoked < dj.Computed & dj.DJInstance
                 t_fetch = tic;
                 gru_no = ceil(iGru/2);
                 fprintf("\tFetching signal for Group %d/%d and preparing submission...\n", gru_no, n_gru);
-                if count(groups{iGru+1})==1;
+                if count(groups{iGru+1})==0
                     fprintf("\t\t No clean epochs were found. Skipping the group...\n");
+                    evk_tpl(gru_no) = [];
                     continue;
                 end
                 evk_tpl(gru_no).group = groups{iGru};
