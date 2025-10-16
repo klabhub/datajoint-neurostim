@@ -4,8 +4,9 @@
 # if a group_fun provided in ns.EvokedParm, it is used to further split
 # into groups.
 # Part tables, ns.EvokedChannel contain actual signal
--> ns.EvokedParm
+-> ns.C
 -> ns.DimensionCondition
+-> ns.EvokedParm
 group : varchar(32)
 ---
 n_epoch: int
@@ -32,7 +33,7 @@ classdef Evoked < dj.Computed & dj.DJInstance
         function v = get.keySource(varargin)
 
             % only those events with some clean epochs
-            v = (ns.DimensionCondition * ns.EvokedParm) & (ns.Epoch & 'flag=""');
+            v = (ns.C * ns.DimensionCondition * ns.EvokedParm) & (ns.Epoch & 'flag=""');
 
         end
 
