@@ -50,6 +50,9 @@ classdef Evoked < dj.Computed & dj.DJInstance
             cTbl = ns.C & key & ns.Epoch; % '& ns.Epoch' to make sure there are epochs assoc.
             c_n_row = count(cTbl);
             assert(c_n_row == 1, "There must be only one C table entry associated with the key, found %d.", c_n_row);
+            
+            evp_tpl = fetch(ns.EvokedParm & key, '*');
+
             % ch_qry for later
             ch_qry = sprintf('channel not in (%s)', join(string(cTbl.artifacts.all),','));
 
@@ -59,15 +62,14 @@ classdef Evoked < dj.Computed & dj.DJInstance
             trl_qry = sprintf('trial in (%s)',join(string(dim_tpl.trials),','));
 
             % epoch table
-            eTbl = ns.Epoch & key & trl_qry & 'flag=""'; %only clean epochs
+            eTbl = ns.Epoch & key & trl_qry & evp_tpl.epoch_query; %by default 'flag =""': only clean epochs
             if count(eTbl)==0
 
                 fprintf("\t No clean epochs were found. Skipping...");
                 return;
 
             end
-            % check group_fun
-            evp_tpl = fetch(ns.EvokedParm & key, '*');
+            
 
             if isempty(evp_tpl.group_fun)
 

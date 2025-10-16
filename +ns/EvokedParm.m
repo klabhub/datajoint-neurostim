@@ -6,7 +6,8 @@
 evtag : varchar(32) # unique tag
 etag : varchar(32) # Epoch etags to select epochs to average across
 ---
-group_fun = NULL : varchar(32) 
+group_fun = NULL : varchar(32)
+epoch_query = 'flag = ""' : varchar(32)
 %}
 
 classdef EvokedParm < dj.Lookup & dj.DJInstance
