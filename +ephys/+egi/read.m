@@ -126,7 +126,7 @@ else
     parms.badElectrodes = [];
 end
 
-[signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms,exp_tpl);
+[signal,neurostimTime,prepResult] = ns.CFilter(signal,neurostimTime/1000,parms,exp_tpl);
 
 %% Package output
 % Regular sampling - stored in ms
@@ -141,9 +141,7 @@ recordingInfo = mergestruct(MFF.chaninfo,MFF.etc);
 recordingInfo.ref = MFF.ref;
 recordingInfo.srate = MFF.srate;
 recordingInfo.layout = parms.layout;
-if isfield(parms, "noisy_channels")
-    recordingInfo.noisyChannels = noisyChannels;   
-end
+recordingInfo = mergestruct(recordingInfo,prepResult);
 
 %% TODO: Add evts to egi plugin?
 

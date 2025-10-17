@@ -59,7 +59,7 @@ for f=fn
     tic            
     switch command
         case "zapline"
-            assert(exist("clean_data_with_zapline_plus","file"),"Zapline line noise removal requires the zapline-plus toolbox. \n Get it on github and add it to your path")            
+            assert(exist("clean_data_with_zapline_plus","file"),"Zapline requires an external toolbox. Get it at https://github.com/MariusKlug/zapline-plus.git and add it to your path")            
             signal = clean_data_with_zapline_plus(signal,round(sampleRate),thisParms);
         case "decimate"
             %% Downsampling using decimate
