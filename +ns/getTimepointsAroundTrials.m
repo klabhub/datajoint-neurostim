@@ -31,9 +31,7 @@ isInSubsamp = ones(size(t))==0;
 for ii = 1:n_trl
 
     buffer_winN = [trl_start_t(ii), trl_stop_t(ii)] + [-1, 1]*buffer_t;
-
-    isInSubsamp = do.ifwithin(t, buffer_winN) | isInSubsamp;
-
+    isInSubsamp = (t>=buffer_winN(1) & t<buffer_winN(2))  | isInSubsamp;
 end
 
 varargout = cell(1, nargout);

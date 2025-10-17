@@ -554,11 +554,11 @@ function noisyChannels = find_noisy_channels(signal, options)
              % If method is robust_z, first check the distribution of
              % correlations
              if strcmp(options.ransacCorrelationThresholdMethod, 'robust_z')
-
-                 [z_corrCoeff, med, var] = robust_z_func(ransacCorrCoeff);
+                % MO-TODO; fix calculate_robust_z - it does not return med or var
+                 %[z_corrCoeff, med, var] = robust_z_func(ransacCorrCoeff);
+                 [z_corrCoeff] = robust_z_func(ransacCorrCoeff,2);
                  ransacBadWindowCount = sum(z_corrCoeff < options.ransacCorrelationThreshold, 2, "omitnan");
-                 options.ransacAbsoluteCorrelationThreshold = var .* options.ransacCorrelationThreshold + med;
-             
+                 %options.ransacAbsoluteCorrelationThreshold = var .* options.ransacCorrelationThreshold + med;             
              end
 
              % Classify based on fraction of bad windows for tested channels

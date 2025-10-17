@@ -126,25 +126,7 @@ else
     parms.badElectrodes = [];
 end
 
-% If noisy channel detection requested, check if the signal needs to be
-% subsetted n-seconds around trials
-if isfield(parms, "noisy_channels")
-
-    if isfield(parms.noisy_channels, "epoch_buffer")
-
-        buffer_t = parms.noisy_channels.epoch_buffer;
-        
-        parms.noisy_channels.epoch_mask = ns.getTimepointsAroundTrials(exp_tpl, neurostimTime, buffer_t);
-
-    else
-        parms.noisy_channels.epoch_mask =  ones(1,size(signal,1))==1;
-    end
-
-    parms.noisy_channels.Fs = MFF.srate;
-    [signal,neurostimTime, noisyChannels] = ns.CFilter(signal,neurostimTime/1000,parms);
-else
-    [signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms);
-end
+[signal,neurostimTime] = ns.CFilter(signal,neurostimTime/1000,parms,exp_tpl);
 
 %% Package output
 % Regular sampling - stored in ms
