@@ -1,4 +1,4 @@
-function varargout = CFilter(signal,time,parms,expt)
+function [signal,time,result] = CFilter(signal,time,parms,expt)
 % Generic downsampling and filtering function.
 % Can be called from read functions (see intan.read for an example)
 % The user passes a parms struct with any of the following fields.
@@ -38,9 +38,13 @@ function varargout = CFilter(signal,time,parms,expt)
 
 [nrSamples,nrChannels] = size(signal);
 sampleRate = 1./mode(diff(time));
-hasNoisyChannels = isfield(parms,'badElectrodes') && ~isempty(parms.badElectrodes);
-varargout = cell(1, nargout);
+if isfield(parms,'badElectrodes') 
+    badElectrodes = parms.badElectrodes;
+else
+    badElectrodes= [];
+end
 fn =string(fieldnames(parms))';
+result = struct([]);
 for f=fn
     % In order to apply same transformations multiple times at different
     % orders the parms field can end with an identifier number, which is
@@ -101,24 +105,22 @@ for f=fn
             end
             thisParms.Fs = sampleRate; 
             pvPairs = namedargs2cell(thisParms);
-            varargout{3} = ns.prep.find_noisy_channels(signal(epoch_mask,:)',pvPairs{:});
-            varargout{3}.parameters = rmfield(varargout{3}.parameters, 'ChannelLocations'); % duplicate
-            hasNoisyChannels = ~isempty(varargout{3}.all);
-            parms.badElectrodes = unique(horzcat(parms.badElectrodes, varargout{3}.all));          
+            result.noisy_channels = ns.prep.find_noisy_channels(signal(epoch_mask,:)',pvPairs{:});
+            result.noisy_channels.parameters = rmfield(result.noisy_channels.parameters, 'ChannelLocations'); % duplicate
+            badElectrodes = union(badElectrodes,result.noisy_channels.all);            
         case "reference"
-            fprintf('Re-referencing with %s mode',thisParms.method);
-            allChannels = 1:size(signal,2);
-            if hasNoisyChannels 
+            fprintf('Re-referencing with %s mode',thisParms.method);            
+            if ~isempty(badElectrodes) 
                 if isfield(thisParms, "handleBads") && strcmpi(thisParms.handleBads, "interpolate")
                     %% Fix here, add option for interpParms{:} and chosing interp_func
                     signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
-                                                setdiff(1:size(signal,1), parms.badElectrodes), parms.badElectrodes);
-                    referenceChannels = allChannels;
+                                                setdiff(1:nrChannels, badElectrodes), badElectrodes);
+                    referenceChannels = 1:nrChannels;
                 else 
-                    referenceChannels = setdiff(allChannels,parms.badElectrodes); 
+                    referenceChannels = setdiff(1:nrChannels,badElectrodes); 
                 end
             else
-                referenceChannels = allChannels;
+                referenceChannels = 1:nrChannels;
             end
             
             switch thisParms.method
@@ -129,27 +131,27 @@ for f=fn
                 case "laplacian"                   
                     reference = laplacian_reference(signal, parms.layout.neighbors,referenceChannels);                   
                 otherwise                    
+            end            
+            if any(all(isnan(reference),1))
+                fprintf('All NaN reference signal... \n')
             end
-            
             signal = signal-reference;
         otherwise
             % Not a defined filter operation, just skip.
     end
-
     fprintf('Done in %d seconds.\n',round(toc));
 
-    % Update after the filter step
+    % Update after each step (nrChannels does not change, but nrSamples
+    % can)
     [nrSamples,nrChannels] = size(signal);
-    sampleRate = 1./mode(diff(time));
-    varargout{1} = signal;
-    varargout{2} = time;
+    sampleRate = 1./mode(diff(time));   
 end
 end
 
 %% Subtract mean of neighbors from each channel
-function tmp = laplacian_reference(signal, neighbors)
+function tmp = laplacian_reference(signal, neighbors,referenceChannels)
     tmp = zeros(size(signal));
-    for iCh = 1:width(neighbors)    
-        tmp(:, iCh) =  mean(signal(:,intersect(neighbors(iCh).neighbors,referenceChannels)), 2,"omitmissing");    
+    for i = 1:numel(neighbors)            
+        tmp(:, neighbors(i).channelnumber) =  mean(signal(:,intersect(neighbors(i).neighbors,referenceChannels)), 2,"omitmissing");    
     end
 end
