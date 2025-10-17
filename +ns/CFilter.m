@@ -74,11 +74,11 @@ for f=fn
             %% Notch, Bandpass,etc. 
             % Any filter that can be designed with designfilt
             % and applied with filtfilt
-            fn = fieldnames(thisParms);
-            for i=1:numel(fn)
+            ffFn = fieldnames(thisParms);
+            for i=1:numel(ffFn)
                 tic;
-                fprintf('Applying filter (designfilt.%s)...',fn{i})
-                prms= thisParms.(fn{i});
+                fprintf('Applying filter (designfilt.%s)...',ffFn{i})
+                prms= thisParms.(ffFn{i});
                 d = designfilt(prms{:},'SampleRate',sampleRate);
                 signal = filtfilt(d,signal);                
             end
@@ -106,30 +106,32 @@ for f=fn
             hasNoisyChannels = ~isempty(varargout{3}.all);
             parms.badElectrodes = unique(horzcat(parms.badElectrodes, varargout{3}.all));          
         case "reference"
-            if isfield(thisParms, "handleBads") && hasNoisyChannels
-                handleBads = thisParms.handleBads;                
-            elseif hasNoisyChannels
-                handleBads = "exclude";
+            fprintf('Re-referencing with %s mode',thisParms.method);
+            allChannels = 1:size(signal,2);
+            if hasNoisyChannels 
+                if isfield(thisParms, "handleBads") && strcmpi(thisParms.handleBads, "interpolate")
+                    %% Fix here, add option for interpParms{:} and chosing interp_func
+                    signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
+                                                setdiff(1:size(signal,1), parms.badElectrodes), parms.badElectrodes);
+                    referenceChannels = allChannels;
+                else 
+                    referenceChannels = setdiff(allChannels,parms.badElectrodes); 
+                end
             else
-                handleBads= "";
+                referenceChannels = allChannels;
             end
-            if strcmpi(handleBads, "interpolate")
-                %% Fix here, add option for interpParms{:} and chosing interp_func
-                signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
-                    setdiff(1:size(signal,1), parms.badElectrodes), parms.badElectrodes);
-            end
-
+            
             switch thisParms.method
                 case "average"
-                    disp('Applying rereferencing to the average channel activity.');
-                    signal = signal - mean(signal,2,"omitmissing");
+                    reference = mean(signal(:,referenceChannels),2,"omitmissing");                    
                 case "channel"
-                case "laplacian"
-                    disp('Applying Laplacian re-referencing channel activity.');
-                    signal = laplacian_reference(signal, parms.layout.neighbors);                   
-                otherwise
-                    continue
+                    reference  = mean(signal(:,intersect(thisParms.channel,referenceChannels)),2,"omitmissing");
+                case "laplacian"                   
+                    reference = laplacian_reference(signal, parms.layout.neighbors,referenceChannels);                   
+                otherwise                    
             end
+            
+            signal = signal-reference;
         otherwise
             % Not a defined filter operation, just skip.
     end
@@ -148,6 +150,6 @@ end
 function tmp = laplacian_reference(signal, neighbors)
     tmp = zeros(size(signal));
     for iCh = 1:width(neighbors)    
-        tmp(:, iCh) = signal(:,iCh) - mean(signal(:,neighbors(iCh).neighbors), 2);    
+        tmp(:, iCh) =  mean(signal(:,intersect(neighbors(iCh).neighbors,referenceChannels)), 2,"omitmissing");    
     end
 end

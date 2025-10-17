@@ -142,9 +142,7 @@ recordingInfo.ref = MFF.ref;
 recordingInfo.srate = MFF.srate;
 recordingInfo.layout = parms.layout;
 if isfield(parms, "noisy_channels")
-
-    recordingInfo.noisyChannels = noisyChannels;
-    
+    recordingInfo.noisyChannels = noisyChannels;   
 end
 
 %% TODO: Add evts to egi plugin?
