@@ -130,7 +130,7 @@ end
 
 %% Package output
 % Regular sampling - stored in ms
-neurostimTime = [1000*neurostimTime(1) 1000*neurostimTime(end) numel(neurostimTime)];
+neurostimTime = [neurostimTime(1) neurostimTime(end) numel(neurostimTime)];
 signal = single(signal); % Save space -will be converted back to double on read.
 channelInfo  = MFF.chanlocs';
 channelInfo(1).nr =NaN;
