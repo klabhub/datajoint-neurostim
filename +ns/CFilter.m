@@ -44,7 +44,7 @@ else
     badElectrodes= [];
 end
 fn =string(fieldnames(parms))';
-result = struct([]);
+result = struct('dummy',true);
 for f=fn
     % In order to apply same transformations multiple times at different
     % orders the parms field can end with an identifier number, which is
