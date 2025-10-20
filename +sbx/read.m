@@ -46,10 +46,16 @@ maxRoi = 0;
 for pl = 1:numel(planes)
     %% Read npy
     tic;
-    if ismember(parms.what, ["F" "Fneu" "spks"])
+    if ismember(parms.what, ["F" "Fneu" "spks" "dff"])
         % Suite 2p numpy files
-        fprintf('Reading numpy files...\n')
-        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
+        fprintf('Reading numpy files...\n')        
+        if parms.what =="dff"
+            filename = "F";
+        else
+            filename = parms.what;
+        end
+                
+        thisFile = fullfile(fldr,planes(pl).name,filename + ".npy");
         if ~exist(thisFile,"file")
             error('File %s does not exist',thisFile);
         end
@@ -57,7 +63,7 @@ for pl = 1:numel(planes)
         framesNotInFile = sum(keepFrameIx > size(thisSignal,2));
         assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",thisFile,framesNotInFile,key.starttime, key.session_date);
         thisSignal = thisSignal(:,keepFrameIx)';
-        if  parms.what=="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
+        if  filename =="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
             % Compute background/neuropil corrected fluorescence
             neuFile = strrep(thisFile,'F.npy','Fneu.npy');
             Fneu  =  ndarrayToArray(py.numpy.load(neuFile,allow_pickle=true),single=true);
@@ -71,7 +77,6 @@ for pl = 1:numel(planes)
     end
     signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
-
 end
 
 if isfield(parms,'restrict')
@@ -80,6 +85,18 @@ if isfield(parms,'restrict')
     signal = signal(:,keepRoi);
     rois    = keepRoi;
 end
+
+if parms.what=="dff"
+    assert(all(isfield(parms,["baseline" "sigma" "window"])),"Missing fields for dF/F computation");
+    prepParms = fetch(sbx.Preprocessed &key,'nrplanes','framerate');
+    switch upper(parms.baseline)
+        case "MAXIMIN"
+            [~,signal]= sbx.baseline_maximin(signal,prepParms.framerate/prepParms.nrplanes,parms.sigma,parms.window);
+        otherwise
+        error('Not implemented yet')
+    end    
+end
+
 nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in
