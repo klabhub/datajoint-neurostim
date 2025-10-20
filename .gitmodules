@@ -4,7 +4,7 @@
 	branch = sub-djmatlab
 [submodule "fooofer"]
 	path = fooofer
-	url = git@github.com:mert-ozkan/fooofer.git
+	url = https://github.com/mert-ozkan/fooofer.git
 	branch = submod-dj
 [submodule "dataop"]
 	path = dataop
