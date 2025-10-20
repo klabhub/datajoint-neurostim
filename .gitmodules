@@ -6,3 +6,7 @@
 	path = fooofer
 	url = git@github.com:mert-ozkan/fooofer.git
 	branch = submod-dj
+[submodule "dataop"]
+	path = dataop
+	url = https://github.com/mert-ozkan/dataop.git
+	branch = submod-dj
