@@ -1,6 +1,9 @@
 function [signal,time,result] = CFilter(signal,time,parms,expt)
 % Generic downsampling and filtering function.
 % Can be called from read functions (see intan.read for an example)
+% signal = [nrSamples nrChannels] 
+% time   = [nrSamples 1] time in seconds
+%
 % The user passes a parms struct with any of the following fields.
 % These filtering operations are applied in order (i.e. as ordered by
 % fieldnames(parms). To apply the same filter multiple times, suffix the
