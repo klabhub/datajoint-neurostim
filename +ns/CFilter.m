@@ -1,7 +1,7 @@
 function [signal,time,result] = CFilter(signal,time,parms,expt)
 % Generic downsampling and filtering function.
 % Can be called from read functions (see intan.read for an example)
-% signal = [nrSamples nrChannels] 
+% signal = [nrSamples nrChannels]
 % time   = [nrSamples 1] time in seconds
 %
 % The user passes a parms struct with any of the following fields.
@@ -26,13 +26,13 @@ function [signal,time,result] = CFilter(signal,time,parms,expt)
 %
 % parms.reference  - Rereference all channels using the average, or
 %                   laplacian.
-% 
+%
 % expt - the experiment that this signal belongs too. Currently only used
 % by the find_noisy_channels option.
 %
 % Example :
 % First Reduce sampling by a factor of 4 (e.g. from 1kHz to 250Hz)
-% parms.decimate = {4}; 
+% parms.decimate = {4};
 % Then filter out the 60 Hz noise followed by a low-pass
 % parms.filtfilt.notch = {'bandstopfir','FilterOrder',1000, 'CutoffFrequency1',59,'CutoffFrequency2',61};
 % parms.filtfilt.lowpass = {'lowpassfir','FilterOrder',2,'CutOffFrequency',120}
@@ -41,7 +41,7 @@ function [signal,time,result] = CFilter(signal,time,parms,expt)
 
 [nrSamples,nrChannels] = size(signal);
 sampleRate = 1./mode(diff(time));
-if isfield(parms,'badElectrodes') 
+if isfield(parms,'badElectrodes')
     badElectrodes = parms.badElectrodes;
 else
     badElectrodes= [];
@@ -59,26 +59,26 @@ for f=fn
         command =match.command;
     end
     thisParms = parms.(f); % For ease of reference below
-    tic            
+    tic
     switch command
         case "zapline"
-            assert(exist("clean_data_with_zapline_plus","file"),"Zapline requires an external toolbox. Get it at https://github.com/MariusKlug/zapline-plus.git and add it to your path")            
+            assert(exist("clean_data_with_zapline_plus","file"),"Zapline requires an external toolbox. Get it at https://github.com/MariusKlug/zapline-plus.git and add it to your path")
             signal = clean_data_with_zapline_plus(signal,round(sampleRate),thisParms);
         case "decimate"
             %% Downsampling using decimate
-            % thisParms.frequency => specifies the target frequency   
+            % thisParms.frequency => specifies the target frequency
             targetRate = thisParms.frequency; % Set target frequency for decimation
-            R = round(sampleRate/targetRate);                            
-            fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',sampleRate,targetRate);                        
+            R = round(sampleRate/targetRate);
+            fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',sampleRate,targetRate);
             nrSamples = ceil(nrSamples/R);
             tmp = nan(nrSamples,nrChannels);
             for ch = 1:nrChannels
                 tmp(:,ch) =  decimate(signal(:,ch),R);
             end
             signal =tmp;
-            time = linspace(time(1),time(end),nrSamples)';            
+            time = linspace(time(1),time(end),nrSamples)';
         case "filtfilt"
-            %% Notch, Bandpass,etc. 
+            %% Notch, Bandpass,etc.
             % Any filter that can be designed with designfilt
             % and applied with filtfilt
             ffFn = fieldnames(thisParms);
@@ -87,54 +87,54 @@ for f=fn
                 fprintf('Applying filter (designfilt.%s)...',ffFn{i})
                 prms= thisParms.(ffFn{i});
                 d = designfilt(prms{:},'SampleRate',sampleRate);
-                signal = filtfilt(d,signal);                
+                signal = filtfilt(d,signal);
             end
         case "detrend"
-            %% Detrending using the detrend function                
+            %% Detrending using the detrend function
             fprintf('Detrending (%d)...',thisParms{1})
             signal = detrend(signal,thisParms{:});
-           
-        case "noisy_channels"         
+
+        case "noisy_channels"
             fprintf('Finding noisy channels...\n')
             if isfield(parms, "layout")
                 thisParms.ChannelLocations = parms.layout.ChannelLocations;
-            end                               
+            end
 
             if isfield(thisParms, "epoch_buffer")
-                    epoch_mask = ns.getTimepointsAroundTrials(expt, time*1000, thisParms.epoch_buffer);
-                    thisParms = rmfield( thisParms,"epoch_buffer"); % No longer needed.
+                epoch_mask = ns.getTimepointsAroundTrials(expt, time*1000, thisParms.epoch_buffer);
+                thisParms = rmfield( thisParms,"epoch_buffer"); % No longer needed.
             else
-                    epoch_mask =  ones(1,size(signal,1))==1;
+                epoch_mask =  ones(1,size(signal,1))==1;
             end
-            thisParms.Fs = sampleRate; 
+            thisParms.Fs = sampleRate;
             pvPairs = namedargs2cell(thisParms);
             result.noisy_channels = ns.prep.find_noisy_channels(signal(epoch_mask,:)',pvPairs{:});
             result.noisy_channels.parameters = rmfield(result.noisy_channels.parameters, 'ChannelLocations'); % duplicate
-            badElectrodes = union(badElectrodes,result.noisy_channels.all);            
+            badElectrodes = union(badElectrodes,result.noisy_channels.all);
         case "reference"
-            fprintf('Re-referencing with %s mode',thisParms.method);            
-            if ~isempty(badElectrodes) 
+            fprintf('Re-referencing with %s mode',thisParms.method);
+            if ~isempty(badElectrodes)
                 if isfield(thisParms, "handleBads") && strcmpi(thisParms.handleBads, "interpolate")
                     %% Fix here, add option for interpParms{:} and chosing interp_func
                     signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
-                                                setdiff(1:nrChannels, badElectrodes), badElectrodes);
+                        setdiff(1:nrChannels, badElectrodes), badElectrodes);
                     referenceChannels = 1:nrChannels;
-                else 
-                    referenceChannels = setdiff(1:nrChannels,badElectrodes); 
+                else
+                    referenceChannels = setdiff(1:nrChannels,badElectrodes);
                 end
             else
                 referenceChannels = 1:nrChannels;
             end
-            
+
             switch thisParms.method
                 case "average"
-                    reference = mean(signal(:,referenceChannels),2,"omitmissing");                    
+                    reference = mean(signal(:,referenceChannels),2,"omitmissing");
                 case "channel"
                     reference  = mean(signal(:,intersect(thisParms.channel,referenceChannels)),2,"omitmissing");
-                case "laplacian"                   
-                    reference = laplacian_reference(signal, parms.layout.neighbors,referenceChannels);                   
-                otherwise                    
-            end            
+                case "laplacian"
+                    reference = laplacian_reference(signal, parms.layout.neighbors,referenceChannels);
+                otherwise
+            end
             if any(all(isnan(reference),1))
                 fprintf('All NaN reference signal... \n')
             end
@@ -147,14 +147,14 @@ for f=fn
     % Update after each step (nrChannels does not change, but nrSamples
     % can)
     [nrSamples,nrChannels] = size(signal);
-    sampleRate = 1./mode(diff(time));   
+    sampleRate = 1./mode(diff(time));
 end
 end
 
 %% Subtract mean of neighbors from each channel
 function tmp = laplacian_reference(signal, neighbors,referenceChannels)
-    tmp = zeros(size(signal));
-    for i = 1:numel(neighbors)            
-        tmp(:, neighbors(i).channelnumber) =  mean(signal(:,intersect(neighbors(i).neighbors,referenceChannels)), 2,"omitmissing");    
-    end
+tmp = zeros(size(signal));
+for i = 1:numel(neighbors)
+    tmp(:, neighbors(i).channelnumber) =  mean(signal(:,intersect(neighbors(i).neighbors,referenceChannels)), 2,"omitmissing");
+end
 end

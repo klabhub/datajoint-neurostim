@@ -146,27 +146,33 @@ recordingInfo = mergestruct(recordingInfo,prepResult);
 
 %% Add evts to egi plugin
 % Define the tpls.
-eventNsTime = polyval(clockParms,[MFF.event.egitime]);
-eventTrialTime = eventNsTime' - trialStartTimeNeurostim([MFF.event.trial]);
-eventCode = string({MFF.event.code});
-uNames= unique(eventCode);
-nrNames= numel(uNames);
 plgTpl = fetch(ns.Plugin & 'plugin_name="egi"' & key);
-prmTpl  = mergestruct(plgTpl,struct('property_name','','property_time',[],'property_nstime',[],'property_trial',[],'property_value',[],'property_type','Event'));
-prmTpl = repmat(prmTpl,[nrNames 1]);
 
-nmCntr =0;
-for nm = uNames    
-    nmCntr = nmCntr+1;
-    prmTpl(nmCntr).property_name = char(nm);
-    
-    stay = eventCode == nm;    
-    prmTpl(nmCntr).property_time = eventTrialTime(stay);
-    prmTpl(nmCntr).property_nstime=eventNsTime(stay);
-    prmTpl(nmCntr).property_trial=[MFF.event(stay).trial];
-    prmTpl(nmCntr).property_value = [MFF.event(stay)];
+if exists(ns.PluginParameter & plgTpl & 'property_name="BREC"')
+    % The events have already been added to the pluginparameter table.
+    % (Presumably by some other ns.CParm that also loads from this file).
+else
+    eventNsTime = polyval(clockParms,[MFF.event.egitime]);
+    eventTrialTime = eventNsTime' - trialStartTimeNeurostim([MFF.event.trial]);
+    eventCode = string({MFF.event.code});
+    uNames= unique(eventCode);
+    nrNames= numel(uNames);
+
+    prmTpl  = mergestruct(plgTpl,struct('property_name','','property_time',[],'property_nstime',[],'property_trial',[],'property_value',[],'property_type','Event'));
+    prmTpl = repmat(prmTpl,[nrNames 1]);
+
+    nmCntr =0;
+    for nm = uNames
+        nmCntr = nmCntr+1;
+        prmTpl(nmCntr).property_name = char(nm);
+
+        stay = eventCode == nm;
+        prmTpl(nmCntr).property_time = eventTrialTime(stay);
+        prmTpl(nmCntr).property_nstime=eventNsTime(stay);
+        prmTpl(nmCntr).property_trial=[MFF.event(stay).trial];
+        prmTpl(nmCntr).property_value = [MFF.event(stay)];
+    end
+    insert(ns.PluginParameter,prmTpl);
 end
-insert(ns.PluginParameter,prmTpl);
-
 end
 
