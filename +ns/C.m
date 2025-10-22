@@ -21,9 +21,11 @@ nrsamples: int          # Number of samples/frames across the experiment
 % in the linked ns.CParm table. This read/preprocess function must have the
 % following prototype:
 %  [signal,time,channelInfo,recordingInfo] = read(key,parms)
+%
 % During a call to populate, key will contain a primary key from the
 % ns.File table joined with a key from the ns.CParm table (i.e. it
 % identifies which file to read/preprocess).
+%
 % parms will contain the struct stored in ns.CParm. How this parms
 % struct is used is completely up to the read function.(see the example read functions below).
 % Before calling the read function, ns.C checks that the file exists.
@@ -49,15 +51,13 @@ nrsamples: int          # Number of samples/frames across the experiment
 %
 % recordingInfo - General (channel non-specific) info on the recording.
 %
-% Note that you can also add rows to this table that depend on other rows
-% in this table. For this, use the ns.processC as the 'fun' (see
-% ns.processC for instructions, and sbx.spikeML for an example).
 %
 % EXAMPLE:
 % Several read functions have been implemented.
 % ephys.intan.read  - Read and Preprocess Intan data
 % ns.eyelink.read   - Read EDF files from the Eyelink eye tracker
 % ephys.ripple.read - Read and preprocess Ripple Grapevine data.
+% ephys.egi.read    - Read EGI MFF files
 %
 %  To use these, add a row to CParm with a line like thise
 % insert(ns.CParm,struct('ctag','eeg','fun','ephys.intan.read','description'','EEG
@@ -69,52 +69,118 @@ nrsamples: int          # Number of samples/frames across the experiment
 % extract trial-based data, or to align to specific events in the
 % experiment.
 %
+% This class has some dependent properties that query the database:
+% channels     % Channels associated with each row of the C table.
+% samplingRate % Sampling rate for each row of the C table (in Hz)
+% time         % Neurostim time in milliseconds at which C and Channel have data
+% dt           % Time between samples (mode of all diffs), in milliseconds.
+%
+%  Each ns.C row also contains an info struct that contains the
+%  recordingInfo returned by the read function. Because this is user
+%  defined, it can contain any information that the user thinks is useful.
+% To access the full struct, use a fetch(ns.C,'info'), but you can also
+% extract fields of the info struct using out = fetch(ns.C,'info.layout');
+% such a field is returned as out.info_layout.
+%
 % BK - June 2023
 
 classdef C < dj.Computed & dj.DJInstance
     properties (Dependent)
-        
-        keySource      
-        
-        % Following attributes are primarily designed to be used for single
-        % row entities where count(cTbl) == 1 or the attribute value is
-        % constant across different rows. If their value differs, the
-        % property will take the form of a table with distinguishing keys
-        % preceding the property variable.
-        % channels
-        % timepoints        
-        % artifacts
-        % dt
-        % srate
-        % layout
-        % channel_coordinates      
+        keySource    % Keysource depends on the CParm; see get.keySource
+
+        channels     % Channels associated with each row of the C table.
+        samplingRate % Sampling rate for each row of the C table (in Hz)
+        time         % Neurostim time in milliseconds at which C and Channel have data
+        dt           % Time between samples (mode of all diffs), in milliseconds.
+    end
+
+
+    methods   % Set/Get functions
+        function v = get.channels(tbl)
+            v = fetchn(ns.CChannel & tbl, 'channel');
+        end
+
+        function t =get.time(tbl)
+            t = fetchn(tbl, 'time');
+            sampled = cellfun(@(x) numel(x)==3,t);
+            t(sampled) = cellfun(@(x) linspace(x(1),x(2),x(3))',t(sampled),'UniformOutput',false);
+            if count(tbl)==1
+                t= t{1};
+            end
+        end
+
+        function v = get.dt(tbl)
+            t = tbl.time;
+            if iscell(t)
+                v = cellfun(@(x) mode(diff(x)),t,'UniformOutput',true);
+            else
+                v = mode(diff(t));
+            end
+        end
+
+        function v = get.samplingRate(tbl)
+            t = tbl.dt;
+            if iscell(t)
+                v = cellfun(@(x) 1000/x,t,'UniformOutput',true);
+            else
+                v = 1000./t;
+            end
+        end
+
+        function v = get.keySource(~)
+            % Restricted to files with the extenstion specified in CParm
+            % and the include/exclude specs in CParm.
+
+            allFiles = ns.File & analyze(ns.Experiment,strict=false); % Only files in experiments that should be analyzed
+            % Fetch all CParm rows at once for efficiency
+            allParms = fetch(ns.CParm, 'ctag', 'extension', 'include', 'exclude');
+            if isempty(allParms)
+                % No CParm rows - return empty result
+                v = ns.File & 'FALSE';
+                return;
+            end
+
+            % Build a combined WHERE clause for all CParms using OR
+            parmClauses = cell(numel(allParms), 1);
+            for p = 1:numel(allParms)
+                thisPrm = allParms(p);
+
+                % Build conditions for this CParm
+                conditions = {sprintf('extension = "%s"', thisPrm.extension)};
+                if ~isempty(thisPrm.include)
+                    inc = strsplit(thisPrm.include, ',');
+                    incParts = cell(1, numel(inc));
+                    for i = 1:numel(inc)
+                        incParts{i} = sprintf('filename LIKE "%s"', strtrim(inc{i}));
+                    end
+                    if isscalar(incParts)
+                        conditions{end+1} = incParts{1}; %#ok<AGROW>
+                    else
+                        conditions{end+1} = ['(' strjoin(incParts, ' OR ') ')']; %#ok<AGROW>
+                    end
+                end
+
+                if ~isempty(thisPrm.exclude)
+                    exc = strsplit(thisPrm.exclude, ',');
+                    for i = 1:numel(exc)
+                        conditions{end+1} = sprintf('filename NOT LIKE "%s"', strtrim(exc{i})); %#ok<AGROW>
+                    end
+                end
+
+                % Combine conditions for this CParm with AND, then add ctag condition
+                parmClauses{p} = ['(' strjoin(conditions, ' AND ') sprintf(' AND ctag = "%s"', thisPrm.ctag) ')'];
+            end
+
+            % Combine all CParm clauses with OR
+            combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
+
+            % Apply combined restriction to get matching File+CParm combinations
+            v = (allFiles * proj(ns.CParm)) & combinedWhere;
+        end
 
     end
 
-    properties (Dependent)
-
-        channels
-        timepoints 
-        layout
-        channel_coordinates
-        artifacts
-        dt
-        srate
-
-    end
-
-    properties (Access = protected)
-
-        channels_ dj.DJProperty = dj.DJProperty.empty
-        timepoints_ dj.DJProperty = dj.DJProperty.empty
-        layout_ dj.DJProperty = dj.DJProperty.empty
-        channel_coordinates_ dj.DJProperty = dj.DJProperty.empty
-        artifacts_ dj.DJProperty = dj.DJProperty.empty
-        srate_ dj.DJProperty = dj.DJProperty.empty
-    
-    end
-
-    methods
+    methods (Access=public)
         function [time,trial,value] = eventTrialTime(tbl,pv)
             arguments
                 tbl (1,1) ns.C
@@ -128,8 +194,8 @@ classdef C < dj.Computed & dj.DJInstance
                 else
                     stay = true(size(tpl.time));
                 end
-                dt = tpl.time(stay)- zeroTime';
-                modDt = dt;
+                deltaT = tpl.time(stay)- zeroTime';
+                modDt = deltaT;
                 if pv.mode =="NEAREST"
                     modDt = abs(modDt);
                 elseif pv.mode == "AFTER"
@@ -139,220 +205,11 @@ classdef C < dj.Computed & dj.DJInstance
                 end
                 % For each event find the closest firstframe eventtime
                 [~,trial] = min(modDt,[],2);
-                ix = sub2ind(size(dt),(1:sum(stay))',trial);
-                time = dt(ix);
+                ix = sub2ind(size(deltaT),(1:sum(stay))',trial);
+                time = deltaT(ix);
                 value =tpl.signal(stay);
             end
 
-        end
-
-        function v = get.keySource(~)
-            % Restricted to files with the extenstion specified in CParm
-            % and the include/exclude specs in CParm.
-
-            allFiles = ns.File & analyze(ns.Experiment,strict=false); % Only files in experiments that should be analyzed 
-            % Fetch all CParm rows at once for efficiency
-            allParms = fetch(ns.CParm, 'ctag', 'extension', 'include', 'exclude');
-            if isempty(allParms)
-                % No CParm rows - return empty result
-                v = ns.File & 'FALSE';
-                return;
-            end
-    
-            % Build a combined WHERE clause for all CParms using OR
-            parmClauses = cell(numel(allParms), 1);            
-            for p = 1:numel(allParms)
-                thisPrm = allParms(p);
-                
-                % Build conditions for this CParm
-                conditions = {sprintf('extension = "%s"', thisPrm.extension)};                
-                if ~isempty(thisPrm.include)
-                    inc = strsplit(thisPrm.include, ',');
-                    incParts = cell(1, numel(inc));
-                    for i = 1:numel(inc)
-                        incParts{i} = sprintf('filename LIKE "%s"', strtrim(inc{i}));
-                    end
-                    if isscalar(incParts)
-                        conditions{end+1} = incParts{1}; %#ok<AGROW>
-                    else
-                        conditions{end+1} = ['(' strjoin(incParts, ' OR ') ')']; %#ok<AGROW>
-                    end
-                end
-                
-                if ~isempty(thisPrm.exclude)
-                    exc = strsplit(thisPrm.exclude, ',');
-                    for i = 1:numel(exc)
-                        conditions{end+1} = sprintf('filename NOT LIKE "%s"', strtrim(exc{i})); %#ok<AGROW>
-                    end
-                end
-                
-                % Combine conditions for this CParm with AND, then add ctag condition
-                parmClauses{p} = ['(' strjoin(conditions, ' AND ') sprintf(' AND ctag = "%s"', thisPrm.ctag) ')'];
-            end
-            
-            % Combine all CParm clauses with OR
-            combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
-            
-            % Apply combined restriction to get matching File+CParm combinations
-            v = (allFiles * proj(ns.CParm)) & combinedWhere;
-        end     
-       
-    end
-    
-    % Get methods
-    % If DJProperty, call static get_dj_property(djPropObject, getMethodHandle[, DJPropertyOptions...]) method from DJInstance 
-    
-    methods
-
-        function ch = get.channels(cTbl)
-
-            ch = cTbl.get_dj_property(cTbl.channels_, @cTbl.getChannels);        
-
-        end
-        
-
-        function ch = get.timepoints(cTbl)
-                        
-            ch = cTbl.get_dj_property(cTbl.timepoints_, @cTbl.getTimepoints);             
-
-        end
-
-        function ch = get.layout(cTbl)
-                        
-            ch = cTbl.get_dj_property(cTbl.layout_, @cTbl.getLayout);             
-
-        end
-
-        function coord = get.channel_coordinates(cTbl)
-
-            coord = cTbl.get_dj_property(cTbl.channel_coordinates_, @cTbl.getChannelCoordinates);
-
-        end
-
-        function art = get.artifacts(cTbl)
-
-            art = cTbl.get_dj_property(cTbl.artifacts_, @cTbl.getArtifacts);
-
-        end
-
-        function t = get.dt(cTbl)
-
-            % Compute from timepoints directly
-            t = cTbl.timepoints;
-            if istable(t)
-
-                t.value = cellfun(@(x) mode(diff(x)), t.value);
-
-            else
-
-                t = mode(diff(t));
-
-            end
-
-        end
-        
-        function srate = get.srate(cTbl)
-
-            srate = cTbl.get_dj_property(cTbl.srate_, @cTbl.getSRate);
-
-        end
-
-    end
-
-    % --- Custom get methods to pass to DJProperty ---
-    % These methods access property values per row in the cTbl instance
-    methods (Static)
-
-        function ch = getChannels(key)
-
-            ch = fetch(ns.CChannel & key, 'channel');
-            ch = [ch.channel];
-
-        end
-        
-        function t = getTimepoints(key)
-
-            t = fetch(key, 'time');
-            t = t.time;
-
-            if numel(t)==3
-                t = linspace(t(1),t(2),t(3))';
-            end
-
-        end
-
-        function l = getLayout(key)
-
-            l = getfield(fetch(key, 'info'), 'info');
-            if isfield(l, 'layout')
-                l = l.layout;
-            else
-                l = [];
-            end
-
-        end
-
-        function coord = getChannelCoordinates(key)
-
-            ccTbl = fetch(ns.CChannel & key,'channelinfo');
-            info = [ccTbl.channelinfo];
-            coord = [info.X; info.Y; info.Z]';
-
-        end
-
-        function art = getArtifacts(key)
-
-            info = fetch(key, 'info');
-            if isfield(info.info, 'noisyChannels')
-
-                art = info.info.noisyChannels;
-
-            else
-
-                art = struct.empty();
-
-            end
-        
-        end
-
-        function srate = getSRate(key)
-
-            info = fetch(key,'info');
-            if numel(info) > 1
-                srate = arrayfun(@(s) s.info.srate, info);
-                if isscalar(unique(srate)), srate = unique(srate); end
-            else
-                srate = info.info.srate;
-            end
-
-        end
-
-               
-    end
-    
-
-    methods (Access=public)
-        function [n,T] = toPreprocess(tbl,tag)
-            % Return the number of files that stll need to be processed. If
-            % a second output is requested, also returns a table with the
-            % items that are on the list to be processed.
-            total = tbl.keySource & struct('ctag',tag);
-            done = tbl & struct('ctag',tag);
-            n = count(total-done);
-            if nargout>1
-                T =(total-done);
-            end
-        end
-        function [t,dt] = sampleTime(tbl)
-            % Determine time and time step of this ns.C entry.
-            arguments
-                tbl (1,1) {mustHaveRows(tbl,1)}
-            end
-            t= double(fetch1(tbl ,'time'));
-            if numel(t)==3
-                t= linspace(t(1),t(2),t(3))';
-            end
-            dt = mode(diff(t));
         end
 
         function varargout = plot(cTbl,pv)
@@ -498,27 +355,27 @@ classdef C < dj.Computed & dj.DJInstance
                     e = [];
                     allX = [];
                     if isgraphics(pv.forceFig)
-                        axes(pv.forceFig) %#ok<LAXES>                    
+                        axes(pv.forceFig) %#ok<LAXES>
                     else
-                    if islogical(pv.forceFig) && pv.forceFig
-                        uid = "uid: " + string(randi(1e10));
-                    else
-                        uid = "";
-                    end
-                    hFig = figByName(sprintf('%s (%s) -S:%s on %s@%s %s',plotMode,ctag,exptTpl.subject ,exptTpl.session_date ,exptTpl.starttime,uid));
-                    if channelCntr==1
-                        clf;
-                        layout = tiledlayout('flow');
-                        layout.Padding =pv.padding;
-                    else
-                        layout  = hFig.Children;
-                    end
-                    hAx = findobj(layout,'Type','axes');
-                    if channelCntr > numel(hAx)
-                        nexttile;
-                    else
-                        axes(hAx(1)) %#ok<LAXES>
-                    end
+                        if islogical(pv.forceFig) && pv.forceFig
+                            uid = "uid: " + string(randi(1e10));
+                        else
+                            uid = "";
+                        end
+                        hFig = figByName(sprintf('%s (%s) -S:%s on %s@%s %s',plotMode,ctag,exptTpl.subject ,exptTpl.session_date ,exptTpl.starttime,uid));
+                        if channelCntr==1
+                            clf;
+                            layout = tiledlayout('flow');
+                            layout.Padding =pv.padding;
+                        else
+                            layout  = hFig.Children;
+                        end
+                        hAx = findobj(layout,'Type','axes');
+                        if channelCntr > numel(hAx)
+                            nexttile;
+                        else
+                            axes(hAx(1)) %#ok<LAXES>
+                        end
                     end
                     nrTrialsPerCondition =nan(1,nrConditions);
                     for c= 1:nrConditions
@@ -672,26 +529,26 @@ classdef C < dj.Computed & dj.DJInstance
                             if isnan(pv.prctileMax)
                                 [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
                             else
-                            % Scale each condition to the grandMax
-                            grandMax = prctile(m(:),pv.prctileMax );
-                            grandMin = prctile(m(:),100-pv.prctileMax );
-                            m = (m-grandMin)./(grandMax-grandMin);
-                            e = e./(grandMax-grandMin);
+                                % Scale each condition to the grandMax
+                                grandMax = prctile(m(:),pv.prctileMax );
+                                grandMin = prctile(m(:),100-pv.prctileMax );
+                                m = (m-grandMin)./(grandMax-grandMin);
+                                e = e./(grandMax-grandMin);
 
-                            % Add the conditionNr so that each m column has a min of
-                            % conditionNr and can be plotted on the same axis, with
-                            % conditions discplaced vertically from each other.
-                            m = m + repmat(1:nrConditions,[nrX 1]);
-                            [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
-                            hold on
+                                % Add the conditionNr so that each m column has a min of
+                                % conditionNr and can be plotted on the same axis, with
+                                % conditions discplaced vertically from each other.
+                                m = m + repmat(1:nrConditions,[nrX 1]);
+                                [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
+                                hold on
 
-                            % Show "zero" line
-                            hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
-                            if ~isempty(properties(h))
-                                [hh.Color] =deal(h.Color);
-                            end
-                            ylim([0 nrConditions+1])
-                            set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
+                                % Show "zero" line
+                                hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
+                                if ~isempty(properties(h))
+                                    [hh.Color] =deal(h.Color);
+                                end
+                                ylim([0 nrConditions+1])
+                                set(gca,'yTick',1:nrConditions,'yTickLabel',conditionName,'TickLabelInterpreter','none')
                             end
 
                             xlabel 'Time (s)'
@@ -716,57 +573,6 @@ classdef C < dj.Computed & dj.DJInstance
                     end
                 end
             end
-        end
-
-        function [hdr,data,evts] = fieldtrip(tbl,pv)
-            arguments
-                tbl (1,1) ns.C
-                pv.channel =  [];
-            end
-
-
-            %   hdr.Fs                  sampling frequency
-            %   hdr.nChans              number of channels
-            %   hdr.nSamples            number of samples per trial
-            %   hdr.nSamplesPre         number of pre-trigger samples in each trial
-            %   hdr.nTrials             number of trials
-            %   hdr.label               Nx1 cell-array with the label of each channel
-            %   hdr.chantype            Nx1 cell-array with the channel type, see FT_CHANTYPE
-            %   hdr.chanunit            Nx1 cell-array with the physical units, see FT_CHANUNIT
-            % data - a 2-D matrix of size Nchans*Nsamples for continuous
-            % data
-            %   event.type      = string
-            %   event.sample    = expressed in samples, the first sample of a recording is 1
-            %   event.value     = number or string
-            %   event.offset    = expressed in samples
-            %   event.duration  = expressed in samples
-            %   event.timestamp = expressed in timestamp units, which vary over systems (optional)
-
-
-
-            for key = fetch(tbl)'
-                tpl = fetch(tbl*(proj(ns.CChannel,'info->channelInfo','signal') &  key) & struct('channel',num2cell(pv.channel)'),'*') ;
-                nrChannels = numel(tpl);
-                channelInfo = [tpl.channelInfo];
-                nrTrials = fetch1(ns.Experiment &key,'nrtrials');
-                hdr = struct('Fs',1./tpl.sampleduration,...
-                    'nChans',nrChannels, ...
-                    'nSamples',size(tpl(1).signal,1), ...
-                    'nSamplesPre',0, ...
-                    'nTrials',nrTrials,...
-                    'label',string(channelInfo.custom_channel_name), ...
-                    'chantype',repmat({'eeg'},[1 nrChannels]), ...
-                    'chanUnit',repmat({'uv'},[1 nrChannels]));
-                %'elec',struct('unit','uv','elecpos','')
-
-
-                data = [tpl.signal]';
-
-                if nargout>2
-                    evts  =struct('type','trial','sample',num2cell(tpl(1).startsample)','value',num2cell(1:numel(tpl(1).startsample))','offset',0,'duration',1,'timestamp',[]);
-                end
-            end
-
         end
 
         function [T,conditionName,channelNr,B] = align(tbl,pv)
@@ -861,9 +667,10 @@ classdef C < dj.Computed & dj.DJInstance
             % Expt info.
             exptTpl = fetch(ns.Experiment & tbl,'nrtrials');
             trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-            [t,dt] = sampleTime(tbl);
+            t = tbl.time; % Time in milliseconds
+            timeStep = tbl.dt; % Time step in ms
             if pv.step==0
-                pv.step = dt;
+                pv.step = timeStep;
             end
 
 
@@ -969,9 +776,9 @@ classdef C < dj.Computed & dj.DJInstance
                             fprintf('NaNing %d complete trials based on %s artifacts.\n',numel(exptArtifacts(art).trial),exptArtifacts(art).atag);
                         end
                         for tr=exptArtifacts(art).trial
-                            from = t>=trialStartTime(tr)-dt;
+                            from = t>=trialStartTime(tr)-timeStep;
                             if tr<nrTrials
-                                to = t<=trialStartTime(tr+1)+dt;
+                                to = t<=trialStartTime(tr+1)+timeStep;
                             else
                                 to = from;  % Last trial - exclude to the end of the recording
                             end
@@ -993,9 +800,9 @@ classdef C < dj.Computed & dj.DJInstance
                         thisChannel = channelNr == channelArtifacts(ch).channel;
                         fprintf('NaNing %d complete trials and %d segments from channel %d based on %s artifacts.\n',numel(channelArtifacts(ch).trial),numel(channelArtifacts(ch).start),channelNr,channelArtifacts(ch).atag);
                         for tr=channelArtifacts(ch).trial
-                            from = t>=trialStartTime(tr)-dt;
+                            from = t>=trialStartTime(tr)-timeStep;
                             if tr<nrTrials
-                                to = t<=trialStartTime(tr+1)+dt;
+                                to = t<=trialStartTime(tr+1)+timeStep;
                             else
                                 to = from;
                             end
@@ -1116,9 +923,9 @@ classdef C < dj.Computed & dj.DJInstance
                     bPerCondition{conditionNr} =B;
                 end
                 T= addprop(T,"alignTime","table");
-                T= addprop(T,"trials","table");                
+                T= addprop(T,"trials","table");
                 T.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
-                T.Properties.CustomProperties.trials = trials{c}(~trialOut);                
+                T.Properties.CustomProperties.trials = trials{c}(~trialOut);
                 tPerCondition{conditionNr} =T;
             end
 
@@ -1138,8 +945,6 @@ classdef C < dj.Computed & dj.DJInstance
             end
         end
     end
-
-
 
     methods (Access=protected)
         function makeTuples(tbl,key)
@@ -1180,16 +985,16 @@ classdef C < dj.Computed & dj.DJInstance
             insert(tbl,tpl)
 
             if nrChannels>0
-            % Create tpls for each of the channels and insert
-            channelsTpl = mergestruct(key,...
-                struct('signal',num2cell(single(signal),1)',...
-                'channel',num2cell(thisChannels(:))));
-            
+                % Create tpls for each of the channels and insert
+                channelsTpl = mergestruct(key,...
+                    struct('signal',num2cell(single(signal),1)',...
+                    'channel',num2cell(thisChannels(:))));
+
                 for i=1:nrChannels
                     channelsTpl(i).channelinfo = channelInfo(i);
                     if isfield(channelInfo,'name')
                         channelsTpl(i).name = channelInfo(i).name;
-                    end                    
+                    end
                     channelsTpl(i).min = min(channelsTpl(i).signal,[],"omitmissing");
                     channelsTpl(i).max = max(channelsTpl(i).signal,[],"omitmissing");
                     channelsTpl(i).mean = mean(channelsTpl(i).signal,"omitmissing");

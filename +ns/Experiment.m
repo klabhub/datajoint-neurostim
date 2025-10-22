@@ -27,6 +27,38 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
+        function [idxNr,v] = sessionIndex(tbl)
+            % For a table of experiments, returns the index number of
+            % the experiment per session (i.e. first experiment in the
+            % session (and in the database) is 1, second is 2, and in a new
+            % session, numbers start from 1 again. This is useful to find
+            % experiments that ran first, or before some other experiment
+            % in the session.
+            % 
+            % seqNr = list of index numbers for the items in the tbl
+            % v  = Datajoint table with idx and dt as a column. dt is the
+            % time in seconds between the start of an experiment and the
+            % first experiment in the session.                
+            
+            allE = proj(ns.Experiment & (ns.Session & tbl) ,'session_date->session_date2', ...
+                'subject->subject2', ...
+                'starttime->starttime2');
+
+            % Pairs of (tbl, allE) within the same session where E2 is earlier than E.
+            earlier = (tbl * allE) & [ 'session_date = session_date2 AND ' ...
+                'subject = subject2 AND '...
+                'starttime2 < starttime'];
+            % For each experiment row in tbl, count how many earlier rows exist in `earlier`
+            % and add the time in seconds since th
+            idx = tbl.aggr(earlier, 'count(starttime2)->idx');            
+            % index is count of earlier items + 1
+            idx  = idx.proj('idx + 1->idx');           
+            idx = idx* proj(idx & 'idx=1','starttime->first','session_date','subject');
+            idx = idx.proj('idx','COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(first), 0)->dt');
+            % Join back to the base relation to attach the index and dt
+            v = tbl * idx;
+            idxNr = double([fetch(v,'idx').idx]');
+        end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
@@ -188,11 +220,11 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %                               root = "c:/temp/dandi");
             %
             % If you have a conda environment with dandi installed, you can
-            % automate the NWB format validation; see dandi.m for details 
+            % automate the NWB format validation; see dandi.m for details
             %
             %  force can be set to true to regenerate NWB fies, or false to
             %  skip files that already exist.
-            %   
+            %
             %
             % BK - 2023,2024, 2025
             arguments
@@ -203,7 +235,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 pv.tz (1,1) string = "local"   % Time zone (used for data collection and subject dob)
                 pv.general (1,1) struct = struct();  % NWB general structure
                 pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties
-                pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example                                       
+                pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example
             end
 
             assert(~isempty(which('NwbFile')),'This function depends on the matnwb package. Install it from github and add it to the Matlab path');
@@ -212,13 +244,13 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
             % Create the local export folder
             folder = fullfile(pv.root,"export");
-            if exist(folder,"dir") 
+            if exist(folder,"dir")
                 if pv.force
                     rmdir(folder,'s');
                 end
             end
-            if ~exist(folder,"dir") 
-               mkdir(folder);
+            if ~exist(folder,"dir")
+                mkdir(folder);
             end
             for e = fetch(expt,'*')'
                 try
@@ -278,7 +310,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     pv.experiment = e;
                     for cls=classesWithNwb
                         tbl = feval(cls) & e;
-                        nwb(tbl,nwbRoot,pv);                        
+                        nwb(tbl,nwbRoot,pv);
                     end
 
                     %% Export to file
@@ -288,7 +320,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 catch me
                     fprintf(2,"Failed on %s (%s).\n",fname,me.message)
                 end
-            end           
+            end
         end
 
         function showConditions(tbl,pv)
@@ -515,39 +547,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         end
 
-        function [v,refCntr] = relativeTime(expt,pdm,pv)
-            % Return the time (in seconds) when experiments started relative to the time
-            % when a specific (other) reference paradigm started in that session. 
-            % A negative time means that the expt started BEFORE the
-            % reference paradigm.
-            %
-            % If the reference paradigm never happened NaN is returned.
-            % If the reference paradigm happened more than once, NaN is
-            % returned if multiple=false (default) or the time relative to the nearest
-            % reference if multiple = true. The optional second output
-            % argument counts the number of reference paradigms
-            arguments
-                expt (1,1) ns.Experiment
-                pdm (1,1) string {mustBeNonzeroLengthText}                
-                pv.multiple (1,1) logical = false
-            end
-            nrExpt= count(expt);
-            v = NaN(nrExpt,1);
-            refCntr = ones(nrExpt,1);
-            cntr=0;
-            for e=fetch(expt)'
-                cntr= cntr+1;
-                referenceExpt = ((ns.Experiment-e) & (ns.Session & e)) & struct('paradigm',pdm);
-                refCntr(cntr) = count(referenceExpt);
-                if refCntr(cntr)==0
-                    %nothing to do
-                elseif refCntr(cntr)==1
-                    v(cntr) = seconds(datetime(e.starttime,'InputFormat','HH:mm:ss') - datetime(fetch1(referenceExpt,'starttime'),'InputFormat','HH:mm:ss'));
-                elseif pv.multiple
-                    v(cntr) = min(seconds(datetime(e.starttime,'InputFormat','HH:mm:ss') - datetime(fetch1(referenceExpt,'starttime'),'InputFormat','HH:mm:ss')),[],'ComparisonMethod','abs');
-                end                
-            end
-        end
+        
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
@@ -649,7 +649,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         function addMissingFiles(tbl)
             % Check for any files that should have been added by populate(ns.File)
-            % but, for some reason, weren't. 
+            % but, for some reason, weren't.
             for key = fetch(tbl)'
                 addMissingFiles(ns.File,key)
             end

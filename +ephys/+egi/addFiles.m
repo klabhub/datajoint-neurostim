@@ -48,7 +48,7 @@ for key = fetch(tbl,'ORDER BY session_date')'
                         originalFilename = fliplr(extractBefore(fliplr(brec.mffkey_FLNM),'\'));
                         if contains(json.provenance,originalFilename)
                             % OK: this was renamed after recording
-                            egiProducingNsFile = {nsFile}; % Force match below
+                            egiProducingNsFile = nsFile; % Force match below
                             fprintf(2,"This file was renamed from %s\n",brec.mffkey_FLNM);
                         end
                     else
@@ -57,10 +57,10 @@ for key = fetch(tbl,'ORDER BY session_date')'
                         egiProducingNsFile  = {'!@#!@$$'};
                     end
                 end
-                if contains(nsFile,egiProducingNsFile{1})
+                if contains(nsFile,egiProducingNsFile)
                     % Match found - no need to continue.
                     coreMff = candidateMff(f);
-                    fprintf('Matching Neurostim file %s with EGI file %s\n',nsFile,egiProducingNsFile{1})
+                    fprintf('Matching Neurostim file %s with EGI file %s\n',nsFile,egiProducingNsFile)
                     break;
                 end
             catch me
