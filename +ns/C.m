@@ -836,7 +836,7 @@ classdef C < dj.Computed & dj.DJInstance
                     % Align specified for a specific subset of trials
                     [~,loc] = ismember(trials{c},pv.trial);
                     alignTrialTime = pv.align(loc);
-                elseif numel(pv.align) == exptTpl.nrtials
+                elseif numel(pv.align) == exptTpl.nrtrials
                     % Align specified for all trials
                     alignTrialTime = pv.align(trials{c});
                 else

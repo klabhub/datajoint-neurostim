@@ -5,16 +5,9 @@
 -> ns.Dimension     # Dimension that determines the conditions
 ---
 time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
-info : blob             # Info struct with information the preprocessing done during epoching
+info : blob             # Info struct with information on preprocessing (.prep) and artifact removal (.art) done during epoching
 %}
-
 classdef Epoch < dj.Computed & dj.DJInstance
-
-    properties
-        data = []
-        frequencies = []
-    end
-
     properties (Dependent)
         time
         keySource
@@ -62,17 +55,27 @@ classdef Epoch < dj.Computed & dj.DJInstance
     methods (Access= public)
 
         function plot (tbl,pv)
+            % Plot evoked responses. 
             arguments
                 tbl (1,1) ns.Epoch
-                pv.average (1,1) logical =true;
-                pv.delta (1,1) string = ""
-                pv.channel (:,1) double = []
+                pv.averageChannels (1,1) logical =true; % Average over channels
+                pv.averageTrials (1,1) logical =true;   % Average over trials
+                pv.delta (1,1) string = ""              % Also show the difference using this named condition as the reference
+                pv.channel (:,1) double = []            % Select a subset of channels 
             end
             if isempty(pv.channel)
                 channelRestrict = "true";
             else
                 channelRestrict = struct('channel',num2cell(pv.channel));
             end
+            averageDim = [];
+            if pv.averageTrials 
+                averageDim = [averageDim 2];
+            end
+            if pv.averageChannels
+                averageDim = [averageDim 3];
+            end
+
 
             for tpl = fetch(tbl,'time')'
                 figByName(sprintf("Epoch %s for %s on %s @ %s",tpl.etag,tpl.subject,tpl.session_date,tpl.starttime));
@@ -85,6 +88,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 conditions = fetch(ns.DimensionCondition & tpl,'name');
                 nrConditions = numel(conditions);
                 h = gobjects(nrConditions+(pv.delta~="")*(nrConditions-1),1);
+                colors ='rgbcmyk';
                 for c= 1:nrConditions
 
                     channelTpl =fetch(ns.EpochChannel &  channelRestrict & tpl & struct('condition',conditions(c).name),'signal','ORDER BY channel');
@@ -96,14 +100,21 @@ classdef Epoch < dj.Computed & dj.DJInstance
                     [~,uTrials] = findgroups(trials);
                     nrTrials = numel(uTrials);
                     signal = reshape(signal,nrSamples,nrTrials,nrChannels);
-                    if pv.average
-                        e  = std(signal,0,[2 3],"omitmissing")./sqrt(nrTrials*nrChannels);
-                        signal = mean(signal,[2 3],"omitmissing");
+                    if isempty(averageDim)
+                        se= zeros(size(signal));
+                    else
+                        se  = std(signal,0,averageDim,"omitmissing")./sqrt(prod(size(signal,averageDim)));
+                        signal = mean(signal,averageDim,"omitmissing");
                     end
-
-                    h(c) = plot(t,signal);
-                    plot(t,signal+e,':','Color',h(c).Color)
-                    plot(t,signal-e,':','Color',h(c).Color)
+                    % Reshape to 2D; columsn can be trials (averaged over
+                    % channels), channels (averaged over trials) or all
+                    % channels and trials (no averaging).
+                    signal =reshape(signal,nrSamples,[]);
+                    se  =reshape(se,nrSamples,[]);
+                    thisH = plot(t,signal,'Color',colors(mod(c-1,numel(colors))+1));
+                    h(c) = thisH(1);
+                    plot(t,signal+se,':','Color',h(c).Color)
+                    plot(t,signal-se,':','Color',h(c).Color)
                     title (tpl.dimension)
                     ylabel 'EP (\muV)'
                     xlabel (sprintf('Time after %s.%s (ms)',parms.align.plugin,parms.align.event));
@@ -116,7 +127,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                     deltaLegStr = cell(1,numel(others));
                     for c = 1:numel(others)
                         y = h(others(c)).YData;
-                        h(nrConditions+c) = plot(t,y-refY);
+                        h(nrConditions+c) = plot(t,y-refY,'Color',colors(mod(nrConditions+c-1,numel(colors))+1));
                         deltaLegStr{c} = [conditions(others(c)).name ' - ' conditions(reference).name ];
                     end
                 else
@@ -125,12 +136,13 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
                 cStr = strcat({[tpl.dimension ':']},{conditions.name});
                 legend(h,cat(2,cStr,deltaLegStr));
+                xlim([min(t) max(t)])
             end
 
         end
     end
     methods (Access = protected)
-        function makeTuples(eTbl, key)
+        function makeTuples(tbl, key)
 
             %% Determine events to align to
             parmTpl = fetch(ns.EpochParm &key,'prep','art','align','window','channels');
@@ -169,17 +181,17 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             %% --- Preprocess epochs ---
             tic;
-            fprintf("Filtering segmented data...\n");
+            fprintf("Preprocessing segmented data...\n");
             [signal,t] = timetableToDouble(T); % [timepoints trials channels ]
-
-            [signal,t,filterInfo] = ns.prep.preprocess(signal,seconds(t),parmTpl.prep,key);
-            [nrSamples,nrTrials,nrChannels] = size(signal);
+            [signal,t,prepInfo] = ns.prep.preprocess(signal,seconds(t),parmTpl.prep,key);
+            [nrSamples,nrTrials,nrChannels] = size(signal); %#ok<ASGLU>
             fprintf("\t Filtering is complete after %s\n",toc);
             %% --- Artifact/Outlier Rejection ---
             tic;
             fprintf("Artifact detection ...\n");
             % samplingRate = 1./mode(diff(time));
-            %           [signal,time,artifactInfo] = ns.prep.artifactDetection(signal,samplingRate,parmTpl.art);
+            %           [signal,time,artInfo] = ns.prep.artifactDetection(signal,samplingRate,parmTpl.art);
+            artInfo =struct('dummy',true);
             fprintf("\t Artifact detection complete after %s\n",toc);
 
             %% --- Submit to the server ---
@@ -187,9 +199,9 @@ classdef Epoch < dj.Computed & dj.DJInstance
             fprintf("Submitting to the server\n");
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
-                info = struct('dummy',true)));
+                info = struct('prep',prepInfo,'art',artInfo)));
             % Insert to Epoch table
-            chunkedInsert(ns.Epoch, epoch_tpl);
+            chunkedInsert(tbl, epoch_tpl);
 
             % Create EpochChannel tuple that contains the actual epoch data
             signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
