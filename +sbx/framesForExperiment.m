@@ -6,6 +6,9 @@ analyzeExptThisSession = analyze(ns.Experiment & (ns.Session & key),strict=false
 exptT = ns.getMeta( analyzeExptThisSession,["nrframes" "nrplanes"]);
 exptT = sortrows(exptT,"starttime");
 exptT = convertvars(exptT,["nrframes" "nrplanes"],"double");
+hasNoFrames = isnan(exptT.nrframes) |  exptT.nrframes==0;
+exptT = exptT(~hasNoFrames,:);
+
 row = find(key.starttime==exptT.starttime);
 cumFrames = cumsum(exptT.nrframes);
 if row>1
