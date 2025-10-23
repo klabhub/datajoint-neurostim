@@ -1,9 +1,12 @@
 %{
 # Preprocessed and epoched data
 -> ns.Epoch
-channel : int
+channel : int       # Channel number
+trial : int         # Trial number 
 ---
-signal : longblob
+condition : varchar(128)  # Name of the condition to which this trial belongs
+onset : float             # Time of the align event relative to trial start
+signal : longblob       # C data for a single channel, single trial
 %}
 
 classdef EpochChannel < dj.Part & dj.DJInstance

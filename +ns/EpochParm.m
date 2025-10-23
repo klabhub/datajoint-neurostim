@@ -1,86 +1,66 @@
 %{
-
-# Epoching parameters to segment trial data. All times are relative to the plugin time
-
+# Epoching parameters to segment and preprocess trial data. 
 etag : varchar (32) # unique tag
-paradigm : varchar(32)
-dimension : varchar(32) # Condition from the dimension table
 ---
-plugin : varchar(32) # The plugin to be timelocked to from DimensionCondition table
-epoch_win : BLOB
-pv : BLOB # structure array containing the custom parameters
-
+ctag            : varchar(32)       # C data that can be epoched with these parms
+dimension       : varchar(32)       # Condition from the dimension table
+window          : tinyblob          # Start and stop time of the epoch.
+channels =NULL  : blob              # Channels to include. Defaults to all in the ctag
+align           : blob              # struct defining the align event
+prep            : blob              # struct containing the preprocessing parameters
+art             : blob              # struct array containing the artifact removal parameters
 %}
 
 % MOz Feb, 2025
 classdef EpochParm < dj.Lookup & dj.DJInstance
-
     methods
-
         function insert(self, tuples, varargin)
-
-            % validate 'dimension' and 'plugin' exist in ns.Dimension
-            dimTbl = ns.Dimension & sprintf('dimension ="%s"', tuples.dimension);
-            assert(count(dimTbl), ...
-                'Dimension table does not contain dimension value of "%s"', tuples.dimension);
-            assert(ismember(tuples.plugin, dimTbl{"plugin"}), ...
-                'Dimension table does not contain plugin value of "%s"', tuples.plugin);
-            pv = namedargs2cell(tuples.pv);
-            tuples.pv = self.validate_pv(pv{:});
-
-            % Inherited function after validation
+           % Overload the insert method to do argument validation and setup
+           % defaults
+            pv = namedargs2cell(tuples);
+            tuples = self.validate(pv{:});
+            % Call the superclass function after validation
             insert@dj.Lookup(self, tuples, varargin{:})
-
         end
     end
 
     methods (Static, Access = protected)
-
-        function pv = validate_pv(pv)
-
+        function pv = validate(pv)
             arguments
+                pv.etag (1,1) string
+                pv.ctag  (1,1) string
+                pv.dimension (1,1) string
+                pv.window (1,2) 
+                pv.channels (1,:) {mustBeNumeric} = []
+                pv.prep (1,1) struct {ns.prep.mustBePrepParm}  = struct('dummy',true);
+                pv.art  (1,1) {ns.prep.mustBeArtParm} = struct('dummy',true);
+                pv.align (1,1) struct =struct('dummy',true);
+            end  
 
-                pv.resample (1,1) {mustBeNumeric} = 0
-                pv.resample_opts = {}
-                pv.detrend (1,1) {mustBeLogicalOrNumeric} = 0
-                pv.baseline (1,1) {mustBeLogicalOrNumeric} = 0
-                pv.baseline_win {validateBaselineWin} = []
-                pv.rereference (1,1) {mustBeLogicalOrNumeric} = 0
-                pv.ref_opts = {}
-                pv.artifact_parm {validateArtParm} = struct(fun = '', args = {})
+             % validate 'dimension' and 'plugin' exist in ns.Dimension
+            dimTbl = ns.Dimension & struct('dimension',pv.dimension);
+            assert(count(dimTbl), ...
+                'Dimension table does not contain dimension value of "%s"', pv.dimension);
+            cTbl = ns.C & struct('ctag',pv.ctag);
+            assert(count(cTbl), ...
+                'C table does not contain ctag value of "%s"', pv.ctag);
 
+            if isfield(pv.align,'dummy')
+                % Default to the startTime of the plugin that defined the
+                % dimension. 
+                %  Check that there is only one plugin for this dimension
+                G = proj(dimTbl, 'dimension');                         
+                multipleOptions = aggr(G, dimTbl, 'count(distinct plugin)->n') & 'n>1';
+                assert(count(multipleOptions)==0,"The %s dimension links to multiple plugins. Cannot pick a default align.",pv.dimension);
+                % Setup the align struct
+                plg = fetch1(dimTbl,'plugin','LIMIT 1');
+                pv.align = struct('plugin',plg{1},'event','startTime');
             end
-
-            assert(~pv.baseline || ~isempty(pv.baseline_win), ...
-                "Provide a baseline window (baseline_win) in the EpochParm entry or set 'baseline' to false.")
-
-       end
-
-
-
+                          
+        end
     end
 
 end
 
-function mustBeLogicalOrNumeric(x)
 
-assert(isnumeric(x) & (x == 0 || x == 1) || islogical(x), "Must be logical or 0 or 1.");
 
-end
-
-function validateBaselineWin(x)
-
-assert(isempty(x) | numel(x) == 2, "Must be either empty or [t_start, t_end]");
-
-end
-
-function validateArtParm(art)
-
-assert(isstruct(art) && all(ismember(fieldnames(art), ["fun", "args"])), ...
-    "artifact_parm must be a struct with fields fun (artifact finder function) and args (input cell array)");
-assert( ...
-    all(all(cellfun(@(x)isstring(x) | ischar(x) | isa(x, 'function_handle'), {art.fun}))), ...
-    "Field 'fun' must contain a string or handle associated with artifact finder function.");
-
-assert(all(arrayfun(@(x) iscell(x) | isstruct(x), {art.args})), "Field args must contain cell array.");
-end

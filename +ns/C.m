@@ -831,10 +831,16 @@ classdef C < dj.Computed & dj.DJInstance
                     alignTrialTime = zeros(size(trials{c})); % Align to first frame
                 elseif isscalar(pv.align) % Singleton expansion
                     alignTrialTime = repmat(pv.align,[1 numel(trials{c})]);
-                elseif numel(pv.align) == exptTpl.nrtrials
+                elseif  ~isempty(pv.trial)
+                    assert(numel(pv.align) == numel(pv.trial),"The number of align times must match the number of trials");
+                    % Align specified for a specific subset of trials
+                    [~,loc] = ismember(trials{c},pv.trial);
+                    alignTrialTime = pv.align(loc);
+                elseif numel(pv.align) == exptTpl.nrtials
+                    % Align specified for all trials
                     alignTrialTime = pv.align(trials{c});
                 else
-                    error('align can be empty , a singleton, or a vector with times for each trial in the experiment')
+                    error('align can be empty, a singleton, a vector with times for each trial in the experiment, or  a vector of times that matches the specified trials')
                 end
 
                 % Setup the new time axis for the results
