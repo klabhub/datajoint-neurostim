@@ -160,6 +160,7 @@ nrFrames = numel(keepFrameIx);
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 allPlanesSignal = [];
 allPlanesChannelInfo = [];
+
 for pl=0:prep.nrplanes-1
     planeFolder = fullfile(fldr,"plane" +  string(pl));
     if parms.perExperiment 
@@ -168,14 +169,28 @@ for pl=0:prep.nrplanes-1
         cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat");
     end
     if exist(cascadeResultsFilename,"file")
-        fprintf('Cascade results already exist for plane %d in %s. Skipping.\n',pl,fldr);
+        fprintf('Cascade results already exist for plane %d in %s. Reading from file.\n',pl,fldr);
         load(cascadeResultsFilename,'signal','channelInfo');
     else
         if isfield(parms,'restrict')
-            % Restrict with a query on sbx.PreprocessedRoi
-            roi = [fetch((sbx.PreprocessedRoi & parms.restrict & struct('plane',pl)) & key ,'roi').roi]';
+            restrict = parms.restrict;
+        else
+            restrict = 'true';
         end
-        [signal,channelInfo]= runCascade(roi,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
+        % Restrict with a query on sbx.PreprocessedRoi
+        roi = [fetch((sbx.PreprocessedRoi & restrict & struct('plane',pl)) & key ,'roi').roi]';
+        roiOffset = fetch1(aggr(sbx.Preprocessed&key,sbx.PreprocessedRoi & key & sprintf('plane<%d',pl),'max(roi)->offset'),'offset');
+        roiOffset(isnan(roiOffset)) =0; % Plane 0 -> no offset
+        roiIx = roi -roiOffset; % IX in the F.npy file
+        try
+            [signal,channelInfo]= runCascade(roiIx,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
+        catch me
+            if contains(me.message,"Python process terminated unexpectedly")
+                fprintf('Python terminated unexpectedly. Retrying...')
+                terminate(pyenv);
+                [signal,channelInfo]= runCascade(roiIx,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
+            end
+        end
         fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
     end
 
@@ -190,7 +205,7 @@ for pl=0:prep.nrplanes-1
     end
     % Concatenate across planes
     allPlanesSignal = [allPlanesSignal  signal]; %#ok<AGROW>
-    allPlanesChannelInfo = [allPlanesChannelInfo  channelInfo]; %#ok<AGROW>
+    allPlanesChannelInfo = [allPlanesChannelInfo  ;channelInfo]; %#ok<AGROW>
 end
 
 % Rename for output values

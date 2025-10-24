@@ -37,6 +37,7 @@ end
       
 
 %% Read the .npy or .mat Output
+%TODO handle multidepth sessions. 
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 planes = dir(fullfile(fldr,'plane*'));
 

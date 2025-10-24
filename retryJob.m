@@ -11,10 +11,15 @@ function T= retryJob(row,tbl)
 % returen table to clear those errors.
 arguments
     row  = 1  % The row of the Jobs table to process
-    tbl = ns.Jobs
+    tbl = ns.Jobs    
 end
-import dj.*
-tpl = fetch(tbl ,'*',sprintf('LIMIT 1 OFFSET %d',row-1));
+
+if isa(tbl,'table')
+    % User passed the output of jobs, which is a matlab table
+    tpl =table2struct(tbl(row,:));
+else
+    tpl = fetch(tbl ,'*',sprintf('LIMIT 1 OFFSET %d',row-1));
+end
 
 %% Setup the break point
 if isempty(tpl.error_stack)
@@ -44,5 +49,6 @@ end
 if success
     delQuick(ns.Jobs & ns.stripToPrimary(ns.Jobs,tpl))
 end
-
-T = ns.Jobs & struct('table_name',tpl.table_name,'error_message',tpl.error_message);
+if ~isa(tbl,'table')
+    T = ns.Jobs & struct('table_name',tpl.table_name,'error_message',tpl.error_message);
+end
