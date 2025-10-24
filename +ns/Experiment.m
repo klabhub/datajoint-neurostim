@@ -27,7 +27,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
-        function [idxNr,v] = sessionIndex(tbl)
+        function [idxNr,v] = sessionIndex(tbl,referenceParadigm)
             % For a table of experiments, returns the index number of
             % the experiment per session (i.e. first experiment in the
             % session (and in the database) is 1, second is 2, and in a new
@@ -39,22 +39,30 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % v  = Datajoint table with idx and dt as a column. dt is the
             % time in seconds between the start of an experiment and the
             % first experiment in the session.                
-            
-            allE = proj(ns.Experiment & (ns.Session & tbl) ,'session_date->session_date2', ...
+            arguments
+                 tbl (1,1) ns.Experiment
+                 referenceParadigm (1,1) string = ""
+            end
+            allE = ns.Experiment & (ns.Session & tbl);
+            allE2 = proj(allE ,'session_date->session_date2', ...
                 'subject->subject2', ...
                 'starttime->starttime2');
 
-            % Pairs of (tbl, allE) within the same session where E2 is earlier than E.
-            earlier = (tbl * allE) & [ 'session_date = session_date2 AND ' ...
+            % Pairs within the same session where E2 is earlier than E.
+            earlier = (allE * allE2) & [ 'session_date = session_date2 AND ' ...
                 'subject = subject2 AND '...
                 'starttime2 < starttime'];
             % For each experiment row in tbl, count how many earlier rows exist in `earlier`
-            % and add the time in seconds since th
-            idx = tbl.aggr(earlier, 'count(starttime2)->idx');            
+            idx = allE.aggr(earlier, 'count(starttime2)->idx','paradigm');            
             % index is count of earlier items + 1
-            idx  = idx.proj('idx + 1->idx');           
-            idx = idx* proj(idx & 'idx=1','starttime->first','session_date','subject');
-            idx = idx.proj('idx','COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(first), 0)->dt');
+            idx  = idx.proj('idx + 1->idx','paradigm');           
+            if referenceParadigm ~=""
+                restrict = sprintf('paradigm="%s"',referenceParadigm);
+            else
+                restrict = 'idx=1';
+            end
+            idx = idx* proj(idx & restrict,'starttime->reference','session_date','subject');
+            idx = idx.proj('idx','COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(reference), 0)->dt');
             % Join back to the base relation to attach the index and dt
             v = tbl * idx;
             idxNr = double([fetch(v,'idx').idx]');
