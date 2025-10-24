@@ -180,15 +180,14 @@ for pl=0:prep.nrplanes-1
         % Restrict with a query on sbx.PreprocessedRoi
         roi = [fetch((sbx.PreprocessedRoi & restrict & struct('plane',pl)) & key ,'roi').roi]';
         roiOffset = fetch1(aggr(sbx.Preprocessed&key,sbx.PreprocessedRoi & key & sprintf('plane<%d',pl),'max(roi)->offset'),'offset');
-        roiOffset(isnan(roiOffset)) =0; % Plane 0 -> no offset
-        roiIx = roi -roiOffset; % IX in the F.npy file
+        roiOffset(isnan(roiOffset)) =0; % Plane 0 -> no offset        
         try
-            [signal,channelInfo]= runCascade(roiIx,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
+            [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
         catch me
             if contains(me.message,"Python process terminated unexpectedly")
                 fprintf('Python terminated unexpectedly. Retrying...')
                 terminate(pyenv);
-                [signal,channelInfo]= runCascade(roiIx,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
+                [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
             end
         end
         fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
@@ -216,11 +215,12 @@ recordingInfo = struct('dummy',true);
 
 end
 
-function [signal,channelInfo] = runCascade(keepRoi,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx)
+function [signal,channelInfo] = runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx)
 % Run cascade on the fluorescence data in planeFolder for the rois in keepRoi
 % and save the results in cascadeResultsFilename
 arguments
-    keepRoi(:,1) double % List of rois that have not been done yet
+    roi(:,1) double % roi numbers (across planes) to process
+    roiOffset (1,1) double % Offset for the current plane 
     parms (1,1) struct
     prep (1,1) struct
     planeFolder (1,1) string
@@ -236,13 +236,14 @@ if ~exist(thisFile,"file")
     error('File %s does not exist',thisFile);
 end
 F =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
-F = F(keepRoi,:)';
+roiIx = roi-roiOffset;
+F = F(roiIx,:)';
 thisFile = fullfile(planeFolder,'Fneu.npy');
 if ~exist(thisFile,"file")
     error('File %s does not exist',thisFile);
 end
 Fneu =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
-Fneu = Fneu(keepRoi,:)';
+Fneu = Fneu(roiIx,:)';
 F = F-parms.neuropilFactor*Fneu;
 
 if parms.perExperiment
@@ -269,7 +270,9 @@ end
 % The value is divided by the square root of the frame rate to make it comparable across recordings with different frame rates.
 
 noiseLevel = 100*median(abs(diff(F,1,1)),1,"omitmissing")./sqrt(prep.framerate/prep.nrplanes);
-channelInfo =  struct('nr',num2cell(keepRoi),'noiseLevel',num2cell(noiseLevel'),'model',char(parms.model));
+%  Use the roi number in the channelInfo to keep consistent naming with
+%  PreprocessedRoi 
+channelInfo =  struct('nr',num2cell(roi),'noiseLevel',num2cell(noiseLevel'),'model',char(parms.model));
 
 %% Run cascade in chunks
 nrRoi = size(F,2);
