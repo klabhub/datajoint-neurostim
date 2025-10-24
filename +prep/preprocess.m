@@ -126,7 +126,7 @@ for f=fn
             thisParms.Fs = sampleRate;
             pvPairs = namedargs2cell(thisParms);
             tmpSignal = reshape(signal(epoch_mask,:,:),sum(epoch_mask)*nrTrials,nrChannels);        
-            result.noisy_channels = ns.prep.find_noisy_channels(tmpSignal',pvPairs{:});
+            result.noisy_channels = prep.find_noisy_channels(tmpSignal',pvPairs{:});
             result.noisy_channels.parameters = rmfield(result.noisy_channels.parameters, 'ChannelLocations'); % duplicate
             badElectrodes = union(badElectrodes,result.noisy_channels.all);
         case "reference"

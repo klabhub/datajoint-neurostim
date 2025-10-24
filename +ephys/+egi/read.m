@@ -125,9 +125,9 @@ if isfield(badElectrodes, "channel")
 else
     parms.badElectrodes = [];
 end
-% Pass to CFilter (needs time in s for filter definitions), returns time
+% Pass to preprocess (needs time in s for filter definitions), returns time
 % in s.
-[signal,neurostimTime,prepResult] = ns.CFilter(signal,neurostimTime/1000,parms,exp_tpl);
+[signal,neurostimTime,prepResult] = prep.preprocess(signal,neurostimTime/1000,parms,exp_tpl);
 
 %% Package output
 % Regular sampling - stored in ms

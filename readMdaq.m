@@ -97,7 +97,7 @@ signal = T{:,analogChannels};
 
 
 %% Filter the analog channels
-[signal,time] = ns.CFilter(signal,time,parms);
+[signal,time] = prep.preprocess(signal,time,parms);
 
 %% Create events based on analog or digital channels
 % (Transitions between high  and low states).

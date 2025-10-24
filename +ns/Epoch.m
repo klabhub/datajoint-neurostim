@@ -183,14 +183,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
             tic;
             fprintf("Preprocessing segmented data...\n");
             [signal,t] = timetableToDouble(T); % [timepoints trials channels ]
-            [signal,t,prepInfo] = ns.prep.preprocess(signal,seconds(t),parmTpl.prep,key);
+            [signal,t,prepInfo] = prep.preprocess(signal,seconds(t),parmTpl.prep,key);
             [nrSamples,nrTrials,nrChannels] = size(signal); %#ok<ASGLU>
             fprintf("\t Filtering is complete after %s\n",toc);
             %% --- Artifact/Outlier Rejection ---
             tic;
             fprintf("Artifact detection ...\n");
             % samplingRate = 1./mode(diff(time));
-            %           [signal,time,artInfo] = ns.prep.artifactDetection(signal,samplingRate,parmTpl.art);
+            %           [signal,time,artInfo] = prep.artifactDetection(signal,samplingRate,parmTpl.art);
             artInfo =struct('dummy',true);
             fprintf("\t Artifact detection complete after %s\n",toc);
 

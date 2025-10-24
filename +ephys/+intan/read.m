@@ -86,7 +86,7 @@ time  = polyval(clockParms,data.time);
 
 
 %% Filter
-[signal,time] = ns.CFilter(signal,time,parms);
+[signal,time] = prep.preprocess(signal,time,parms);
 
 %% Package output
 recordingInfo = mergestruct(hdr.frequency,hdr.stim);
