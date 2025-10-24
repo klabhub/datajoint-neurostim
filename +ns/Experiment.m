@@ -27,45 +27,64 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
-        function [idxNr,v] = sessionIndex(tbl,referenceParadigm)
-            % For a table of experiments, returns the index number of
-            % the experiment per session (i.e. first experiment in the
-            % session (and in the database) is 1, second is 2, and in a new
-            % session, numbers start from 1 again. This is useful to find
-            % experiments that ran first, or before some other experiment
-            % in the session.
+        function [v] = ordering(tbl,referenceParadigm)
+            % For a table of experiments, returns a table with three additional
+            % columns representing the ordering of experiments in a
+            % session.
+            %
+            %  INPUT
+            % tbl  an ns.Experiment table
+            % referenceParadigm - The name of the reference paradigm. When absent, the 
+            % first  experiment in the session is considered to be the reference. Sessions 
+            % in which the reference paradigm did not occur are not
+            % included in the table. 
+            %
+            % OUTPUT
+            %  A tablewith the same columns as ns.Experiment plus:
+            % dt - Time [s] between the experiment and the reference experiment
+            %       absolute - Index representing the order of experiments in the
+            %       session (1 = first, 2 =second). Based only on the experiments
+            %       that are in the database.
+            % relative - Index relative to a reference paradigm. (0=
+            %           reference paradigm, -1 is the one just before the reference
+            %           paradigm).
+            %                      
             % 
-            % seqNr = list of index numbers for the items in the tbl
-            % v  = Datajoint table with idx and dt as a column. dt is the
-            % time in seconds between the start of an experiment and the
-            % first experiment in the session.                
+            % EXAMPLE
+            % Consider a session in which one experiment represents a
+            % manipulation (e.g. stimulation) and we want to select experimets
+            % performed before and after that manipulation:
+            %  T = ordering(ns.Experiment,"stimulation")
+            % before =T & 'relative <0'; % The experimens before the
+            % "stimulation" paradigm.
+            % after = T & 'relative >0'; % The experimens after
+            % stimulation.           
             arguments
-                 tbl (1,1) ns.Experiment
-                 referenceParadigm (1,1) string = ""
+                tbl (1,1) ns.Experiment
+                referenceParadigm (1,1) string = ""
             end
-            allE = ns.Experiment & (ns.Session & tbl);
-            allE2 = proj(allE ,'session_date->session_date2', ...
-                'subject->subject2', ...
-                'starttime->starttime2');
-
-            % Pairs within the same session where E2 is earlier than E.
-            earlier = (allE * allE2) & [ 'session_date = session_date2 AND ' ...
-                'subject = subject2 AND '...
-                'starttime2 < starttime'];
-            % For each experiment row in tbl, count how many earlier rows exist in `earlier`
-            idx = allE.aggr(earlier, 'count(starttime2)->idx','paradigm');            
-            % index is count of earlier items + 1
-            idx  = idx.proj('idx + 1->idx','paradigm');           
-            if referenceParadigm ~=""
-                restrict = sprintf('paradigm="%s"',referenceParadigm);
+            allS = ns.Session & tbl;
+            allE = ns.Experiment & allS;
+            if referenceParadigm == ""
+                reference = aggr(allS,ns.Experiment,'min(starttime)->reference');
             else
-                restrict = 'idx=1';
+                reference = proj(allE & sprintf('paradigm="%s"',referenceParadigm),'starttime->reference');
+                if count(reference)==0
+                    fprintf('Reference paradigm %s not found in the experiment table.',referenceParadigm);
+                end
             end
-            idx = idx* proj(idx & restrict,'starttime->reference','session_date','subject');
-            idx = idx.proj('idx','COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(reference), 0)->dt');
+            allEWithRef = proj(allE * reference,'COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(reference), 0)->dt','reference');
+
+            % Pair each row with strictly earlier rows in the SAME session
+            earlier = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< starttime';
+            % Count how many earlier rows each current row has, then +1 → rank
+            A= aggr(allEWithRef, earlier, 'count(starttime2)+1->absolute','dt');
+            earlierThanReference = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< reference';
+            B= aggr(allEWithRef, earlierThanReference, 'count(starttime2)+1->rIx');
+            R  =proj(A*B,'absolute-rIx->relative','absolute','dt');
+            
             % Join back to the base relation to attach the index and dt
-            v = tbl * idx;
-            idxNr = double([fetch(v,'idx').idx]');
+            v = tbl * R;            
         end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
@@ -555,7 +574,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         end
 
-        
+
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
