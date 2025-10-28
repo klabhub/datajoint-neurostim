@@ -1,4 +1,4 @@
-function flags = detect_outlier_epochs(data, srate, options)
+function flags = artifactDetection(data, srate, options)
 %DETECT_OUTLIER_EPOCHS Flags EEG epochs based on multiple artifact criteria using vectorized operations and nested functions.
 %
 %   [bad_epochs_idx, bad_epochs_flags] = DETECT_OUTLIER_EPOCHS(data, srate, Name, Value, ...)

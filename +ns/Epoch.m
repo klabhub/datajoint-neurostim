@@ -61,6 +61,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 pv.delta (1,1) string = ""              % Also show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]
+                pv.tilesPerPage (1,1) double = 6 
             end
             if isempty(pv.channel)
                 channelRestrict = "true";
@@ -87,7 +88,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
             
             %% Figure
-            clf
+            
+            tileCntr=0;
             for i = 1:nrTimeSeries
                 t =  G.time(i,:);
                 t = linspace(t(1),t(2),t(3));
@@ -96,14 +98,19 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 ste = G.ste(i,:);
                 %n  =G.n(i,:);
                 ttlStr = strjoin(grouping + ":" + string(G{i,grouping}),"/");
+               
                 if i==1 || any(G{i,["subject" "session_date" "starttime"]} ~= G{i-1,["subject" "session_date" "starttime"]})
-                    % New  subject, session or experiment
-                    if i~=1
+                    % New  subject, session or experiment in a new tile
+                    if i>1 
                         % Add the legend string to the existing tile
                         legend(h,legStr);
                     end
+                    if mod(tileCntr,pv.tilesPerPage)==0 
+                        figure;
+                    end
                     % Start a new tile with empty handles
                     nexttile;
+                    tileCntr =tileCntr+1;
                     h = [];
                     legStr = string([]);
                     hold on
@@ -116,11 +123,15 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 xlabel (sprintf('Time after %s.%s (ms)',align.plugin,align.event));
 
                  if pv.delta ~="" && G.condition(i) ~=pv.delta
-                     matchG = innerjoin(G,G(i,setdiff(grouping,"condition")));
+                     matchG = innerjoin(G,G(i,setdiff(grouping,"condition")));                     
                      reference = find(matchG.condition ==pv.delta);
-                     y = m - matchG.mean(reference,:);                                          
+                     if ~isempty(reference)
+                     y = m - matchG.mean(reference,:);             
+                     ste = ste +matchG.ste(reference,:);
                      h = [h plot(t,y)];                     %#ok<AGROW>
+                     patch([t flip(t)],[y+ste flip(y-ste)],h(end).Color,FaceAlpha= 0.5);               
                     legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
+                     end
                  end
             end
             legend(h,legStr); % For the last tile
@@ -177,27 +188,41 @@ classdef Epoch < dj.Computed & dj.DJInstance
             tic;
             fprintf("Preprocessing segmented data...\n");
             [signal,t] = timetableToDouble(T); % [timepoints trials channels ]
-            [signal,t,prepInfo] = prep.preprocess(signal,seconds(t),parmTpl.prep,key);
+            [signal,t,prepResults] = prep.preprocess(signal,seconds(t),parmTpl.prep,key);
             [nrSamples,nrTrials,nrChannels] = size(signal); %#ok<ASGLU>
             fprintf("\t Filtering is complete after %s\n",toc);
             %% --- Artifact/Outlier Rejection ---
             tic;
             fprintf("Artifact detection ...\n");
-            % samplingRate = 1./mode(diff(time));
-            %           [signal,time,artInfo] = prep.artifactDetection(signal,samplingRate,parmTpl.art);
-            artInfo =struct('dummy',true);
+            samplingRate = 1./mode(diff(t));
+            parmTpl.art.epoch_no = trials;
+            pv =namedargs2cell(parmTpl.art);
+            [artResult] = prep.artifactDetection(permute(signal,[2 3 1]),samplingRate,pv{:});           
+            % Remove epochs that were identified as having artifacts
+            out = ismember(trials,artResult.all);
+            signal(:,out,:) = [];
+            trials(out) = [];
+            condition(out) = [];
+            startTime(out) = [];
+            nrTrials =numel(trials);
+            % Convert object to struct to allow storing in SQL database
+            % with MYM
+            warning('off','MATLAB:structOnObject')
+            artResult = rmfield(struct(artResult),'categories');
+            warning('on','MATLAB:structOnObject')
             fprintf("\t Artifact detection complete after %s\n",toc);
-
+            
             %% --- Submit to the server ---
             tic;
             fprintf("Submitting to the server\n");
+
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
-                info = struct('prep',prepInfo,'art',artInfo)));
+                info = struct('prep',prepResults,'art',artResult)));
             % Insert to Epoch table
             chunkedInsert(tbl, epoch_tpl);
 
-            % Create EpochChannel tuple that contains the actual epoch data
+            % Create EpochChannel tuple that contains the data
             signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
             trial = num2cell(repmat(trials,nrChannels,1));
             condition = cellstr(repmat(condition,nrChannels,1));
