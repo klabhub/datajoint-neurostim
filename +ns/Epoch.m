@@ -55,57 +55,62 @@ classdef Epoch < dj.Computed & dj.DJInstance
     methods (Access= public)
 
         function plot (tbl,pv)
-            % Plot evoked responses.
+            % Plot evoked responses for all rows in the table.
+            % Set the 'average' input to select which aspects to average
+            % over. By default, trials and channels are averaged. 
+            % 
             arguments
                 tbl (1,1) ns.Epoch {mustHaveRows}
-                pv.delta (1,1) string = ""              % Also show the difference using this named condition as the reference
+                pv.delta (1,1) string = ""              % Show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
-                pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]
-                pv.tilesPerPage (1,1) double = 6 
+                pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]  % Average over these dimensions
+                pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
             end
             if isempty(pv.channel)
-                channelRestrict = "true";
+                channelRestrict = "true"; % No restriction
             else
                 channelRestrict = struct('channel',num2cell(pv.channel));
             end
-            grouping = setdiff(["subject" "session_date" "starttime" "trial" "channel" "condition"  ],pv.average);
             % Fetch the data
-            T =fetchtable(ns.Epoch*ns.EpochChannel*ns.EpochParm &  channelRestrict & proj(tbl),'signal','time','condition','align','ORDER BY channel');
+            T =fetchtable(ns.Experiment*ns.Epoch*ns.EpochChannel*ns.EpochParm &  channelRestrict & proj(tbl),'paradigm','signal','time','condition','align','ORDER BY channel');
             % Determine mean, ste and n averaging over the pv.average
             % dimension (anything that is left out of grouping)
+            grouping = setdiff(["subject" "session_date" "starttime" "trial" "channel" "condition"  ],pv.average);
             funs  = {@(x) mean(cat(2,x{:}),2,"omitmissing")', ...  % Mean
-                        @(x) (std(cat(2,x{:}),0,2,"omitmissing")./sqrt(sum(~isnan(cat(2,x{:})),2,"omitmissing")))',...  % Standard error
-                        @(x) sum(~isnan(cat(2,x{:})),2,"omitmissing")'};  % Non-Nan N
+                @(x) (std(cat(2,x{:}),0,2,"omitmissing")./sqrt(sum(~isnan(cat(2,x{:})),2,"omitmissing")))',...  % Standard error
+                @(x) sum(~isnan(cat(2,x{:})),2,"omitmissing")'};  % Non-Nan N
             G = groupsummary(T, grouping, funs, 'signal');
             G= renamevars(G,["fun1_signal" "fun2_signal" "fun3_signal"],["mean" "ste" "n"]);
-            nrTimeSeries = height(G);
+            % Combine with align/time/paradigm information. Note this
+            % assumes these are constant across the group (picking
+            % only the first or the unique here)
             P = groupsummary(T, grouping, @(x) x(1), "align");
             P = renamevars(P,"fun1_align","align");
             G =innerjoin(G,P);
-            TM = groupsummary(T, grouping, @(x) unique(x)', "time");
-            TM  = renamevars(TM,"fun1_time","time");
+            TM = groupsummary(T, grouping, @(x) unique(x)', ["time" "paradigm"]);
+            TM  = renamevars(TM,["fun1_time" "fun1_paradigm"],["time" "paradigm"]);                        
             G =innerjoin(G,TM);
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
-            
+
             %% Figure
-            
             tileCntr=0;
+            nrTimeSeries = height(G);
             for i = 1:nrTimeSeries
                 t =  G.time(i,:);
                 t = linspace(t(1),t(2),t(3));
                 align =G.align(i);
                 m = G.mean(i,:);
-                ste = G.ste(i,:);
-                %n  =G.n(i,:);
-                ttlStr = strjoin(grouping + ":" + string(G{i,grouping}),"/");
-               
+                ste = G.ste(i,:);                
+                n = mean(G.n(i,:));
+                titlePV= setdiff(["paradigm" grouping],"condition");
+                ttlStr = strjoin(string(G{i,titlePV}),"/");
                 if i==1 || any(G{i,["subject" "session_date" "starttime"]} ~= G{i-1,["subject" "session_date" "starttime"]})
                     % New  subject, session or experiment in a new tile
-                    if i>1 
+                    if i>1
                         % Add the legend string to the existing tile
                         legend(h,legStr);
                     end
-                    if mod(tileCntr,pv.tilesPerPage)==0 
+                    if mod(tileCntr,pv.tilesPerPage)==0
                         figure;
                     end
                     % Start a new tile with empty handles
@@ -118,21 +123,21 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 h = [h plot(t,m)];                %#ok<AGROW>
                 patch([t flip(t)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);
                 legStr = [legStr G.condition(i)]; %#ok<AGROW>
-                title (ttlStr,'Interpreter','none');
+                title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');
                 ylabel 'EP (\muV)'
                 xlabel (sprintf('Time after %s.%s (ms)',align.plugin,align.event));
-
-                 if pv.delta ~="" && G.condition(i) ~=pv.delta
-                     matchG = innerjoin(G,G(i,setdiff(grouping,"condition")));                     
-                     reference = find(matchG.condition ==pv.delta);
-                     if ~isempty(reference)
-                     y = m - matchG.mean(reference,:);             
-                     ste = ste +matchG.ste(reference,:);
-                     h = [h plot(t,y)];                     %#ok<AGROW>
-                     patch([t flip(t)],[y+ste flip(y-ste)],h(end).Color,FaceAlpha= 0.5);               
-                    legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
-                     end
-                 end
+                % If delta is not empty, add the difference wave.
+                if pv.delta ~="" && G.condition(i) ~=pv.delta
+                    matchG = innerjoin(G,G(i,setdiff(grouping,"condition")));
+                    reference = find(matchG.condition ==pv.delta);
+                    if ~isempty(reference)
+                        y = m - matchG.mean(reference,:);
+                        ste = ste +matchG.ste(reference,:);
+                        h = [h plot(t,y)];                     %#ok<AGROW>
+                        patch([t flip(t)],[y+ste flip(y-ste)],h(end).Color,FaceAlpha= 0.5);
+                        legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
+                    end
+                end
             end
             legend(h,legStr); % For the last tile
 
@@ -145,9 +150,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             parmTpl = fetch(ns.EpochParm &key,'prep','art','align','window','channels');
             conditionTpl = fetch(ns.DimensionCondition&key,'trials');
             trialsInDimension = cat(1,conditionTpl.trials);
-
             alignTpl = get(ns.Experiment &key,parmTpl.align.plugin,prm=parmTpl.align.event,what=["trialtime" "data" "trial"],trial=trialsInDimension);
-
 
             noSuchEvent = isinf(alignTpl.trialtime);
             if any(noSuchEvent)
@@ -172,7 +175,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             end
 
             if isempty(parmTpl.channels)
-                %
+                % Use all channels by default
                 C = ns.C & key;
                 parmTpl.channels = C.channels';
             end
@@ -182,7 +185,6 @@ classdef Epoch < dj.Computed & dj.DJInstance
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
             T = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
             fprintf("\t Exporting is complete after %s\n",toc);
-
 
             %% --- Preprocess epochs ---
             tic;
@@ -197,7 +199,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             samplingRate = 1./mode(diff(t));
             parmTpl.art.epoch_no = trials;
             pv =namedargs2cell(parmTpl.art);
-            [artResult] = prep.artifactDetection(permute(signal,[2 3 1]),samplingRate,pv{:});           
+            [artResult] = prep.artifactDetection(permute(signal,[2 3 1]),samplingRate,pv{:});
             % Remove epochs that were identified as having artifacts
             out = ismember(trials,artResult.all);
             signal(:,out,:) = [];
@@ -211,11 +213,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             artResult = rmfield(struct(artResult),'categories');
             warning('on','MATLAB:structOnObject')
             fprintf("\t Artifact detection complete after %s\n",toc);
-            
+
             %% --- Submit to the server ---
             tic;
             fprintf("Submitting to the server\n");
-
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
                 info = struct('prep',prepResults,'art',artResult)));
@@ -229,14 +230,20 @@ classdef Epoch < dj.Computed & dj.DJInstance
             onset = num2cell(repmat(startTime,nrChannels,1));
             channel  = num2cell(reshape(repmat(parmTpl.channels,nrTrials,1),nrTrials*nrChannels,1));
 
-            tpl = mergestruct(key, ...
-                struct(signal =signal,...
-                trial = trial, ...
-                onset = onset,...
-                channel = channel,...
-                condition = condition));
-            chunkedInsert(ns.EpochChannel, tpl);
-            fprintf("\t Submission is complete after %s.\n",toc);
+            if isempty(trial)
+                fprintf('No epochs remaining after artifact detection');
+            else
+                tpl = mergestruct(key, ...
+                    struct(signal =signal,...
+                    trial = trial, ...
+                    onset = onset,...
+                    channel = channel,...
+                    condition = condition));
+
+                chunkedInsert(ns.EpochChannel, tpl);
+                emd
+                fprintf("\t Submission is complete after %s.\n",toc);
+            end
         end
     end
 end

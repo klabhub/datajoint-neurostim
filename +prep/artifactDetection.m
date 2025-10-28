@@ -65,6 +65,7 @@ arguments (Input)
     % Optional Name-Value arguments collected into 'options' structure
     options.flat_threshold_sd (1,1) double {mustBeNumeric, mustBeNonnegative} = .1 % Default 1 uV
     options.amplitude_threshold_peak (1,1) double {mustBeNumeric, mustBePositive} = 250 % Default 150 uV
+    options.amplitude_channelfrac (1,1) double {mustBeNumeric,mustBeInRange(options.amplitude_channelfrac,0,1)} = 0.5 % Half the channels above threshold
     options.variance_z_threshold (1,1) double {mustBeNumeric, mustBePositive} = 3.291 % Default 5 Z
     options.hf_cutoff_hz (1,1) double {mustBeNumeric, mustBePositive} = 50 % Default 50 Hz
     options.hf_z_threshold (1,1) double {mustBeNumeric, mustBePositive} = 3.291 % Default 5 Z
@@ -165,8 +166,8 @@ fprintf('  Correlation check complete with %d of %d epochs flagged.\n', sum(isFl
         % Identify which channels exceed threshold
         is_high_amp_per_channel = peak_to_peak > options.amplitude_threshold_peak; % n_epochs x n_channels
 
-        % Flag epoch if ANY channel exceeds threshold
-        flags = any(is_high_amp_per_channel(:, options.criterion_channels), 2);
+        % Flag epoch if too many channel exceed the threshold
+        flags = mean(is_high_amp_per_channel(:, options.criterion_channels), 2) >options.amplitude_channelfrac;
             
     end
 

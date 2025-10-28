@@ -975,17 +975,17 @@ classdef C < dj.Computed & dj.DJInstance
             prepParms = fetch(ns.CParm & key,'*');
 
             % Call the prep function
-            [signal,time,channelInfo,recordingInfo] = feval(prepParms.fun,key,prepParms.parms);
+            [signal,t,channelInfo,recordingInfo] = feval(prepParms.fun,key,prepParms.parms);
             [nrSamples,nrChannels] = size(signal);
 
-            assert(nrSamples==numel(time) || (numel(time)==3 &&time(3)==nrSamples),'The number of rows in the preprocessed signal does not match the number of time points ')
+            assert(nrSamples==numel(t) || (numel(t)==3 &&t(3)==nrSamples),'The number of rows in the preprocessed signal does not match the number of time points ')
             assert(nrChannels==numel(channelInfo),'The number of columns in the preprocessed signal does not match the number of channels')
 
             thisChannels =[channelInfo.nr];
 
             % Create tuples and insert.
             tpl = mergestruct(key,...
-                struct('time',time, ...
+                struct('time',t, ...
                 'nrsamples',nrSamples,...
                 'info',recordingInfo));
             insert(tbl,tpl)
