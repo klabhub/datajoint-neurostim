@@ -116,7 +116,15 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                             if ii <= n_arg
                                 opts = varargin{ii};
                                 if iscell(opts)
+
                                     ii = ii + 1;
+                                    % if srate is requested, fetch from
+                                    % ns.C
+                                    isSRate = cellfun(@(argN) (ischar(argN) || isstring(argN)) && strcmp(argN, 'get_srate'), opts);
+                                    if any(isSRate)
+                                        opts{isSRate} = cTbl.srate;
+                                    end
+                                    
                                 else
                                     opts = {};
                                 end
@@ -358,7 +366,9 @@ classdef EpochChannel < dj.Part & dj.DJInstance
         function [p, fq] = do_pmtm(data, varargin)
 
             n_ep = size(data,1);
-            
+
+           
+            % Loop thru epochs
             p = cell(n_ep,1);
             for ii = 1:n_ep
 
