@@ -9,6 +9,7 @@ function keyT = jobs (tbl,pv)
 arguments
     tbl (1,1) = ns.Jobs
     pv.status = {'error'}
+    pv.ctag = ""
 end
 if count(tbl)==0;fprintf('No jobs in the %s table\n',tbl.className);return;end
 [key,table_name,status, error_message,error_stack,timestamp,key_hash] = fetchn(tbl &struct('status',pv.status),'key','table_name','status','error_message','error_stack','timestamp','key_hash');
@@ -26,4 +27,9 @@ keyT =addvars(keyT,table_name,status,error_message,errfile, error_stack,timestam
 keyT = convertvars(keyT,@(x) iscellstr(x) || ischar(x),'string'); %#ok<ISCLSTR>
 keyT = movevars(keyT,["errfile","error_message"],"Before",1);
 keyT = sortrows(keyT,"timestamp","descend");
+
+if pv.ctag ~=""
+    keyT = keyT(ismember(keyT.ctag,pv.ctag),:);
+end
+
 end

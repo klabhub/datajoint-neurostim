@@ -39,7 +39,7 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % use  a model with the frequency that is closest to the actual sampling frequency of the
 % data. For instance, this allows automatic adjustment to the 7.5 Hz model
 % for 2 plane recordings at 15Hz.
-% 
+%
 % parms.prep = 'suite2p'; % Which sbx.Preprocessed to use
 % parms.restrict = 'pcell>0.9'; % Optional restriction on which rois to do
 % parms.neuropilFactor = 0.7; % Subtract 0.7*Fneu from F.
@@ -113,7 +113,7 @@ if contains(parms.model,"?Hz")
     models = getCascadeModels(cascadeFolder);
     match = regexp(models,strrep(parms.model,'?Hz','(?<rate>\d+)Hz'),'names');
     availableRate= cellfun(@(x) str2double(x.rate),match(~cellfun(@isempty,match)));
-    assert(~isempty(availableRate),'No matching Cascade models for %s',parms.model);    
+    assert(~isempty(availableRate),'No matching Cascade models for %s',parms.model);
     [~,ix] =min(abs(rate-availableRate));
     parms.model = strrep(parms.model,'?',num2str(availableRate(ix)));
 end
@@ -163,7 +163,7 @@ allPlanesChannelInfo = [];
 
 for pl=0:prep.nrplanes-1
     planeFolder = fullfile(fldr,"plane" +  string(pl));
-    if parms.perExperiment 
+    if parms.perExperiment
         cascadeResultsFilename = fullfile(planeFolder ,key.starttime + "." + key.ctag + ".cascade.mat");
     else
         cascadeResultsFilename = fullfile(planeFolder ,key.ctag + ".cascade.mat");
@@ -179,18 +179,24 @@ for pl=0:prep.nrplanes-1
         end
         % Restrict with a query on sbx.PreprocessedRoi
         roi = [fetch((sbx.PreprocessedRoi & restrict & struct('plane',pl)) & key ,'roi').roi]';
-        roiOffset = fetch1(aggr(sbx.Preprocessed&key,sbx.PreprocessedRoi & key & sprintf('plane<%d',pl),'max(roi)->offset'),'offset');
-        roiOffset(isnan(roiOffset)) =0; % Plane 0 -> no offset        
-        try
-            [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
-        catch me
-            if contains(me.message,"Python process terminated unexpectedly")
-                fprintf('Python terminated unexpectedly. Retrying...')
-                terminate(pyenv);
-                [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);        
+
+        if  isempty(roi)
+            fprintf("No ROI match the restriction. Skipping.");
+            continue; % Skip to next plane
+        else
+            roiOffset = fetch1(aggr(sbx.Preprocessed&key,sbx.PreprocessedRoi & key & sprintf('plane<%d',pl),'max(roi)->offset'),'offset');
+            roiOffset(isnan(roiOffset)) =0; % Plane 0 -> no offset
+            try
+                [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);
+            catch me
+                if contains(me.message,"Python process terminated unexpectedly")
+                    fprintf('Python terminated unexpectedly. Retrying...')
+                    terminate(pyenv);
+                    [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);
+                end
             end
+            fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
         end
-        fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
     end
 
     if parms.perExperiment
@@ -220,7 +226,7 @@ function [signal,channelInfo] = runCascade(roi,roiOffset,parms,prep,planeFolder,
 % and save the results in cascadeResultsFilename
 arguments
     roi(:,1) double % roi numbers (across planes) to process
-    roiOffset (1,1) double % Offset for the current plane 
+    roiOffset (1,1) double % Offset for the current plane
     parms (1,1) struct
     prep (1,1) struct
     planeFolder (1,1) string
@@ -271,7 +277,7 @@ end
 
 noiseLevel = 100*median(abs(diff(F,1,1)),1,"omitmissing")./sqrt(prep.framerate/prep.nrplanes);
 %  Use the roi number in the channelInfo to keep consistent naming with
-%  PreprocessedRoi 
+%  PreprocessedRoi
 channelInfo =  struct('nr',num2cell(roi),'noiseLevel',num2cell(noiseLevel'),'model',char(parms.model));
 
 %% Run cascade in chunks
@@ -324,28 +330,28 @@ end
 
 
 function modelNames = getCascadeModels(cascadePath)
-    % Read available CASCADE models from YAML file
-    
-    filePath = fullfile(cascadePath,'Pretrained_models','available_models.yaml');
-    
-    % Read file
-    fileID = fopen(filePath, 'r');
-    fileText = fread(fileID, '*char')';
-    fclose(fileID);
-    
-    % Extract model names
-    lines = splitlines(fileText);
-    modelNames = {};
-    
-    for i = 1:length(lines)
-        line = strtrim(lines{i});
-        % Model names are at the start of line and end with ':'
-        if ~isempty(line) && ~startsWith(line, '#') && ...
-           ~startsWith(line, ' ') && endsWith(line, ':')
-            modelName = strrep(line, ':', '');
-            modelNames{end+1} = modelName; %#ok<AGROW>
-        end
+% Read available CASCADE models from YAML file
+
+filePath = fullfile(cascadePath,'Pretrained_models','available_models.yaml');
+
+% Read file
+fileID = fopen(filePath, 'r');
+fileText = fread(fileID, '*char')';
+fclose(fileID);
+
+% Extract model names
+lines = splitlines(fileText);
+modelNames = {};
+
+for i = 1:length(lines)
+    line = strtrim(lines{i});
+    % Model names are at the start of line and end with ':'
+    if ~isempty(line) && ~startsWith(line, '#') && ...
+            ~startsWith(line, ' ') && endsWith(line, ':')
+        modelName = strrep(line, ':', '');
+        modelNames{end+1} = modelName; %#ok<AGROW>
     end
+end
 end
 
 

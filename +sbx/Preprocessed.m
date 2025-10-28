@@ -202,11 +202,11 @@ classdef Preprocessed < dj.Computed
                 return;
             else
                 % Construct a batch/bash command.
-                tpl = fetch(tbl*sbx.PrepParms,'*');
-                switch (tpl.toolbox)
+                tpl = fetch(tbl*sbx.PreprocessedParm,'*');
+                switch (tpl.parms.toolbox)
                     case 'suite2p'
                         env = 'suite2p';  % the conda environment
-                        sessionPath=unique(folder(ns.Experiment & tpl));
+                        sessionPath=unique(folder(ns.Session & tpl));
                         statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
                         if ~exist(statsFile,"file")
                             error('File not found %s',statsFile);
@@ -223,7 +223,7 @@ classdef Preprocessed < dj.Computed
                 end
             end
 
-            fprintf('Starting the external %s gui\n',tpl.toolbox)
+            fprintf('Starting the external %s gui\n',tpl.parms.toolbox)
             system(cmd ,'-echo');
 
         end

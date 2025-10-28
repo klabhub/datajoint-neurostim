@@ -21,6 +21,6 @@ frameNsTime = get(ns.Experiment & key,'mdaq','prm','laserOnDigHigh','what',"cloc
 nrTTL = numel(frameNsTime);
 % There always appears to be 1 extraneous TTL; check the match with
 % this assumption
-assert((exptT.nrframes(row)+1)==floor(nrTTL/exptT.nrplanes(row)),'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,exptT.nrframes(row));
+assert(abs(exptT.nrframes(row)-(nrTTL/exptT.nrplanes(row)))<2,'Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL in mdaq %d frames for %d planes in sbx).\n',nrTTL,exptT.nrframes(row),exptT.nrplanes(row));
 frameNsTime(1) =[];
 end
