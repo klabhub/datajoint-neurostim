@@ -240,8 +240,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                     channel = channel,...
                     condition = condition));
 
-                chunkedInsert(ns.EpochChannel, tpl);
-                emd
+                chunkedInsert(ns.EpochChannel, tpl);                
                 fprintf("\t Submission is complete after %s.\n",toc);
             end
         end
