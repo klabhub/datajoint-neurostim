@@ -2,7 +2,7 @@
 
 # Epoching parameters to segment trial data. All times are relative to the plugin time
 
-etag : varchar (32) # unique tag
+etag : varchar(32) # unique tag
 paradigm : varchar(32)
 dimension : varchar(32) # Condition from the dimension table
 ---
