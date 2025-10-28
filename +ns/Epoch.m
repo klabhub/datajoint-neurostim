@@ -30,8 +30,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             for p = 1:numel(allParms)
                 % Each clause needs both epochtag and dimension
-                parmClauses{p} = sprintf('(ctag="%s" AND dimension = "%s")', ...
-                    allParms(p).ctag,allParms(p).dimension);
+                parmClauses{p} = sprintf('(ctag="%s" AND dimension = "%s" AND etag ="%s")', ...
+                    allParms(p).ctag,allParms(p).dimension,allParms(p).etag);
             end
 
             % Combine all clauses with OR
@@ -55,89 +55,75 @@ classdef Epoch < dj.Computed & dj.DJInstance
     methods (Access= public)
 
         function plot (tbl,pv)
-            % Plot evoked responses. 
+            % Plot evoked responses.
             arguments
-                tbl (1,1) ns.Epoch
-                pv.averageChannels (1,1) logical =true; % Average over channels
-                pv.averageTrials (1,1) logical =true;   % Average over trials
+                tbl (1,1) ns.Epoch {mustHaveRows}
                 pv.delta (1,1) string = ""              % Also show the difference using this named condition as the reference
-                pv.channel (:,1) double = []            % Select a subset of channels 
+                pv.channel (:,1) double = []            % Select a subset of channels
+                pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]
             end
             if isempty(pv.channel)
                 channelRestrict = "true";
             else
                 channelRestrict = struct('channel',num2cell(pv.channel));
             end
-            averageDim = [];
-            if pv.averageTrials 
-                averageDim = [averageDim 2];
-            end
-            if pv.averageChannels
-                averageDim = [averageDim 3];
-            end
-
-
-            for tpl = fetch(tbl,'time')'
-                figByName(sprintf("Epoch %s for %s on %s @ %s",tpl.etag,tpl.subject,tpl.session_date,tpl.starttime));
-                clf
-                hold on
-                parms = fetch(ns.EpochParm & tpl,'*');
-                t = linspace(tpl.time(1),tpl.time(2),tpl.time(3));
-                nrSamples = tpl.time(3);
-
-                conditions = fetch(ns.DimensionCondition & tpl,'name');
-                nrConditions = numel(conditions);
-                h = gobjects(nrConditions+(pv.delta~="")*(nrConditions-1),1);
-                colors ='rgbcmyk';
-                for c= 1:nrConditions
-
-                    channelTpl =fetch(ns.EpochChannel &  channelRestrict & tpl & struct('condition',conditions(c).name),'signal','ORDER BY channel');
-                    signal = cat(2,channelTpl.signal);
-                    channels= [channelTpl.channel];
-                    trials = [channelTpl.trial];
-                    [~,uChannels] = findgroups(channels);
-                    nrChannels = numel(uChannels);
-                    [~,uTrials] = findgroups(trials);
-                    nrTrials = numel(uTrials);
-                    signal = reshape(signal,nrSamples,nrTrials,nrChannels);
-                    if isempty(averageDim)
-                        se= zeros(size(signal));
-                    else
-                        se  = std(signal,0,averageDim,"omitmissing")./sqrt(prod(size(signal,averageDim)));
-                        signal = mean(signal,averageDim,"omitmissing");
+            grouping = setdiff(["subject" "session_date" "starttime" "trial" "channel" "condition"  ],pv.average);
+            % Fetch the data
+            T =fetchtable(ns.Epoch*ns.EpochChannel*ns.EpochParm &  channelRestrict & proj(tbl),'signal','time','condition','align','ORDER BY channel');
+            % Determine mean, ste and n averaging over the pv.average
+            % dimension (anything that is left out of grouping)
+            funs  = {@(x) mean(cat(2,x{:}),2,"omitmissing")', ...  % Mean
+                        @(x) (std(cat(2,x{:}),0,2,"omitmissing")./sqrt(sum(~isnan(cat(2,x{:})),2,"omitmissing")))',...  % Standard error
+                        @(x) sum(~isnan(cat(2,x{:})),2,"omitmissing")'};  % Non-Nan N
+            G = groupsummary(T, grouping, funs, 'signal');
+            G= renamevars(G,["fun1_signal" "fun2_signal" "fun3_signal"],["mean" "ste" "n"]);
+            nrTimeSeries = height(G);
+            P = groupsummary(T, grouping, @(x) x(1), "align");
+            P = renamevars(P,"fun1_align","align");
+            G =innerjoin(G,P);
+            TM = groupsummary(T, grouping, @(x) unique(x)', "time");
+            TM  = renamevars(TM,"fun1_time","time");
+            G =innerjoin(G,TM);
+            G= sortrows(G,intersect(["subject" "session_date" "starttime" "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
+            
+            %% Figure
+            clf
+            for i = 1:nrTimeSeries
+                t =  G.time(i,:);
+                t = linspace(t(1),t(2),t(3));
+                align =G.align(i);
+                m = G.mean(i,:);
+                ste = G.ste(i,:);
+                %n  =G.n(i,:);
+                ttlStr = strjoin(grouping + ":" + string(G{i,grouping}),"/");
+                if i==1 || any(G{i,["subject" "session_date" "starttime"]} ~= G{i-1,["subject" "session_date" "starttime"]})
+                    % New  subject, session or experiment
+                    if i~=1
+                        % Add the legend string to the existing tile
+                        legend(h,legStr);
                     end
-                    % Reshape to 2D; columsn can be trials (averaged over
-                    % channels), channels (averaged over trials) or all
-                    % channels and trials (no averaging).
-                    signal =reshape(signal,nrSamples,[]);
-                    se  =reshape(se,nrSamples,[]);
-                    thisH = plot(t,signal,'Color',colors(mod(c-1,numel(colors))+1));
-                    h(c) = thisH(1);
-                    plot(t,signal+se,':','Color',h(c).Color)
-                    plot(t,signal-se,':','Color',h(c).Color)
-                    title (tpl.dimension)
-                    ylabel 'EP (\muV)'
-                    xlabel (sprintf('Time after %s.%s (ms)',parms.align.plugin,parms.align.event));
+                    % Start a new tile with empty handles
+                    nexttile;
+                    h = [];
+                    legStr = string([]);
+                    hold on
                 end
+                h = [h plot(t,m)];                %#ok<AGROW>
+                patch([t flip(t)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);
+                legStr = [legStr G.condition(i)]; %#ok<AGROW>
+                title (ttlStr,'Interpreter','none');
+                ylabel 'EP (\muV)'
+                xlabel (sprintf('Time after %s.%s (ms)',align.plugin,align.event));
 
-                if pv.delta ~=""
-                    reference = find(pv.delta =={conditions.name});
-                    refY = h(reference).YData;
-                    others = setdiff(1:nrConditions,reference);
-                    deltaLegStr = cell(1,numel(others));
-                    for c = 1:numel(others)
-                        y = h(others(c)).YData;
-                        h(nrConditions+c) = plot(t,y-refY,'Color',colors(mod(nrConditions+c-1,numel(colors))+1));
-                        deltaLegStr{c} = [conditions(others(c)).name ' - ' conditions(reference).name ];
-                    end
-                else
-                    deltaLegStr = {};
-                end
-
-                cStr = strcat({[tpl.dimension ':']},{conditions.name});
-                legend(h,cat(2,cStr,deltaLegStr));
-                xlim([min(t) max(t)])
+                 if pv.delta ~="" && G.condition(i) ~=pv.delta
+                     matchG = innerjoin(G,G(i,setdiff(grouping,"condition")));
+                     reference = find(matchG.condition ==pv.delta);
+                     y = m - matchG.mean(reference,:);                                          
+                     h = [h plot(t,y)];                     %#ok<AGROW>
+                    legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
+                 end
             end
+            legend(h,legStr); % For the last tile
 
         end
     end
@@ -151,6 +137,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             alignTpl = get(ns.Experiment &key,parmTpl.align.plugin,prm=parmTpl.align.event,what=["trialtime" "data" "trial"],trial=trialsInDimension);
 
+
+            noSuchEvent = isinf(alignTpl.trialtime);
+            if any(noSuchEvent)
+                fprintf('Removing %d trials in which the %s.%s event did not occur.\n',sum(noSuchEvent),parmTpl.align.plugin,parmTpl.align.event);
+                alignTpl.data(noSuchEvent) = [];
+                alignTpl.trial(noSuchEvent) =[];
+                alignTpl.trialtime(noSuchEvent) =[];
+            end
             [trials,ia] = unique(alignTpl.trial,'stable','last');
             if numel(trials) < numel(alignTpl.trial)
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
