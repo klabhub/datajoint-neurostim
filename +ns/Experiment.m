@@ -574,6 +574,23 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         end
 
+        function [isOk, t] = getTimepointsAroundTrials(expt,t,halfWidth)
+            %  Identify timepoints in t (ms) that are between firstFrame and
+            % trialStopTime  with slack of halfWidth (ms) on either end. 
+            arguments
+                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
+                t (1,:) double 
+                halfWidth (1,1) double 
+            end
+            start = get(expt, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
+            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');            
+            isOk = false(size(t));
+            for ii = 1:length(start)
+                isOk = isOk |  (t>= (start(ii)-halfWidth) & t< (stop(ii)+halfWidth));
+            end                
+            if nargout > 1, t  = t(isOk); end
+        end
+
 
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)

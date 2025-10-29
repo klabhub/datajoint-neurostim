@@ -118,7 +118,7 @@ for f=fn
                 thisParms.ChannelLocations = parms.layout.ChannelLocations;
             end
             if isfield(thisParms, "epoch_buffer")
-                epoch_mask = ns.getTimepointsAroundTrials(ns.Experiment & key, time*1000, thisParms.epoch_buffer);
+                epoch_mask = getTimepointsAroundTrials(ns.Experiment & key, time*1000, thisParms.epoch_buffer);
                 thisParms = rmfield( thisParms,"epoch_buffer"); % No longer needed.
             else
                 epoch_mask =  true(nrSamples*nrTrials,1);

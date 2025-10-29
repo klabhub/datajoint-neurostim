@@ -48,6 +48,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
+                pv.linkAxes (1,1) logical = true;
             end
             fillCache(tbl);
 
@@ -76,7 +77,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                         legend(h,legStr);
                     end
                     if mod(tileCntr,pv.tilesPerPage)==0      
-                        if i>1
+                        if i>1 & pv.linkAxes
                             linkaxes(gcf().Children().Children())
                         end
                         figure;
@@ -113,7 +114,9 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 end
             end
             legend(h,legStr); % For the last tile
-             linkaxes(gcf().Children().Children())
+            if pv.linkAxes
+                linkaxes(gcf().Children().Children())
+            end
         end
 
 
