@@ -76,7 +76,7 @@ arguments (Input)
     options.exclude (:,1) {mustBeNumeric, mustBeInteger, mustBePositive} = [] % Epochs to exclude from analysis
 end
 arguments (Output)
-    flags (1, 1) prep.NSFlags
+    flags (1, 1) prep.badBy
 end
 
 
@@ -111,7 +111,7 @@ end
     end
 
 % --- Initialization ---
-flags = prep.NSFlags(options);
+flags = prep.badBy(options);
 
 % =========================================================================
 % --- Calculate Flags using Nested Functions ---
