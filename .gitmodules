@@ -1,4 +1,9 @@
 [submodule "datajoint-matlab"]
 	path = datajoint-matlab
 	url = https://github.com/klabhub/datajoint-matlab.git
-	branch = master
+[submodule "fooofer"]
+	path = fooofer
+	url = https://github.com/mert-ozkan/fooofer.git
+[submodule "dataop"]
+	path = dataop
+	url = https://github.com/mert-ozkan/dataop.git

@@ -30,17 +30,17 @@ if any(ismember(definedMethods,perExptMethods))
     %% Get the x and y position per trial at the sampling rate
     [xy,~] = align(C,channel = {'px','py'}, removeArtifacts =false,crossTrial =false,start=parms.start,stop=parms.stop,interpolation="nearest");
     [nrSamples,nrTrials,nrChannels] = size(xy); %#ok<ASGLU>
-
-
     r = sqrt(sum(xy.^2,3));
     for m = definedMethods
         switch upper(m)
             case 'SPEED'
+                % TOO FAST
                 s = abs(diff(r,1,1));
                 outlier = s>parms.speed.max;
                 fraction = squeeze(mean(outlier,1,"omitnan")); % Average over samples
                 thisIsArtifactTrial = (fraction>parms.speed.frac);
             case 'ACCELERATION'
+                % Too much acceleration
                 a =diff(r,2,1);
                 outlier = a>parms.acceleration.max;
                 fraction = squeeze(mean(outlier,1,"omitnan")); % Average over samples
@@ -53,23 +53,27 @@ if any(ismember(definedMethods,perExptMethods))
     end
 end
 
-perChannel = [];
+perChannel = struct('channel',[],'start',[],'stop',[]);
 %% Pupil based
-if ismember("PUPIL",definedMethods)
+if ismember("PUPIL",definedMethods) 
     % Uses:
     % pupil.frac = max fraction of samples without change in pupil
     %           area (i.e. no signal)
-    % pupil.blink.pre  - samples before blink to set to NaN
-    % pupil.blink.post - samples after blink to set to NaN
+    % pupil.blink.pre  - samples before startblink event to set to NaN
+    % pupil.blink.post - samples after endblink event to set to NaN
+    %
     if isfield(parms.pupil,'blink')
-        blinkTime = get(ns.Experiment & C,'edf','prm','startBlink','what','clocktime');
-        if ~isempty(blinkTime)
-            perChannel.channel  = fetch1(ns.CChannel & C & 'name="pa"','channel');
-            perChannel.start = blinkTime - parms.pupil.blink.pre;
-            perChannel.stop = blinkTime + parms.pupil.blink.post;
-        end
+        blinkStartTime = get(ns.Experiment & C,'edf','prm','startblink','what','clocktime');        
+        perChannel.channel  = fetch1(ns.CChannel & C & 'name="pa"','channel');          
+        if ~isempty(blinkStartTime)
+            blinkStopTime = get(ns.Experiment & C,'edf','prm','endblink','what','clocktime');
+            perChannel.start = [perChannel.start; blinkStartTime - parms.pupil.blink.pre];
+            perChannel.stop = [perChannel.stop ;blinkStopTime + parms.pupil.blink.post];
+        end       
     end
     if isfield(parms.pupil,'frac')
+        % Remove complete trials if a large frac has a pupil area that does
+        % not change
         [area,~] = align(C,channel = 'pa', removeArtifacts =false,crossTrial =false,start=parms.start,stop=parms.stop,interpolation="nearest");
         [nrSamples,nrTrials,nrChannels] = size(area); %#ok<ASGLU>
         noChange = diff(area)==0;
@@ -79,12 +83,12 @@ if ismember("PUPIL",definedMethods)
         isArtifactTrial = isArtifactTrial | thisIsArtifactTrial;
     end
 end
-% These algorithms only identify artifact trials, not time periods.
+
+% The perExpt algorithms only identify artifact trials, not time periods.
 % Return empty for start
 perExpt.start=[];
 perExpt.stop = [];
 perExpt.trial = find(isArtifactTrial);
-
 
 
 

@@ -70,19 +70,30 @@ classdef Tuning <dj.Computed
     methods
 
         function v = get.keySource(~)
-            % Restricted to Dimensions listedin TuningParm
-            dimTpl= [];
-            for thisPrm = fetch(ns.TuningParm,'dimension')'
-                restrict  =struct('dimension',thisPrm.dimension);
-                thisTpl = fetch((ns.Dimension & restrict));
-                if isempty(dimTpl)
-                    dimTpl = thisTpl;
-                else
-                    dimTpl  = catstruct(1,dimTpl,thisTpl);
-                end
+            % Restricted to Dimensions listed in TuningParm
+            % Fetch all TuningParm rows at once
+            allParms = fetch(ns.TuningParm, 'tuningtag', 'dimension','ctag');
+            
+            if isempty(allParms)
+                % No TuningParm rows - return empty result
+                v = proj(ns.CChannel) * ns.TuningParm * proj(ns.Dimension) & 'FALSE';
+                return;
             end
-            % And then restrict the full table by the set of found tuples.
-            v = (ns.CChannel*ns.TuningParm*proj(ns.Dimension &dimTpl)) ;
+            
+            % Build a combined WHERE clause for all TuningParm rows using OR
+            parmClauses = cell(numel(allParms), 1);
+            
+            for p = 1:numel(allParms)
+                % Each clause needs both tuningtag and dimension
+                parmClauses{p} = sprintf('(ctag="%s" AND tuningtag = "%s" AND parmDimension = "%s" AND dimension = "%s")', ...
+                    allParms(p).ctag,allParms(p).tuningtag, allParms(p).dimension,allParms(p).dimension);
+            end
+            
+            % Combine all clauses with OR
+            combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
+            
+            % Apply combined restriction
+            v = (proj(ns.CChannel) * proj(ns.TuningParm,'dimension->parmDimension') * proj(ns.Dimension)) & combinedWhere;
         end
     end
 
@@ -109,20 +120,20 @@ classdef Tuning <dj.Computed
                 if pv.average
                     tpl = fetch(tbl,'*');
                     x = tpl(1).tcx';
-                    tc = cat(1,tpl.tc);
-                    pk = cat(1,tpl.peak);
+                    tc = cat(2,tpl.tc);
+                    pk = cat(2,tpl.peak);
                     tc = tc./pk;
-                    y = mean(tc,1)';
-                    n = size(tc,1);
-                    e = std(tc,0,1)'./sqrt(n);
+                    y = mean(tc,2);
+                    n = size(tc,2);
+                    e = std(tc,0,2)./sqrt(n);
                     base= cat(1,tpl.baseline)./pk;
                     b = mean(base);
                     be = std(base)./sqrt(n);
                 else
                     tpl =fetch(tbl,'*',sprintf('LIMIT 1 OFFSET %d',roi-1));
                     x =tpl.tcx';
-                    y =tpl.tc';
-                    e = tpl.tcstd'./sqrt(numel(tpl.nrtrialspercondition));
+                    y =tpl.tc;
+                    e = tpl.tcstd./sqrt(numel(tpl.nrtrialspercondition));
                     b = tpl.baseline;
                     be = tpl.baselinesd/sqrt(tpl.nrtrials);
                 end
@@ -152,8 +163,16 @@ classdef Tuning <dj.Computed
                     end
                     % Prediction on top
                     if isfield(tpl.fit,'estimate')
-                        predictedTuningCurve = feval(tpl.fit.fun,tpl.tcx,tpl.fit.estimate)';
-                        plot(tpl.tcx,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+                        xi =linspace(min(tpl.tcx),max(tpl.tcx),100);
+                        predictedTuningCurve = feval(tpl.fit.fun,xi,tpl.fit.estimate)';
+                        plot(xi,predictedTuningCurve,'LineWidth',2,'Color','k','LineStyle','-');
+                    end
+                    fitTxt  ="";
+                    if isfield(tpl.fit,'r')
+                        fitTxt = sprintf("gof=%.2f ",tpl.fit.r);
+                    end
+                    if isfield(tpl.fit,'splitHalves')
+                        fitTxt = fitTxt + sprintf("split/2=%.2f",tpl.fit.splitHalves);
                     end
                 end
 
@@ -164,10 +183,13 @@ classdef Tuning <dj.Computed
                 % Show parameters in the title
                 if pv.average
                 else
-                    txt=  sprintf('%s (%d trials)- Roi#%d \n', ...
+                    txt=  sprintf("%s (%d trials)- Roi#%d \n", ...
                         tpl.tuningtag,...
                         tpl.nrtrials,...
                         tpl.channel);
+                    if exist("fitTxt","var")
+                        txt = txt + fitTxt;
+                    end
                     title(txt,'Interpreter','None');
                 end
 
@@ -187,15 +209,18 @@ classdef Tuning <dj.Computed
             %% Retrieve sources
             parms = fetch1(ns.TuningParm &key,'parms');
             conditions = fetch(ns.DimensionCondition & key,'trials','value');
-            assert(numel(conditions)>0,"No conditions in %s group",key.dimension)
+            nrConditions= numel(conditions);
+            assert(nrConditions>0,"No conditions in %s group",key.dimension)
             %% Find indepdent variable values from the name assigned to the condition (which is
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
 
-            % Get the spikes for all trials (some may not be part of this
+            onset = get(ns.Experiment & key,parms.stimulus,'prm','startTime','what','trialtime');
+            % Get the responses for all trials (some may not be part of this
             % condition group)
-            [spk ,~]= align(ns.C & key,channel =key.channel, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation);
-            spk =spk{1,:};
+            T= align(ns.C & key,channel =key.channel, align=onset, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation,crossTrial=true);
+            response = timetableToDouble(T(1:end-1,:));% Last row is nan
+            nrTrials = size(response,2);
             xValue= [conditions.value];
             if iscell(xValue)
                 xValue = [xValue{:}];
@@ -206,8 +231,13 @@ classdef Tuning <dj.Computed
             trialsPerCondition = {conditions.trials};
 
             % Average
-            tuningCurve = cellfun(@(x) mean(spk(x),"omitnan"),trialsPerCondition);
-            tuningCurveSd = cellfun(@(x) std(spk(x),0,"omitnan"),trialsPerCondition);
+            tuningCurve = nan(nrConditions,1);
+            tuningCurveSd = nan(nrConditions,1);
+            mPerTrial= mean(response,1,"omitmissing");
+            for c =1:numel(conditions)                
+                tuningCurve(c) = mean(mPerTrial(trialsPerCondition{c}),[1 2],"omitnan");
+                tuningCurveSd(c) = std(mPerTrial(trialsPerCondition{c}),0,2,"omitnan");
+            end
             nrTrialsPerCondition = cellfun(@numel,trialsPerCondition);
             [peak,ix] = max(tuningCurve);
             preferred = xValue(ix);
@@ -215,21 +245,21 @@ classdef Tuning <dj.Computed
             mi = min(tuningCurve);
 
             % Map trials to conditions to do anova.
-            conditionIx = nan(1,size(spk,2));
+            conditionIx = nan(1,nrTrials);
             for i=1:numel(conditions)
                 conditionIx(conditions(i).trials)=i;
             end
             stayTrials = ~isnan(conditionIx);
             conditionIx(~stayTrials) = [];
-            pAnova = anovan(spk(stayTrials),conditionIx','display','off');
+            pAnova = anovan(response(1,stayTrials),conditionIx','display','off');
             if isnan(pAnova);pAnova=1;end
 
             % Extract baseline (use only trials that are alos used for the
             % tuning).
-            [spkBaseline,~] = align(ns.C&key,channel=key.channel,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation);
-            spkBaseline = spkBaseline{1,:};
-            baseline = mean(spkBaseline(stayTrials),"all","omitnan");
-            baselineStd = std(spkBaseline(stayTrials),0,"all","omitnan");
+            [baselineT,~] = align(ns.C&key,channel=key.channel,align = onset,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation,crossTrial =true);
+            baselineResponse = timetableToDouble(baselineT(1,:)); % 2nd = last row = nan.
+            baseline = mean(baselineResponse(1,stayTrials),"all","omitmissing");
+            baselineStd = std(baselineResponse(1,stayTrials),0,"all","omitmissing");
 
             % Combine results into a struct
             estimate = struct('peak',peak,...
@@ -248,10 +278,7 @@ classdef Tuning <dj.Computed
             % If fun is specified; do a parametric fit using the specified function
             if isfield(parms,'fun')
                 x = xValue(conditionIx);
-                y = spk(stayTrials);
-                out = isnan(y); % Remove trials with NaN estimates (happens for first trial sometimes)
-                x(out)=[];
-                y(out)=[];
+                y = response(:,stayTrials);                
                 estimate.fit = feval(parms.fun,x,y,parms,estimate);
             end
 

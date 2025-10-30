@@ -100,12 +100,14 @@ function [newTpls,newMetaTpls,newTplsRows] = insertNewTuples(tbl,djTbl,dryrun,ne
 % OUTPUT
 % tpl  - Tuples with new information
 % metaTpl - Tuples with new meta information.
-if isempty(tbl);return;end
+
 %% Determine whether there are entries that are not yet in the database
 newTpls = [];
 updateTpls = [];
 newMetaTpls = [];  %
 updateMetaTpls = []; % With an empty metaTpl defined we don't have to check for nr>0 below
+newTplsRows = [];
+if isempty(tbl);return;end
 
 pkey = djTbl.primaryKey;
 hdr  = djTbl.header;
@@ -135,9 +137,14 @@ for row=1:height(tbl)
     thisPrimaryTpl =table2struct(tbl(row,pkey));
     dbTpl = fetch(djTbl & thisPrimaryTpl);
     thisTblTpl =table2struct(tbl(row,tblFields));% Only the fields that are defined in the SQL database.
+    mCntr = 0;
     for m=1:nrMeta
-        thisMetaTpl(m,1) = mergestruct(thisPrimaryTpl,struct('meta_name',metaFields{m},'meta_value',char(tbl{row,metaFields{m}}))); %#ok<AGROW>
+        if not(ismissing(tbl{row,metaFields{m}}))
+            mCntr = mCntr+1;
+            thisMetaTpl(mCntr,1) = mergestruct(thisPrimaryTpl,struct('meta_name',metaFields{m},'meta_value',char(tbl{row,metaFields{m}}))); %#ok<AGROW>
+        end
     end
+    nrMeta = mCntr;
     if isempty(dbTpl) 
         % No match with the primary key
         % Add to the newTpls array

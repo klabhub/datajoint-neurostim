@@ -18,43 +18,108 @@ seq = NULL : smallint       # The sequential recruitment number of this subject 
 %
 % BK - April 2022.
 
-classdef Experiment  < dj.Manual
-    methods (Access = public)
+classdef Experiment  < dj.Manual & dj.DJInstance
 
+    properties (Dependent)
+
+        first_frame_onsets
+
+    end
+
+    methods (Access = public)
+        function [v] = ordering(tbl,referenceParadigm)
+            % For a table of experiments, returns a table with three additional
+            % columns representing the ordering of experiments in a
+            % session.
+            %
+            %  INPUT
+            % tbl  an ns.Experiment table
+            % referenceParadigm - The name of the reference paradigm. When absent, the 
+            % first  experiment in the session is considered to be the reference. Sessions 
+            % in which the reference paradigm did not occur are not
+            % included in the table. 
+            %
+            % OUTPUT
+            %  A tablewith the same columns as ns.Experiment plus:
+            % dt - Time [s] between the experiment and the reference experiment
+            %       absolute - Index representing the order of experiments in the
+            %       session (1 = first, 2 =second). Based only on the experiments
+            %       that are in the database.
+            % relative - Index relative to a reference paradigm. (0=
+            %           reference paradigm, -1 is the one just before the reference
+            %           paradigm).
+            %                      
+            % 
+            % EXAMPLE
+            % Consider a session in which one experiment represents a
+            % manipulation (e.g. stimulation) and we want to select experimets
+            % performed before and after that manipulation:
+            %  T = ordering(ns.Experiment,"stimulation")
+            % before =T & 'relative <0'; % The experimens before the
+            % "stimulation" paradigm.
+            % after = T & 'relative >0'; % The experimens after
+            % stimulation.           
+            arguments
+                tbl (1,1) ns.Experiment
+                referenceParadigm (1,1) string = ""
+            end
+            allS = ns.Session & tbl;
+            allE = ns.Experiment & allS;
+            if referenceParadigm == ""
+                reference = aggr(allS,ns.Experiment,'min(starttime)->reference');
+            else
+                reference = proj(allE & sprintf('paradigm="%s"',referenceParadigm),'starttime->reference');
+                if count(reference)==0
+                    fprintf('Reference paradigm %s not found in the experiment table.',referenceParadigm);
+                end
+            end
+            allEWithRef = proj(allE * reference,'COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(reference), 0)->dt','reference');
+
+            % Pair each row with strictly earlier rows in the SAME session
+            earlier = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< starttime';
+            % Count how many earlier rows each current row has, then +1 → rank
+            A= aggr(allEWithRef, earlier, 'count(starttime2)+1->absolute','dt');
+            earlierThanReference = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< reference';
+            B= aggr(allEWithRef, earlierThanReference, 'count(starttime2)+1->rIx');
+            R  =proj(A*B,'absolute-rIx->relative','absolute','dt');
+            
+            % Join back to the base relation to attach the index and dt
+            v = tbl * R;            
+        end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
             % showParameters =true)  the plugin parameters.
-            % 
+            %
             % Each parameter is shown as a hyperlink. CLicking on it will
             % retrieve the parameter value (using ns.Experiment/get) for
             % the experiment with the mnost trials
             arguments
                 tbl ns.Experiment {mustHaveRows(tbl)}
-                pv.showParameters (1,1) logical =false % 
+                pv.showParameters (1,1) logical =false %
                 pv.showPlugins (1,1) logical = true
             end
             pdms = unique(fetchtable(tbl,'paradigm').paradigm);
             rnge = @(t,c) (sprintf('%d:%d',min(t.(c)),max(t.(c))));
             if ~pv.showParameters
                 % Header
-                neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));                 
+                neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));
             end
-            for pdm = pdms' 
+            for pdm = pdms'
                 T = fetchtable(tbl & struct('paradigm',pdm),'*','ORDER BY nrtrials DESC');
                 if pv.showParameters
                     % Header
-                    neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));                 
+                    neurostim.utils.cprintf('*text',sprintf('%-25s  %-3s \t %-10s \t %-10s \t %-10s \t %-10s \n','paradigm','N','conditions','nrtrials','run','seq'));
                 end
                 fprintf('%-25s  %-3d \t %-10s \t %-10s \t %-10s \t %-10s \n',pdm,height(T), ...
-                                rnge(T,'conditions'),...
-                                rnge(T,'nrtrials'),...
-                                rnge(T,'run'),...
-                                rnge(T,'seq'));
+                    rnge(T,'conditions'),...
+                    rnge(T,'nrtrials'),...
+                    rnge(T,'run'),...
+                    rnge(T,'seq'));
                 if pv.showPlugins && ~pv.showParameters
                     plgs = fetch(ns.Plugin &   table2struct(T(1,:)));
-                    fprintf('\tPlugins:'); 
-                    fprintf(2,'%s\n',strjoin({plgs.plugin_name}))                    
+                    fprintf('\tPlugins:');
+                    fprintf(2,'%s\n',strjoin({plgs.plugin_name}))
                 end
                 if pv.showParameters
                     what(ns.Plugin &   table2struct(T(1,:)));
@@ -73,6 +138,8 @@ classdef Experiment  < dj.Manual
                 tbl (1,1) ns.Experiment
                 pv.strict (1,1) logical = false; % Set to true to require an explicit analyze =1 setting
             end
+            warnState= warning('query');
+            warning('off','DataJoint:longCondition');
             exptWithMetaAnalyze = tbl*ns.ExperimentMeta & proj(ns.ExperimentMeta & 'meta_name="analyze"');
 
             if pv.strict
@@ -89,7 +156,7 @@ classdef Experiment  < dj.Manual
                 notAna = tbl  -fetch(ana);
                 %notAna = tbl & fetch(notAna);
             end
-
+            warning(warnState)
         end
         function v = folder(tbl,root)
             % Return the full path to the experiments in this table
@@ -180,11 +247,11 @@ classdef Experiment  < dj.Manual
             %                               root = "c:/temp/dandi");
             %
             % If you have a conda environment with dandi installed, you can
-            % automate the NWB format validation; see dandi.m for details 
+            % automate the NWB format validation; see dandi.m for details
             %
             %  force can be set to true to regenerate NWB fies, or false to
             %  skip files that already exist.
-            %   
+            %
             %
             % BK - 2023,2024, 2025
             arguments
@@ -195,7 +262,7 @@ classdef Experiment  < dj.Manual
                 pv.tz (1,1) string = "local"   % Time zone (used for data collection and subject dob)
                 pv.general (1,1) struct = struct();  % NWB general structure
                 pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties
-                pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example                                       
+                pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example
             end
 
             assert(~isempty(which('NwbFile')),'This function depends on the matnwb package. Install it from github and add it to the Matlab path');
@@ -204,13 +271,13 @@ classdef Experiment  < dj.Manual
 
             % Create the local export folder
             folder = fullfile(pv.root,"export");
-            if exist(folder,"dir") 
+            if exist(folder,"dir")
                 if pv.force
                     rmdir(folder,'s');
                 end
             end
-            if ~exist(folder,"dir") 
-               mkdir(folder);
+            if ~exist(folder,"dir")
+                mkdir(folder);
             end
             for e = fetch(expt,'*')'
                 try
@@ -270,7 +337,7 @@ classdef Experiment  < dj.Manual
                     pv.experiment = e;
                     for cls=classesWithNwb
                         tbl = feval(cls) & e;
-                        nwb(tbl,nwbRoot,pv);                        
+                        nwb(tbl,nwbRoot,pv);
                     end
 
                     %% Export to file
@@ -280,44 +347,100 @@ classdef Experiment  < dj.Manual
                 catch me
                     fprintf(2,"Failed on %s (%s).\n",fname,me.message)
                 end
-            end           
+            end
+        end
+
+        function showConditions(tbl,pv)
+            % For each experiment in the table, show a schematic
+            % representing the conditions per trial
+            % This includes multiple dimensions (i.e., ways to define a
+            % condition).
+            arguments
+                tbl (1,1) ns.Experiment {mustHaveRows(tbl)}
+                pv.max (1,1) double = Inf
+            end
+            tiledlayout('flow');
+            cntr = 0;
+            for tpl = fetch(tbl,'nrtrials')'
+                cntr = cntr+1;
+                if cntr>pv.max;break;end
+                nexttile;
+                dims = fetchtable(ns.Dimension & tpl,'*');
+                if isempty(dims)
+                    text(0,0,"No dimensions defined")
+                    plot(xlim,ylim,'k')
+                    axis off
+                else
+                    nrDims = height(dims);
+                    % Collect values as strings
+                    val = table('Size',[tpl.nrtrials nrDims],'VariableNames',dims.dimension,'VariableTypes',repmat("string",[1 nrDims]));
+                    dimCntr =0;
+                    for dim =fetch(ns.Dimension & tpl)'
+                        dimCntr= dimCntr+1;
+                        conds = ns.DimensionCondition &dim;
+                        for cond = fetch(conds,'*')'
+                            v = string(cond.value{1});
+                            [val{cond.trials,dims.dimension(dimCntr)}] =deal(v);
+                        end
+                    end
+                    % Find the unique values to make an indexed color image.
+                    [u,~,iu] = unique(val{:,:});
+                    iu(ismissing(val{:,:}))=NaN;
+                    nrConds= sum(~ismissing(u));
+                    cmap = [lines(nrConds); 0 0 0];
+                    iu(isnan(iu))=nrConds+1;
+                    iu = reshape(iu,[tpl.nrtrials nrDims]);
+                    image(iu)
+                    colormap(gca,cmap)
+                    xlabel 'Dimension'
+                    ylabel 'Trial'
+                    set(gca,'XTickLabel',dims.dimension,'XTick',1:nrDims);
+                    % Add a colorbar as legend. This changes per tile/file.
+                    h = colorbar;
+                    condLabel = u(~ismissing(u));
+                    condLabel = [condLabel;"N/A"]; %#ok<AGROW>
+                    set(h,'XTick',(1:nrConds+1)+0.5,'XTickLabel',condLabel)
+                end
+                title (tpl.starttime)
+
+            end
         end
 
         function showBehavior(tbl,behavior,pv)
-            arguments 
+            arguments
                 tbl (1,1) ns.Experiment {mustHaveRows}
-                behavior (1,1) string 
+                behavior (1,1) string
                 pv.trial (1,:) = [] % List of trials to include [] means all.
             end
 
             tiledlayout('flow')
             for tpl = fetch(tbl)'
                 nexttile
-            prms = get(tbl &tpl,behavior);
-            state = prms.(behavior).state;
-            trial  = prms.(behavior).stateTrial;
-            trialTime = prms.(behavior).stateTime;
-            if isempty(pv.trial)
-                keepTrial= true(size(trial));
-            else
-                keepTrial =ismember(trial,pv.trial);
-            end
-            out = state=="" | ~keepTrial;
-            state(out) =[];
-            trial(out) =[];
-            trialTime(out) = [];
-            [uStates,~,stateNumber]  = unique(state,'stable');
-            nrStates= numel(uStates);
-            
-            x = trial + trialTime/max(trialTime);
-            y = stateNumber;
-            %x = [x [x(2:end);x(end)]]';
-            %y = [stateNumber stateNumber]';
-            plot(x(:),y(:))
-            xlabel 'Trial'
-            ylabel 'State'
-            set(gca,'YTick',1:nrStates,'YTickLabel',uStates)
-            title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
+                prms = get(tbl &tpl,behavior);
+                state = prms.(behavior).state;
+                trial  = prms.(behavior).stateTrial;
+                trialTime = prms.(behavior).stateTime;
+                if isempty(pv.trial)
+                    keepTrial= true(size(trial));
+                else
+                    keepTrial =ismember(trial,pv.trial);
+                end
+                out = state=="" | ~keepTrial;
+                state(out) =[];
+                trial(out) =[];
+                trialTime(out) = [];
+                [uStates,~,stateNumber]  = unique(state,'stable');
+                nrStates= numel(uStates);
+
+                x = trial + trialTime/max(trialTime);
+                y = stateNumber;
+                %x = [x [x(2:end);x(end)]]';
+                %y = [stateNumber stateNumber]';
+                plot(x(:),y(:))
+                xlabel 'Trial'
+                ylabel 'State'
+                set(gca,'YTick',1:nrStates,'YTickLabel',uStates)
+                title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
             end
         end
         function [out,filename] = get(tbl,plg,pv)
@@ -450,6 +573,25 @@ classdef Experiment  < dj.Manual
 
 
         end
+
+        function [isOk, t] = getTimepointsAroundTrials(expt,t,halfWidth)
+            %  Identify timepoints in t (ms) that are between firstFrame and
+            % trialStopTime  with slack of halfWidth (ms) on either end. 
+            arguments
+                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
+                t (1,:) double 
+                halfWidth (1,1) double 
+            end
+            start = get(expt, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
+            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');            
+            isOk = false(size(t));
+            for ii = 1:length(start)
+                isOk = isOk |  (t>= (start(ii)-halfWidth) & t< (stop(ii)+halfWidth));
+            end                
+            if nargout > 1, t  = t(isOk); end
+        end
+
+
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
@@ -477,15 +619,15 @@ classdef Experiment  < dj.Manual
 
             if ~isempty(cic)
                 % Restrict the tbl to the rows that correspond to these
-                % cics                
+                % cics
                 for cicCntr = 1:numel(cic)
                     restrict(cicCntr) = ns.Experiment.tplFromCic(cic(cicCntr)); %#ok<AGROW>
                 end
                 tbl = tbl & restrict;
             end
-            
+
             fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
-         
+
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
                 if isempty(cic)
@@ -548,12 +690,30 @@ classdef Experiment  < dj.Manual
 
             end
         end
+
+        function addMissingFiles(tbl)
+            % Check for any files that should have been added by populate(ns.File)
+            % but, for some reason, weren't.
+            for key = fetch(tbl)'
+                addMissingFiles(ns.File,key)
+            end
+        end
+    end
+
+    % Get methods
+    methods
+
+        function o = get.first_frame_onsets(expTbl)
+
+            o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
+
+        end
     end
 
     methods (Static)
         function o = load(filename)
             % Default method to open a Neurostim data file (a .mat file
-            % containing a CIC class object in the variable 'c'            
+            % containing a CIC class object in the variable 'c'
             s  = load(filename,'c');
             o=s.c;
         end

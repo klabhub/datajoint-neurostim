@@ -1,7 +1,7 @@
 %{
 # Stores pose information extracted by DeepLabCut
 -> ns.Movie # Corresponding experiment
--> ns.PoseParms  # The parameters that define the pose extraction process.
+-> ns.PoseParm  # The parameters that define the pose extraction process.
 ---
 pose :longblob  # The pose; [nrTimePoints nrTrackedItems]
 likelihood : longblob # The quality of the estimation at each time point [nrTimePoints nrTrackedItems]

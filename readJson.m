@@ -4,15 +4,19 @@ function thisJson= readJson(file)
 fid =fopen(file,'r');
 txt = fread(fid,inf,'*char');
 fclose(fid);
-thisJson = jsondecode(txt');
-if ~isempty(thisJson)
-fn = fieldnames(thisJson);
-for j=1:numel(thisJson)
-    for i=1:numel(fn)
-        if isnumeric(thisJson(j).(fn{i})) || ischar(thisJson(j).(fn{i}))
-            thisJson(j).(fn{i}) = string(num2str(thisJson(j).(fn{i})));
+if isempty(txt)
+    thisJson = struct([]);
+else
+    thisJson = jsondecode(txt');
+    if ~isempty(thisJson)
+        fn = fieldnames(thisJson);
+        for j=1:numel(thisJson)
+            for i=1:numel(fn)
+                if isnumeric(thisJson(j).(fn{i})) || ischar(thisJson(j).(fn{i}))
+                    thisJson(j).(fn{i}) = string(num2str(thisJson(j).(fn{i})));
+                end
+            end
         end
     end
-end
 end
 end

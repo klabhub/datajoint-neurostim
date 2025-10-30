@@ -117,7 +117,7 @@ condaFldr = getenv('NS_CONDA');
 assert(exist(condaFldr,"dir"),'Set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
                
 if ispc
-    cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & conda activate %s & cd "%s" & %s',condaFldr,condaFldr,condaEnvironment,wrkFldr,dandiCmd);                    
+    cmd = sprintf('"%s\\Scripts\\activate.bat" %s & cd "%s" & %s',condaFldr,condaEnvironment,wrkFldr,dandiCmd);                    
 else
     cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
     'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...

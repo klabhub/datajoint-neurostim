@@ -1,4 +1,4 @@
-function out = attrialtime(props,propName,time,c,what,trial)
+function ret = attrialtime(props,propName,time,c,what,trial)
 % Given a struct with properties (as returned by ns.Experiment.get  or
 % nsPluginParameter.get, and a specific property, return the value of that
 % property at a certain time in each trial.
@@ -27,25 +27,50 @@ arguments
     propName (1,1) string
     time (1,1) double
     c (1,1) struct
-    what (1,1) string = "data"
+    what (1,:) string = "data"
     trial (1,:) double =[]
-end 
+end
 
 if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
-    % Single value, for all     
-    switch what
-        case "data"
-            out = props.(propName);
-        case "trialtime"            
-            out = props.(propName +"Time");
-        case "clocktime"
-            out = props.(propName + "NsTime");
-        case "trial"
-            out = props.(propName +"Trial");
+    % Special case: single value, for all  times and trials
+    for wh = what
+        switch wh
+            case "data"
+                ret.data = props.(propName);
+                if ischar(ret.data)
+                    ret.data = string(ret.data);
+                end
+                if ~isnan(time)
+                    % atTrialTime was specified- repmat to one per trial
+                    ret.data = repmat(ret.data,[numel(c.firstFrame) 1]);%  One per trial
+                end
+            case "trialtime"
+                if isfield(props,propName +"Time")
+                    ret.trialtime = props.(propName +"Time");
+                else
+                    ret.trialtime= [];
+                end
+            case "clocktime"
+                ret.clocktime = props.(propName + "NsTime");
+            case "trial"
+                if isfield(props,propName +"Trial")
+                    ret.trial = props.(propName +"Trial");
+                else
+                    ret.trial = [];
+                end
+        end
+
+        % Trial selection if specified and available
+        if ~isempty(trial) && isfield(props,propName +"Trial")
+            trialNrs = props.(propName +"Trial");
+            keepTrial = ismember(trialNrs,trial);
+            if numel(ret.(wh))==numel(keepTrial)
+                ret.(wh) = ret.(wh)(keepTrial);
+            end
+        end
     end
-    if ~isempty(trial) && isfield(props,propName +"Trial")
-        trialNrs = props.(propName +"Trial");
-        out = out(ismember(trialNrs,trial));
+    if isscalar(what)
+        ret = ret.(what);
     end
     return;
 end
@@ -92,7 +117,7 @@ for e=1:numel(allEventTrials)
         eventNsTime(trgTrials) = currentNsTime;
     end
     % Next trial or same trial, update until atTrialTime reached.
-    currentTrial = allEventTrials(e);    
+    currentTrial = allEventTrials(e);
     currentTime = allEventTimes(e);
     currentNsTime = allEventNsTimes(e);
     if iscell(allEventValues)
@@ -122,20 +147,28 @@ if currentTrial~=nrTrials
     eventTime(currentTrial+1:nrTrials)  =-inf;
 end
 
-switch what
-    case "data"
-        out = data ;
-    case "trialtime"
-        out = eventTime;
-    case "clocktime"
-        out = eventNsTime;
-    case "trial"
-        out = find(~isinf(eventNsTime)); % Trials in whcih the event actually ocurred
+if ~isempty(trial)
+    trialNrs = find(~isinf(eventNsTime));
+    keepTrial = ismember(trialNrs,trial);
+else
+    keepTrial = true(numel(eventNsTime),1);
 end
 
-if ~isempty(trial)
-        trialNrs = find(~isinf(eventNsTime));
-        out = out(ismember(trialNrs,trial));
+for wh =what
+    switch wh
+        case "data"
+            ret.data = data(keepTrial) ;
+        case "trialtime"
+            ret.trialtime = eventTime(keepTrial);
+        case "clocktime"
+            ret.clocktime = eventNsTime(keepTrial);
+        case "trial"
+            ret.trial = intersect(find(~isinf(eventNsTime)),find(keepTrial)); % Trials in which the event actually ocurred
+    end
 end
-    
+
+if isscalar(what)
+    ret = ret.(what);
+end
+
 end

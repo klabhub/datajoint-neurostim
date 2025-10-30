@@ -162,7 +162,7 @@ else
    
     
     %% Filter
-    [signal,time] = ns.CFilter(signal,time,parms);
+    [signal,time] = prep.preprocess(signal,time,parms);
     %% Package output
     % Regualr sampling so reduce time representation and convert to ms.
     time = [1000*time(1) 1000*time(end) nrSamples];

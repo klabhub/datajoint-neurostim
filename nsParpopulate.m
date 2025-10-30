@@ -15,61 +15,87 @@ function nsParpopulate(tbl,cls,opts,pv)
 % The maximum number of workers is set to 64 by default. Be nice.
 %
 % Use dryrun = true to get a brief report of the jobs that would be started
-% with dryrun =false. 
-% 
+% with dryrun =false.
+%
 arguments
     tbl (1,1) dj.Relvar     % table to populate
     cls (1,1) mslurm        % slurm cluster to use
     opts (1,:) cell = {'time','00:30:00','mem','16GB','cpus-per-task',1,'requeue',''}; % sbatch options for mslurm
     pv.maxWorkers = 64    % Never more than this number of workers
-    pv.restrict (1,:) cell = {}  % Restrict parpopulate(tbl, restrict{:})
+    pv.restrict (1,:)  = {}  % Restrict parpopulate(tbl, restrict{:})
     pv.clearJobStatus (1,:) string = "error" %  string array of status flags that should be cleared from the jobs table.
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
+    pv.env (1,:) string = "" % Additions to the environment on the cluster for this call only
+    pv.jobName (1,1) string = "" % Informative name for the job used in SLURM sacct. Does not need to be unique
 end
-if pv.dryrun 
+warnState = warning('query');
+warning('off','DataJoint:longCondition');
+if pv.dryrun
     drMsg = "[DRYRUN]";
 else
     drMsg = "";
 end
-if ~isempty(tbl.restrictions)    
+if ~isempty(tbl.restrictions)
     fprintf(2,' The restriction currently specified on the table will be ignored. (You probably want to use pv.restrict )\n');
+end
+if ischar(pv.restrict) || isstring(pv.restrict)
+    pv.restrict= {pv.restrict};
 end
 if numel(pv.restrict)>0
     % Restrictions - each must be a string
     assert(all(cellfun(@ischar,pv.restrict)),'Each element of the restriction must be a char')
     restriction = ['''' strjoin(pv.restrict,''',''') ''''];
     cmd = sprintf("parpopulate(%s,%s)",tbl.className,restriction);
-    restrictionString = strjoin(pv.restrict,' AND ') ;
 else
     % Unrestricted populate
     cmd = sprintf("parpopulate(%s)",tbl.className);
-    restrictionString = true;
 end
 % Construct a name for this expression (has to be a valid script name in
 % matlab)
 exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
 
-if pv.clearJobStatus~=""
+keysource =(tbl.getKeySource & pv.restrict) -tbl;
+
+if exists(keysource) &&  pv.clearJobStatus~=""
     % Check the jobs table to see if something needs to be cleared
-    jobsTable = extractBefore(tbl.className,'.') + ".Jobs";
-    jt = feval(jobsTable);
-    jt = jt & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
-    if count(jt)>0
-        fprintf('%s %d related jobs in %s will be deleted',drMsg,count(jt),jobsTable)
-        if ~pv.dryrun
-            delQuick(jt)
+    jobsTableName = extractBefore(tbl.className,'.') + ".Jobs";
+    if exist(jobsTableName,"class")
+        % Find related jobs (i.e. filling the same table and the specified status)
+        sameTableJobs = feval(jobsTableName) & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
+        if count(sameTableJobs)>0
+            % Determine which of these jobs will be retried by the current
+            % populate call
+            keysourceTable = fetchtable(keysource);
+            % Get the complete jobs table as a matlab table and join with
+            % the keysrouce to get the jobs that will be retried
+            retriedJobs = innerjoin(jobs(sameTableJobs),keysourceTable,'Keys',keysourceTable.Properties.VariableNames,'LeftVariables',["table_name" "key_hash"]);
+            fprintf("%s Deleting %d jobs from %s to retry\n",drMsg,height(retriedJobs),jobsTableName)
+            if ~pv.dryrun
+                delQuick( sameTableJobs & table2struct(retriedJobs) )
+            end
         end
+    else
+        fprintf('No jobs table (%s) on disk. \n',jobsTableName)
     end
 end
 
-nrToDo = count((getKeySource(tbl) & restrictionString) - proj(tbl));
+
+
+nrChildren = count(tbl);
+nrToDo = count(keysource);
 nrWorkers = min(nrToDo,pv.maxWorkers);
 if nrToDo >0
     fprintf("%s Populating %d rows of %s with %d workers (cmd=%s)\n",drMsg,nrToDo,tbl.className,nrWorkers,cmd);
     if ~pv.dryrun
-        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts);
+        if pv.env ==""
+            env = pv.env;
+        else
+            env = [cls.env pv.env];
+        end
+        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);
     end
 else
-    fprintf("%s Nothing to populate for %s (table has %d rows)\n",drMsg,cmd,count(tbl));
+    fprintf("%s Nothing to populate for %s (table has %d rows already computed)\n",drMsg,cmd,nrChildren);
 end
 
+warning(warnState);

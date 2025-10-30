@@ -19,33 +19,43 @@ end
 className = class(tbl);
 metaTbl = feval([className 'Meta']) & tbl;
 
+%% Special handling of ns.Subject
+% dob,sex,and species are stored in the main table (not SubjectMeta).
+% Handle them as updates here (slow).
 if strcmpi(className ,'ns.Subject')
     % Read the single json
     jsonFile  =fullfile(pv.NS_ROOT,'subject.json');
     allJson = readJson(jsonFile);
-   % dob,sex,and species are stored in the main table (not SubjectMeta).
-   % Handle them as updates here (slow). 
-   fprintf('Updating %d subject entries.',numel(allJson))
-    for j =1:numel(allJson)
-        key = tbl & struct('subject',allJson(j).subject);
-        if exists(key)        
-            if allJson(j).dob==""
-                update(key,'dob',[]);            
-            else
-                update(key,'dob',char(allJson(j).dob));            
-            end
-            if allJson(j).sex==""
-                update(key,'sex','u');
-            else
-                update(key,'sex',allJson(j).sex);
-            end            
-            update(key,'species',char(allJson(j).species));            
+    % Limit to subjects already in the database with different values
+    % But this only checks for "meta" datain the ns.Subject table ; the
+    % code below runs over all the json meta data without this restriction
+    needsUpdate = ns.Subject - allJson;
+    needsUpdate = fetchtable(needsUpdate);
+    needsUpdate = ismember([allJson.subject],needsUpdate.subject);
+    jsonNeedsUpdate  =allJson(needsUpdate);    
+    fprintf('Updating %d subject entries.',numel(jsonNeedsUpdate))
+    for j =1:numel(jsonNeedsUpdate)
+        key = tbl & struct('subject',jsonNeedsUpdate(j).subject);      
+        if jsonNeedsUpdate(j).dob==""
+            update(key,'dob',[]);
+        else
+            update(key,'dob',char(jsonNeedsUpdate(j).dob));
         end
-        fprintf('.'); 
+        if jsonNeedsUpdate(j).sex==""
+            update(key,'sex','u');
+        else
+            update(key,'sex',jsonNeedsUpdate(j).sex);
+        end
+        update(key,'species',char(jsonNeedsUpdate(j).species));
+        fprintf('.');
+        if mod(j,40)==0;fprintf('\n');end
     end
     fprintf('Done.\n');
 end
 
+%% Handle meta data stored in the meta table
+% (For Session and Experiment these are the only ones)
+fprintf('Constructing meta data to replace. \n')
 dj.conn().startTransaction
 try
     if pv.dryrun
@@ -56,13 +66,13 @@ try
         delQuick(metaTbl &tbl);
     end
     % Loop over the table to read the json files and construct an array of tpls
-    for key  = fetch(tbl)'  
+    for key  = fetch(tbl)'
         switch (className)
             case 'ns.Subject'
                 thisJson = allJson([allJson.subject]==key.subject);
                 if isempty(thisJson)
                     fprintf("No metadata found in %s for %s \n ",jsonFile, key.subject)
-                else                    
+                else
                     thisJson = rmfield(thisJson,{'subject','dob','species','sex'}); % These fields are stored in the ns.Subject table and have been updated above
                 end
             case 'ns.Session'
@@ -82,7 +92,7 @@ try
             else
                 tpl = newTpl;
             end
-        end        
+        end
     end
     % Add the found tpls to the data base.
     if exist('tpl',"var")
@@ -92,11 +102,11 @@ try
         else
             % In with the new
             insert(metaTbl,tpl)
-        end       
+        end
     else
         fprintf('No relevant meta data found. \n')
     end
-    
+
 catch me
     fprintf(2,'An error occurred. Cancelling the transaction. No changes have been made. (%s)\n',me.message)
     dj.conn().cancelTransaction

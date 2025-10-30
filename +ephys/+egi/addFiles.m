@@ -1,9 +1,10 @@
-function failed = addFiles(tbl)
+function failed = addFiles(tbl,pv)
 % Given a table of ns.Experiment, populate ns.File with associated EGI files.
 % If this fails on any of the experimtns in the tbl, their tpls are
 % returned in failed.
 arguments
     tbl (1,1) ns.Experiment
+    pv.folder (1,1) string = "" % Look in this folder for EGI mff files/folders
 end
 failed = [];
 % Process only the experiments that do not have MFF files associated
@@ -12,14 +13,18 @@ tbl = tbl - (ns.File & 'extension=".mff"') & 'not paradigm ="ZCheck"';
 if ~exists(tbl)
     fprintf('No EGI files need to be added.\n');
 end
-for key = fetch(tbl)'
+for key = fetch(tbl,'ORDER BY session_date')'
     try
         % Loop over the table of experiments
-        fldr = folder(ns.Experiment &key);
+        if pv.folder ==""
+            fldr = folder(ns.Experiment &key);
+        else
+            fldr = pv.folder;
+        end
         [~,nsFile] = fileparts(file(ns.Experiment & key));
         pdm = fetch1(ns.Experiment &key,'paradigm');
         %% Find the core MFF file linked to this experiment
-        candidateMff= dir(fullfile(fldr,[key.subject '.' pdm  '_*.mff']));
+        candidateMff= dir(fullfile(fldr,[key.subject '.' pdm  '*.mff']));
         coreMff = struct([]);
         for f=1:numel(candidateMff)
             % Because the EGI mff files only follow the NS convention
@@ -35,11 +40,27 @@ for key = fetch(tbl)'
                 brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event with the ns file name
                 brec = brec(1); % Sometimes there is a duplicate (with the same filename)
                 egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '\.' pdm '\.\d{6,6}'],'match');
-                assert(~isempty(egiProducingNsFile),'This MFF file has an incorrectly formatted NS file in its BREC',candidateMff(f).name);
-                if contains(nsFile,egiProducingNsFile{1})
+                if isempty(egiProducingNsFile)
+                    % No match. Check if the file was renamed with nsMeta
+                    jsonFile = fullfile(fldr,nsFile + ".json");
+                    if exist(jsonFile,"file")
+                        json = readJson(jsonFile);
+                        originalFilename = fliplr(extractBefore(fliplr(brec.mffkey_FLNM),'\'));
+                        if contains(json.provenance,originalFilename)
+                            % OK: this was renamed after recording
+                            egiProducingNsFile = nsFile; % Force match below
+                            fprintf(2,"This file was renamed from %s\n",brec.mffkey_FLNM);
+                        end
+                    else
+                        % Warn and force a nonmatch.
+                        fprintf(2,"Skipping unmatched MFF with internal ns file name of %s\n",brec.mffkey_FLNM);
+                        egiProducingNsFile  = {'!@#!@$$'};
+                    end
+                end
+                if contains(nsFile,egiProducingNsFile)
                     % Match found - no need to continue.
                     coreMff = candidateMff(f);
-                    fprintf('Matching Neurostim file %s with EGI file %s\n',nsFile,egiProducingNsFile{1})
+                    fprintf('Matching Neurostim file %s with EGI file %s\n',nsFile,egiProducingNsFile)
                     break;
                 end
             catch me
@@ -61,43 +82,47 @@ for key = fetch(tbl)'
             % TODO: how are impedances stored? info files have calibration field
             % not impedance.
 
-            candidateMff= dir(fullfile(fldr,[key.subject '.zcheck_*.mff']));
-            % Naming convention - limit to files for the same subject
-            match = regexp({candidateMff.name},[key.subject '\.zcheck_(?<day>\d{8,8})_(?<time>\d{6,6})\.mff'],'names');
-            stay = ~cellfun(@isempty,match);
-            oddMff = candidateMff(~stay);
-            % Warn about mff files that do not match the convention...
-            for i=1:numel(oddMff)
-                fprintf(['File ' fullfile(fldr,oddMff(i).name) ' does not match the NS conventions for MFF file naming.\n'])
-            end
-            % Keep only files that match the convention
-            mffInfo  = [match{stay}]'; % Make struct array
-            candidateMff(~stay)= [] ;
-            % Copy the meta information from the file name to the mffInfo
-            % (used to find the nearest zcheck file).
-            for i=1:numel(mffInfo)
-                fn = fieldnames(candidateMff);
-                nrFields= numel(fn);
-                for j=1:nrFields
-                    mffInfo(i).(fn{j}) = candidateMff(i).(fn{j});
+            candidateMff= dir(fullfile(fldr,[key.subject '.zcheck*.mff']));
+            if isempty(candidateMff)
+                zBeforeFile = '';
+                zAfterFile = '';
+            else
+                % Naming convention - limit to files for the same subject
+                match = regexp({candidateMff.name},[key.subject '\.zcheck_(?<day>\d{8,8})_(?<time>\d{6,6})\.mff'],'names');
+                stay = ~cellfun(@isempty,match);
+                oddMff = candidateMff(~stay);
+                % Warn about mff files that do not match the convention...
+                for i=1:numel(oddMff)
+                    fprintf(['File ' fullfile(fldr,oddMff(i).name) ' does not match the NS conventions for MFF file naming.\n'])
                 end
+                % Keep only files that match the convention
+                mffInfo  = [match{stay}]'; % Make struct array
+                candidateMff(~stay)= [] ;
+                % Copy the meta information from the file name to the mffInfo
+                % (used to find the nearest zcheck file).
+                for i=1:numel(mffInfo)
+                    fn = fieldnames(candidateMff);
+                    nrFields= numel(fn);
+                    for j=1:nrFields
+                        mffInfo(i).(fn{j}) = candidateMff(i).(fn{j});
+                    end
+                end
+                [~, zcheckFileOrder]= sort({mffInfo.time});
+                mffInfo = mffInfo(zcheckFileOrder);
+                nrZ = numel(mffInfo);
+                hasImpedanceInfo = nan(1,nrZ);
+                for zFileCntr = 1:nrZ
+                    tempImpedanceFile = mff_importinfon(fullfile(mffInfo(zFileCntr).folder, mffInfo(zFileCntr).name),1);
+                    hasImpedanceInfo(zFileCntr) = isfield(tempImpedanceFile,'impedance') || isfield(tempImpedanceFile,'calibration');
+                end
+                if sum(hasImpedanceInfo)<numel(hasImpedanceInfo)
+                    fprintf( '%d out of %d  zcheck files do not have impedance info. Those will be ignored.\n',sum(~hasImpedanceInfo), numel(hasImpedanceInfo));
+                end
+                mffInfo(~hasImpedanceInfo) = [];
+                % Find one before, one after.
+                zBeforeFile = ephys.egi.pickOne(mffInfo,key,'BEFORE');
+                zAfterFile = ephys.egi.pickOne(mffInfo,key,'AFTER');
             end
-            [~, zcheckFileOrder]= sort({mffInfo.time});
-            mffInfo = mffInfo(zcheckFileOrder);
-            nrZ = numel(mffInfo);
-            hasImpedanceInfo = nan(1,nrZ);
-            for zFileCntr = 1:nrZ
-                tempImpedanceFile = mff_importinfon(fullfile(mffInfo(zFileCntr).folder, mffInfo(zFileCntr).name),1);
-                hasImpedanceInfo(zFileCntr) = isfield(tempImpedanceFile,'impedance') || isfield(tempImpedanceFile,'calibration');
-            end
-            if sum(hasImpedanceInfo)<numel(hasImpedanceInfo)
-                fprintf( '%d out of %d  zcheck files do not have impedance info. Those will be ignored.\n',sum(~hasImpedanceInfo), numel(hasImpedanceInfo));
-            end
-            mffInfo(~hasImpedanceInfo) = [];
-            % Find one before, one after.
-            zBeforeFile = ephys.egi.pickOne(mffInfo,key,'BEFORE');
-            zAfterFile = ephys.egi.pickOne(mffInfo,key,'AFTER');
-
 
             %% GPS related files
             gpsFileDir = dir(fullfile(fldr,[key.subject '*.gpsr']));
@@ -140,6 +165,35 @@ for key = fetch(tbl)'
                     relatedFiles = catstruct(1,relatedFiles, thisMff);
                 end
                 [relatedFiles.isdir] = deal(false); % MFF are tagged as dirs (they are zipped dirs), but ns.File will skip those. Tag as not dir.
+                if pv.folder~=""
+                    %Hack- during a session the EGI files are on the iMAC,
+                    %but the datajoint setup assumes they are in the folder
+                    %where the experiment file lives. 
+                    % pv.folder identifies the folder where mffs live on
+                    % the imac.
+                    % Here we create a symbolic link from the neurostim
+                    % computer to the egi computer to trick datajoint in
+                    % loading the correct data.
+                    % This requires developer mode on windows (for the
+                    % mklink /d)
+                    exptFldr = folder(ns.Experiment &key);
+                    for i=1:numel(relatedFiles)
+                        if endsWith(relatedFiles(i).name,'.mff')
+                            lnk = fullfile(exptFldr,relatedFiles(1).name);
+                            if ~exist(lnk,"dir")
+                                trg = fullfile(relatedFiles(1).folder,relatedFiles(1).name);
+                                cmd = sprintf("mklink /d %s %s",lnk,trg);
+                                [status,msg] = system(cmd);
+                                if status~=0
+                                    msg
+                                    error('Failed to create a symlink to the EGI computer.')                                   
+                                end
+                            end
+                        end
+                        subFolder =extractAfter(relatedFiles(i).folder,pv.folder);
+                        relatedFiles(i).folder =fullfile(exptFldr,subFolder);
+                    end
+                end
                 updateWithFiles(ns.File,key, relatedFiles);
             end
         end

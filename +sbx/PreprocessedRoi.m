@@ -298,19 +298,23 @@ classdef PreprocessedRoi < dj.Part
             if ~exist(fldr,"dir")
                 error('Preprocessed data folder %s not found',fldr)
             end
-            planes = dir(fullfile(fldr,'plane*'));
+           % depth0..n has separate recordings at different depths
+           % and plane0..n  has simultaneous recordings at different
+           % dephts. If there is only a single depth, the depth0 folder is
+           % omitted.
+            planes = dir(fullfile(fldr,'plane*')); 
             roisSoFar = 0;
 
             for pl = 1:numel(planes)
                 %% Read npy
-                thisFile = fullfile(fldr,planes(pl).name,'iscell.npy');
+                thisFile = fullfile(planes(pl).folder,planes(pl).name,'iscell.npy');
                 if ~exist(thisFile,"file")
                     error('File %s does not exist',thisFile);
                 end
                 iscell = ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
 
                 % We saved the stat.npy as stat.mat in sbx.Preprocessed
-                thisFile = fullfile(fldr,planes(pl).name,'stat.mat');
+                thisFile = fullfile(planes(pl).folder,planes(pl).name,'stat.mat');
                 if ~exist(thisFile,"file")
                     error('File %s does not exist',thisFile);
                 end

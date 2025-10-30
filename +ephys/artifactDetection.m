@@ -51,6 +51,7 @@ for m = intersect(string(fieldnames(parms)),perExptMehods)'
             TRIALSNEEDED  =10;
             if nrTrials<TRIALSNEEDED  
                 fprintf(2,'Artifact detection based on SYNC needs at least %d trials to get an estimate of normal synchrony.Skipped. \n',TRIALSNEEDED )
+                continue;
             end
             nrChannelsInSync = numel(parms.sync.channel);
              r = nan(nrChannelsInSync,nrChannelsInSync,nrTrials);

@@ -2,6 +2,7 @@
 # A complete preprocessed data set of the SBX data obtained in a single session.
 -> ns.Session
 -> sbx.PreprocessedParm     # Preprocessing parameters
+depth : decimal(6,2)        # Knobby recording depth z in micron
 ---
 folder : varchar(1024)      # Folder with the preprocessing results
 img    : longblob           # Mean image
@@ -9,6 +10,7 @@ nrframesinsession : int     # Total number of frames in the session.
 framerate : double          # Acquisition framerate
 xscale : float              # Scale factor of xpixels (micron/pixel)
 yscale : float              # Scale factor of ypixels  (micron/pixels)
+nrplanes : int              # Number of planes
 %}
 %
 % Calls to python require environment variable NS_CONDA to point to a conda
@@ -30,7 +32,9 @@ classdef Preprocessed < dj.Computed
     end
     methods
         function v = get.keySource(tbl) %#ok<MANU>
-            analyzeExpt = analyze(ns.Experiment ,strict=false);
+            % Restrict to sessions that have analyzeable experiments with
+            % sbx files.
+            analyzeExpt = analyze(ns.Experiment & (ns.File & 'extension=".sbx"') ,strict=false);
             v = (ns.Session & analyzeExpt)*sbx.PreprocessedParm;
         end
 
@@ -76,12 +80,67 @@ classdef Preprocessed < dj.Computed
 
     end
     methods (Access=public)
+        function [tpl] = mismatch(tbl,pv)
+            arguments
+                tbl (1,1) sbx.Preprocessed
+                pv.verbose (1,1) logical = true
+            end
+            %  Compares the number of frames in the preprocessed data
+            % and the frames assigned to each of the experiments from the
+            % session. If these are not the same, the key for the
+            % sbx.Preprocessed tuple is added to the output (together with
+            % a .delta field that represents the mismatch). Negative
+            % numbers means that some frames are missing from sbx.Preprocessed.
+            cntr =0;
+            tpl = struct('session_date',[],'subject',[],'prep',[],'depth',[],'nrframesinsession',[],'delta',[],'nrframesinexpt',[]);
+            for key =fetch(tbl,'nrframesinsession')'
+                s = ns.Session & key;
+                %  Find the experiments that should be in the preprocessed data
+                exptWithSbx = (ns.Experiment & s) & (ns.File & 'extension=".sbx"');
+
+                % Determine number of frames per expt
+                info = sbx.readInfoFile(exptWithSbx);
+                framesInExpt = [info.nrFrames];
+                % Compare to what is in the preprocessed data
+                delta = key.nrframesinsession - sum(framesInExpt);
+                if delta ~=0
+                    cntr = cntr+1;
+                    tpl(cntr) = mergestruct(key,struct('delta',delta,'nrframesinexpt',framesInExpt));
+                    if pv.verbose
+                        exptWithSbx %#ok<NOPRT>
+                    end
+                end
+            end
+        end
+        function deleteFromDisk(tbl,pv)
+            % Delete preprocessed data from disk.
+            % By default dryrun is true and will just show what would be
+            % deleted.
+            arguments
+                tbl (1,1) sbx.Preprocessed
+                pv.dryrun (1,1) = true
+            end
+            for key =fetch(tbl,'*')'
+                sessionPath=unique(folder(ns.Session & key));
+                resultsFolder =fullfile(sessionPath,key.folder,'plane0');
+                fileFound =  exist(resultsFolder,"dir");
+                if pv.dryrun
+                    pre = "[DRYRUN]" ;
+                    status = 1;
+                    msg= "";
+                else
+                    [status,msg] = rmdir(resultsFolder,'s');
+                    pre = "";
+                end
+                fprintf("%s Deleting %s  (status: %d , msg: %s, found: %d)\n",pre,resultsFolder,status,msg,fileFound>0);
+            end
+        end
         function   out = plot(tbl,pv)
             % Plot a timeline of cell counts, radius, compactness, and
             % aspect ratio grouped by strain. The pcell input can be used to
             % select only rois with pcell > pv.pcell and if multiple
             % pv.pcell are provided those will be shown with different
-            % markers. 
+            % markers.
             % OUTPUT
             %  A matlab table with the aggregated results.
             arguments
@@ -97,11 +156,11 @@ classdef Preprocessed < dj.Computed
             T = tiledlayout(n,n);
             tStr = "";
             pcellCntr =0;
-            
+
             for pcell = pv.pcell
                 pcellCntr =pcellCntr+1;
                 % Aggregraget counts in sessions
-                P = tbl.aggr(sbx.PreprocessedRoi & ['pcell> ' num2str(pcell)],'session_date','count(*)->n','avg(radius)->radius','avg(compact)->compact','avg(aspect)->aspect');                
+                P = tbl.aggr(sbx.PreprocessedRoi & ['pcell> ' num2str(pcell)],'session_date','count(*)->n','avg(radius)->radius','avg(compact)->compact','avg(aspect)->aspect');
                 P = fetchtable(P,'*');
                 % Link with strain information
                 S  = proj(ns.SubjectMeta & P & 'meta_name="strain"','meta_value->strain');
@@ -115,7 +174,7 @@ classdef Preprocessed < dj.Computed
                 end
                 % Plot each variable
                 yCntr= 0;
-                for y = pv.variables 
+                for y = pv.variables
                     yCntr = yCntr+1;
                     nexttile(yCntr); hold on
                     gscatter(datetime(P.session_date),P.(y),P.strain,[],pv.markers(pcellCntr))
@@ -143,11 +202,11 @@ classdef Preprocessed < dj.Computed
                 return;
             else
                 % Construct a batch/bash command.
-                tpl = fetch(tbl*sbx.PrepParms,'*');
-                switch (tpl.toolbox)
+                tpl = fetch(tbl*sbx.PreprocessedParm,'*');
+                switch (tpl.parms.toolbox)
                     case 'suite2p'
                         env = 'suite2p';  % the conda environment
-                        sessionPath=unique(folder(ns.Experiment & tpl));
+                        sessionPath=unique(folder(ns.Session & tpl));
                         statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
                         if ~exist(statsFile,"file")
                             error('File not found %s',statsFile);
@@ -164,7 +223,7 @@ classdef Preprocessed < dj.Computed
                 end
             end
 
-            fprintf('Starting the external %s gui\n',tpl.toolbox)
+            fprintf('Starting the external %s gui\n',tpl.parms.toolbox)
             system(cmd ,'-echo');
 
         end
@@ -273,28 +332,46 @@ classdef Preprocessed < dj.Computed
                         fprintf('Not implemented yet')
                 end
             end
-        end
+        end   
     end
     methods (Access=protected)
 
         function makeTuples(tbl,key)
             sessionPath=unique(folder(ns.Experiment & key));
             parms = fetch1(sbx.PreprocessedParm & key,'parms');
+            if ~isfield(parms,'zslack')
+                parms.zslack = 2; % sbx files with a dZ less than this are segmented as one.
+            end
             % Set the output folder to be
             % subject.suite2p.preprocessing
             % in the session folder
-            resultsFolder = [key.subject '.' parms.toolbox '.' key.prep];
+            resultsFolder = sprintf('%s.%s.%s',key.subject,parms.toolbox,key.prep);
             % Find Experiments in this session that have Scans and
             % extract the folder name (subfolder named after the
             % Experiment).
 
             thisSession =(ns.Session & key);
-            if strcmpi(parms.toolbox,'suite2p')
-                allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
-            else
-                error('NIY');
-            end
+            allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
+
             analyzeExptThisSession = analyze(allExptThisSession,strict=false);
+            assert(exists(analyzeExptThisSession),"No analyzable experiments in this session %s on %s",key.subject,key.session_date); % Should not really happen with proper keysource.
+
+            %% Check that the TTLs and frames match
+            % If setup propertly, the mdaq plugins laserOnDig events have
+            % been stored as plugin events:
+            ttlQry = ns.PluginParameter & 'plugin_name = "mdaq"' & 'property_name LIKE "laserOnDig%"' & analyzeExptThisSession;
+            if ~exists(ttlQry)
+                % Fallback option: use the thresholded analog laserOn
+                % signals
+                ttlQry = ns.PluginParameter & 'plugin_name = "mdaq"' & 'property_name LIKE "laserOn%"' & analyzeExptThisSession;
+            end
+
+            if count(ttlQry) ~= count(analyzeExptThisSession)*2
+                ttlQry %#ok<NOPRT>
+                analyzeExptThisSession %#ok<NOPRT>
+                error("LaserOn TTL events not found for all experiments (populate(ns.c,ctag=""mdaq"")): \n")
+            end
+
             dataFldr = file(analyzeExptThisSession);
             dataFldr = cellstr(strrep(dataFldr,'.mat',filesep))'; % cellstr to make py.list
             % Check that all folders exist.
@@ -303,153 +380,256 @@ classdef Preprocessed < dj.Computed
                 dataFldr{noDir} %#ok<NOPRT>
                 error('SBX file folder not found');
             end
+
+            scale = [];
+            nrPlanes = [];
+            depth = [];
+            xy = [];
+            frames =[];
+            ttl = [];
+            analyzeExptTpls = fetch(analyzeExptThisSession)';
+            for e=analyzeExptTpls
+                info        = sbx.readInfoFile(e);
+                scale       =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
+                nrPlanes    = [nrPlanes info.nrPlanes]; %#ok<AGROW>
+                depth       = [depth info.config.knobby.pos.z]; %#ok<AGROW>
+                xy          = [xy; info.config.knobby.pos.x info.config.knobby.pos.y]; %#ok<AGROW>
+                frames      = [frames; info.nrFrames]; %#ok<AGROW>
+                thisTTLTime = fetch(ttlQry & e & 'property_name LIKE "%High%"','property_nstime').property_nstime;
+                ttl         = [ttl; numel(thisTTLTime)];                        %#ok<AGROW>
+                sbx.addMeta(e,info,"newOnly",true);
+                mismatch = abs(ttl(end)-frames(end)*nrPlanes(end));
+                assert(mismatch<=2,"Mismatch (%d)in %s/%s@%s between the TTLs in mdaq (%d) and frames in sbx (%d).",mismatch,e.subject,e.session_date,e.starttime,ttl(end),nrPlanes(end)*frames(end));
+            end
+            
+            [grp,~,depthRange] = sbx.Preprocessed.findgroups_slack(depth,parms.zslack);
+            grpDepth = mean(depthRange,2);
+            nrDepths= numel(grpDepth);
+            
+
             switch (parms.toolbox)
                 case 'suite2p'
-                    setupPython("suite2p");
-                    conda = extractBefore(pyenv().Home,'/envs');
+                    condaEnvironment = "suite2p";
+                    setupPython(condaEnvironment);
+                    condaFldr = extractBefore(pyenv().Home,'envs');
 
-                    %% Check that each experiment used the same scaling
-                    scale = [];
-                    nrPlanes = [];
-                    depth = [];
-                    for e=fetch(analyzeExptThisSession)'
-                        info = sbx.readInfoFile(e);
-                        scale =  [scale; [info.xscale info.yscale]]; %#ok<AGROW>
-                        nrPlanes = [nrPlanes info.nrPlanes]; %#ok<AGROW>
-                        depth  = [depth info.config.knobby.pos.z]; %#ok<AGROW>
-                    end
-                    uScale = unique(scale,'rows');
-                    if isempty(uScale); error('Info file missing from sbx? Cannot preprocess.');end
-                    assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
-                    nrPlanes = unique(nrPlanes);
-                    assert(isscalar(nrPlanes),"Different number of planes across experiments in this session.");
-                    % Scanning the same animal at different depths requires
-                    % running preprocessing separately for all experiments
-                    % at that depth. Not implemented yet, probably best
-                    % done by assigning a different plane number to the
-                    % different depths.
-                    assert(isscalar(unique(depth)),"Experiments in this session were recorded at different depths. Not implemented yet.");
+                    % At each depth there can be multiple planes
+                    for depthNr = 1:nrDepths                        
+                        thisGrp = grp==depthNr;
+                        thisScale = scale(thisGrp,:);
+                        thisNrPlanes = nrPlanes(thisGrp);
+                        thisDepth = grpDepth(depthNr);
+                        thisDataFldr = dataFldr(thisGrp);
+                        thisFrames = frames(thisGrp);
+                        % Sanity checks
+                        uScale = unique(thisScale,'rows');
+                        assert(size(uScale,1) ==1,"Pixel scaling was not constant across experiments in this session.");
+                        uNrPlanes= unique(thisNrPlanes);
+                        assert(isscalar(uNrPlanes),"Different number of planes across experiments in this session.");
 
-                    %% Check whether preprocessing has already completed.
-                    opsFile =fullfile(sessionPath,resultsFolder,'plane0','ops.npy');
-                    outFiles = fullfile(sessionPath,resultsFolder,'plane0',{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
-                    prepComplete = exist(opsFile,"file");
-                    for of =1:numel(outFiles)
-                        prepComplete = prepComplete & exist(outFiles(of),'file');
-                    end
-
-                    if prepComplete
-                        fprintf('Preprocessing results already exist. Importing %s\n',opsFile);
-                    else
-                        % Read installation default ops
-                        opts = py.suite2p.default_ops();
-                        opts{'input_format'} = "sbx";
-                        opts{'nplanes'} = uint64(nrPlanes);
-                        opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
-
-                        % Then replace parameters defined in the prep settings
-                        fn= fieldnames(parms.ops);
-                        for  f= 1:numel(fn)
-                            try
-                                default= opts{fn{f}};
-                                pyClass =class(default);
-                                prepValue =parms.ops.(fn{f});
-                                if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
-                                    % Some options have to specified as a
-                                    % length 1 list of strings. If the user
-                                    % put a string/char in the prepParms
-                                    % this codes wraps it in a py.list
-                                    prepValue = {prepValue};
-                                end
-                                overruled = feval(pyClass,prepValue);
-                            catch me
-                                error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
-                            end
-                            opts{fn{f}} = overruled;
-                        end
-
-                        % Create a dict with the folder information
-                        if isempty(cell(opts{'fast_disk'}))
-                            % No fast disk specified, guessing that temp will have better access speed.
-                            % In the db, fast_disk has to be a string, not  a list.
-                            fastDisk = temp;
-                        else
-                            if opts{'delete_bin'}
-                                % Not keeping the bin file. Use a temp
-                                % subfolder in the specified fast_disk to
-                                % allow mutliple concurrent runs of suite2p
-                                fastDisk = temp(string(opts{'fast_disk'}));
+                        %% Check whether preprocessing has already completed for this plane/depth
+                        for plane = 0:uNrPlanes-1
+                            if nrDepths ==1
+                                depthSubFolder = '';
                             else
-                                % Keeping the file, so assume that the user
-                                % had a reason to specify a specific
-                                % folder)
-                                fastDisk = string(opts{'fast_disk'});
+                                depthSubFolder = sprintf('depth%d',depthNr-1);
+                            end
+                            planeSubFolder = sprintf('plane%d',plane);
+                            opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
+                            outFiles = fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
+                            prepComplete = exist(opsFile,"file");
+                            for of =1:numel(outFiles)
+                                prepComplete = prepComplete & exist(outFiles(of),'file');
                             end
                         end
-                        db= py.dict(pyargs('save_path0',sessionPath, ...
-                            'save_folder',resultsFolder, ...
-                            'data_path',py.list(dataFldr), ...
-                            'fast_disk',fastDisk, ...
-                            'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
-
-                        fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-
-                        % Calling python in-process can lead to problems
-                        % with library conflicts. Using a system call seems more robust to
-                        % different installs. To pass the ops and db dicst we save them
-                        % to a temporary file.
-                        cfd = fileparts(mfilename('fullpath'));
-                        % The python tools are in the tools folder.
-                        % Temporarily go there to import  (full path
-                        % did not seem to work).
-                        toolsPath = fullfile(fileparts(cfd),'tools');
-                        here =pwd;
-                        cd(toolsPath);
-                        nssbx = py.importlib.import_module('nssbx_suite2p');
-                        cd (here)
-                        % Save the dicts to tempfiles
-                        optsFile= temp;
-                        nssbx.save_dict_to_file(opts,optsFile)
-                        dbFile = temp;
-                        nssbx.save_dict_to_file(db,dbFile)
-                        % The python file that will read these
-                        pyWrapper= sprintf('%s/nssbx_suite2p.py',toolsPath);
-                        % Construct a batch/bash command.
-                        if ispc
-                            % The batch command activates conda, then
-                            % calls nssbx_suite2p.py to read the dicst
-                            % and then call suite2p.run_s2p
-                            cmd = sprintf('"%s\\nssbx_suite2p.bat" %s\\Scripts\\activate.bat %s "%s" %s %s ',toolsPath,conda,conda,pyWrapper,optsFile,dbFile);
+                        if prepComplete
+                            fprintf('Preprocessing results already exists for %d planes at depth  %.1f. \n Importing %s\n',uNrPlanes,thisDepth,opsFile);
                         else
-                            cmd = sprintf('bash "%s/nssbx_suite2p.sh" %s "%s" %s %s ',toolsPath,conda,pyWrapper,optsFile,dbFile);
-                        end
-                        system(cmd ,'-echo')
+                            % Read installation default ops
+                            opts = py.suite2p.default_ops();
+                            opts{'input_format'} = "sbx";
+                            opts{'nplanes'} = uint64(uNrPlanes);
+                            opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
 
-                        % Couldn't figure out how to convert stat.npy so
-                        % save it as .mat (Not using save_mat to avoid
-                        % duplicating all of the fluorescence data in F.mat
-                        % and I don't want to delete the .npy files because
-                        % they are useful to view in the suite2p gui.
-                        for p=1:nrPlanes
-                            statFile = fullfile(sessionPath,resultsFolder,sprintf('plane%d',p-1),'stat.npy');
-                            npyToMat(statFile);
+                            % Then replace parameters defined in the prep settings
+                            fn= fieldnames(parms.ops);
+                            for  f= 1:numel(fn)
+                                try
+                                    default= opts{fn{f}};
+                                    pyClass =class(default);
+                                    prepValue =parms.ops.(fn{f});
+                                    if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
+                                        % Some options have to specified as a
+                                        % length 1 list of strings. If the user
+                                        % put a string/char in the prepParms
+                                        % this codes wraps it in a py.list
+                                        prepValue = {prepValue};
+                                    end
+                                    overruled = feval(pyClass,prepValue);
+                                catch me
+                                    error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
+                                end
+                                opts{fn{f}} = overruled;
+                            end
+
+                            % The sample rate corresponds to the total;
+                            % divide by nrPlanes
+                            opts{'fs'} = opts{'fs'}/uNrPlanes;
+
+                            % Create a dict with the folder information
+                            if isempty(cell(opts{'fast_disk'}))
+                                % No fast disk specified, guessing that temp will have better access speed.
+                                % In the db, fast_disk has to be a string, not  a list.
+                                fastDisk = temp;
+                            else
+                                if opts{'delete_bin'}
+                                    % Not keeping the bin file. Use a temp
+                                    % subfolder in the specified fast_disk to
+                                    % allow mutliple concurrent runs of suite2p
+                                    fastDisk = temp(string(opts{'fast_disk'}));
+                                else
+                                    % Keeping the file, so assume that the user
+                                    % had a reason to specify a specific
+                                    % folder)
+                                    fastDisk = string(opts{'fast_disk'});
+                                end
+                            end
+                            db= py.dict(pyargs('save_path0',sessionPath, ...
+                                'save_folder',fullfile(resultsFolder,depthSubFolder), ...
+                                'data_path',py.list(thisDataFldr), ...
+                                'fast_disk',fastDisk, ...
+                                'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
+
+                            fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
+
+                            % Calling python in-process can lead to problems
+                            % with library conflicts. Using a system call seems more robust to
+                            % different installs. To pass the ops and db dicst we save them
+                            % to a temporary file.
+                            cfd = fileparts(mfilename('fullpath'));
+                            % The python tools are in the tools folder.
+                            % Temporarily go there to import  (full path
+                            % did not seem to work).
+                            toolsPath = fullfile(fileparts(cfd),'tools');
+                            here =pwd;
+                            cd(toolsPath);
+                            nssbx = py.importlib.import_module('nssbx_suite2p');
+                            cd (here)
+                            % Save the dicts to tempfiles
+                            optsFile= temp;
+                            nssbx.save_dict_to_file(opts,optsFile)
+                            dbFile = temp;
+                            nssbx.save_dict_to_file(db,dbFile)
+                            % The python file that will read these
+                            pyCmd = sprintf('"%s/nssbx_suite2p.py" "%s" "%s"',toolsPath,optsFile, dbFile);
+                            % Construct a batch/bash command.
+                            if ispc
+                                cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & python %s',condaFldr,condaEnvironment,pyCmd);
+                            else
+                                cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
+                                    'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...
+                                    'elif [ -f "%s/etc/profile.d/conda.sh" ]; then source "%s/etc/profile.d/conda.sh"; ' ...
+                                    'else export PATH="%s/bin:$PATH"; fi; unset __conda_setup; ' ...
+                                    'conda activate %s; eval python "%s"'], ...
+                                    condaFldr, condaFldr, condaFldr, condaFldr, condaEnvironment, pyCmd);
+                            end
+                            system(cmd ,'-echo')
+
+                            % Couldn't figure out how to convert stat.npy so
+                            % save it as .mat (Not using save_mat to avoid
+                            % duplicating all of the fluorescence data in F.mat
+                            % and I don't want to delete the .npy files because
+                            % they are useful to view in the suite2p gui.
+                            for p=1:uNrPlanes
+                                statFile = fullfile(sessionPath,resultsFolder,depthSubFolder,sprintf('plane%d',p-1),'stat.npy');
+                                npyToMat(statFile);
+                            end
+                            fprintf('Completed at %s\n',datetime('now'));
                         end
-                        fprintf('Completed at %s\n',datetime('now'));
+
+                      
+                        % Load the save ops.npy to extract mean image and do
+                        % sanity checks
+                        for plane = 0:uNrPlanes-1
+                            if nrDepths ==1
+                                depthSubFolder = '';
+                            else
+                                depthSubFolder = sprintf('depth%d',depthNr-1);
+                            end
+                            planeSubFolder = sprintf('plane%d',plane);
+                            opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
+                            opts =py.numpy.load(opsFile,allow_pickle=true);
+                            N = double(opts.item{'nframes'});
+                            assert(N==sum(thisFrames),"The number of frames in the npy file (%d) does not match the frames across experiments (%d). ",N,sum(thisFrames))
+                            fs = double(opts.item{'fs'});           % These are constant across planes- the last one is added to the table
+                            nplanes = double(opts.item{'nplanes'});                            
+                            img{plane+1} = ndarrayToArray(opts.item{'meanImg'},single=true); %#ok<AGROW> % Each plane has its own mean image                            
+                        end
+
+                        % Insert into sbx.Preprocessed
+                        key.depth = thisDepth;
+                        tpl = mergestruct(key,struct('img',img,'folder',fullfile(resultsFolder,depthSubFolder),'nrframesinsession',N,'nrplanes',nplanes,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
+                        insert(tbl,tpl);
+                        % Create part table that links with the experiments
+                        % at this depth
+                        tpls = analyzeExptTpls(thisGrp);
+                        tpls = mergestruct(tpls,struct('depth',thisDepth,'prep',key.prep));                             
+                        insert(sbx.PreprocessedExperiment,tpls)                                           
+
+                        % Create the part table with per ROI information
+                        makeTuples(sbx.PreprocessedRoi,key)
                     end
-                    % Load the save ops.npy to extract the mean image
-                    opts =py.numpy.load(opsFile,allow_pickle=true);
-                    img = ndarrayToArray(opts.item{'meanImg'},single=true);
-                    N = double(opts.item{'nframes'});
-                    fs = double(opts.item{'fs'});
-                    tpl = mergestruct(key,struct('img',img,'folder',resultsFolder,'nrframesinsession',N,'framerate',fs,'xscale',uScale(1),'yscale',uScale(2)));
-                    insert(tbl,tpl);
                 case 'caiman'
                     % TODO
                 otherwise
                     error('Unknown preprocessing toolbox %s',parms.toolbox);
             end
-            % Create the part table with per ROI information
-            makeTuples(sbx.PreprocessedRoi,key)
+
         end
+    end
+
+
+    methods (Static)
+        function [G, ID, ranges] = findgroups_slack(x, slack)
+% Group elements of vector x so that every pair in a group differs by ≤ slack.
+% Returns:
+%   G      : group index per element (like findgroups)
+%   ID     : representative value per group (group mean)
+%   ranges : [min max] for each group
+
+    if ~isvector(x), error('x must be a vector'); end
+    if slack < 0,    error('slack must be >= 0'); end
+
+    x = x(:);
+    [xs, ord] = sort(x);                % sort to make contiguous ranges
+    n = numel(xs);
+
+    Gs   = zeros(n,1);
+    lohi = NaN(n,2);                    % will trim later
+    k = 0; i = 1;
+
+    while i <= n
+        k = k + 1;
+        anchor = xs(i);                 % group’s minimum (current start)
+        % include all following points whose distance from the group min ≤ slack
+        j = i + find(xs(i+1:end) - anchor > slack, 1, 'first');
+        if isempty(j), j = n + 1; end
+        j = j - 1;                      % last index in this group
+
+        Gs(i:j)      = k;
+        lohi(k, :)   = [anchor, xs(j)];
+        i            = j + 1;
+    end
+
+    lohi = lohi(1:k, :);                % [min max] per group
+    ID   = mean(lohi, 2);               % representative (group mean)
+
+    % map group labels back to original order/shape
+    G = zeros(n,1);
+    G(ord) = Gs;
+    G = reshape(G, size(x));            % same shape as input
+    ranges = lohi;
+end
+
     end
 end

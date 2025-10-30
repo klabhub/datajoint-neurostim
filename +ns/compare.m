@@ -1,4 +1,10 @@
 function  [out]  = compare(tbl, r1,r2,pv)
+% Compare rows in a relation/table restricted by r1 with those restricted by 
+% r2. 
+% Returns the comparison table, or generates a scatter plot.
+% EXAMPLE
+
+
 arguments
     tbl (1,1)   % A dj.RelVar (table)
     r1  struct % a DJ restriction 
