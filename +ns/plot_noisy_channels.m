@@ -11,7 +11,7 @@ function plot_noisy_channels(noisyChannels, signal, timepoints, varargin)
 %
 %   Inputs:
 %       noisyChannels - Structure output from find_noisy_channels function.
-%                       Must contain fieldNs like .all, .badBy...
+%                       Must contain fields like .all, .badBy...
 %       signal        - (nChannels x nTimepoints) EEG data matrix or (nEpochs x nChannels x nTimepoints) EEG DaTA.
 %       timepoints    - (1 x nTimepoints) Time vector corresponding to signal.
 %       varargin      - Optional Name-Value pairs:
