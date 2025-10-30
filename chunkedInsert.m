@@ -18,7 +18,7 @@ maxElementsPerChunk = floor(bytesPerInsert / elementSize);
 % Handle cases where individual element is too large.
 if maxElementsPerChunk < 1
     maxElementsPerChunk = 1;  % Ensure at least one element is sent.
-    warning('Individual struct element exceeds bytesPerInsert. Sending one element at a time.');
+    fprintf('Individual struct element exceeds bytesPerInsert. Sending one element at a time.\n');
 end
 
 
@@ -33,18 +33,8 @@ while i <= nrTpls
 
     % Find optimal chunk size for this iteration without exceeding limit
     currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);
-
-    % Double check if the submission exceeds the limit or not
-    thisChunk = i:(i+currentChunkSize-1);
-    while (get_mem_size(tpl(thisChunk)) > bytesPerInsert) && currentChunkSize >1
-
-        currentChunkSize = currentChunkSize - 1;
-        thisChunk = i:(i+currentChunkSize-1);
-
-    end
-
+    thisChunk = i:min(nrTpls,(i+currentChunkSize-1));
     insert(tbl,tpl(thisChunk));
-    
     i = i + currentChunkSize;  % Move to the next chunk
     progress_new = round(100*(i-1)/nrTpls);
     if (progress_new - progress_old) >= 10

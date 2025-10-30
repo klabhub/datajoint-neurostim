@@ -7,7 +7,7 @@ arguments
     x (1,1) py.object
     pv.single (1,1) logical = false
 end
-
+try 
 dtype = string(x.dtype.name);
 numericTypes = ["float64", "float32", "int64", "int32", "int16", "uint8", "bool"];
 isNumericArray = ismember(dtype, numericTypes) && ~strcmp(dtype, "object");
@@ -40,6 +40,12 @@ if isUniform
 else
     warning("Ragged structure detected; returning cell array.");
     m = cellfun(op, asCell, 'UniformOutput', false);
+end
+catch me
+    if contains(me.message,"Python process terminated unexpectedly")
+        terminate(pyenv); %Force Python to quit
+        error("Python process terminated unexpectedly: terminated pyenv to try to recover");
+    end
 end
 end
 

@@ -13,6 +13,6 @@
 %    .TFGPUinference  (1,1) logical
          
 % BK - Sept 2023
-classdef PoseParms < dj.Lookup
+classdef PoseParm < dj.Lookup
     
 end

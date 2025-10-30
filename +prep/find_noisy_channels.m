@@ -145,12 +145,15 @@ function noisyChannels = find_noisy_channels(signal, options)
     end
 
     interp_func = []; % Initialize
-    if runRansacCheck
+    
 
-        if ~exist('+ns/interpolate_by_spherical_spline', 'file')
+   if runRansacCheck && ~exist('+ns/interpolate_by_spherical_spline', 'file')
             error('RANSAC requires the "ns.interpolate_by_spherical_spline.m" function.');
-        end
-        interp_func = options.interpolationMethod; % Assign function handle if needed
+   end
+   
+   % MOz: the interpParams are read from ransac even when ransac is not
+   % used. Better as a separate argument? 
+    interp_func = options.interpolationMethod; % Assign function handle if needed
         switch options.interpolationMethod
 
             case "spherical_spline"
@@ -164,8 +167,7 @@ function noisyChannels = find_noisy_channels(signal, options)
                 interpParams = namedargs2cell(options.ransacDistanceParams);
 
         end
-    end
-
+    
 
     % --- Optional High-pass Filter ---
     processedSignal = double(signal); % Use double for processing
@@ -554,25 +556,16 @@ function noisyChannels = find_noisy_channels(signal, options)
              % If method is robust_z, first check the distribution of
              % correlations
              if strcmp(options.ransacCorrelationThresholdMethod, 'robust_z')
-
-                 [z_corrCoeff, med, var] = robust_z_func(ransacCorrCoeff);
-                 ransacBadWindowCount = sum(z_corrCoeff < options.ransacCorrelationThreshold, 2, "omitnan");
-                 options.ransacAbsoluteCorrelationThreshold = var .* options.ransacCorrelationThreshold + med;
-             
+                 % MOz: BK removed the computation of an absolute threshold
+                 % as it does not seem to be used (and var/med are not
+                 % returned by robust_z_func). Please check.
+                 [z_corrCoeff] = robust_z_func(ransacCorrCoeff,2);
+                 ransacBadWindowCount = sum(z_corrCoeff < options.ransacCorrelationThreshold, 2, "omitnan");               
              end
 
              % Classify based on fraction of bad windows for tested channels
-             testedIndices = find(ransacTested);
-             for i = 1:length(testedIndices)
-                 idx = testedIndices(i);
-                 fractionBad = ransacBadWindowCount(idx) / nRansacWindows;
-                 if fractionBad > options.ransacMaxBadWindows
-                     badRansac_Idx = [badRansac_Idx, idx]; %#ok<AGROW>
-                 end
-             end
-             badRansac_Idx = unique(badRansac_Idx); % Final list of original indices
-             badRansac_Idx = badRansac_Idx(:)'; % make row
-
+             %MOz : BK vectorized this. Please check.
+             badRansac_Idx = find( (ransacBadWindowCount/nRansacWindows > options.ransacMaxBadWindows) & ransacTested)';             
          catch ME_ransac
             warning(ME_ransac.identifier, 'RANSAC check failed during execution: %s', ME_ransac.message);
             badRansac_Idx = []; % Ensure it's empty on error

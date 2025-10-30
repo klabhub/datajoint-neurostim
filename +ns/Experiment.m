@@ -27,7 +27,65 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     end
 
     methods (Access = public)
+        function [v] = ordering(tbl,referenceParadigm)
+            % For a table of experiments, returns a table with three additional
+            % columns representing the ordering of experiments in a
+            % session.
+            %
+            %  INPUT
+            % tbl  an ns.Experiment table
+            % referenceParadigm - The name of the reference paradigm. When absent, the 
+            % first  experiment in the session is considered to be the reference. Sessions 
+            % in which the reference paradigm did not occur are not
+            % included in the table. 
+            %
+            % OUTPUT
+            %  A tablewith the same columns as ns.Experiment plus:
+            % dt - Time [s] between the experiment and the reference experiment
+            %       absolute - Index representing the order of experiments in the
+            %       session (1 = first, 2 =second). Based only on the experiments
+            %       that are in the database.
+            % relative - Index relative to a reference paradigm. (0=
+            %           reference paradigm, -1 is the one just before the reference
+            %           paradigm).
+            %                      
+            % 
+            % EXAMPLE
+            % Consider a session in which one experiment represents a
+            % manipulation (e.g. stimulation) and we want to select experimets
+            % performed before and after that manipulation:
+            %  T = ordering(ns.Experiment,"stimulation")
+            % before =T & 'relative <0'; % The experimens before the
+            % "stimulation" paradigm.
+            % after = T & 'relative >0'; % The experimens after
+            % stimulation.           
+            arguments
+                tbl (1,1) ns.Experiment
+                referenceParadigm (1,1) string = ""
+            end
+            allS = ns.Session & tbl;
+            allE = ns.Experiment & allS;
+            if referenceParadigm == ""
+                reference = aggr(allS,ns.Experiment,'min(starttime)->reference');
+            else
+                reference = proj(allE & sprintf('paradigm="%s"',referenceParadigm),'starttime->reference');
+                if count(reference)==0
+                    fprintf('Reference paradigm %s not found in the experiment table.',referenceParadigm);
+                end
+            end
+            allEWithRef = proj(allE * reference,'COALESCE(TIME_TO_SEC(starttime), 0)-COALESCE(TIME_TO_SEC(reference), 0)->dt','reference');
 
+            % Pair each row with strictly earlier rows in the SAME session
+            earlier = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< starttime';
+            % Count how many earlier rows each current row has, then +1 → rank
+            A= aggr(allEWithRef, earlier, 'count(starttime2)+1->absolute','dt');
+            earlierThanReference = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< reference';
+            B= aggr(allEWithRef, earlierThanReference, 'count(starttime2)+1->rIx');
+            R  =proj(A*B,'absolute-rIx->relative','absolute','dt');
+            
+            % Join back to the base relation to attach the index and dt
+            v = tbl * R;            
+        end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
             % in the table, the plugins they use, and (if requested by setting
@@ -80,6 +138,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tbl (1,1) ns.Experiment
                 pv.strict (1,1) logical = false; % Set to true to require an explicit analyze =1 setting
             end
+            warnState= warning('query');
+            warning('off','DataJoint:longCondition');
             exptWithMetaAnalyze = tbl*ns.ExperimentMeta & proj(ns.ExperimentMeta & 'meta_name="analyze"');
 
             if pv.strict
@@ -96,7 +156,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 notAna = tbl  -fetch(ana);
                 %notAna = tbl & fetch(notAna);
             end
-
+            warning(warnState)
         end
         function v = folder(tbl,root)
             % Return the full path to the experiments in this table
@@ -157,7 +217,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % Create Neurodata without Borders objects for each experiment in a
             % ns.Experiment table.
             %
-            % folder = Folder where the data files will be saved.
+            % root = Folder where a subfolder export will be created with the
+            %           nwb data files.
             %
             % tz  - TimeZone to use for session_Start_time and
             % timestamps_reference_time ["local"]
@@ -183,53 +244,23 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % see ns.Subject for an example
             %
             % nwbExport(ns.Experiment ,general=general, subjectMeta= subjectMeta,
-            %                               folder = "c:/temp");
+            %                               root = "c:/temp/dandi");
             %
             % If you have a conda environment with dandi installed, you can
-            % automate the NWB format validation
-            % condaEnvironment  : the name of the environment that has
-            % access to the nwbinspector and  dandi cli. Specify this to
-            % call nwbinspector. Its output will be written to the Matlab
-            % command line.
-            % In addition, you can do dandi validation, by
-            % specifying the dandi set number
-            % dandiSet : the number of the dandiSet
-            % And if you specify dandiUpload=true, this function will also
-            % try to upload to the dandiarchive.
-            % If you are using the gui-staging.dandiarchive (e.g., to test
-            % your uploading), set dandiStaging =true  (default).
-            % EXAMPLE :
-            %           nwbExport(ns.Experiment ,general=general, subjectMeta= subjectMeta,
-            %                               folder = "c:/temp",
-            %                           condaEnvironment = "nwb",
-            %                           dandiSet = "10000",
-            %                           dandiUpload = true,
-            %                           dandiStaging = false);
-            % will check NWB validation, then dandi validation against
-            % dandiset 10000 and then try to upload to dandiarchive.org.
-            % See https://www.dandiarchive.org/handbook/13_upload/
+            % automate the NWB format validation; see dandi.m for details
             %
-            %  force can be set tot true to regenrate NWB fies, or false to
+            %  force can be set to true to regenerate NWB fies, or false to
             %  skip files that already exist.
             %
-            % NOTE - if you switch between the staging archive and the real
-            % archive, make sure to delete the folder named after the
-            % dandiset number (otherwise the dandi validator will think you
-            % have multiple files with the same name). Using force will do
-            % this for you (but also recreate the nwb files).
             %
-            % BK - 2023,2024
+            % BK - 2023,2024, 2025
             arguments
                 expt (1,1) ns.Experiment % The table of experiments
-                pv.folder (1,1)          % The folder here to save nwb files
+                pv.root (1,1)          % The folder to save nwb files ( in a subfolder called export)
                 pv.force (1,1) =false   % Force creaing the nwb files                                                               , even if it already exists.
                 pv.packages (1,:)= ""  % Inlcude nwb export from tables in these packages
                 pv.tz (1,1) string = "local"   % Time zone (used for data collection and subject dob)
                 pv.general (1,1) struct = struct();  % NWB general structure
-                pv.condaEnvironment (1,:) char  = ''  % The name of conda environment that can call dandi and nwbinspector
-                pv.dandiSet (1,1) string = ""    % The dandiset this is part of.
-                pv.dandiUpload (1,1) logical = false  % Set to true to upload to dandiarchive
-                pv.dandiStaging (1,1) logical = true % Use the dandi-staging site instead of the "real" site
                 pv.subjectMeta (1,1) dictionary  = dictionary(string([]),string([])); % Map subject meta data to NWB subject properties
                 pv.passthrough (1,1) struct = struct();  % Add fields to this struct to specify options for nwb() in some user-defined class.  (*All pv are passed to the nwb fucntion). See sbx.nwbRawData for an example
             end
@@ -239,20 +270,21 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             classesWithNwb =nwbFind("ns.Subject",pv.packages);
 
             % Create the local export folder
-            if exist(pv.folder,"dir") &&  pv.force
-                [success,message] = rmdir(pv.folder,'s');
-                if success
-                    mkdir(pv.folder);
-                else
-                    error('Failed to delete the folder %s (%s)',pv.folder,message);
+            folder = fullfile(pv.root,"export");
+            if exist(folder,"dir")
+                if pv.force
+                    rmdir(folder,'s');
                 end
+            end
+            if ~exist(folder,"dir")
+                mkdir(folder);
             end
             for e = fetch(expt,'*')'
                 try
                     % Loop over experiments (NWB refers to this as a "session", NS uses session to refer to all experiments for
                     % a subject on a given day)
                     uniqueExperimentName = sprintf('%s_%s_%s',e.subject,e.session_date,e.starttime);
-                    fname = fullfile(pv.folder,[strrep(uniqueExperimentName,':','') '.nwb']);
+                    fname = fullfile(folder,[strrep(uniqueExperimentName,':','') '.nwb']);
                     if exist(fname,'file')
                         [~,f]=fileparts(fname);
                         fprintf('%s.nwb already exists, skipping.\n',f);
@@ -298,13 +330,17 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     end
 
                     %% Export all tables that have nwb functionality
+                    % A class that is not linked to the experiment but to
+                    % the session (sbx.PreprocessedRoi) needs information
+                    % on which experiment we are exporting. Pass it in the
+                    % pv.
+                    pv.experiment = e;
                     for cls=classesWithNwb
                         tbl = feval(cls) & e;
                         nwb(tbl,nwbRoot,pv);
                     end
 
                     %% Export to file
-
                     fprintf('Exporting %s ...\n',fname); tic;
                     nwbExport(nwbRoot,fname);
                     fprintf('Export complete (%s)\n',seconds(toc));
@@ -312,85 +348,6 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     fprintf(2,"Failed on %s (%s).\n",fname,me.message)
                 end
             end
-
-            % Validate the local folder
-            if ~isempty(pv.condaEnvironment)
-                % Do validation in a conda environment
-                fprintf('**** Running nwbinspector...\n');
-                inspect = sprintf('cd %s && nwbinspector --config dandi .',pv.folder);
-                status =  system(wrap(inspect,pv.condaEnvironment),'-echo');
-                if status == 0 && pv.dandiSet ~=""
-                    % Dandi validation for  a specfied dataset
-                    if pv.dandiStaging
-                        url = 'api-staging.dandiarchive.org/api';
-                    else
-                        url = 'dandiarchive.org';
-                    end
-                    dandiFolder = fullfile(pv.folder,pv.dandiSet);
-                    % Remove existing sub folder that contains symlinks to the
-                    % nwb files previously stored. Then validate fresh (without
-                    % this dandi validation fails as it thinks some of the
-                    % symlinks are files with the same identifiers).
-                    if exist(dandiFolder,"dir")
-                        rmdir(dandiFolder,'s')
-                    end
-                    mkdir(dandiFolder);
-                    % Download the yaml file.
-                    fprintf('**** Downloading dandiset yaml file ...\n');
-                    dandiDownload  = sprintf('cd %s && dandi download --download dandiset.yaml https://%s/dandiset/%s/draft/',pv.folder,url,pv.dandiSet);
-                    status =  system(wrap(dandiDownload  ,pv.condaEnvironment),'-echo');
-                    if status~=0
-                        fprintf(2,'dandi download failed. See above for command line output.\n')
-                    end
-
-                    fprintf('**** Organizing and validating dandiset %s ...\n',pv.dandiSet);
-                    % Force session_id in the name of the file as otherwise
-                    % dandi tries to rename the file to subject.nwb and
-                    % when later sessions are added, they get random
-                    % suffixes to disambiguate. This seems cleaner.
-                    dandiValidation  = sprintf('cd %s && dandi organize --required-field session_id .. && dandi validate .',dandiFolder);
-                    status =  system(wrap(dandiValidation  ,pv.condaEnvironment),'-echo');
-                    if status == 0 && pv.dandiUpload
-                        % Upload to dandiarchive
-                        if pv.dandiStaging
-                            opt = '-i dandi-staging';
-                        else
-                            opt = '-i dandi';
-                        end
-                        fprintf('**** Uploading dandiset %s ...\n',pv.dandiSet); tic;
-                        upload  = sprintf('cd %s && dandi upload %s .',dandiFolder,opt);
-                        [status,stdout] =  system(wrap(upload  ,pv.condaEnvironment));
-                        if status==0
-                            fprintf('*** Upload complete (%s)\n',seconds(toc));
-                        else
-                            fprintf('%s\n',stdout)
-                            fprintf(2,'dandi upload failed. See above for command line output.\n')
-                        end
-                    else
-                        fprintf(2,'dandi validation failed. See above for command line output.\n')
-                    end
-                else
-                    fprintf(2,'nwbinspector validation failed. See above for command line output.\n')
-                end
-            end
-
-            function cmd = wrap(dandiCmd,condaEnvironment)
-                cfd = fileparts(mfilename('fullpath'));
-                toolsPath = fullfile(fileparts(cfd),'tools');
-                condaFldr = getenv('NS_CONDA');
-                if isempty(condaFldr) || ~exist(condaFldr,"dir")
-                    error('Please set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
-                end
-                % The batch command activates conda, then
-                % calls the dandiCMd
-                if ispc
-                    cmd = sprintf('"%s\\nsswb.bat" %s\\Scripts\\activate.bat %s "%s" ',toolsPath,condaFldr,condaEnvironment,dandiCmd);
-                else
-                    cmd = sprintf('bash "%s/nsnwb.sh" "%s" "%s"  "%s"',toolsPath,condaFldr, condaEnvironment,dandiCmd);
-                end
-            end
-
-
         end
 
         function showConditions(tbl,pv)
@@ -616,6 +573,25 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
 
         end
+
+        function [isOk, t] = getTimepointsAroundTrials(expt,t,halfWidth)
+            %  Identify timepoints in t (ms) that are between firstFrame and
+            % trialStopTime  with slack of halfWidth (ms) on either end. 
+            arguments
+                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
+                t (1,:) double 
+                halfWidth (1,1) double 
+            end
+            start = get(expt, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
+            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');            
+            isOk = false(size(t));
+            for ii = 1:length(start)
+                isOk = isOk |  (t>= (start(ii)-halfWidth) & t< (stop(ii)+halfWidth));
+            end                
+            if nargout > 1, t  = t(isOk); end
+        end
+
+
         function updateWithFileContents(tbl,cic,pv)
             % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
@@ -712,6 +688,14 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     end
                 end
 
+            end
+        end
+
+        function addMissingFiles(tbl)
+            % Check for any files that should have been added by populate(ns.File)
+            % but, for some reason, weren't.
+            for key = fetch(tbl)'
+                addMissingFiles(ns.File,key)
             end
         end
     end

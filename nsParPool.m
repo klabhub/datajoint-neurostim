@@ -19,12 +19,12 @@ function pool = nsParPool(pv)
 %   end
 % end
 %
-% If you want to use the parfor with 10 workers, call setenv("NS_PARFOR",10) 
+% If you want to use the parfor with 10 workers, call setenv("NS_PARPOOL",10) 
 % or you start a parpool directly with a call to parpool() and ensure that
-% NS_PARFOR environment variable is not set (or "")
+% NS_PARPOOL environment variable is not set (or "")
 %
 % To temporarily use the for-loop even with a parpool running, call
-% setenv("NS_PARFOR",0)
+% setenv("NS_PARPOOL",0)
 %
 % If this function creates the pool, SpmdEnabled is set to false by
 % default. Set the spmd parameter to true to enable it on the pool.
@@ -33,7 +33,7 @@ function pool = nsParPool(pv)
 % environment variable (you can use this to start a pool manually for
 % instance, but using that in code defeats the purpose of the function).
 arguments
-    pv.nrWorkers = str2double(getenv("NS_PARFOR"));
+    pv.nrWorkers = str2double(getenv("NS_PARPOOL"));
     pv.spmdEnabled = false
 end
 pool = gcp("nocreate");
@@ -42,7 +42,7 @@ if isnan(pv.nrWorkers)
     % exists     
 elseif pv.nrWorkers==0
     % Explicitly disallow using a pool (but do not close it).
-    pool = [];
+    pool = parallel.Pool.empty;
 elseif isempty(pool)
     % create a pool with the requested number of workers
     pool = parpool('Processes',pv.nrWorkers,'SpmdEnabled',pv.spmdEnabled);

@@ -2,7 +2,7 @@
 #  Paradigms associated with this database
 name         :  varchar(255)     # A  unique name for this paradigm
 ---
-description : varchar (255)     # Short description
+description = NULL : varchar (255)     # Short description
 mintrials  = 1  : smallint          # Only experiments with at least this number of trials are valid
 from = NULL : datetime          # Only experiments from this day onward (optional)
 to   = NULL : datetime          # Only experiments until this day (optional)

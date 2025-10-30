@@ -21,8 +21,8 @@ if pv.keepNaN
         isnanCol = isnan(col);
 
         % Find runs of NaNs
-        nanStarts = T.Time(diff([false; isnanCol]) == 1);
-        nanEnds   = T.Time(diff([isnanCol; false]) == -1);
+        nanStarts = T.Time(diff([false(1,size(isnanCol,2)); isnanCol]) == 1);
+        nanEnds   = T.Time(diff([isnanCol; false(1,size(isnanCol,2))]) == -1);
 
         %Mask bad zones in the interpolated result
         for i = 1:length(nanStarts)

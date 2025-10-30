@@ -214,8 +214,19 @@ classdef Dimension < dj.Manual & dj.DJInstance
                         [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');
                     else
                         ret = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what',["data" "trial"])';
+                        if isempty(ret)
+                            % This experiment did not use the plugin; error in
+                            % the condition specification, skip to the next
+                            % experiment
+                            prmValues = struct([]); % Force a skip
+                            continue;
+                        end
                         prmValues = ret.data;
-                        prmTrials = ret.trial; 
+                        if isempty(ret.trial) && isscalar(unique(ret.data))
+                            prmTrials = (1:nrTrials)';
+                        else    
+                            prmTrials = ret.trial; 
+                        end
                     end
                     if isempty(prmTrials) && isscalar(prmValues)
                         % Global constant.
@@ -309,136 +320,5 @@ classdef Dimension < dj.Manual & dj.DJInstance
             end
             fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);
         end
-        
-        %{ 
-        %TODO better way to define dimensions. Main difference is that
-        %include/exclude is applied first and the full table is passed to
-        %the user for adjustments. Not functional yet due to mym issues
-        %with strings. 
-       function define2(expt,name,plgPrms,pv)
-            % Define a dimension ( a set of conditions) based on the values
-            % of a parameter in a plugin.
-            % EXAMPLE
-            % Define a dimension called frequency based on the frequency
-            % property in the flicker plugin:
-            % define(expt,"frequency", ["flicker" "frequency"])
-            % By default, conditions will be named after the parameter
-            % (e.g., flicker:frequency:10) but a user function can be used 
-            % to make arbitrary mappings based on the specified parameter values.  
-            % Prototype:
-            %   [value,conditionName,conditionPerTrial] = pv.fun(T);
-            % With value a table of parameter values, one per condition 
-            % conditionName a string array of names matching the value
-            % table, and conditionPerTrial a [nrTrials 1] vector mapping
-            % trials to conditions (e.g.  [1 1 2 3] maps trials 1 and 2 to
-            % condition 1 (row 1 in value) , trial 3 to condition 3, and trial 4 to
-            % condition 3.
-            arguments
-                expt (1,1) ns.Experiment
-                name (1,1) string
-                plgPrms (:,:) string {mustBeNonzeroLengthText}                
-                pv.include (1,:) cell = {} % Define only in this subset of trials by specifying a set of allowed values for a plugin parameter
-                pv.exclude (1,:) cell = {} % Define only in this subset of trials by specifying a set of disallowed values for a plugin parameter
-                pv.description (1,1) string ="" % A description to add to the table
-                pv.replace (1,1) logical = false % Set to true to replace (all) existing conditions from this expt and this dimension.
-                pv.atTrialTime (1,1) = 0 % By default a dimension is defined by the parameter value at the start of the trial. Set this to Inf to use the value at the end of the trial (or any other trial time).
-                pv.fun = [] % Function handle that takes a table of all parameter values and returns a table with condition values, names, and the conditionPerTrial.
-            end
-            if ~exists(expt)
-                fprintf('Empty experiment table; no dimensions addded.\n')
-                return;
-            end
-            pvSEPARATOR = ":"; % Between parm and value
-            ppSEPARATOR = "_"; % Between one parm and the next.
-            assert(mod(numel(plgPrms),2)==0,"plgPrms should specify plugin and property pairs.")
-            %% Cleanup before adding
-            existing = (ns.Dimension & 'dimension=''' + name + '''')  & expt ;
-            if pv.replace
-                delQuick(ns.DimensionCondition & existing);
-                delQuick(existing);
-            end
-            % Only process experiments in which this dimension has not already
-            % been defined.
-            expt = expt - proj(existing);
-            exptTpl = fetch(expt);
-            nrExpt = numel(exptTpl);
-            tic
-            fprintf('Defining Dimension %s for %d experiments...\n',name,nrExpt)
-            totalNrTpl=0;
-
-            % loop over experiments
-            for e =1:nrExpt
-                trial  = (1:fetch1(ns.Experiment&exptTpl(e),'nrtrials'))';
-                nrTrials = numel(trial);
-                T=table(trial);
-                % Construct a table with parameter values per trial
-                for i=1:2:numel(plgPrms)
-                    thisName = plgPrms(i) + pvSEPARATOR + plgPrms(i+1);
-                    prmValues = get(ns.Experiment & exptTpl(e),plgPrms(i),'prm',plgPrms(i+1),'atTrialTime',pv.atTrialTime)';
-                    T = addvars(T,prmValues,'NewVariableNames',thisName);
-                end
-
-
-                if isempty(pv.include)
-                    isStayTrials = true(nrTrials,1);
-                else
-                    % Determine which trials meet the specified condition
-                    isStayTrials = false(nrTrials,1);
-                    for r = 1:3:numel(pv.include)
-                        restrictValue = get(ns.Experiment & exptTpl(e),pv.include{r},'prm',pv.include{r+1}, 'atTrialTime',pv.atTrialTime)';
-                        isStayTrials = isStayTrials | ismember(restrictValue,pv.include{r+2});
-                    end
-                end
-                for r = 1:3:numel(pv.exclude)
-                    restrictValue = get(ns.Experiment & exptTpl(e),pv.exclude{r},'prm',pv.exclude{r+1}, 'atTrialTime',pv.atTrialTime)';
-                    isStayTrials = isStayTrials & ~ismember(restrictValue,pv.exclude{r+2});
-                end
-
-                T(~isStayTrials,:) =[];
-
-                if isempty(pv.fun)
-                    % Construct names and values from the table
-                    [value,~,conditionPerTrial] = unique(T(:,2:end),'rows');
-                    conditionName = value.Properties.VariableNames(1)+ pvSEPARATOR + string(value{:,1});
-                    for col =2:width(value)
-                        conditionName= conditionName + ppSEPARATOR + value.Properties.VariableNames(col)+ pvSEPARATOR + string(value{:,col});
-                    end
-                else
-                    % Create value/name using the user-specified function
-                    [value,conditionName,conditionPerTrial] = pv.fun(T);
-                end
-
-                nrConditions = height(value);
-                %% Create tuples
-                tplD = mergestruct(exptTpl(e), ...
-                    struct('dimension',char(name), ...
-                    'description',char(pv.description),...
-                    'plugin',{plgPrms(1:2:end)}, ...
-                    'parameter',{plgPrms(2:2:end)}));
-                tplC = repmat(exptTpl(e),[nrConditions 1]);
-                for c=1:nrConditions
-                    tplC(c).name = char(conditionName(c));
-                    tplC(c).dimension  = char(name);
-                    tplC(c).trials = T.trial(conditionPerTrial==c);
-                    tplC(c).value = table2cell(value(c,:)); % Must store as cell for mym
-                end
-                %% Insert the condition tuples for this experiment as one transaction
-                C =dj.conn;
-                C.startTransaction
-                try
-                    insert(ns.Dimension,tplD);
-                    insert(ns.DimensionCondition,tplC);
-                catch me
-                    C.cancelTransaction;
-                    rethrow(me)
-                end
-                C.commitTransaction;
-                totalNrTpl = totalNrTpl + numel(tplC);
-
-            end
-          
-            fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);
-        end
-        %}
     end
 end

@@ -1,633 +1,168 @@
 %{
-# Preprocessed epoch data, the actual epochs are stored in ns.EpochChannel
-
--> ns.C
--> ns.EpochParm
-trial : int
+# Preprocessed epoch data, with epochs stored per trial and channel in the part table ns.EpochChannel
+-> ns.C             # The continuous data that were epoched
+-> ns.EpochParm     # Parameters used to epoch
+-> ns.Dimension     # Dimension that determines the conditions
 ---
-onset : float
-flag : varchar(32)
+time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
+prep : blob             # Struct with information on preprocessing (.prep) done during epoching
+art   : blob            # Struct with information on artifact removal (.art) done during epoching
 %}
-
 classdef Epoch < dj.Computed & dj.DJInstance
-
-    properties
-
-        data = []
-        frequencies = []
-
+    properties (GetAccess =public,SetAccess = protected)
+        cache table
+        cacheQry (1,1) string =""
     end
-
     properties (Dependent)
-
-        C % ns.C table
-        Experiment % ns.Experiment table
-        EpochParm % ns.EpochParm table
-        EpochChannel
-
-        channels
-        timepoints   
-        conditions
-
+        time
+        samplingRate 
         keySource
-
     end
 
-    methods
-
+    methods %Set/Get
         function v = get.keySource(~)
+            % Restricted to Dimensions listed in EpocjParm
+            % Fetch all TuningParm rows at once
+            allParms = fetch(ns.EpochParm, 'etag', 'dimension','ctag');
 
-            v = ns.C * ns.Experiment * proj(ns.EpochParm,'dimension');
+            if isempty(allParms)
+                % No EpochParm rows - return empty result
+                v = proj(ns.C) * ns.EpochParm * proj(ns.Dimension) & 'FALSE';
+                return;
+            end
+
+            % Build a combined WHERE clause for all EpochParm rows using OR
+            parmClauses = cell(numel(allParms), 1);
+
+            for p = 1:numel(allParms)
+                % Each clause needs both epochtag and dimension
+                parmClauses{p} = sprintf('(ctag="%s" AND dimension = "%s" AND etag ="%s")', ...
+                    allParms(p).ctag,allParms(p).dimension,allParms(p).etag);
+            end
+
+            % Combine all clauses with OR
+            combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
+
+            % Apply combined restriction
+            v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension)) & combinedWhere;
+        end
+
+        function t =get.time(tbl)
+            t = fetchn(tbl, 'time');
+            t = cellfun(@(x) linspace(x(1),x(2),x(3))',t,'UniformOutput',false);
+            if count(tbl)==1
+                t= t{1};
+            end
+        end
         
+        function v = get.samplingRate(tbl)
+           t = fetchn(tbl, 'time');
+           v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);           
         end
     end
 
-    methods (Access = protected)
-
-        function makeTuples(eTbl, key)
-
-            % --- Prep tables, parameters, and check for trials ---
-            % access tables
-            expTbl = ns.Experiment & key;           
-            epTbl = ns.EpochParm & key;
-            cTbl = ns.C & key;
-            srate = cTbl.srate;
-
-            % Absolute clock time in seconds of the first frames of the
-            % trials
-            abs_onsets = expTbl.first_frame_onsets;
-            if isempty(abs_onsets),
-                fprintf('No trials were detected for:\n');
-                disp(key);
-                fprintf('Moving on to the next key...\n');
-                return;
-            end
-            
-            % Start time of trials of interest ('plugin') relative to
-            % first_frame_onsets
-            rel_onsets = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trialtime');                                                      
-            isVld = ~isinf(rel_onsets) & ~isnan(rel_onsets); % trials that were displayed
-
-            % get the actual trial numbers, onset times
-            trial_no = get(expTbl, epTbl{'plugin'}, 'prm', 'startTime', 'what', 'trial');
-            trial_no = trial_no(isVld); % valid subset
-            if isempty(trial_no)
-                fprintf("No epochs were detected for:\n");
-                disp(key);
-                return;
-            else
-                fprintf("\t%d valid trials were found.", length(trial_no));
-            end
-            onsets = abs_onsets(trial_no) + rel_onsets(trial_no); % absolute onsets of trials              
-            t = cTbl.timepoints; % sampling times
-            dt = cTbl.dt; % temporal resolution                  
-            ep_win = epTbl{'epoch_win'}; % Epoch time relative to trial onset
-            ep_timepoints = ep_win(1):dt:ep_win(2);           
-
-            % --- Export signal --
-            t_export = tic;
-            fprintf("Exporting data from ns.CChannel...\n");
-            % fetch as table and concatenate (n_channel, n_timepoints)
-            signal = fetch(ns.CChannel & cTbl, 'signal');
-            signal = horzcat(signal(:).signal)';
-            fprintf("\tExporting is complete..."); toc(t_export);
-
-            % --- Epoch Segmentation ---
-            t_sgm = tic;
-            fprintf("Now segmenting...\n");
-            ep = segment();          
-            fprintf("\t\tSegmentation complete."); toc(t_sgm);
-
-            % --- Epoch Preprocessing ---
-            pv = epTbl{'pv'}; % parametes containing processing steps
-
-            if isfield(pv, 'resample') && pv.resample &&  pv.resample ~= srate % if sampling rate is different than the resampled rate
-
-                ep = eTbl.resample(ep, srate, pv.resample, pv.resample_opts{:});
-                
-            end
-            
-            if isfield(pv, 'detrend') && pv.detrend
-
-                ep = eTbl.detrend(ep);
-
-            end
-
-            if isfield(pv, 'baseline') && pv.baseline
-
-                ep = eTbl.baseline(ep, do.ifwithin(ep_timepoints, pv.baseline_win));
-
-            end
-
-            if isfield(pv, 'rereference') && pv.rereference
-
-                ep(:, cTbl.artifacts.all,:) = NaN; % exclude noisy channels
-                ep = eTbl.rereference(ep, cTbl.channel_coordinates, pv.ref_opts{:});
-
-            end
-
-            % --- Artifact/Outlier Rejection ---
-            % Artifact rejection functions
-            n_art_fun = length(pv.artifact_parm); % could be multiple
-            flags = cell(1,n_art_fun);            
-            epoch_flags = repmat("", length(isVld), 1);
-
-            excludeN = []; % to keep track of the excluded epochs after each artifact rejection function
-            for iFun = 1:n_art_fun
-                
-                fun_str = pv.artifact_parm(iFun).fun;
-
-                t_artN = tic;
-                fprintf("Finding artifacts through: %s.\n", fun_str);
-                if strcmp(fun_str, 'detect_outliers') 
-                    % staple function for artifact rejection, calls
-                    % ns.prep.detect_outlier_epochs within the nested
-                    % function below
-                    funN = @detect_outliers;
-
-                else % custom function
-
-                    % flags = custom_artifact_rejection_function(key, option1=opt_args1, ...)
-                    % within the function:
-                    % function flags = custom_artifact_rejection_function(key, options)
-                    % arguments
-                    % key
-                    % options.exclude = []
-                    % ...
-                    % end
-
-                    funN = str2func(fun_str);
-                end
-                
-                argN = pv.artifact_parm(iFun).args;
-                if ~iscell(argN)
-                    % if the input arguments are not stored in a cell array
-                    % transform it to cell to make compatible for varargin
-                    argN = {argN};
-                end
-                
-                flags{iFun} = funN(key, 'exclude', excludeN, argN{:});
-                % exclude bad epochs from the prior step
-                excludeN = [excludeN; flags{iFun}.all];
-                % update epoch flags
-                epoch_flags = flags{iFun}.flag(epoch_flags);
-                fprintf("\tArtifact detection '%s' complete.", fun_str); toc(t_artN);
-
-            end
-
-            % --- Submission to the server ---
-            t_sub = tic;
-            fprintf("\tNow submitting to the server\n");
-            % Create epoch tuple (n_epochs,1) that contains flags
-            epoch_tpl = mergestruct(key, struct( ...
-                trial = num2cell(trial_no),...
-                onset = num2cell(rel_onsets(isVld)),...
-                flag = num2cell(epoch_flags(isVld))...
-                ));
-            % Insert to Epoch table
-            chunkedInsert(ns.Epoch, epoch_tpl);
-
-            % Create EpochChannel tuple that contains the actual epoch data
-            [n_epochs, n_channels, n_timepoints] = size(ep);            
-            % reshape epoch to flatten the first two dimensions, channels
-            % unravel first, then epochs
-            ep = reshape(permute(ep, [2, 1, 3]), n_epochs*n_channels, n_timepoints);            
-            nonPrimKey = setdiff(fieldnames(epoch_tpl), eTbl.primaryKey); % only keep the primary keys
-            ch_list = num2cell(cTbl.channels);
-            epoch_tpl = mergestruct( ...
-                repelem(rmfield(epoch_tpl, nonPrimKey), n_channels),...
-                struct(channel = repmat(ch_list(:), n_epochs, 1),...
-                signal = num2cell(ep, 2)...
-            ));
-            chunkedInsert(ns.EpochChannel, epoch_tpl);
-            fprintf("\t\tSubmission is complete.\n"); toc(t_sub);
-
-            function ep = segment()
-                
-                % Get indices for each epoch start, onset, and end
-                
-                nTrials = length(onsets);
-                nChannels = size(signal,1);
-                nEpochSamples = length(ep_timepoints);
-                nSample = size(t, 2);
-                                
-                iStart = arrayfun(@(i) do.argmin(abs(t - (onsets(i) + ep_win(1)))), 1:nTrials);
-                % iOnset = iStart + find(ep_timepoints >= 0, 1, 'first') - 1;
-                iEnd = iStart + nEpochSamples - 1;
-               
-                signalN = signal;
-
-                isBefore = iStart <= 0;
-                n_nanpad_presignal = 0;
-                if any(isBefore)
-
-                    n_nanpad_presignal = iStart(find(~isBefore,1,'first')) - iStart(1);
-                    signalN = [nan(nChannels, n_nanpad_presignal), signalN];
-
-                end
-
-                isAfter = iEnd > nSample;
-                if any(isAfter)
-
-                    n_nanpad_postsignal = iEnd(end) - nSample;
-                    signalN = [signalN, nan(nChannels, n_nanpad_postsignal)];
-
-                end
-
-                ep = nan([nTrials, nChannels, nEpochSamples]);
-
-                for iEp = 1: nTrials
-
-                    for iCh = 1:nChannels
-
-                        ep(iEp, iCh, :) = signalN(iCh, n_nanpad_presignal + (iStart(iEp):iEnd(iEp)));
-
-                    end
-
-                end
-
-
-            end
-
-            function flags = detect_outliers(varargin)
-                
-                flags = ns.prep.detect_outlier_epochs(ep, cTbl.srate, 'epoch_no', trial_no, varargin{2:end});
-
-            end            
-            
-        end
-        
-    end
-    
-    methods
-
-        function varargout = transform(eTbl, varargin)
-            % Delete this in future, now all is done within EpochChannel
-                                
-                cTbl = eTbl.C;
-                epTbl = eTbl.EpochParm;
-                etags = unique(epTbl{'etag'},'rows');
-                ctags = unique(cTbl{'ctag'},'rows');
-                files = unique(cTbl{'filename'}, 'rows');
-
-
-                if size(etags,1)>1 || size(ctags,1)>1 || size(files,1) > 1
-                    error("Transformed data contains data from different files and/or preprocessing pipelines.");
-                end
-
-                if isempty(eTbl.data)
-
-                    ep = eTbl.load();
-
-                else
-
-                    ep = eTbl.data;
-
-                end
-                n_arg = nargin - 1;
-                ii = 1;
-
-                while ii <= n_arg
-
-                    argN = varargin{ii};
-                    ii = ii + 1;
-
-                    switch argN
-                        case 'include'
-
-                            argN = varargin{ii};
-                            ep = eTbl.include(ep, argN{:});
-                            
-                            ii = ii + 1;
-                            if ii > n_arg
-
-                                varargout{1} = ep;
-
-                            end
-                            
-                        case 'exclude'
-                        case 'baseline'
-                        case 'detrend'
-                        case 'fft'
-
-                            [ep, ph, fq] = eTbl.do_fft(ep, cTbl.srate, 3);
-                            eTbl.frequencies = fq;
-                            if ii > n_arg
-
-                                varargout{1} = ep;
-                                varargout{2} = ph;
-                                varargout{3} = fq;
-
-                            end
-                            
-                        case 'snr'    
-
-                            argN = varargin{ii}; %options
-                            ii = ii + 1;
-
-                            fq_res = eTbl.frequencies(2)-eTbl.frequencies(1);
-                            fq_bin_skip = argN{1};
-                            fq_bin = argN{2};
-                            
-                            n_bins = round(fq_bin/fq_res);
-                            n_bins_skip = round(fq_bin_skip/fq_res);
-                            mid_bin = n_bins + 1;
-                            kernel = true(1, 2*n_bins + 1);
-                            kernel(mid_bin-n_bins_skip : mid_bin+n_bins_skip) = false;
-
-                            if numel(argN) > 2
-                                method = argN{3};
-                            else
-                                method = @mean;
-                            end
-
-                            noise = eTbl.calculate_noise_(ep, kernel, 3, method);
-                            ep = ep./noise;
-
-                            if ii > n_arg
-                                varargout{1} = ep;
-                                varargout{2} = eTbl.frequencies;
-                            end
-
-                    end
-
-                end
-
-                eTbl.data = ep;
-                
-        end
-
-        function ep = load(eTbl, qry)
-
-            % loads data
-            if nargin < 2 || isempty(qry)
-
-                epTbl = eTbl.EpochChannel;
-
-            else
-
-                epTbl = eTbl.EpochChannel & qry;          
-
-            end
-            %% Fetch data                
-            t_fetch = tic;
-            fprintf('Fetching epochs...');
-            
-            ep = fetch(epTbl , 'signal');
-            ep = cat(1, ep(:).signal);
-
-            % get dimension size of the final ep matrix
-            n_ep = count(eTbl);
-            n_ch = count(ns.CChannel & eTbl.C);
-            n_t = size(ep,2);
-
-            % reshape ep to n_ch by n_ep by n_t
-            ep = reshape(ep, n_ch, n_ep, n_t);
-            %permute to get the desired shape n_ep n_ch, n_t
-            ep = permute(ep, [2, 1, 3]);
-
-            eTbl.data = ep;
-            fprintf("completed.\n"); toc(t_fetch);
-
-        end
-
-        function ep = include(eTbl, ep, pv)
-
-            arguments
-
-                eTbl ns.Epoch
-                ep double
-                pv.channels = []
-                pv.time_window = []
-                
-                pv.trials = []
-                pv.conditions = []
-            
-            end
-
-            if ~isempty(pv.channels)
-
-                isChIn = ismember(eTbl.channels, pv.channels);
-                ep = ep(:,isChIn,:);
-
-            end
-
-            if ~isempty(pv.time_window)
-
-                isTIn = do.ifwithin(eTbl.timepoints, pv.time_window);
-                ep = ep(:,:,isTIn);
-
-            end
-
-            if ~isempty(pv.trials)
-
-                trl = fetch(eTbl,'trial');
-                trl = [trl(:).trial];
-                isTrlIn = ismember(trl, pv.trials);
-
-                ep = ep(isTrlIn, :, :);
-
-            end
-
-            if ~isempty(pv.conditions)
-
-                isTrlIn = ismember(eTbl.conditions, pv.conditions);
-                ep = ep(isTrlIn, :, :);
-
-            end
-            
-
-
-        end
-
-        function c = get.C(eTbl)
-
-            c = ns.C & eTbl;
-
-        end
-
-        function exp = get.Experiment(eTbl)
-
-            exp = ns.Experiment & eTbl;
-
-        end
-
-        function e = get.EpochParm(eTbl)
-
-            e = ns.EpochParm & eTbl;
-
-        end
-
-        function e = get.EpochChannel(eTbl)
-
-            e = ns.EpochChannel & eTbl;
-            
-        end
-
-
-        function ch = get.channels(eTbl)
-
-            ch = eTbl.C.channels;
-            
-        end
-
-        function all_conds = get.conditions(eTbl)
-            
-            cTbl = ns.C & eTbl;
-            n_c_rows = count(cTbl);
-            
-            all_conds = repelem("",count(eTbl),1);
-            prev_ep_idx = 0;
-            for ii = 1:n_c_rows
-
-                eTblN = eTbl & cTbl(ii);
-                n_epN = count(eTblN);
-                dTbl = ns.DimensionCondition & eTblN;
-                dTbl = fetch(dTbl,'trials');
-                trials = fetch(eTblN,'trial');
-                trials = [trials(:).trial]';
-                ep_idx = prev_ep_idx + (1:n_epN);
-    
-                for jj = 1:length(dTbl)
-    
-                  
-                    all_conds(ep_idx(ismember(trials,dTbl(jj).trials))) = dTbl(jj).name;
-                
-                end
-
-                prev_ep_idx = prev_ep_idx + n_epN;
-
-
-            end
-
-        end
-
-        function t = get.timepoints(eTbl)
-
-            cTbl = ns.C & eTbl;
-
-            epTbl = ns.EpochParm & eTbl;
-            ep_win = epTbl{'epoch_win'};
-            dt = cTbl.dt;
-            t = ep_win(1):dt:ep_win(2);
-
-        end
       
-                
-    end  
+    methods (Access = protected)
+        function makeTuples(tbl, key)
+            %% Determine events to align to
+            parmTpl = fetch(ns.EpochParm &key,'prep','art','align','window','channels');
+            conditionTpl = fetch(ns.DimensionCondition&key,'trials');
+            trialsInDimension = cat(1,conditionTpl.trials);
+            alignTpl = get(ns.Experiment &key,parmTpl.align.plugin,prm=parmTpl.align.event,what=["trialtime" "data" "trial"],trial=trialsInDimension);
 
-    methods (Static)
-
-        function ep = resample(ep, old_srate, new_srate, options)
-
-            arguments
-
-                ep
-                old_srate (1,1) {mustBeInteger}
-                new_srate (1,1) {mustBeInteger}
-                options = {}
-
+            noSuchEvent = isinf(alignTpl.trialtime);
+            if any(noSuchEvent)
+                fprintf('Removing %d trials in which the %s.%s event did not occur.\n',sum(noSuchEvent),parmTpl.align.plugin,parmTpl.align.event);
+                alignTpl.data(noSuchEvent) = [];
+                alignTpl.trial(noSuchEvent) =[];
+                alignTpl.trialtime(noSuchEvent) =[];
+            end
+            [trials,ia] = unique(alignTpl.trial,'stable','last');
+            if numel(trials) < numel(alignTpl.trial)
+                fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
+            end
+            if numel(trialsInDimension) > numel(trials)
+                fprintf('%d trials do not have the %s event in %s. Those will not be inclided.\n', numel(trialsInDimension) - numel(trials),parmTpl.align.event,parmTpl.align.plugin);
+            end
+            startTime = alignTpl.trialtime(ia);
+            nrTrials = numel(trials);
+            nrConditions = numel(conditionTpl);
+            condition = repmat("",nrTrials,1);
+            for c=1:nrConditions
+                condition(ismember(trials,conditionTpl(c).trials)) = conditionTpl(c).name;
             end
 
-            ep = resample(ep, new_srate, old_srate, options{:}, Dimension=ndims(ep));
+            if isempty(parmTpl.channels)
+                % Use all channels by default
+                C = ns.C & key;
+                parmTpl.channels = C.channels';
+            end
 
-        end
+            %% Extract aligned segments from ns.C
+            tic;
+            fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
+            T = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+            fprintf("\t Exporting is complete after %s\n",toc);
 
-        function ep = detrend(ep, varargin)
+            %% --- Preprocess epochs ---
+            tic;
+            fprintf("Preprocessing segmented data...\n");
+            [signal,t] = timetableToDouble(T); % [timepoints trials channels ]
+            [signal,t,prepResults] = prep.preprocess(signal,seconds(t),parmTpl.prep,key);
+            [nrSamples,nrTrials,nrChannels] = size(signal); %#ok<ASGLU>
+            fprintf("\t Filtering is complete after %s\n",toc);
+            %% --- Artifact/Outlier Rejection ---
+            tic;
+            fprintf("Artifact detection ...\n");
+            samplingRate = 1./mode(diff(t));
+            parmTpl.art.epoch_no = trials;
+            pv =namedargs2cell(parmTpl.art);
+            [artResult] = prep.artifactDetection(permute(signal,[2 3 1]),samplingRate,pv{:});
+            % Remove epochs that were identified as having artifacts
+            out = ismember(trials,artResult.all);
+            signal(:,out,:) = [];
+            trials(out) = [];
+            condition(out) = [];
+            startTime(out) = [];
+            nrTrials =numel(trials);
+            % Convert object to struct to allow storing in SQL database
+            % with MYM
+            warning('off','MATLAB:structOnObject')
+            artResult = rmfield(struct(artResult),'categories');
+            warning('on','MATLAB:structOnObject')
+            fprintf("\t Artifact detection complete after %s\n",toc);
 
-            n_dim = ndims(ep);
-            ep = permute(ep, circshift(1:n_dim,1));
-            ep = detrend(ep,1,'omitnan', varargin{:});
-            ep = permute(ep, circshift(1:n_dim,-1));
+            %% --- Submit to the server ---
+            tic;
+            fprintf("Submitting to the server\n");
+            epoch_tpl = mergestruct(key, ...
+                struct(time = [t(1) t(end) numel(t)],...
+                prep = prepResults,...
+                art =artResult));
+            % Insert to Epoch table
+            chunkedInsert(tbl, epoch_tpl);
 
-        end
+            % Create EpochChannel tuple that contains the data
+            signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
+            trial = num2cell(repmat(trials,nrChannels,1));
+            condition = cellstr(repmat(condition,nrChannels,1));
+            onset = num2cell(repmat(startTime,nrChannels,1));
+            channel  = num2cell(reshape(repmat(parmTpl.channels,nrTrials,1),nrTrials*nrChannels,1));
 
-        function ep = baseline(ep, isEpWin)
-
-            base = mean(ep(:,:,isEpWin), ndims(ep), 'omitnan');
-            ep = ep - base;
-
-        end
-
-        function ep = rereference(ep, chanLocs, varargin)
-
-            varargin = [varargin, 'channel_locations', chanLocs];
-
-            ep = ns.prep.rereference(ep, varargin{:});
-
-        end
-
-        function [amplitude, phase, frequencies] = do_fft(data, fs, n)
-            % fftSliceReal - Computes FFT amplitude and phase for each slice along the n'th dimension.
-            %                Only includes real frequencies.
-            %
-            % Inputs:
-            %   data: Input multi-dimensional data.
-            %   n: Dimension along which to slice and compute FFT.
-            %   fs: Sampling frequency (optional, default is 1).
-            %
-            % Outputs:
-            %   amplitude: Amplitude of the FFT.
-            %   phase: Phase of the FFT.
-            %   frequencies: Corresponding real frequencies.
-
-            n_dim = ndims(data);
-
-            % Compute FFT for each slice
-            fftResult = fft(data, [], n_dim);
-
-            idx = repmat({':'},1,n_dim);
-            % Calculate real frequencies
-            N = size(data, n);
-            if mod(N, 2) == 0
-                frequencies = (0:N/2) * fs / N;
-                idx{n_dim} = 1:N/2+1;
+            if isempty(trial)
+                fprintf('No epochs remaining after artifact detection');
             else
-                frequencies = (0:(N-1)/2) * fs / N;
-                idx{n_dim} = 1:(N+1)/2;
+                tpl = mergestruct(key, ...
+                    struct(signal =signal,...
+                    trial = trial, ...
+                    onset = onset,...
+                    channel = channel,...
+                    condition = condition));
+
+                chunkedInsert(ns.EpochChannel, tpl);                
+                fprintf("\t Submission is complete after %s.\n",toc);
             end
-
-            amplitude = 2*abs(fftResult(idx{:})/sqrt(N));
-            phase = angle(fftResult(idx{:}));
-
-
         end
-
-        function noise_arr = calculate_noise_(arr, filter_kernel, n_dim, method)
-
-            if nargin < 3 || isempty(n_dim), n_dim = ndims(arr); end
-            if nargin < 4; method = @mean; end
-
-            idx_selector = repmat({':'}, 1, ndims(arr));
-            idx_assigner = repmat({':'}, 1, ndims(arr));
-            
-            n_points = size(arr, n_dim);
-            noise_arr = zeros(size(arr));
-            n_kernel = numel(filter_kernel);
-
-            for i = 1:n_points
-                idx_assigner{n_dim} = i;
-
-                if i <= n_kernel/2 || i > n_points - n_kernel/2
-
-                    noise_arr(idx_assigner{:}) = NaN;
-
-                else
-
-                    idxN = false(1, size(arr,n_dim));
-                    idxN(floor(i+1-n_kernel/2):floor(i+n_kernel/2)) = filter_kernel;
-
-                    idx_selector{n_dim} = idxN;
-
-                    noise_arr(idx_assigner{:}) = method(arr(idx_selector{:}), n_dim);
-
-                end
-
-            end
-
-        end
-
     end
-
 end
 

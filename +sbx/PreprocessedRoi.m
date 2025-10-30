@@ -1,12 +1,12 @@
 %{
 # Properties of a ROI in a session, based on a Preprocessed set.
 -> sbx.Preprocessed
-roi : smallint    #  id within this segmentation 
+roi : smallint    #  id within this segmentation
 ---
 plane = 0: smallint #  plane
 pcell = 0 : float # Probability that the ROI is a neuron
-x        : Decimal(4,0) # x-Pixel location 
-y        : Decimal(4,0) # y-Pixel location 
+x        : Decimal(4,0) # x-Pixel location
+y        : Decimal(4,0) # y-Pixel location
 radius   : Decimal(4,1) # Radius of cell in micron
 aspect   : Decimal(4,1)  # Aspect raio of major/minor axis of a 2D Gaussian fit.
 compact  : Decimal(4,2)  # How compact the ROI is ( 1 is a disk, >1 means less compact)
@@ -21,40 +21,65 @@ classdef PreprocessedRoi < dj.Part
         master = sbx.Preprocessed
     end
 
-    methods  (Access=public)       
+    methods  (Access=public)
         function nwbRoot = nwb(tbl,nwbRoot,pv)
             % Add to NWB root
-            % Read the masks
-            error('Still to be changed after change to dj.Part table')
-            %%   NOTES:
-            % This table is no longer linked to an experiment, but to the session.
-            % Have to adjust nwbExport in ns.Experiment to include this information.
-            % and separately export some or all of the C table entries (which were
-            % previously linked via sbx.Roi)
+            % Read the ROI masks from stat file
+            % Read the associated fluorescence data from CChannel tbl and
+            % store
 
             prep = sbx.Preprocessed & tbl; %
             assert(count(prep)==1,"More than one preprocessed set.NIY");
             stat =  prep.stat; % Reads the stat.npy file
             assert(~isempty(stat),'Stat file not found.');
-            sz = size(fetch1(prep,'img'));
             nrRoi = count(tbl);
-            masks =zeros([fliplr(sz) nrRoi]);
-            % Loop over the roi, setting pixels in the mask to 1.
-            for r=1:nrRoi
-                x =stat(r).xpix;
-                y = stat(r).ypix;
-                roi = r*ones(1,stat(r).npix);
-                ix= sub2ind(size(masks),x,y,roi);
-                masks(ix) =1;
+
+            % Validate that all ROIs have pixel data
+            npixArray = [stat.npix];
+            if any(npixArray == 0)
+                warning('Some ROIs have no pixels, skipping NWB export');
+                return;
             end
+
+            nrPix = sum(npixArray);
+            % Create proper pixel mask format for NWB compound type
+            % NWB expects a table-like structure with columns [x, y, weight]
+            allY = [stat.ypix];
+            allX = [stat.xpix];
+
+            % Ensure we have the expected number of pixels
+            if length(allY) ~= nrPix || length(allX) ~= nrPix
+                error('Mismatch in pixel count: expected %d, got Y:%d, X:%d', nrPix, length(allY), length(allX));
+            end
+
+            % Create the pixel mask as a proper table format
+            % Note: NWB pixel masks are typically stored as [x, y, weight] not [y, x, weight]
+            pixelMaskData = table(...
+                uint32(allX(:)), ...
+                uint32(allY(:)), ...
+                single(ones(nrPix,1)), ...
+                'VariableNames', {'x', 'y', 'weight'});
+
+            % Index where each ROI ends
+            maskIndex = uint64(cumsum(npixArray));
+
+            % Create VectorData and VectorIndex for the pixel masks
+            pixelMask = types.hdmf_common.VectorData(...
+                'data', pixelMaskData, ...
+                'description', 'Pixel masks for ROIs');
+            pixelMaskIndex = types.hdmf_common.VectorIndex(...
+                'target', types.untyped.ObjectView(pixelMask), ...
+                'data', maskIndex);
+
+
             % Add to a plane segmentation
             imgPlane = get(nwbRoot.general_optophysiology,'imaging_plane');
             planeSegmentation = types.core.PlaneSegmentation(...
-                'colnames',{'image_mask'}, ...
-                'description','Segmented by ', ...
-                'imaging_plane',types.untyped.SoftLink(imgPlane),...
-                'image_mask',types.hdmf_common.VectorData('data',masks,'description','roi masks'));
-
+                'colnames', {'pixel_mask'}, ...
+                'description', 'Segmented by Suite2p', ...
+                'imaging_plane', types.untyped.SoftLink(imgPlane), ...
+                'pixel_mask', pixelMask, ...
+                'pixel_mask_index', pixelMaskIndex);
             imgSegmentation  = types.core.ImageSegmentation();
             imgSegmentation.planesegmentation.set('PlaneSegmentation',planeSegmentation);
 
@@ -63,21 +88,29 @@ classdef PreprocessedRoi < dj.Part
             nwbRoot.processing.set('ophys',ophys);
 
             % Collect the signals from the nsCChannel table
-            cChannelTbl = (ns.CChannel & 'ctag="fluorescence"' & expt) & roi.proj('subject','session_date','roi->channel');
-
-            signal = fetchn(ns.CChannel&tbl,'signal');
+            % Here we have to restrict by the pv.experiment to pull only
+            % the data for this experiment and not for all experiments in
+            % the session.
+            ctag = 'fluorescence';
+            cChannelTbl = (ns.CChannel & struct('ctag',ctag) & (ns.Experiment & pv.experiment)) & proj(tbl,'subject','session_date','roi->channel');
+            nrRoiToExport = count(cChannelTbl);
+            if  nrRoiToExport ~=nrRoi
+                fprintf("Exporting %s for %d out of %d ROIs \n",ctag, nrRoiToExport ,nrRoi);                
+            end
+            [signal,roiNr] = fetchn(cChannelTbl,'signal','channel');
+            
             signal = cat(2,signal{:})'; %[nrRoi nrFrames]
-            signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoi 1]);
-            cTpl = fetch(ns.C&tbl,'time','ctag');
+            signal   = types.untyped.DataPipe('data',signal,'ChunkSize',[nrRoiToExport  1]);
+            cTpl = fetch(ns.C&cChannelTbl,'time','ctag');
             assert(numel(cTpl.time)==3,'Time not regularly sampled?');
-            nstime =fetch1(ns.PluginParameter  & (ns.Experiment &tbl) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
+            nstime =fetch1(ns.PluginParameter  & (ns.Experiment &pv.experiment) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
             timeZero  = nstime(1);% Start of first trial =0
             startTime = (cTpl.time(1)-timeZero)/1000; % Align and convert to seconds
             sampleRate = 1000*cTpl.time(3)./(cTpl.time(2)-cTpl.time(1)); % Hertz
             roiTableRegion = types.hdmf_common.DynamicTableRegion( ...
                 'table',types.untyped.ObjectView(planeSegmentation), ...
                 'description','all rois', ...
-                'data',(0:nrRoi-1)');
+                'data',int64(roiNr-1));
             roiResponseSeries = types.core.RoiResponseSeries  ( ...
                 'rois',roiTableRegion, ...
                 'data',signal, ...
@@ -258,26 +291,30 @@ classdef PreprocessedRoi < dj.Part
     methods (Access=?sbx.Preprocessed)
         function makeTuples(tbl,key)
             assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
-   
+
             prep = fetch(sbx.Preprocessed& key,'*');
             micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));
             fldr = unique(fullfile(folder(ns.Experiment & key),prep.folder));
             if ~exist(fldr,"dir")
                 error('Preprocessed data folder %s not found',fldr)
             end
-            planes = dir(fullfile(fldr,'plane*'));
+           % depth0..n has separate recordings at different depths
+           % and plane0..n  has simultaneous recordings at different
+           % dephts. If there is only a single depth, the depth0 folder is
+           % omitted.
+            planes = dir(fullfile(fldr,'plane*')); 
             roisSoFar = 0;
 
             for pl = 1:numel(planes)
                 %% Read npy
-                thisFile = fullfile(fldr,planes(pl).name,'iscell.npy');
+                thisFile = fullfile(planes(pl).folder,planes(pl).name,'iscell.npy');
                 if ~exist(thisFile,"file")
                     error('File %s does not exist',thisFile);
                 end
                 iscell = ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
 
                 % We saved the stat.npy as stat.mat in sbx.Preprocessed
-                thisFile = fullfile(fldr,planes(pl).name,'stat.mat');
+                thisFile = fullfile(planes(pl).folder,planes(pl).name,'stat.mat');
                 if ~exist(thisFile,"file")
                     error('File %s does not exist',thisFile);
                 end
@@ -308,5 +345,5 @@ classdef PreprocessedRoi < dj.Part
         end
     end
 
-   
+
 end

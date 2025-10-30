@@ -68,18 +68,23 @@ trialIDTimeEyelink  = nan(nrTrials,1);
 trialIDTimeEyelink(trials) = [trialIDEvents.sttime]; % The time of all TRIALID events on the eyelink clock
 % Get the equivalent time from Neurostim.
 trialIDTimeNeurostim = get(ns.Experiment & key,'eye','prm','eyeClockTime','atTrialTime',0,'what','clocktime');
-% Fit a line to translate eyelink time to nsTime. Even though some TRIALID
-% events can be lost or delayed, a linear fit does a good job linking the
-% two
-clockParms =  polyfit(trialIDTimeEyelink(~missingTrials),trialIDTimeNeurostim(~missingTrials),1);
-resid = polyval(clockParms,trialIDTimeEyelink(~missingTrials))-trialIDTimeNeurostim(~missingTrials);
-slope = clockParms(1);
-fprintf('Clock residuals: %3.3f ms +/- %3.3f ms, drift %3.3f ms/ms. %d missing TRIALID messages. \n',mean(resid),std(resid),slope-1,sum(missingTrials));
-if (abs(slope-1)>0.5)
-    error('Neurostim-Eyelink Clock skew larger than 0.5 ms/ms detected in edf file %s',filename);
-end
-if (mean(missingTrials)>0.1)
-    warning('More than 10% TRIALIDs are missing from edf file %s. ',filename);
+if nrTrials >3
+    % Fit a line to translate eyelink time to nsTime. Even though some TRIALID
+    % events can be lost or delayed, a linear fit does a good job linking the
+    % two
+    clockParms =  polyfit(trialIDTimeEyelink(~missingTrials),trialIDTimeNeurostim(~missingTrials),1);
+    resid = polyval(clockParms,trialIDTimeEyelink(~missingTrials))-trialIDTimeNeurostim(~missingTrials);
+    slope = clockParms(1);
+    fprintf('Clock residuals: %3.3f ms +/- %3.3f ms, drift %3.3f ms/ms. %d missing TRIALID messages. \n',mean(resid),std(resid),slope-1,sum(missingTrials));
+    if (abs(slope-1)>0.5)
+        error('Neurostim-Eyelink Clock skew larger than 0.5 ms/ms detected in edf file %s',filename);
+    end
+    if (mean(missingTrials)>0.1)
+        warning('More than 10% TRIALIDs are missing from edf file %s. ',filename);
+    end
+else
+    fprintf('Too few trials for a clock fit. Assuming zero drift (almost certainly ok!).\n')
+    clockParms = [1 trialIDTimeNeurostim(1) - trialIDTimeEyelink(1)];
 end
 % Convert eyelink sample time to neurostim time
 time  = polyval(clockParms,double(data.FSAMPLE.time))';
@@ -99,7 +104,7 @@ if isfield(parms,'fillmissing') && any(isMissing,'all')
     signal = fillmissing(signal,parms.fillmissing{:});
 end
 %% Downsample
-if isfield(parms,'downsample')    
+if isfield(parms,'downsample')
     R= ceil(data.RECORDINGS(1).sample_rate/parms.downsample);
     if R>1
         fprintf('Downsampling to %.0f Hz (decimate)...\n',parms.downsample);
@@ -110,7 +115,7 @@ if isfield(parms,'downsample')
             if ~all(isnan(signal(:,ch)))
                 % if fillmissing was successfull, then either all are NaN
                 % or none are Nan. If all are nan then the decimated signal
-                % should also be nan. 
+                % should also be nan.
                 tmp(:,ch) =  decimate(signal(:,ch),R);
             end
         end
@@ -143,8 +148,19 @@ signal  = single(signal);
 
 %% Parse events to add as plugin parameter
 trialStartTime = get(ns.Experiment & key,'cic','prm','firstFrame','what','clocktime');
-
-% Create tpl, pretending this is a regular plugin.
+% nrBlinks = numel(startBlink);
+% startBlinkTrial = nan(nrBlinks,1);
+% % Assign to trial
+% for b= 1:nrBlinks
+%     tmp = find(trialStartTime > startBlinkTime(b),1,'first');
+%     if isempty(tmp)
+%         startBlinkTrial(b)= nrTrials;
+%     else
+%         startBlinkTrial(b) =max(1,tmp-1);
+%     end
+% end
+% startBlinkTrialTime = startBlinkTime- trialStartTime(startBlinkTrial);
+% Create tpl and insert, pretending this is a regular plugin.
 plgTpl= fetch(ns.Experiment &key);
 plgTpl.plugin_name ="edf";
 if exists(ns.Plugin & plgTpl)

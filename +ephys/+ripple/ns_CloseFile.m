@@ -56,8 +56,15 @@ ns_RESULT = 'ns_OK';
 
 fids     = [hFile.FileInfo.FileID];
 errCount = 0;
+%R2025 forward compatibility
+if exist('openedFiles','builtin')
+    openFiles= openedFiles;
+else
+    openFiles = fopen('all');
+end
+
 for i=1:length(fids)
-    if ismember(fids(i),fopen('all'))        
+    if ismember(fids(i),openFiles)        
      errCount = errCount + fclose(fids(i));
     end
 end

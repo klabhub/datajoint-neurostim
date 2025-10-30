@@ -61,7 +61,7 @@ tpi = types.core.TwoPhotonSeries( ...
     'format','raw',...
     'pmt_gain',info.config.pmt0_gain...
     );
-nwbRoot.acquisition.set('2pInternal',tpi);
+nwbRoot.acquisition.set('CalciumImaging',tpi);
 end
 
 function v = getParms(s,fld,default)
@@ -69,7 +69,7 @@ function v = getParms(s,fld,default)
 if isfield(s,fld)
     v =s.(fld);
 else
-    fprintf('sbx.%s does not exist. Using default value: %s\n',fld,string(default));
+    fprintf('[nwbRawData] sbx.%s does not exist in the passthrough parameters. Using default value: %s\n',fld,string(default));
     v = default;
 end
 end

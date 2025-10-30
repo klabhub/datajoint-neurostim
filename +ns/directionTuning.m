@@ -7,10 +7,12 @@ function out = directionTuning(direction,response,parms,npEstimate)
 % INPUT
 % direction -  The direction use in each trial (in degrees) [nrTrials 1]
 % response  -The response in each trial. [nrTrials 1]
-% parms     - parms from ns.Tuning (not used here)
+% parms     - parms from ns.Tuning 
+%   parms.alpha - alpha level for the confidence limits
+%   parms.nrSplitHalves  - Number of split halve validation 
 % npEstimate - the non-parametric estimates of the tuning curve as
 %               determined by ns.Tuning, which are used to setup the
-%               nonlinear parameter optimizatio in a reasonable starting
+%               nonlinear parameter optimization in a reasonable starting
 %               point.
 % OUTPUT 
 % A struct with the following fields:
@@ -28,14 +30,24 @@ function out = directionTuning(direction,response,parms,npEstimate)
 % bootparms # Boostrap estimates of the parameters
 %
 % See also ns.twoHumps
+arguments
+    direction (:,1) double
+    response (:,1) double
+    parms (1,1) struct
+    npEstimate (1,1) struct
+end
+keep=~isnan(response);
+direction =direction(keep);
+response = response(keep);
 
 npAntiAmplitude  = npEstimate.tc(npEstimate.tcx==npEstimate.preferred+180 | npEstimate.tcx==npEstimate.preferred-180);
 fun = @ns.twoHumps;
 %% Fit a parametric (twoHumps) function
 bootfun = @(x,y) solveDirTuning(fun,x,y,npEstimate.min,npEstimate.preferred,npEstimate.peak-npEstimate.min,npAntiAmplitude);
 bootOpts = statset;
-bootOpts.UseParallel = ~isempty(gcp("nocreate")); % Use parallel pool only if the user has started it.
-[bootEstimates]=bootstrp(parms.nrBoot,bootfun,direction(:)',response(:)','Options',bootOpts);
+bootOpts.UseParallel = ~isempty(nsParPool); % Use parallel pool only if the user set the NS_PARPOOL variable>0
+
+[bootEstimates]=bootstrp(parms.nrBoot,bootfun,direction,response,'Options',bootOpts);
 % Determine preferred axis and circular standard deviation
 % Multiply by two in case the preferred swaps
 % between bootstrap sets (i.e. an orientation tuned
@@ -72,7 +84,7 @@ error(2) = 180/pi*sqrt(-2*log(abs(R))); % Circular standard deviation
 ci(:,2) = mod(estimate(2) + error(2)*[-1 1]',360);
 
 fittedCurve = fun(npEstimate.tcx,estimate);
-gof = corr(npEstimate.tc,fittedCurve,'type','Spearman');
+gof = corr(npEstimate.tc(:),fittedCurve(:),'type','Spearman');
 
 residuals = fun(direction,estimate)- response;
 meanR = mean(residuals,"all","omitnan");
@@ -102,16 +114,14 @@ out.splitHalves = splithalves;
 out.r = gof;
 out.bootParms = bootEstimates;
 out.residualZ = residualZ;
-
-
-
 end
 
 
 function estimate = solveDirTuning(fun,direction,spk,npMin,npPreferred,npAmplitude,npAntiAmplitude)
 % Use the optimization toolbox to do a nonlinear least squares
 % fit of the spiking data to the twoHumps function
-
+direction  =direction(:);
+spk=spk(:);
 % Setup the variables and bounds
 offset = optimvar('offset',1,'LowerBound',0,'UpperBound',2*npMin);
 preferred = optimvar('preferred',1,'LowerBound',npPreferred-45,'UpperBound',npPreferred+45);

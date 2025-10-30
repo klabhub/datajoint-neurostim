@@ -1,25 +1,35 @@
 function keyT = jobs (tbl,pv)
 % Utility funciton to get information on the information in the jobs tabel
 % Mainly intended to quickly show which file (errfile) generated which
-% error (message) for which item.
+% error (message) for which item. This can also be used in combination with
+% retryJob to retry a job from this list for debugging.
 %  INPUT
-% 'status'   =Cell string of jobs with a specific status to include {'error'}
+% tbl  - the Jobs table; defaults to ns.Jobs
+% 'status'   =Cell string of status to include {'error'}
 arguments
     tbl (1,1) = ns.Jobs
     pv.status = {'error'}
+    pv.ctag = ""
 end
-[keys,tablename,status, message,stack,timestamp] = fetchn(tbl &struct('status',pv.status),'key','table_name','status','error_message','error_stack','timestamp');
-keyT  = struct2table(catstruct(1,keys{:})); % Add all elements of the key as columns to the table
+if count(tbl)==0;fprintf('No jobs in the %s table\n',tbl.className);return;end
+[key,table_name,status, error_message,error_stack,timestamp,key_hash] = fetchn(tbl &struct('status',pv.status),'key','table_name','status','error_message','error_stack','timestamp','key_hash');
+keyT  = struct2table(catstruct(1,key{:})); % Add all elements of the key as columns to the table
 % Extract the top of the error stack (when relevant)
 errfile = repmat("",[height(keyT) 1]);
-for i=1:numel(stack)
-    if isstruct(stack{i})
-        errfile(i) = string(stack{i}(1).file);
+for i=1:numel(error_stack)
+    if isstruct(error_stack{i})
+        errfile(i) = string(error_stack{i}(1).file);
     end
 end
+
 % Combine and sort
-keyT =addvars(keyT,tablename,status,message,errfile, stack,timestamp);
-keyT = convertvars(keyT,@iscellstr,'string');
-keyT = movevars(keyT,["errfile","message"],"Before",1);
+keyT =addvars(keyT,table_name,status,error_message,errfile, error_stack,timestamp,key_hash,key);
+keyT = convertvars(keyT,@(x) iscellstr(x) || ischar(x),'string'); %#ok<ISCLSTR>
+keyT = movevars(keyT,["errfile","error_message"],"Before",1);
 keyT = sortrows(keyT,"timestamp","descend");
+
+if pv.ctag ~=""
+    keyT = keyT(ismember(keyT.ctag,pv.ctag),:);
+end
+
 end

@@ -11,14 +11,14 @@ function [signal,time,channelInfo,recordingInfo] = read(key,parms)
 % The parms struct contains the following fields
 % .prep -  A unique name to identify the preprocessing instructions (= a row in sbx.PreprocessedParm)
 % .what - 'F'    - Fluorescence
-%         'Fneu'  - Neuropil 
+%         'Fneu'  - Neuropil
 %         'spks'  - deconvolved spikes from suite2p's OASIS
-%         any 'stag' from sbx.SpikesParm  will retrieve the spikes
-%         deconvolved with MLSpike (See sbx.Spikes)
+%         
 % .neuropilfactor - If .what ="F" then setting this to a non-zero value will compute
 %               bacground corrected fluorescence (F-factor*Fneu)
-% .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset. 
+% .restrict - A restriction on sbx.PreprocessedRoi to limit the ROI to a subset.
 %               For instance 'pcell>0.75'
+
 prep = sbx.Preprocessed;
 ks = prep.keySource;
 if ~exists(ks&key)
@@ -33,87 +33,51 @@ end
 % Read the npy results from the suite2p folder and store them in
 % the table.
 %% Determine nstime of each frame in this session
-thisSession =(ns.Session & key);
-allExptThisSession = ns.Experiment & (ns.File & 'extension=''.sbx''') &thisSession;
-analyzeExptThisSession = analyze(allExptThisSession,strict=false);
-nrFramesPrevious = 0;
-for exptThisSession = fetch(analyzeExptThisSession,'ORDER BY starttime')'
-    % Get the info structure that sbx saves
-    info = sbx.readInfoFile(exptThisSession);
-    nrFrames  = info.nrFrames;
-    nrPlanes = info.nrPlanes;
-    if strcmpi(exptThisSession.starttime,key.starttime)
-        mdaq = proj(ns.C & 'ctag=''mdaq'''&exptThisSession,'time')* proj(ns.CChannel  & 'name=''laserOnDig''','signal');
-        assert(exists(mdaq),'%s does not have the requred mdaq//laserOnDig channel yet. populate it first',exptThisSession.starttime)
-        laserOnTTL = fetch(mdaq,'signal','time');
-        laserOnIx = diff(laserOnTTL.signal)>0.5; % Transition from 0-1
-        nstime = linspace(laserOnTTL.time(1),laserOnTTL.time(2),laserOnTTL.time(3));
-        frameNsTime = nstime(laserOnIx);        % Time in ns time.
-
-        % There always appears to be 1 extraneous TTL at the start
-        frameNsTime(1) =[];
-        nrTTL = numel(frameNsTime);
-
-        % Sanity check
-        delta = nrFrames- floor(nrTTL/nrPlanes) ;
-        % Allow a slack of 3 ttls. TODO: make a prep parameter.
-        if delta >0 || delta <=-3
-            error('Cannot map SBX frames to trials; TTL-Frame mismatch (%d TTL %d frames in sbx).\n',nrTTL,nrFrames);
-        else
-            % Assume there were additional extraneous TTLs at the start.
-            frameNsTime=frameNsTime(-delta+1:end);
-        end
-        keepFrameIx = nrFramesPrevious+(1:nrFrames);
-        break; % We have what we need; break the loop over experiments in this session
-    else
-        nrFramesPrevious = nrFramesPrevious +nrFrames;
-    end
-end
-
-
+[keepFrameIx,frameNsTime] = sbx.framesForExperiment(key);
+      
 
 %% Read the .npy or .mat Output
+%TODO handle multidepth sessions. 
 fldr= fullfile(folder(ns.Experiment & key),fetch1(sbx.Preprocessed & key & struct('prep',parms.prep),'folder'));
 planes = dir(fullfile(fldr,'plane*'));
-recordingInfo =sbx.readInfoFile(key);  % Store the info struct
+
 signal=[];
 rois = [];
 maxRoi = 0;
 for pl = 1:numel(planes)
     %% Read npy
     tic;
-    if ismember(parms.what, ["F" "Fneu" "spks"])
+    if ismember(parms.what, ["F" "Fneu" "spks" "dff"])
         % Suite 2p numpy files
-        fprintf('Reading numpy files...\n')
-        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.npy']);
+        fprintf('Reading numpy files...\n')        
+        if parms.what =="dff"
+            filename = "F";
+        else
+            filename = parms.what;
+        end
+                
+        thisFile = fullfile(fldr,planes(pl).name,filename + ".npy");
         if ~exist(thisFile,"file")
             error('File %s does not exist',thisFile);
         end
         thisSignal =  ndarrayToArray(py.numpy.load(thisFile,allow_pickle=true),single=true);
+        framesNotInFile = sum(keepFrameIx > size(thisSignal,2));
+        assert(framesNotInFile==0,"%s has %d too few frames for %s on %s",thisFile,framesNotInFile,key.starttime, key.session_date);
         thisSignal = thisSignal(:,keepFrameIx)';
-        if  parms.what=="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
+        if  filename =="F" && isfield(parms,'neuropilfactor') && parms.neuropilfactor ~=0
             % Compute background/neuropil corrected fluorescence
             neuFile = strrep(thisFile,'F.npy','Fneu.npy');
             Fneu  =  ndarrayToArray(py.numpy.load(neuFile,allow_pickle=true),single=true);
             Fneu = Fneu(:,keepFrameIx)';
             thisSignal = thisSignal - parms.neuropilfactor*Fneu;
         end
-        rois = [rois ;(1:size(thisSignal,2))'+maxRoi];
+        rois = [rois ;(1:size(thisSignal,2))'+maxRoi]; %#ok<AGROW>
         maxRoi = max(rois);
     else
-        %ML Spike files
-        thisFile = fullfile(fldr,planes(pl).name,[parms.what '.mat']);
-        if ~exist(thisFile,"file")
-            error('File %s does not exist',thisFile);
-        end
-        s = load(thisFile,'spikeCount');
-        thisSignal = s.spikeCount(keepFrameIx,:);
-        rois = [rois;fetchn(sbx.Spikes & key,'roi')];        %#ok<*AGROW>
+        error('Unknown what (%s) for sbx.read ',parms.what);
     end
-
-    signal = [signal  thisSignal];
+    signal = [signal  thisSignal]; %#ok<AGROW>
     fprintf('Done in %s.\n',seconds(toc))
-
 end
 
 if isfield(parms,'restrict')
@@ -122,10 +86,23 @@ if isfield(parms,'restrict')
     signal = signal(:,keepRoi);
     rois    = keepRoi;
 end
+
+if parms.what=="dff"
+    assert(all(isfield(parms,["baseline" "sigma" "window"])),"Missing fields for dF/F computation");
+    prepParms = fetch(sbx.Preprocessed &key,'nrplanes','framerate');
+    switch upper(parms.baseline)
+        case "MAXIMIN"
+            [~,signal]= sbx.baseline_maximin(signal,prepParms.framerate/prepParms.nrplanes,parms.sigma,parms.window);
+        otherwise
+        error('Not implemented yet')
+    end    
+end
+
 nrFrames = size(signal,1);
 time = [frameNsTime(1) frameNsTime(end) nrFrames];
 % Note that ROI are numbered across planes. This is matched in
 % sbx.PreprocessedRoi to allow inner joins with CChannel.
 % (see example in sxb.PreprocessedRoi/plotSpatial)
 channelInfo =  struct('nr',num2cell(rois)');
+recordingInfo =struct('dummy',true); 
 end

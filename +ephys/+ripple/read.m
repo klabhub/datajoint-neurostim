@@ -16,6 +16,8 @@ arguments
     parms (1,1) struct % The preprocessing parameters
 end
 import ephys.ripple.*
+recordingInfo = struct;  % nothing yet.
+
 % Determine  which label to use
 switch upper(parms.type)
     case {'MUAE','RAW'}
@@ -79,27 +81,24 @@ if strcmpi(parms.type,'DIGIN')
     if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
     signal = bitValue';
     time =1000*polyval(clockParms,rippleBitTime);
-    channelInfo = struct('name',parms.name,'nr',parms.channel);
-    recordingInfo = struct;
+    channelInfo = struct('name',parms.name,'nr',parms.channel);    
 else
     % An analog channel
     %% Find relevant channels
     entityIx = [];
+    channelNrFound = [];
     for i=1:numel(entities)
         if strcmpi(entities(i).EntityType,'Analog')
             thisChannel = extractAfter(entities(i).Label,label);
             if ~isempty(thisChannel) && ismember(str2double(thisChannel),parms.channels)
                 entityIx = [entityIx i]; %#ok<AGROW>
+                channelNrFound = [channelNrFound str2double(thisChannel)]; %#ok<AGROW>
             end
         end
     end
     nrChannels = numel(entityIx);
-    fprintf('%d channels from this Array in this file\n',nrChannels)
-    if nrChannels ==0
-        signal = []; time = [];channelInfo=[];
-        return;
-    end
-    assert(nrChannels==numel(parms.channels),'Multiple channel matches?')
+    assert(nrChannels>0,"No channels match the parms.channel specification in this file.")
+    fprintf('%d out of %d channels found in this file\n',nrChannels,numel(parms.channels))
     nrSamples = unique([entities(entityIx).Count]);
     assert(isscalar(nrSamples),"The code assumes all %s have the same number of samples",label);
 
@@ -160,17 +159,16 @@ else
     % to time on the neurostim clock.
     time =  polyval(clockParms,timeRipple); % Conver ripple time to nsTime (in seconds)
 
-    recordingInfo = struct;  % nothing yet.
-
+   
     
     %% Filter
-    [signal,time] = ns.CFilter(signal,time,parms);
+    [signal,time] = prep.preprocess(signal,time,parms);
     %% Package output
     % Regualr sampling so reduce time representation and convert to ms.
     time = [1000*time(1) 1000*time(end) nrSamples];
     % Reduce storage (ns.C.align converts back to double
     signal  = single(signal);
-    ch = num2cell(parms.channels);
+    ch = num2cell(channelNrFound);
     [channelInfo.nr] = deal(ch{:});
 
 end
