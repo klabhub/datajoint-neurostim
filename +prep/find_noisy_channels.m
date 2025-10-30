@@ -292,7 +292,7 @@ fprintf('---------------\n');
         fprintf('Checking amplitude criterion...\n');
         if isempty(currentGood_Idx), fprintf(' INFO: Skipping amplitude check (no good channels).\n'); return; end
         originalIndicesSubset = currentGood_Idx;
-        mask = zeros(size(processedSignal)) == 1;
+        mask = false(size(processedSignal));
         mask(currentGood_Idx,:) = abs(processedSignal(currentGood_Idx,:)) > options.highAmplitudeCutOff;
         badAmp_Idx = originalIndicesSubset((mean(mask(currentGood_Idx,:), 2) > options.highAmplitudeMaxRatio));
         badAmp_Idx = badAmp_Idx(:)'; % make row
