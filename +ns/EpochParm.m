@@ -2,7 +2,7 @@
 
 # Epoching parameters to segment trial data. All times are relative to the plugin time
 
-etag : varchar (32) # unique tag
+etag : varchar(32) # unique tag
 paradigm : varchar(32)
 dimension : varchar(32) # Condition from the dimension table
 ---
@@ -25,7 +25,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 'Dimension table does not contain dimension value of "%s"', tuples.dimension);
             assert(ismember(tuples.plugin, dimTbl{"plugin"}), ...
                 'Dimension table does not contain plugin value of "%s"', tuples.plugin);
-            pv = gen.struct_to_varargin(tuples.pv);
+            pv = namedargs2cell(tuples.pv);
             tuples.pv = self.validate_pv(pv{:});
 
             % Inherited function after validation
@@ -40,6 +40,8 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
 
             arguments
 
+                pv.resample (1,1) {mustBeNumeric} = 0
+                pv.resample_opts = {}
                 pv.detrend (1,1) {mustBeLogicalOrNumeric} = 0
                 pv.baseline (1,1) {mustBeLogicalOrNumeric} = 0
                 pv.baseline_win {validateBaselineWin} = []

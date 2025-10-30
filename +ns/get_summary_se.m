@@ -32,7 +32,7 @@ function final_summary = get_summary_se(y, sub_id, pv)
 
     if pv.filter_extreme_outliers
 
-        z_scores = gen.robust_z(y);
+        z_scores = do.robust_z(y);
         isValid = abs(z_scores) < pv.outlier_threshold_robust_z;
 
     else
@@ -184,7 +184,7 @@ function [data, var_names] = add_factors_to_table(data, factors_struct)
         temp_table = table();
         for i = 1:numel(var_names)
             factor_name = var_names(i);
-            factor_data = factors_struct.(factor_name);
+            factor_data = cat(1,factors_struct.(factor_name));
 
             if size(factor_data, 1) ~= height(data)
                 error('Factor "%s" has %d rows, but y has %d rows.', ...

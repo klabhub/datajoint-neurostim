@@ -116,7 +116,15 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                             if ii <= n_arg
                                 opts = varargin{ii};
                                 if iscell(opts)
+
                                     ii = ii + 1;
+                                    % if srate is requested, fetch from
+                                    % ns.C
+                                    isSRate = cellfun(@(argN) (ischar(argN) || isstring(argN)) && strcmp(argN, 'get_srate'), opts);
+                                    if any(isSRate)
+                                        opts{isSRate} = cTbl.srate;
+                                    end
+                                    
                                 else
                                     opts = {};
                                 end
@@ -179,8 +187,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             end
             %% Fetch data                
-            t_fetch = gen.Timer().start('Fetching epochs...');
-
+            t_fetch = tic;
+            fprintf('Fetching epochs...');
             % Change it so that ep, trl, and ch is separate for every ctag
             % and etag, currently it should only load when that is the case
             dat = fetch(ecTbl , 'signal');
@@ -200,8 +208,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             ecTbl.data = ep;
 
-            t_fetch.stop("complete.\n");
-            t_fetch.report();
+            fprintf("completed.\n"); toc(t_fetch);
 
         end
 
@@ -223,7 +230,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             if ~isempty(pv.time_window)
 
-                isTIn = gen.ifwithin(ecTbl.timepoints, pv.time_window);
+                isTIn = do.ifwithin(ecTbl.timepoints, pv.time_window);
                 ecTbl.timepoints_ = ecTbl.timepoints(isTIn);
                 ep = ep(:,:,isTIn);
 
@@ -231,7 +238,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             if ~isempty(pv.frequency_window)
 
-                isTIn = gen.ifwithin(ecTbl.frequencies, pv.frequencies_window);
+                isTIn = do.ifwithin(ecTbl.frequencies, pv.frequencies_window);
                 ecTbl.frequencies_ = ecTbl.frequencies(isTIn);
                 ep = ep(:,:,isTIn);
 
@@ -359,7 +366,9 @@ classdef EpochChannel < dj.Part & dj.DJInstance
         function [p, fq] = do_pmtm(data, varargin)
 
             n_ep = size(data,1);
-            
+
+           
+            % Loop thru epochs
             p = cell(n_ep,1);
             for ii = 1:n_ep
 
