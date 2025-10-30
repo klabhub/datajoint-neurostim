@@ -1,9 +1,10 @@
-function [signal,time,result] = preprocess(signal,time,parms,key)
+function [signal,time,result,channels] = preprocess(signal,time,parms,key)
 % Generic downsampling and filtering function.
 % Can be called from read functions (see intan.read for an example)
 % signal = [nrSamples nrChannels]
 % time   = [nrSamples 1] time in seconds
-%
+% channels = [1 nrChannels] - Channel numbers that were kept after
+%                               preprocessing.
 % The user passes a parms struct with any of the following fields.
 % These filtering operations are applied in order (i.e. as ordered by
 % fieldnames(parms). To apply the same filter multiple times, suffix the
@@ -43,12 +44,15 @@ if ismatrix(signal) % [samples channels]
     signal = permute(signal,[1 3 2]); % Add singleton trial dimension
 end
 [nrSamples,nrTrials,nrChannels] = size(signal);
-sampleRate = 1./mode(diff(time));
-if isfield(parms,'badElectrodes')
-    badElectrodes = parms.badElectrodes;
+channels = 1:nrChannels;  
+if isfield(parms,"badChannel")
+    badChannels   = parms.badChannel.channels;
+    removeBadChannels = parms.badChannel.remove;
 else
-    badElectrodes= [];
-end
+    badChannels   = [];
+    removeBadChannels = false;
+end                
+samplingRate = 1./mode(diff(time));
 fn =string(fieldnames(parms))';
 result = struct('dummy',true);
 for f=fn
@@ -64,11 +68,14 @@ for f=fn
     thisParms = parms.(f); % For ease of reference below
     if isfield(thisParms,'options')
         options =thisParms.options;
-    else 
+    else
         options = {};
     end
     tic
-    switch command
+    % Developers: If a command changes not only signal, but also time,
+    % or the badChannels list make sure to update those variables 
+    % too , so that the  next step can continue with the correct information.
+    switch command        
         case "baseline"
             isBaseline = do.ifinrange(time,thisParms.window);
             base = mean(signal(isBaseline,:,:), 1, "omitmissing");
@@ -76,41 +83,41 @@ for f=fn
                 % Ratio as decibel
                 signal = 10 * log10(signal./base);
             else
-                 % Subtract
+                % Subtract
                 signal = signal - base;
             end
         case "resample"
-            [signal,time] =resample(signal, thisParms.frequency, samplingRate,options{:});
+            [signal,time] =resample(signal, thisParms.frequency, samplingRate,options{:});            
         case "zapline"
-            assert(exist("clean_data_with_zapline_plus","file"),"Zapline requires an external toolbox. Get it at https://github.com/MariusKlug/zapline-plus.git and add it to your path")
-           signal = reshape(signal,nrSamples*nrTrials,nrChannels);
-            signal = clean_data_with_zapline_plus(signal,round(sampleRate),thisParms);
-            signal = reshape(signal,nrSamples,nrTrials,nrChannels);            
+            assert(exist("clean_data_with_zapline_plus","file"),"Zapline requires an external toolbox. Get our fork at https://github.com/klabhub/zapline-plus.git and add it to your path")
+            signal = reshape(signal,nrSamples*nrTrials,nrChannels);            
+            signal = clean_data_with_zapline_plus(signal,round(samplingRate),thisParms);
+            signal = reshape(signal,nrSamples,nrTrials,nrChannels);
         case "decimate"
             %% Downsampling using decimate
             % thisParms.frequency => specifies the target frequency
             targetRate = thisParms.frequency; % Set target frequency for decimation
-            R = round(sampleRate/targetRate);
-            fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',sampleRate,targetRate);
+            R = round(samplingRate/targetRate);
+            fprintf('Downsampling from %.0f Hz to to %.0f Hz (decimate)...',samplingRate,targetRate);
             nrSamples = ceil(nrSamples/R);
-            tmp = nan(nrSamples,nrTrials,nrChannels);            
+            tmp = nan(nrSamples,nrTrials,nrChannels);
             for ch = 1:nrChannels
                 for tr = 1:nrTrials
                     tmp(:,tr,ch) =  decimate(signal(:,tr,ch),R);
                 end
             end
             signal =tmp;
-            time = linspace(time(1),time(end),nrSamples)';
+            time = linspace(time(1),time(end),nrSamples)';           
         case "filtfilt"
             %% Notch, Bandpass,etc.
             % Any filter that can be designed with designfilt
             % and applied with filtfilt
             fprintf('Applying filter ...')
-            d = designfilt(options{:},'SampleRate',sampleRate);
-            signal = filtfilt(d,signal);            
+            d = designfilt(options{:},'SampleRate',samplingRate);
+            signal = filtfilt(d,signal);
         case "detrend"
             %% Detrending using the detrend function
-            fprintf('Detrending (%d order)...',thisParms.order)            
+            fprintf('Detrending (%d order)...',thisParms.order)
             signal = detrend(signal,thisParms.order,"omitmissing",options{:});
         case "noisy_channels"
             fprintf('Finding noisy channels...\n')
@@ -123,28 +130,26 @@ for f=fn
             else
                 epoch_mask =  true(nrSamples*nrTrials,1);
             end
-            thisParms.Fs = sampleRate;
+            thisParms.Fs = samplingRate;
             pvPairs = namedargs2cell(thisParms);
-            tmpSignal = reshape(signal(epoch_mask,:,:),sum(epoch_mask)*nrTrials,nrChannels);        
+            tmpSignal = reshape(signal(epoch_mask,:,:),sum(epoch_mask)*nrTrials,nrChannels);
             result.noisy_channels = prep.find_noisy_channels(tmpSignal',pvPairs{:});
             result.noisy_channels.parameters = rmfield(result.noisy_channels.parameters, 'ChannelLocations'); % duplicate
-            badElectrodes = union(badElectrodes,result.noisy_channels.all);
+            badChannels = union(badChannels,result.noisy_channels.all);            
         case "reference"
             fprintf('Re-referencing with %s mode',thisParms.method);
-            signal = reshape(signal,nrSamples*nrTrials,nrChannels);   
-            if ~isempty(badElectrodes)
+            signal = reshape(signal,nrSamples*nrTrials,nrChannels);
+            if isempty(badChannels)
+                referenceChannels = channels; % Use all.
+            else
                 if isfield(thisParms, "handleBads") && strcmpi(thisParms.handleBads, "interpolate")
                     %% Fix here, add option for interpParms{:} and chosing interp_func
-                    signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, ...
-                        setdiff(1:nrChannels, badElectrodes), badElectrodes);
-                    referenceChannels = 1:nrChannels;
+                    signal = ns.interpolate_by_inverse_distance(signal, parms.layout.chanLocs, goodChannels, badChannels);
+                    referenceChannels = channels; % After interp we use all channels
                 else
-                    referenceChannels = setdiff(1:nrChannels,badElectrodes);
+                    referenceChannels = goodChannels; % Use only good channels (i.e. exclude bad)
                 end
-            else
-                referenceChannels = 1:nrChannels;
             end
-
             switch thisParms.method
                 case "average"
                     reference = mean(signal(:,referenceChannels),2,"omitmissing");
@@ -159,19 +164,28 @@ for f=fn
             end
             signal = signal-reference;
             signal = reshape(signal,nrSamples,nrTrials,nrChannels);
+        case "badChannel"
+            % Nothing to do - handled after everything is done
         otherwise
             % Not a defined preprocessing operation, just skip.
             fprintf('Skipping unknown preprocessing operation %s.\n',command);
     end
     fprintf('Done in %d seconds.\n',round(toc));
 
-    % Update after each step (nrChannels does not change, but nrSamples
-    % can)
-    [nrSamples,nrTrials,nrChannels] = size(signal);
-    sampleRate = 1./mode(diff(time)); % Time can change too
+    % Update after each step - channels or time points may have changed
+    [nrSamples,nrTrials,nrChannels] = size(signal);    
+    goodChannels = setdiff(channels,badChannels);
+    samplingRate = 1./mode(diff(time));
 end
 
+% If requested, remove the bad channels
+if removeBadChannels
+    signal(:,:,badChannels) = [];
+    channels(badChannels) =[];
+end
+ 
 if nrTrials ==1
+    % Back to original shape (remove singleton trial)
     signal = squeeze(signal);
 end
 end

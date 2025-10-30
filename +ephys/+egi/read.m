@@ -120,20 +120,21 @@ parms.layout.ChannelLocations = [[MFF.chanlocs.X]', [MFF.chanlocs.Y]', [MFF.chan
 badElectrodes = ephys.egi.badElectrodes(exp_tpl, ...
     struct(filename = 'badElectrodes', extension = '.xlsx'));
 if isfield(badElectrodes, "channel")
-    parms.badElectrodes = badElectrodes.channel;
-    signal(parms.badElectrodes, :) = NaN;
+    parms.badChannel.channels = badElectrodes.channel;    
+    parms.badChannel.remove   = true; 
 else
-    parms.badElectrodes = [];
+    parms.badChannel.channels = [];
+    parms.badChannel.remove = true;
 end
 % Pass to preprocess (needs time in s for filter definitions), returns time
 % in s.
-[signal,neurostimTime,prepResult] = prep.preprocess(signal,neurostimTime/1000,parms,exp_tpl);
+[signal,neurostimTime,prepResult,channels] = prep.preprocess(signal,neurostimTime/1000,parms,exp_tpl);
 
 %% Package output
 % Regular sampling - stored in ms
 neurostimTime = [1000*neurostimTime(1) 1000*neurostimTime(end) numel(neurostimTime)];
 signal = single(signal); % Save space.
-channelInfo  = MFF.chanlocs';
+channelInfo  = MFF.chanlocs(channels)';
 channelInfo(1).nr =NaN;
 nr = cellfun(@(x) str2double(extractAfter(x,'E')),{channelInfo.labels});
 nr = num2cell(nr);
@@ -142,6 +143,7 @@ recordingInfo = mergestruct(MFF.chaninfo,MFF.etc);
 recordingInfo.ref = MFF.ref;
 recordingInfo.srate = MFF.srate; % This is the original rate, not the rate of signal now(which could be downsampled)
 recordingInfo.layout = parms.layout;
+recordingInfo.channels = channels;
 recordingInfo = mergestruct(recordingInfo,prepResult);
 
 %% Add evts to egi plugin
