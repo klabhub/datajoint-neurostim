@@ -140,10 +140,10 @@ end
 interp_func = options.interpolationMethod; % Assign function handle if needed
 switch options.interpolationMethod
     case "spherical_spline"
-        interp_func = @ns.prep.interpolate_by_spherical_spline;
+        interp_func = @prep.interpolate_by_spherical_spline;
         interpParams = options.splineParams;
     case "inverse_distance"
-        interp_func = @ns.prep.interpolate_by_inverse_distance;
+        interp_func = @prep.interpolate_by_inverse_distance;
         interpParams = namedargs2cell(options.distanceParams);
 end
 
