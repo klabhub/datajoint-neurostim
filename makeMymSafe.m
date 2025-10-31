@@ -11,6 +11,10 @@ for t = 1:numel(tpl)
     nrFields= numel(fn);
     for f=1:nrFields
         thisField= tpl(t).(fn{f});
+        if isobject(thisField) && ~isstring(thisField)
+            thisField = struct(thisField);
+            tpl(t).(fn{f}) = thisField;
+        end
         switch class(thisField)
             case 'struct'
                     tpl(t).(fn{f}) = makeMymSafe(thisField); % Recurse
