@@ -144,7 +144,9 @@ recordingInfo.ref = MFF.ref;
 recordingInfo.srate = MFF.srate; % This is the original rate, not the rate of signal now(which could be downsampled)
 recordingInfo.layout = parms.layout;
 recordingInfo.channels = channels;
-recordingInfo = mergestruct(recordingInfo,prepResult);
+
+recordingInfo = mergestruct(recordingInfo,struct('badBy',prepResult.noisy_channels));
+recordingInfo = makeMymSafe(recordingInfo);
 
 %% Add evts to egi plugin
 % Define the tpls.

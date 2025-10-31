@@ -43,27 +43,27 @@ arguments
     options.highAmplitudeMaxFrac (1,1) {mustBeNumeric, mustBePositive, mustBeLessThanOrEqual(options.highAmplitudeMaxFrac, 1)} = 0.25
 
     % Deviation
-    options.deviationThreshold (1,1) {mustBeNumeric, mustBePositive} = 3.291
+    options.deviationThreshold (1,1) {mustBeNumeric, mustBePositive} = 5
 
     % Correlation
     options.correlationFrequencyCutoff (1,1) {mustBeNumeric, mustBePositive} = 50
     options.correlationWindowSeconds (1,1) {mustBeNumeric, mustBePositive} = 1
     options.correlationThreshold (1,1) {mustBeNumeric, mustBeInRange(options.correlationThreshold, 0, 1)} = 0.4
-    options.correlationMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.correlationMaxBadWindows, 0, 1)} = 0.1
+    options.correlationMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.correlationMaxBadWindows, 0, 1)} = 0.01
     options.correlationUseMovingWindow (1,1) {mustBeNumericOrLogical} = false % Flag for centered moving window (step=1) vs. non-overlapping
 
     % HF Noise
     options.noiseFrequencyCutoff (1,1) {mustBeNumeric, mustBePositive} = 50
-    options.noiseThreshold (1,1) {mustBeNumeric, mustBePositive} = 3.291
+    options.noiseThreshold (1,1) {mustBeNumeric, mustBePositive} = 5
 
     % RANSAC
     options.enableRansac (1,1) {mustBeNumericOrLogical} = true
     options.ransacWindowSeconds (1,1) {mustBeNumeric, mustBePositive} = 4
-    options.ransacChannelFraction (1,1) {mustBeNumeric, mustBeInRange(options.ransacChannelFraction, 0, 1, 'exclusive')} = 0.1
+    options.ransacChannelFraction (1,1) {mustBeNumeric, mustBeInRange(options.ransacChannelFraction, 0, 1, 'exclusive')} = 0.25
     options.ransacCorrelationThresholdMethod = 'absolute' % if 'robust_z'
-    options.ransacCorrelationThreshold (1,1) {mustBeNumeric} = 0.5 %, mustBeInRange(options.ransacCorrelationThreshold, 0, 1)} = 0.5
+    options.ransacCorrelationThreshold (1,1) {mustBeNumeric} = 0.75 
     options.ransacCorrelationMethod = 'Spearman' % Rank correlation ny default
-    options.ransacMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.ransacMaxBadWindows, 0, 1)} = 0.5
+    options.ransacMaxBadWindows (1,1) {mustBeNumeric, mustBeInRange(options.ransacMaxBadWindows, 0, 1)} = 0.4
     options.ransacMinimumSampleSize (1,1) {mustBeNumeric, mustBeInteger, mustBePositive} = 5 % minimum number of channels needed as predictors
     options.rngSeed {mustBeNumeric, mustBePositive} = []
 
@@ -89,17 +89,14 @@ end
 options.fs = fs; % To pass to sub functions.
 
 % --- Optional High-pass Filter ---
-
-if isempty(options.highPassCutoff) || options.highPassCutoff ==0
-    processedSignal = signal; 
-else
+if ~isempty(options.highPassCutoff)  && options.highPassCutoff > 0    
     fprintf('INFO: Applying temporary %.2f Hz high-pass filter...\n', options.highPassCutoff);
     try
         nyquist = fs / 2;
         if options.highPassCutoff < nyquist
             hp_cutoff_norm = options.highPassCutoff / nyquist;
             [b, a] = butter(4, hp_cutoff_norm, 'high');
-            processedSignal = filtfilt(b, a, signal')'; % Apply filter
+            signal = filtfilt(b, a, signal')'; % Apply filter
         else
             warning('High-pass cutoff >= Nyquist. Skipping filter.');
         end
@@ -119,20 +116,18 @@ for f =1:numel(funs)
     fprintf('Checking %s:\n ',funName)
     thisOptions = options;
     thisOptions.channelLocations = thisOptions.channelLocations(goodChannels,:);
-    thisBad = funs{f}(processedSignal(goodChannels,:,:)-robustMean,thisOptions);
+    thisBad = funs{f}(signal(goodChannels,:,:)-robustMean,thisOptions);
     BB.(funName) = goodChannels(thisBad);
-    fprintf('Found %d bad channels.\n',sum(thisBad),funName)
+    fprintf('Found %d bad channels.\n',sum(thisBad))
     goodChannels = setdiff(channels,BB.all);
     if isempty(goodChannels)
         fprintf('No good channels left. Exiting... \n');
         break;
     end
-    if  options.interpolationMethod ~="" && any(thisBad)
+    if options.interpolationMethod ~="" && any(thisBad)
         %Robust referencing - recalculate the global mean 
-        intpSignalForMean = options.interp_func(processedSignal, options.channelLocations,goodChannels, BB.all, options.interpParams{:});
-        robustMean = median(intpSignalForMean, 1);
-        nexttile
-        plot(robustMean(1:1000))
+        intpSignalForMean = options.interp_func(signal, options.channelLocations,goodChannels, BB.all, options.interpParams{:});
+        robustMean = median(intpSignalForMean, 1);       
     end    
 end
 
@@ -248,7 +243,7 @@ try
     nyquist = options.fs / 2;
     if options.noiseFrequencyCutoff < nyquist
         [b_noise, a_noise] = butter(4, options.noiseFrequencyCutoff  / nyquist, 'low');
-        lowFreqComponent = filtfilt(b_noise, a_noise, double(signal'))';
+        lowFreqComponent = filtfilt(b_noise, a_noise, signal')';
 
         highFreqComponent = signal - lowFreqComponent;
         madHighFreq = mad(highFreqComponent, 1, 2); % Use function handle
