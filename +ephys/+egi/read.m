@@ -1,7 +1,7 @@
 function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 % Function to read MFF files created by EGI. The reading itself uses the
-% mffmatlabio toolbox by Arno Delorme  (https://github.com/arnodelorme/mffmatlabio).
-% This toolbox must be on the  matlab search path.
+% mffmatlabio plugin by Arno Delorme installed as a plugin in EEGLab.
+% EEGLab must be on the search path.
 %
 % This relies on the convention that all EGI mff files are named
 % subject.paradigm_day_time.mff and stored in the same directory as the
@@ -27,22 +27,30 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 % Oct 25 - Fixed a bug in time alignment by using MFF.event.latency instead
 % of .begintime
 %       - Added events to plugin parameter table
+% Nov 25 -  Moved to using EEGLab and its plugins.
 
+assert(exist("eeglab.m","file"),'egi.read needs EEGLab. Install it with the MFFMatlabIO and the PREP Pipeline extensions/plugins from https://github.com/sccn/eeglab ')
 %% Fetch the file to read (ns.C has already checked that it exists)
 exp_tpl = ns.Experiment & key;
 mffFilename = strrep(fullfile(folder(exp_tpl),key.filename),'\','/'); % Avoid fprintf errors
 
 %% Read the raw signals from the mff.
-fprintf("Start reading from " +  mffFilename + "...")
-MFF = mff_import(char(mffFilename));
-[nrChannels,nrSamples] = size(MFF.data); %#ok<ASGLU>
+fprintf("Using eeglab plugin to read from " +  mffFilename + "...")
+% Read all events
+eventsToRead = {'classid','code','description','label','mffkey_BLCK','mffkey_COND','mffkey_DESC','mffkey_FLIP','mffkey_FLNM','mffkey_PDGM','mffkey_SUBJ','mffkey_TRIA','mffkey_TTIM','mffkeys','mffkeysbackup','name','relativebegintime','sourcedevice','tracktype'};
+% Use the EEG Lab plugin to read the file, with all events.
+eegLabSave = 0 ; % Don't save in eeglab
+correctEvents = 0; %  Don't correct events with UTF chars/
+EEG = pop_mffimport(char(mffFilename),eventsToRead,eegLabSave,correctEvents);
+[nrChannels,nrSamples] = size(EEG.data);
 fprintf('Done.\n');
 
-%% Read events
-code = {MFF.event.code};
-brec = MFF.event(strcmpi('BREC',code)); % neurostim sends this BREC event
+%% Process BREC event to ensure the neurostim and mff file correspond to the same experiment
+nrEvts = numel(EEG.event);
+eventCode = {EEG.event.code};
+brec = EEG.event(strcmpi('BREC',eventCode)); % neurostim sends this BREC event
 assert(~isempty(brec),"No BREC event found in " +  mffFilename + ". Cannot match this EGI file to Neurostim");
-MFF.event(strcmpi('BREC',code)).mffkey_TRIA= '1'; % Force it to be in TRIAL 1 (not defined)
+EEG.event(strcmpi('BREC',eventCode)).mffkey_TRIA= '1'; % Force it to be in TRIAL 1 (not defined)
 [fldr,nsFile,~] = fileparts(file(ns.Experiment &key));
 % Check that this MFF file was created by the current neurostim file.
 if ~contains(brec.mffkey_FLNM,nsFile)
@@ -59,36 +67,32 @@ if ~contains(brec.mffkey_FLNM,nsFile)
 end
 
 %% Preprocess the events to get trial and time.
-nrEvts = numel(MFF.event);
-isBeginTrial =strcmpi({MFF.event.code},'BTRL');
+isBeginTrial =strcmpi(eventCode,'BTRL');
 trial = nan(nrEvts,1);
-trial(isBeginTrial) = cellfun(@str2num,{MFF.event(isBeginTrial).mffkey_TRIA});
+trial(isBeginTrial) = cellfun(@str2num,{EEG.event(isBeginTrial).mffkey_TRIA});
 trial(1) =1; % Group events before trial 1 with trial 1
 trial = fillmissing(trial,"previous");
 trial =num2cell(trial);
-[MFF.event.trial]=deal(trial{:});
-
+[EEG.event.trial]=deal(trial{:});
 % Determine the time of all events (on the EGI clock)
 % Use the .latency field of the MFF.event, not the begintime (which can be
 % offset by a few hundred ms).
-eventEgiTime = ([MFF.event.latency]-1)/MFF.srate; % This is seconds since the start of the data in EGI
+eventEgiTime = ([EEG.event.latency]-1)/EEG.srate; % This is seconds since the start of the data in EGI
 eventEgiTime  =num2cell(eventEgiTime );
-[MFF.event.egitime] = deal(eventEgiTime {:});
+[EEG.event.egitime] = deal(eventEgiTime {:});
 
 
 %% Read the properties of cic and the egi plugin for this experiment
 % Synchronize clocks.
 % Using NTPSync results in pretty much perfectly aligned clocks (no
-% drift,little offset). But we check anyway using the Begin Trial (bTRL)
-% events.
+% drift). But we check anyway using the Begin Trial (bTRL) events.
 prms  = get(exp_tpl,{'cic','egi'});
 trialStartTimeNeurostim  = prms.cic.trialNsTime(2:end);%
-trialStartTimeEgi = [MFF.event(strcmpi(code,'BTRL')).egitime];
+trialStartTimeEgi = [EEG.event(strcmpi(eventCode,'BTRL')).egitime];
 % The number of trials should match
 assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
 % Determine clock drift, and the offset between the first trial start event
 % in neurostim and in EGI.
-%brecTimeEgi  = datetime(brec.begintime(1:26),'InputFormat','uuuu-MM-dd''T''HH:mm:ss.SSSSSS');
 if numel(trialStartTimeNeurostim)>1
     clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
     fprintf(['Average Clock drift is ' num2str((clockParms(1)-1000)) ' ms/s and the offset is ' num2str(clockParms(2)) ' ms \n' ]);
@@ -99,54 +103,135 @@ else
     % takes the s from egi to ms used here.
     clockParms = [1000 trialStartTimeNeurostim]; % Assming zero drift, zero offset
 end
-
 % EGI samples events regularly:
-egiSampleTime = (0:nrSamples-1)/MFF.srate;
+egiSampleTime = (0:nrSamples-1)/EEG.srate;
 neurostimTime = polyval(clockParms,egiSampleTime);
 % Now we have a time axis for the EGI data in Neurostim time
 % Keep only from the start of the first until the end of the last trial.
 stay = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialStopTimeNsTime(end);
-signal =double(MFF.data(:,stay)');
-neurostimTime = neurostimTime(stay);
+channels = 1:nrChannels;
 
-%% Preprocess if requested
+%% Preprocess with EEGLab PREP pipeline if requested
+if isfield(parms,'eeglab')
+    if isfield(parms.eeglab,'prep')
+        % Use the PREP pipelin eegLab plugin for preprocessing
+        % All unspecified values will be taken from the PREP defaults, except the
+        % file paths (which we set to match the MFF file).
+        if isstruct(parms.eeglab.prep)
+            % The user specified parameters that differ from the PREP defaults
+            % using a structure with structure fields.
+        elseif islogical(parms.eeglab.prep) && parms.eeglab.prep
+            % User had parms.prep =true
+            % Use all PREP defaults
+            %{
+        % Not needed documentation only
+        parms.prep.general.errorMsgs  = 'verbose';
+        parms.prep.boundary.ignoreBoundaryEvents = false;
+        parms.prep.resample.resampleOff = true;
+        parms.prep.detrend.detrendChannels = 1:nrChannels;
+        parms.prep.detrend.detrendType = 'high pass';
+        parms.prep.detrend.detrendCutOff = 1;   % Hz
+        parms.prep.detrend.detrendStepSize = 0.02; % Seconds
+        %parms.prep.globaltrend =- not used.
+        parms.prep.linenoise.lineNoiseMethod = 'clean';
+        parms.prep.linenoise.lineNoiseChannels = 1:nrChannels;
+        parms.prep.linenoise.Fs = EEG.srate;
+        parms.prep.linenoise.lineFrequencies = 60:60:round(EEG.srate/2);
+        parms.prep.linenoise.p  = 0.01;    
+        parms.prep.linenoise.fScanBandwith = 2;
+        parms.prep.linenoise.taperBandwith = 2;
+        parms.prep.linenoise.taperWindowSize = 4;
+        parms.prep.linenoise.taperWindowStep =1;
+        parms.prep.linenoise.tau =100;
+        parms.prep.linenoise.pad =0 ;
+        parms.prep.linenoise.fPassBand = [0 EEG.srate/2];
+        parms.prep.linenoise.maximumIterations = 10;
+        parms.prep.reference.srate = EEG.srate;
+        parms.prep.reference.samples = nrSamples;
+        parms.prep.reference.robustDeviationThreshold = 5;
+        parms.prep.reference.highFrequencyNoiseThreshold = 5;
+        parms.prep.reference.correlationWindowSeconds =1;
+        parms.prep.reference.correlationThreshold = 0.4;
+        parms.prep.reference.badTimeThreshold = 0.01;
+        parms.prep.reference.ransacOff = false;
+        parms.prep.reference.ransacSampleSize = 50;
+        parms.prep.reference.ransacChannelFraction = 0.25;
+        parms.prep.reference.ransacCorrelationThreshold = 0.75;
+        parms.prep.reference.ransacUnbrokenTime = 0.4;
+        parms.prep.reference.ransacWindowSeconds = 5;
+        parms.prep.reference.referenceType = 'robust';
+        parms.prep.reference.interpolationOrder = 'post-reference';
+        parms.prep.reference.meanEstimateType = 'median';
+        parms.prep.reference.referenceChannels = 1:nrChannels;
+        parms.prep.reference.evaluationChannels =1:nrChannels;
+        % parms.prep.reference.channelLocations = EEG.chanlocs;    %Dont set these
+        % parms.prep.reference.channelInformation= EEG.chaninfo;
+        parms.prep.reference.maxReferenceIterations =4;
+        parms.prep.reference.reportingLevel ='verbose';
+        parms.prep.report.reportMode  = 'normal';
+        parms.prep.report.summaryFilePath = './summary.pdf';
+        parms.prep.report.sessionFilePath = '.report.html';
+        parms.prep.report.consoleFID = 1;
+        parms.prep.report.publishOn = true;
+        parms.prep.report.errorMsgs = 'verbose';
+        parms.prep.postprocess.keepFiltered = false;
+        parms.prep.postprocess.removeInterpolatedChannels = false;
+        parms.prep.postprocess.cleanupReference = false;
+            %}
+            parms.eeglab.prep =struct('report',struct);
+        end
+        % Only change the reporting file paths if they have not been
+        % specified already in the prep parms
+        moveReport = false;
+        fldr = folder(ns.Session & key);
+        if ~isfield(parms.eeglab.prep,'report')
+            parms.eeglab.prep.report = struct('reportMode','normal');
+        end
+        % Reporting does not work with an absolute file path due to some
+        % weirdness in the prep pipeline
+        % Temporarily cd
+        here= pwd;
+        cd(fldr)
+        if ~isfield(parms.eeglab.prep.report,'summaryFilePath')            
+            parms.eeglab.prep.report.summaryFilePath  = '.\prep_summary.pdf';            
+        end
+        if ~isfield(parms.eeglab.prep.report,'sessionFilePath')            
+            parms.eeglab.prep.report.sessionFilePath  = ['.\' char(strrep(key.filename,'.mff','_prep.html'))];            
+        end
+        try
+            EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
+        catch me
+            cd (here)
+            rethrow(me)
+        end
+        % Keep only the channels that are not marked as stillNoisy
+        channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';        
+        cd (here)
+    end
 
-% Layout necessary for certain referencing and interpolation functions
-parms.layout = MFF.etc.layout;
-parms.layout.ChannelLocations = [[MFF.chanlocs.X]', [MFF.chanlocs.Y]', [MFF.chanlocs.Z]'];
-
-% If assigned badElectrodes file, the electrodes will have been marked
-% during preprocessing
-badElectrodes = ephys.egi.badElectrodes(exp_tpl, ...
-    struct(filename = 'badElectrodes', extension = '.xlsx'));
-if isfield(badElectrodes, "channel")
-    parms.badChannel.channels = badElectrodes.channel;    
-    parms.badChannel.remove   = true; 
-else
-    parms.badChannel.channels = [];
-    parms.badChannel.remove = true;
+    if isfield(parms.eeglab,'filtfilt')
+        EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filtfilt.locutoff,'hicutoff',parms.eeglab.filtfilt.hicutoff,'plotfreqz',0,'usefftfilt',true);
+    end
 end
-% Pass to preprocess (needs time in s for filter definitions), returns time
-% in s.
-[signal,neurostimTime,prepResult,channels] = prep.preprocess(signal,neurostimTime/1000,parms,exp_tpl);
+signal =EEG.data(channels,stay)';
+neurostimTime = neurostimTime(stay);
 
 %% Package output
 % Regular sampling - stored in ms
-neurostimTime = [1000*neurostimTime(1) 1000*neurostimTime(end) numel(neurostimTime)];
-signal = single(signal); % Save space.
-channelInfo  = MFF.chanlocs(channels)';
-channelInfo(1).nr =NaN;
-nr = cellfun(@(x) str2double(extractAfter(x,'E')),{channelInfo.labels});
-nr = num2cell(nr);
-[channelInfo.nr] =deal(nr{:});
-recordingInfo = mergestruct(MFF.chaninfo,MFF.etc);
-recordingInfo.ref = MFF.ref;
-recordingInfo.srate = MFF.srate; % This is the original rate, not the rate of signal now(which could be downsampled)
-recordingInfo.layout = parms.layout;
-recordingInfo.channels = channels;
+neurostimTime = [neurostimTime(1) neurostimTime(end) numel(neurostimTime)];
+signal = single(signal); % Save space on the DJ Server
 
-recordingInfo = mergestruct(recordingInfo,struct('badBy',prepResult.noisy_channels));
+% RecordingInfo stores information on the session and the preprocessing
+recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed
+recordingInfo.etc      = EEG.etc; % Preprocessing results
 recordingInfo = makeMymSafe(recordingInfo);
+
+% Channel info stores information per channel (only those that are kept).
+channelInfo  = struct2table(EEG.chanlocs(channels));
+channelInfo  = addvars(channelInfo,channels,false(height(channelInfo),1),'NewVariableNames',{'nr','interpolated'});
+channelInfo.interpolated(ismember(channelInfo.nr,EEG.etc.noiseDetection.interpolatedChannelNumbers)) =true;
+channelInfo = makeMymSafe(table2struct(channelInfo));
+
 
 %% Add evts to egi plugin
 % Define the tpls.
@@ -156,9 +241,9 @@ if exists(ns.PluginParameter & plgTpl & 'property_name="BREC"')
     % The events have already been added to the pluginparameter table.
     % (Presumably by some other ns.CParm that also loads from this file).
 else
-    eventNsTime = polyval(clockParms,[MFF.event.egitime]);
-    eventTrialTime = eventNsTime' - trialStartTimeNeurostim([MFF.event.trial]);
-    eventCode = string({MFF.event.code});
+    eventNsTime = polyval(clockParms,[EEG.event.egitime]);
+    eventTrialTime = eventNsTime' - trialStartTimeNeurostim([EEG.event.trial]);
+    eventCode = string(eventCode);
     uNames= unique(eventCode);
     nrNames= numel(uNames);
 
