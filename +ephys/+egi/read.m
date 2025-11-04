@@ -3,7 +3,7 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 % mffmatlabio plugin by Arno Delorme installed as a plugin in EEGLab.
 % EEGLab must be on the search path.
 %
-% This relies on the convention that all EGI mff files are named
+% File reading relies on the convention that all EGI mff files are named
 % subject.paradigm_day_time.mff and stored in the same directory as the
 % Neurostim output file.
 %
@@ -13,7 +13,21 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 % Neurostim file. Neurostim, however, sends a _FLNM event with the neurostim
 % file name. We use this to match NS and MFF files.
 %
-% The TCP events in the MFF file will contain timing events sent by Neurostim (see
+% The parms.eeglab struct defines preprocessing operations done with eeglab
+% and its plugins. Currently we use
+% parms.eeglab.zapline   - Zapline-plus line noise removal
+%           Set this to true to use all default parameters, or set it to a
+%           struct with fieldnames that match the zapline parameters to use
+%           different settings.
+% parms.eeglab.prep      - the PREP pipeline 
+%           Set this to true to use all default parameters, or set it to a
+%           struct with fieldnames that match the PREP parameters to use
+%           different settings.
+% parms.eeglab.filt      - Fitering with pop_eegfiltnew. Must be a struct
+%                           with fields that match eegfitnew input
+%                           parameters.
+%               
+% The TCP events in the MFF file  contain timing events sent by Neurostim (see
 % neurostim.plugins.egi).
 %
 % Conventions (all files in the same diretory as the neurostim mat file):
@@ -111,19 +125,32 @@ neurostimTime = polyval(clockParms,egiSampleTime);
 stay = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialStopTimeNsTime(end);
 channels = 1:nrChannels;
 
-%% Preprocess with EEGLab PREP pipeline if requested
+%% Preprocess with EEGLab 
+% Fields of the parms.eeglab struct define the operations; they are
+% executed in the sequence that they are defined in the parms.eeglab
+% struct.
 if isfield(parms,'eeglab')
-    if isfield(parms.eeglab,'prep')
-        % Use the PREP pipelin eegLab plugin for preprocessing
-        % All unspecified values will be taken from the PREP defaults, except the
-        % file paths (which we set to match the MFF file).
-        if isstruct(parms.eeglab.prep)
-            % The user specified parameters that differ from the PREP defaults
-            % using a structure with structure fields.
-        elseif islogical(parms.eeglab.prep) && parms.eeglab.prep
-            % User had parms.prep =true
-            % Use all PREP defaults
-            %{
+    fn = fieldnames(parms.eeglab);
+    for f= 1:numel(fn)
+        switch fn{f}
+            case 'zapline'
+                if isstruct(parms.eeglab.zapline)
+                    zapParms = namedargs2cell(parms.eeglab.zapline);
+                elseif islogical(parms.eeglab.zapling) && parms.eeglab.zapling
+                    zapParms = {};
+                end
+                EEG = pop_zapline_plus(EEG, zapParms{:});
+            case 'prep'
+                % Use the PREP pipelin eegLab plugin for preprocessing
+                % All unspecified values will be taken from the PREP defaults, except the
+                % file paths (which we set to match the MFF file).
+                if isstruct(parms.eeglab.prep)
+                    % The user specified parameters that differ from the PREP defaults
+                    % using a structure with structure fields.
+                elseif islogical(parms.eeglab.prep) && parms.eeglab.prep
+                    % User had parms.prep =true
+                    % Use all PREP defaults
+                    %{
         % Not needed documentation only
         parms.prep.general.errorMsgs  = 'verbose';
         parms.prep.boundary.ignoreBoundaryEvents = false;
@@ -177,42 +204,41 @@ if isfield(parms,'eeglab')
         parms.prep.postprocess.keepFiltered = false;
         parms.prep.postprocess.removeInterpolatedChannels = false;
         parms.prep.postprocess.cleanupReference = false;
-            %}
-            parms.eeglab.prep =struct('report',struct);
+                    %}
+                    parms.eeglab.prep =struct('report',struct);
+                end
+                % Only change the reporting file paths if they have not been
+                % specified already in the prep parms
+                fldr = folder(ns.Session & key);
+                if ~isfield(parms.eeglab.prep,'report')
+                    parms.eeglab.prep.report = struct('reportMode','normal');
+                end
+                % Reporting does not work with an absolute file path due to some
+                % weirdness in the prep pipeline
+                % Temporarily cd
+                here= pwd;
+                cd(fldr)
+                if ~isfield(parms.eeglab.prep.report,'summaryFilePath')
+                    parms.eeglab.prep.report.summaryFilePath  = '.\prep_summary.html';
+                end
+                if ~isfield(parms.eeglab.prep.report,'sessionFilePath')
+                    parms.eeglab.prep.report.sessionFilePath  = ['.\' char(strrep(key.filename,'.mff','_prep.pdf'))];
+                end
+                try
+                    EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
+                catch me
+                    cd (here)
+                    rethrow(me)
+                end
+                % Keep only the channels that are not marked as stillNoisy
+                channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';
+                cd (here)
+            case 'filt'
+                EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filtfilt.locutoff,'hicutoff',parms.eeglab.filtfilt.hicutoff,'plotfreqz',0,'usefftfilt',true);
         end
-        % Only change the reporting file paths if they have not been
-        % specified already in the prep parms
-        moveReport = false;
-        fldr = folder(ns.Session & key);
-        if ~isfield(parms.eeglab.prep,'report')
-            parms.eeglab.prep.report = struct('reportMode','normal');
-        end
-        % Reporting does not work with an absolute file path due to some
-        % weirdness in the prep pipeline
-        % Temporarily cd
-        here= pwd;
-        cd(fldr)
-        if ~isfield(parms.eeglab.prep.report,'summaryFilePath')            
-            parms.eeglab.prep.report.summaryFilePath  = '.\prep_summary.pdf';            
-        end
-        if ~isfield(parms.eeglab.prep.report,'sessionFilePath')            
-            parms.eeglab.prep.report.sessionFilePath  = ['.\' char(strrep(key.filename,'.mff','_prep.html'))];            
-        end
-        try
-            EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
-        catch me
-            cd (here)
-            rethrow(me)
-        end
-        % Keep only the channels that are not marked as stillNoisy
-        channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';        
-        cd (here)
-    end
-
-    if isfield(parms.eeglab,'filtfilt')
-        EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filtfilt.locutoff,'hicutoff',parms.eeglab.filtfilt.hicutoff,'plotfreqz',0,'usefftfilt',true);
     end
 end
+
 signal =EEG.data(channels,stay)';
 neurostimTime = neurostimTime(stay);
 
