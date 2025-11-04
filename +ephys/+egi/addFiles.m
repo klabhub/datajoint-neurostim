@@ -54,10 +54,12 @@ for key = fetch(tbl,'ORDER BY session_date')'
                     else
                         % Warn and force a nonmatch.
                         fprintf(2,"Skipping unmatched MFF with internal ns file name of %s\n",brec.mffkey_FLNM);
-                        egiProducingNsFile  = {'!@#!@$$'};
+                        egiProducingNsFile  = '!@#!@$$';
                     end
+                else
+                    egiProducingNsFile = egiProducingNsFile{1};
                 end
-                if contains(nsFile,egiProducingNsFile)
+                if contains(egiProducingNsFile,nsFile)
                     % Match found - no need to continue.
                     coreMff = candidateMff(f);
                     fprintf('Matching Neurostim file %s with EGI file %s\n',nsFile,egiProducingNsFile)

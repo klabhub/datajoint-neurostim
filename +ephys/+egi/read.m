@@ -217,10 +217,10 @@ if isfield(parms,'eeglab')
                 here= pwd;
                 cd(fldr)
                 if ~isfield(parms.eeglab.prep.report,'summaryFilePath')
-                    parms.eeglab.prep.report.summaryFilePath  = 'prep_summary.html';
+                    parms.eeglab.prep.report.summaryFilePath  = ['.' filesep 'prep_summary.html'];
                 end
                 if ~isfield(parms.eeglab.prep.report,'sessionFilePath')
-                    parms.eeglab.prep.report.sessionFilePath  =  char(strrep(key.filename,'.mff','_prep.pdf'));
+                    parms.eeglab.prep.report.sessionFilePath  =  ['.' filesep char(strrep(key.filename,'.mff','_prep.pdf'))];
                 end
                 try
                     EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
