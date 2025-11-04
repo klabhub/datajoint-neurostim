@@ -51,7 +51,8 @@ mffFilename = strrep(fullfile(folder(exp_tpl),key.filename),'\','/'); % Avoid fp
 %% Read the raw signals from the mff.
 fprintf("Using eeglab plugin to read from " +  mffFilename + "...")
 % Read all events
-eventsToRead = {'classid','code','description','label','mffkey_BLCK','mffkey_COND','mffkey_DESC','mffkey_FLIP','mffkey_FLNM','mffkey_PDGM','mffkey_SUBJ','mffkey_TRIA','mffkey_TTIM','mffkeys','mffkeysbackup','name','relativebegintime','sourcedevice','tracktype'};
+ev = mff_importevents(mffFilename,0,1);   % returns a struct array of MFF events
+eventsToRead = unique({ev.code});     % Get the neurostim codes.
 % Use the EEG Lab plugin to read the file, with all events.
 eegLabSave = 0 ; % Don't save in eeglab
 correctEvents = 0; %  Don't correct events with UTF chars/
