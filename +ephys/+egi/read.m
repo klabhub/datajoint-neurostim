@@ -50,13 +50,10 @@ mffFilename = strrep(fullfile(folder(exp_tpl),key.filename),'\','/'); % Avoid fp
 
 %% Read the raw signals from the mff.
 fprintf("Using eeglab plugin to read from " +  mffFilename + "...")
-% Read all events
-ev = mff_importevents(mffFilename,0,1);   % returns a struct array of MFF events
-eventsToRead = unique({ev.code});     % Get the neurostim codes.
 % Use the EEG Lab plugin to read the file, with all events.
 eegLabSave = 0 ; % Don't save in eeglab
 correctEvents = 0; %  Don't correct events with UTF chars/
-EEG = pop_mffimport(char(mffFilename),eventsToRead,eegLabSave,correctEvents);
+EEG = pop_mffimport(char(mffFilename),{},eegLabSave,correctEvents);
 [nrChannels,nrSamples] = size(EEG.data);
 fprintf('Done.\n');
 
@@ -220,10 +217,10 @@ if isfield(parms,'eeglab')
                 here= pwd;
                 cd(fldr)
                 if ~isfield(parms.eeglab.prep.report,'summaryFilePath')
-                    parms.eeglab.prep.report.summaryFilePath  = '.\prep_summary.html';
+                    parms.eeglab.prep.report.summaryFilePath  = 'prep_summary.html';
                 end
                 if ~isfield(parms.eeglab.prep.report,'sessionFilePath')
-                    parms.eeglab.prep.report.sessionFilePath  = ['.\' char(strrep(key.filename,'.mff','_prep.pdf'))];
+                    parms.eeglab.prep.report.sessionFilePath  =  char(strrep(key.filename,'.mff','_prep.pdf'));
                 end
                 try
                     EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
