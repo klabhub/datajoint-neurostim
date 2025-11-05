@@ -302,8 +302,8 @@ else
         stay = eventCode == nm;
         prmTpl(nmCntr).property_time = eventTrialTime(stay);
         prmTpl(nmCntr).property_nstime=eventNsTime(stay);
-        prmTpl(nmCntr).property_trial=[MFF.event(stay).trial];
-        prmTpl(nmCntr).property_value = [MFF.event(stay)];
+        prmTpl(nmCntr).property_trial=[EEG.event(stay).trial];
+        prmTpl(nmCntr).property_value = [EEG.event(stay)];
     end
     insert(ns.PluginParameter,prmTpl);
 end
