@@ -22,8 +22,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
     properties (Dependent)
 
-        first_frame_onsets
-
+        first_frame_onsets      
     end
 
     methods (Access = public)
@@ -698,16 +697,20 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 addMissingFiles(ns.File,key)
             end
         end
+        
+        function v = id(tbl)
+            tpl = fetch(tbl,'subject','session_date','starttime');
+            v = string({tpl.subject})' + "/" +string({tpl.session_date})' + "@" + string({tpl.starttime})';           
+        end
     end
 
     % Get methods
     methods
 
         function o = get.first_frame_onsets(expTbl)
-
             o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-
         end
+        
     end
 
     methods (Static)
