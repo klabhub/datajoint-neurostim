@@ -36,8 +36,8 @@ if ~isempty(hasMissingIx)
         meta = structfun(@class,varargin{noneMissing(1)}(1),'uniformoutput',false);
     else
         % Need to iterate until complete
-        % Get as much as we can from the first
-        meta = structfun(@class,varargin{1},'uniformoutput',false);
+        % Get as much as we can from the first element of the first input
+        meta = structfun(@class,varargin{1}(1),'uniformoutput',false);
         i=2;
         % Then loop until complete
         while (i<=nrStructs)
