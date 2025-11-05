@@ -48,7 +48,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
-                pv.linkAxes (1,1) logical = true;
+                pv.linkAxes (1,1) logical = true
+                pv.raster (1,1) logical =false
             end
             fillCache(tbl);
 
@@ -56,6 +57,16 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             % dimension (anything that is left out of grouping)
             grouping = setdiff(["subject" "session_date" "starttime" "trial" "channel" "condition" "paradigm" ],pv.average);
             G = ns.EpochChannel.cacheCompute(tbl.cache,@ns.EpochChannel.msten,["mean" "ste" "n"],channel=pv.channel,trial=pv.trial,grouping=grouping);
+
+            if pv.raster
+                grouping= setdiff(grouping,"trial");
+                P = groupsummary(G, grouping, @(x) x(1,:), ["align" "time"]);
+                P = renamevars(P,["fun1_align" "fun1_time" ],["align" "time"]);
+                G  = groupsummary(G,grouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);                
+                G= renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);                                       
+                G =innerjoin(G,P);
+            end
+                    
 
             %% Figure
             tileCntr=0;
@@ -65,10 +76,12 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 t =  G.time(i,:);
                 t = linspace(t(1),t(2),t(3));
                 align =G.align(i);
+                if ~pv.raster
                 m = G.mean(i,:);
                 ste = G.ste(i,:);
                 n = mean(G.n(i,:));
-                titlePV= setdiff(["paradigm" grouping],"condition");
+                end
+                titlePV= setdiff(["paradigm" grouping],"condition",'stable');
                 ttlStr = strjoin(string(G{i,titlePV}),"/");
                 if i==1 || (~isempty(newTileEach) && any(G{i,newTileEach} ~= G{i-1,newTileEach}))
                     % New  subject, session or experiment in a new tile
@@ -77,7 +90,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                         legend(h,legStr);
                     end
                     if mod(tileCntr,pv.tilesPerPage)==0      
-                        if i>1 & pv.linkAxes
+                        if i>1 && pv.linkAxes
                             linkaxes(gcf().Children().Children())
                         end
                         figure;
@@ -89,8 +102,15 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     legStr = string([]);
                     hold on
                 end
-                h = [h plot(t,m)];                %#ok<AGROW>
-                patch([t flip(t)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);
+                if pv.raster
+                    imagesc(G.mean{i})
+                    n =1;
+                else
+                    h = [h plot(t,m)];                %#ok<AGROW>
+                    p = patch([t flip(t)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);                
+                    p.EdgeColor = h(end).Color;
+                    plot(xlim,[0 0],'k');
+                end
                 legStr = [legStr G.condition(i)]; %#ok<AGROW>
                 title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');
                 ylabel 'EP (\muV)'
@@ -108,7 +128,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                         y = m - matchG.mean(reference,:);
                         ste = ste +matchG.ste(reference,:);
                         h = [h plot(t,y)];                     %#ok<AGROW>
-                        patch([t flip(t)],[y+ste flip(y-ste)],h(end).Color,FaceAlpha= 0.5);
+                        p = patch([t flip(t)],[y+ste flip(y-ste)],h(end).Color,FaceAlpha= 0.5);
+                        p.EdgeColor = h(end).Color;
                         legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
                     end
                 end
@@ -194,8 +215,10 @@ classdef EpochChannel < dj.Part & dj.DJInstance
     methods (Access=protected)
         function fillCache(tbl)
             % Fetch the data if the underlying query has changed
+            % Avoid proj in the join  as this uses randomly assigned "AS"
+            % names; as a result the cache will be refetched each time.
             relvar = ns.Experiment*ns.Epoch*ns.EpochChannel*ns.EpochParm & proj(tbl);
-            if ~strcmpi(relvar.sql,tbl.cacheQry)
+            if string(relvar.sql) ~= tbl.cacheQry
                 T=fetchtable(relvar,'paradigm','signal','time','condition','align','ORDER BY channel');                               
                 % Safety check; time and align should match for all rows
                 % in the table.

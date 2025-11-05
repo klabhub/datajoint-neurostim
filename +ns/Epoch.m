@@ -15,7 +15,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
     end
     properties (Dependent)
         time
-        samplingRate 
+        samplingRate
         keySource
     end
 
@@ -46,7 +46,6 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % Apply combined restriction
             v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension)) & combinedWhere;
         end
-
         function t =get.time(tbl)
             t = fetchn(tbl, 'time');
             t = cellfun(@(x) linspace(x(1),x(2),x(3))',t,'UniformOutput',false);
@@ -54,18 +53,17 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 t= t{1};
             end
         end
-        
         function v = get.samplingRate(tbl)
-           t = fetchn(tbl, 'time');
-           v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);           
+            t = fetchn(tbl, 'time');
+            v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);
         end
     end
 
-      
+
     methods (Access = protected)
         function makeTuples(tbl, key)
             %% Determine events to align to
-            parmTpl = fetch(ns.EpochParm &key,'prep','art','align','window','channels');
+            parmTpl = fetch(ns.EpochParm &key,'prepparms','artparms','align','window','channels');
             conditionTpl = fetch(ns.DimensionCondition&key,'trials');
             trialsInDimension = cat(1,conditionTpl.trials);
             alignTpl = get(ns.Experiment &key,parmTpl.align.plugin,prm=parmTpl.align.event,what=["trialtime" "data" "trial"],trial=trialsInDimension);
@@ -92,45 +90,44 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 condition(ismember(trials,conditionTpl(c).trials)) = conditionTpl(c).name;
             end
 
+            C = ns.C & key;
             if isempty(parmTpl.channels)
                 % Use all channels by default
-                C = ns.C & key;
                 parmTpl.channels = C.channels';
             end
 
             %% Extract aligned segments from ns.C
             tic;
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
-            T = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+            [T,~,channelsWithData] = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+            parmTpl.channels =channelsWithData(:)';
             fprintf("\t Exporting is complete after %s\n",toc);
 
             %% --- Preprocess epochs ---
             tic;
             fprintf("Preprocessing segmented data...\n");
             [signal,t] = timetableToDouble(T); % [timepoints trials channels ]
-            [signal,t,prepResults] = prep.preprocess(signal,seconds(t),parmTpl.prep,key);
+            [signal,t,prepResults] = prep.preprocess(signal,seconds(t),parmTpl.prepparms,key);
             [nrSamples,nrTrials,nrChannels] = size(signal); %#ok<ASGLU>
             fprintf("\t Filtering is complete after %s\n",toc);
             %% --- Artifact/Outlier Rejection ---
             tic;
-            fprintf("Artifact detection ...\n");
-            samplingRate = 1./mode(diff(t));
-            parmTpl.art.epoch_no = trials;
-            pv =namedargs2cell(parmTpl.art);
-            [artResult] = prep.artifactDetection(permute(signal,[2 3 1]),samplingRate,pv{:});
-            % Remove epochs that were identified as having artifacts
-            out = ismember(trials,artResult.all);
-            signal(:,out,:) = [];
-            trials(out) = [];
-            condition(out) = [];
-            startTime(out) = [];
-            nrTrials =numel(trials);
-            % Convert object to struct to allow storing in SQL database
-            % with MYM
-            warning('off','MATLAB:structOnObject')
-            artResult = rmfield(struct(artResult),'categories');
-            warning('on','MATLAB:structOnObject')
-            fprintf("\t Artifact detection complete after %s\n",toc);
+            if isstruct(parmTpl.artparms) || (islogical(parmTpl.artparms) && parmTpl.artparms)
+                fprintf("Artifact detection ...\n");
+                parmTpl.artparms.epoch_no = trials;
+                pv =namedargs2cell(parmTpl.artparms);
+                [artResults] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,pv{:});
+                % Remove epochs that were identified as having artifacts
+                out = ismember(trials,artResults.all);
+                signal(:,out,:) = [];
+                trials(out) = [];
+                condition(out) = [];
+                startTime(out) = [];
+                nrTrials =numel(trials);
+                fprintf("\t Artifact detection complete after %s\n",toc);
+            else
+                artResults=struct('dummy',true);
+            end
 
             %% --- Submit to the server ---
             tic;
@@ -138,9 +135,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
                 prep = prepResults,...
-                art =artResult));
+                art =artResults));
             % Insert to Epoch table
-            chunkedInsert(tbl, epoch_tpl);
+            epoch_tpl = makeMymSafe(epoch_tpl);
+            insert(tbl, epoch_tpl);
 
             % Create EpochChannel tuple that contains the data
             signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
@@ -159,7 +157,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                     channel = channel,...
                     condition = condition));
 
-                chunkedInsert(ns.EpochChannel, tpl);                
+                chunkedInsert(ns.EpochChannel, tpl);
                 fprintf("\t Submission is complete after %s.\n",toc);
             end
         end
