@@ -37,7 +37,9 @@ for key = fetch(tbl,'ORDER BY session_date')'
             % extract the actual sampling rate from the EGI bin file.
             try
                 evts = mff_importevents(fullfile(candidateMff(f).folder,candidateMff(f).name), 0, 1000); % from time =0 with 1Khz sampling rate
+                if isempty(evts); continue;end % Incomplete file probably
                 brec = evts(strcmpi('BREC',{evts.code})); % neurostim sends this BREC event with the ns file name
+                if isempty(brec);fprintf('No BREC in %s\n', candidateMff(f).name);continue;end 
                 brec = brec(1); % Sometimes there is a duplicate (with the same filename)
                 egiProducingNsFile =  regexp(brec.mffkey_FLNM,[key.subject '\.' pdm '\.\d{6,6}'],'match');
                 if isempty(egiProducingNsFile)
