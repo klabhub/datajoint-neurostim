@@ -235,25 +235,45 @@ if isfield(parms,'eeglab')
                 EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filtfilt.locutoff,'hicutoff',parms.eeglab.filtfilt.hicutoff,'plotfreqz',0,'usefftfilt',true);
         end
     end
+    signal =EEG.data(channels,stay)';
+    neurostimTime = neurostimTime(stay);
+
+    % RecordingInfo stores information on the session and the preprocessing
+    recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed
+    recordingInfo.etc      = EEG.etc; % Preprocessing results
+    % Channel info stores information per channel (only those that are kept).
+    channelInfo  = struct2table(EEG.chanlocs(channels));
+    channelInfo  = addvars(channelInfo,channels,false(height(channelInfo),1),'NewVariableNames',{'nr','interpolated'});
+    channelInfo.interpolated(ismember(channelInfo.nr,EEG.etc.noiseDetection.interpolatedChannelNumbers)) =true;
+else % Use non eeglab preprocessing (deprecated)
+    signal =EEG.data(channels,stay)';
+    neurostimTime = neurostimTime(stay);
+    % Layout necessary for certain referencing and interpolation functions
+    parms.layout = MFF.etc.layout;
+    parms.layout.ChannelLocations = [[MFF.chanlocs.X]', [MFF.chanlocs.Y]', [MFF.chanlocs.Z]'];
+    % If assigned badElectrodes file, the electrodes will have been marked
+    % during preprocessing
+    badElectrodes = ephys.egi.badElectrodes(exp_tpl,struct(filename = 'badElectrodes', extension = '.xlsx'));
+    if isfield(badElectrodes, "channel")
+        parms.badChannel.channels = badElectrodes.channel;    
+        parms.badChannel.remove   = true; 
+    else
+        parms.badChannel.channels = [];
+        parms.badChannel.remove = true;
+    end
+    % Pass to prep.preprocess (needs time in s for filter definitions)
+    [signal,neurostimTime,recordingInfo,nr] = prep.preprocess(signal,neurostimTime/1000,parms,exp_tpl);
+    neurostimTime = neurostimTime*1000; % Back to ms.    
+    % Channel info stores information per channel (only those that are kept).
+    channelInfo  = table(nr);    
 end
 
-signal =EEG.data(channels,stay)';
-neurostimTime = neurostimTime(stay);
 
 %% Package output
 % Regular sampling - stored in ms
 neurostimTime = [neurostimTime(1) neurostimTime(end) numel(neurostimTime)];
 signal = single(signal); % Save space on the DJ Server
-
-% RecordingInfo stores information on the session and the preprocessing
-recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed
-recordingInfo.etc      = EEG.etc; % Preprocessing results
 recordingInfo = makeMymSafe(recordingInfo);
-
-% Channel info stores information per channel (only those that are kept).
-channelInfo  = struct2table(EEG.chanlocs(channels));
-channelInfo  = addvars(channelInfo,channels,false(height(channelInfo),1),'NewVariableNames',{'nr','interpolated'});
-channelInfo.interpolated(ismember(channelInfo.nr,EEG.etc.noiseDetection.interpolatedChannelNumbers)) =true;
 channelInfo = makeMymSafe(table2struct(channelInfo));
 
 
