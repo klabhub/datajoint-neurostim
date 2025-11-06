@@ -92,7 +92,7 @@ classdef badBy < dynamicprops
                 finalPropName = ['badBy', finalPropName];
             end
 
-            if ~isvector(value) || ~isnumeric(value) || ~all(round(value) == value)
+            if ~isempty(value) && (~isvector(value) || ~isnumeric(value) || ~all(round(value) == value))
                 error('badBy:setProperty:InvalidPropertyValue', ...
                       ['Value for ''', finalPropName, ''' (from original input ''', originalPropName, ''') must be an integer vector.']);
             end

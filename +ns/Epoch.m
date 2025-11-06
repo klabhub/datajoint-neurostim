@@ -5,8 +5,9 @@
 -> ns.Dimension     # Dimension that determines the conditions
 ---
 time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
-prep : blob             # Struct with information on preprocessing (.prep) done during epoching
-art   : blob            # Struct with information on artifact removal (.art) done during epoching
+prep : blob             # Struct with information on preprocessing (.prepparms) done during epoching
+art   : blob            # Struct with information on artifact removal (.artparms) done during epoching
+plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
 classdef Epoch < dj.Computed & dj.DJInstance
     properties (GetAccess =public,SetAccess = protected)
@@ -77,14 +78,17 @@ classdef Epoch < dj.Computed & dj.DJInstance
             end
 
             if isstruct(parmTpl.plgparms) 
-                keepTrials = prep.pluginState(ns.Experiment& key,unique(alignTpl.trial),parmTpl.plgparms);
-                outBasedOnPlg  = ~ismember(alignTpl.trial,keepTrials);
+                % Select trials based on behavior/plugin parameters
+                badByPlg = prep.pluginState(ns.Experiment& key,unique(alignTpl.trial),parmTpl.plgparms);                
+                outBasedOnPlg  = ismember(alignTpl.trial,badByPlg.all);
                 if any(outBasedOnPlg  )
                     fprintf('Removing %d trials based on plugin parameter selection (%s).\n',sum(outBasedOnPlg ),strjoin(fieldnames(parmTpl.plgparms),'/'));
                     alignTpl.data(outBasedOnPlg) = [];
                     alignTpl.trial(outBasedOnPlg) =[];
                     alignTpl.trialtime(outBasedOnPlg) =[];
                 end
+            else
+                badByPlg = prep.badBy; % Empty
             end
 
             [trials,ia] = unique(alignTpl.trial,'stable','last');
@@ -126,9 +130,9 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 fprintf("Artifact detection ...\n");
                 parmTpl.artparms.epoch_no = trials;
                 pv =namedargs2cell(parmTpl.artparms);
-                [artResults] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,pv{:});
+                [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,pv{:});
                 % Remove epochs that were identified as having artifacts
-                out = ismember(trials,artResults.all);
+                out = ismember(trials,badByArt.all);
                 signal(:,out,:) = [];
                 trials(out) = [];
                 condition(out) = [];
@@ -136,7 +140,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 nrTrials =numel(trials);
                 fprintf("\t Artifact detection complete after %s\n",toc);
             else
-                artResults=struct('dummy',true);
+                badByArt=struct('dummy',true);
             end
 
             %% --- Submit to the server ---
@@ -145,7 +149,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
                 prep = prepResults,...
-                art =artResults));
+                art =badByArt, ...
+                plg = badByPlg));
             % Insert to Epoch table
             epoch_tpl = makeMymSafe(epoch_tpl);
             insert(tbl, epoch_tpl);

@@ -277,6 +277,9 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 t= t(keep);
                T.time = repmat([t(1) t(end) numel(t)],height(T),1);
             end
+            if isempty(T)
+                error('No data in this table');
+            end
             [grp,G] = findgroups(T(:,pv.grouping));
             results = splitapply(fun,T.(pv.signal),grp);
             assert(size(results,2)==nrNames,"The fun (%s) returns %d values, but %d names have been provided",func2str(fun),size(results,2),nrNames);
