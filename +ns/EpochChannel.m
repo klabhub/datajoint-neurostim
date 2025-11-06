@@ -49,43 +49,47 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = true
-                pv.raster (1,1) logical =false
+                pv.raster (1,1) logical = false         % Set to true to show trials as rasters (removes "trial" from pv.average)
             end
+            % Start a new tile when these values change:
+            newTileEach = ["paradigm" "subject" "session_date" "starttime"];
+
             fillCache(tbl);
 
+            if pv.raster
+                pv.average = setdiff(pv.average,"trial");
+            end
             % Determine mean, ste and n averaging over the pv.average
             % dimension (anything that is left out of grouping)
-            grouping = setdiff(["subject" "session_date" "starttime" "trial" "channel" "condition" "paradigm" ],pv.average);
+            grouping = setdiff(["subject" "session_date" "starttime" "paradigm"  "condition" "trial" "channel"  ],pv.average,'stable');            
             G = ns.EpochChannel.cacheCompute(tbl.cache,@ns.EpochChannel.msten,["mean" "ste" "n"],channel=pv.channel,trial=pv.trial,grouping=grouping);
-
+            
             if pv.raster
-                grouping= setdiff(grouping,"trial");
+                % Concatenate the trials into a raster matrix in G.
+                grouping = setdiff(grouping,"trial",'stable');
                 P = groupsummary(G, grouping, @(x) x(1,:), ["align" "time"]);
                 P = renamevars(P,["fun1_align" "fun1_time" ],["align" "time"]);
                 G  = groupsummary(G,grouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);                
                 G= renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);                                       
                 G =innerjoin(G,P);
+                newTileEach = union(newTileEach,"condition");          
+                G= sortrows(G,intersect([ "subject" "session_date" "starttime" "condition" "channel" "trial" "paradigm"],G.Properties.VariableNames,'stable'));
             end
                     
 
+            
             %% Figure
             tileCntr=0;
             nrTimeSeries = height(G);
-            newTileEach = intersect(["paradigm" "subject" "session_date" "starttime"],G.Properties.VariableNames);
+            newTileEach = intersect(newTileEach,G.Properties.VariableNames);
+            legStr =string([]);
             for i = 1:nrTimeSeries
                 t =  G.time(i,:);
                 t = linspace(t(1),t(2),t(3));
-                align =G.align(i);
-                if ~pv.raster
-                m = G.mean(i,:);
-                ste = G.ste(i,:);
-                n = mean(G.n(i,:));
-                end
-                titlePV= setdiff(["paradigm" grouping],"condition",'stable');
-                ttlStr = strjoin(string(G{i,titlePV}),"/");
+                align =G.align(i);                
                 if i==1 || (~isempty(newTileEach) && any(G{i,newTileEach} ~= G{i-1,newTileEach}))
                     % New  subject, session or experiment in a new tile
-                    if i>1
+                    if i>1 &&  ~isempty(legStr)
                         % Add the legend string to the existing tile
                         legend(h,legStr);
                     end
@@ -103,17 +107,27 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     hold on
                 end
                 if pv.raster
-                    imagesc(G.mean{i})
-                    n =1;
+                    nrTrials= size(G.mean{i},1);
+                    imagesc(t,1:nrTrials, G.mean{i})
+                    n = mean(G.n{i},"all");
+                    ylabel ("Trial")
+                    titlePV= setdiff(["paradigm" grouping],"",'stable');
+                    ttlStr = strjoin(string(G{i,titlePV}),"/");
                 else
+                    m = G.mean(i,:);
+                    ste = G.ste(i,:);
+                    n = mean(G.n(i,:));
                     h = [h plot(t,m)];                %#ok<AGROW>
                     p = patch([t flip(t)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);                
                     p.EdgeColor = h(end).Color;
                     plot(xlim,[0 0],'k');
+                    ylabel 'EP (\muV)'
+                    legStr = [legStr G.condition(i)]; %#ok<AGROW>
+                    titlePV= setdiff(["paradigm" grouping],"condition",'stable');
+                    ttlStr = strjoin(string(G{i,titlePV}),"/");
+
                 end
-                legStr = [legStr G.condition(i)]; %#ok<AGROW>
-                title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');
-                ylabel 'EP (\muV)'
+                title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');                
                 xlabel (sprintf('Time after %s.%s (s)',align.plugin,align.event));
                 % If delta is not empty, add the difference wave.
                 if pv.delta ~="" && G.condition(i) ~=pv.delta
@@ -134,7 +148,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     end
                 end
             end
-            legend(h,legStr); % For the last tile
+            if ~isempty(legStr); legend(h,legStr); end % For the last tile
             if pv.linkAxes
                 linkaxes(gcf().Children().Children())
             end
