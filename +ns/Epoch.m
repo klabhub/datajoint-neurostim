@@ -63,7 +63,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
     methods (Access = protected)
         function makeTuples(tbl, key)
-            %% Determine events to align to
+            %% Determine events to align and select trials based on plugins
             parmTpl = fetch(ns.EpochParm &key,'prepparms','artparms','plgparms','align','window','channels');
             conditionTpl = fetch(ns.DimensionCondition&key,'trials');
             trialsInDimension = cat(1,conditionTpl.trials);
@@ -77,12 +77,11 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 alignTpl.trialtime(noSuchEvent) =[];
             end
 
-
             % Select trials based on behavior/plugin parameters
             badByPlg = prep.pluginState(ns.Experiment& key,unique(alignTpl.trial),parmTpl.plgparms);
             outBasedOnPlg  = ismember(alignTpl.trial,badByPlg.all);
             if any(outBasedOnPlg)
-                fprintf('Removing %d trials based on plugin parameter selection (%s).\n',sum(outBasedOnPlg ),strjoin(fieldnames(parmTpl.plgparms),'/'));
+                fprintf('Removing %d trials based on plugin parameter selection (%s).\n',sum(outBasedOnPlg ),strjoin(setdiff(fieldnames(parmTpl.plgparms),{'enable'}),'/'));
                 alignTpl.data(outBasedOnPlg) = [];
                 alignTpl.trial(outBasedOnPlg) =[];
                 alignTpl.trialtime(outBasedOnPlg) =[];
@@ -112,7 +111,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
             [T,~,channelsWithData] = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
             parmTpl.channels =channelsWithData(:)';
-            fprintf("\t Exporting is complete after %s\n",toc);
+            fprintf("\t Segmenting is complete after %s\n",toc);
 
             %% --- Preprocess epochs ---
             tic;
@@ -137,7 +136,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
             %% --- Submit to the server ---
             tic;
-            fprintf("Submitting to the server\n");
+            fprintf("Submitting epochs to the server\n");
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
                 prep = prepResults,...
