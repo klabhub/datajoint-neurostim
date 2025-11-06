@@ -63,7 +63,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
     methods (Access = protected)
         function makeTuples(tbl, key)
             %% Determine events to align to
-            parmTpl = fetch(ns.EpochParm &key,'prepparms','artparms','align','window','channels');
+            parmTpl = fetch(ns.EpochParm &key,'prepparms','artparms','plgparms','align','window','channels');
             conditionTpl = fetch(ns.DimensionCondition&key,'trials');
             trialsInDimension = cat(1,conditionTpl.trials);
             alignTpl = get(ns.Experiment &key,parmTpl.align.plugin,prm=parmTpl.align.event,what=["trialtime" "data" "trial"],trial=trialsInDimension);
@@ -75,13 +75,23 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 alignTpl.trial(noSuchEvent) =[];
                 alignTpl.trialtime(noSuchEvent) =[];
             end
+
+            if isstruct(parmTpl.plgparms) 
+                keepTrials = prep.pluginState(ns.Experiment& key,unique(alignTpl.trial),parmTpl.plgparms);
+                outBasedOnPlg  = ~ismember(alignTpl.trial,keepTrials);
+                if any(outBasedOnPlg  )
+                    fprintf('Removing %d trials based on plugin parameter selection (%s).\n',sum(outBasedOnPlg ),strjoin(fieldnames(parmTpl.plgparms),'/'));
+                    alignTpl.data(outBasedOnPlg) = [];
+                    alignTpl.trial(outBasedOnPlg) =[];
+                    alignTpl.trialtime(outBasedOnPlg) =[];
+                end
+            end
+
             [trials,ia] = unique(alignTpl.trial,'stable','last');
             if numel(trials) < numel(alignTpl.trial)
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
             end
-            if numel(trialsInDimension) > numel(trials)
-                fprintf('%d trials do not have the %s event in %s. Those will not be inclided.\n', numel(trialsInDimension) - numel(trials),parmTpl.align.event,parmTpl.align.plugin);
-            end
+
             startTime = alignTpl.trialtime(ia);
             nrTrials = numel(trials);
             nrConditions = numel(conditionTpl);

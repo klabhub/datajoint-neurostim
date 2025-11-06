@@ -8,11 +8,10 @@ condition : varchar(128)  # Name of the condition to which this trial belongs
 onset : float             # Time of the align event relative to trial start
 signal : longblob         # C data for a single channel, single trial
 %}
-
 classdef EpochChannel < dj.Part & dj.DJInstance
     properties (GetAccess =public,SetAccess = protected)
-        cache table
-        cacheQry (1,1) string =""
+        cache table             % Caches data from the server
+        cacheQry (1,1) string =""  % Stores the query that fetched the data
     end
 
     properties (SetAccess = protected)
@@ -20,7 +19,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
     end
 
     properties (Dependent)
-        channels 
+        channels                % Channels contributing to this Epoch tabke
     end
 
     methods 
@@ -48,14 +47,14 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
-                pv.linkAxes (1,1) logical = true
+                pv.linkAxes (1,1) logical = true        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,1) logical = false         % Set to true to show trials as rasters (removes "trial" from pv.average)
             end
             % Start a new tile when these values change:
             newTileEach = ["paradigm" "subject" "session_date" "starttime"];
 
+            %% Fill the cache, then perform averaging per group
             fillCache(tbl);
-
             if pv.raster
                 pv.average = setdiff(pv.average,"trial");
             end
@@ -75,8 +74,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 newTileEach = union(newTileEach,"condition");          
                 G= sortrows(G,intersect([ "subject" "session_date" "starttime" "condition" "channel" "trial" "paradigm"],G.Properties.VariableNames,'stable'));
             end
-                    
-
+                   
             
             %% Figure
             tileCntr=0;
@@ -107,6 +105,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     hold on
                 end
                 if pv.raster
+                    % Show each condition in a separate tile
                     nrTrials= size(G.mean{i},1);
                     imagesc(t,1:nrTrials, G.mean{i})
                     n = mean(G.n{i},"all");
@@ -125,7 +124,6 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     legStr = [legStr G.condition(i)]; %#ok<AGROW>
                     titlePV= setdiff(["paradigm" grouping],"condition",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
-
                 end
                 title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');                
                 xlabel (sprintf('Time after %s.%s (s)',align.plugin,align.event));
@@ -296,9 +294,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             end
             % Combine with align/time/paradigm information. Note this
             % assumes these are constant across the group (picking
-            % only the first or the unique here)
-            %P = groupsummary(T, pv.grouping, @(x) x(1,:), ["align" "time" "paradigm"]);
-            %P = renamevars(P,["fun1_align" "fun1_time" "fun1_paradigm"],["align" "time" "paradigm"]);
+            % only the first here). fillCache assures this is the case.
             P = groupsummary(T, pv.grouping, @(x) x(1,:), ["align" "time"]);
             P = renamevars(P,["fun1_align" "fun1_time" ],["align" "time"]);
             
@@ -350,7 +346,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             [power, frequencies] = pmtm(signal, varargin{:});
             v = {power,frequencies};
         end
-        function [] = do_wavelet_sum(signal, fs, freq_range,wid_range, n_frex, n_wid)
+        function v = do_wavelet_sum(signal, fs, freq_range,wid_range, n_frex, n_wid)
 
             % Code adapted from Nicole, then from Cohen M. X. (2019). A better way to
             % define and describe Morlet wavelets for time-frequency
@@ -381,9 +377,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
 
             % initialize time-frequency matrix
             tf = zeros(length(frex),length(tidx));
-            % initialize power matrix
-            avgPower = zeros(length(frex));
-
+          
+          
             % spectrum of data
             dataX = fft(signal,nConv);
 
@@ -416,8 +411,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 % fx = exp(-.5*(x/s).^2);    % gaussian
             end
             % average power
-            mean_power = mean(tf,2);
-
+            v = mean(tf,2);
         end
         function v= do_noise(signal,kernel)
                 % Mean power in neighboring frequency bins.

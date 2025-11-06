@@ -7,8 +7,9 @@ dimension       : varchar(32)       # Condition from the dimension table
 window          : tinyblob          # Start and stop time of the epoch.
 channels =NULL  : blob              # Channels to include. Defaults to all in the ctag
 align           : blob              # struct defining the align event
-prepparms       : blob              # struct containing the preprocessing parameters
-artparms        : blob              # struct array containing the artifact removal parameters
+prepparms       : blob              # struct with preprocessing parameters
+artparms        : blob              # struct array with artifact removal parameters
+plgparms        : blob              # struct array with plugin based trial selection parameters
 %}
 
 % MOz Feb, 2025
@@ -32,8 +33,9 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 pv.dimension (1,1) string
                 pv.window (1,2) 
                 pv.channels (1,:) {mustBeNumeric} = []
-                pv.prepparms (1,1) struct {prep.mustBePrepParm}  = struct('dummy',true);
-                pv.artparms  (1,1) {prep.mustBeArtParm} = struct('dummy',true);
+                pv.prepparms (1,1) {prep.mustBePrepParm}  = false;
+                pv.artparms  (1,1) {prep.mustBeArtParm} = false;
+                pv.plgparms (1,1) {prep.mustBePlgParm} = false 
                 pv.align (1,1) struct =struct('dummy',true);
             end  
 
