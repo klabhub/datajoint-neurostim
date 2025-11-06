@@ -22,7 +22,11 @@ arguments
     parms (1,1) struct {prep.mustBePlgParm}  % Struct with instructtions
 end
 BB = prep.badBy;
-fn = fieldnames(parms);
+if ~parms.enable 
+    return;
+end
+
+fn = setdiff(fieldnames(parms),{'enable'});
 nrCriteria= numel(fn);
 for c= 1:nrCriteria  % Loop over all criteria
     BB.(fn{c}) = []; % Initialize empty

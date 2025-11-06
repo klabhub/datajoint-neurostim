@@ -39,12 +39,20 @@ function [signal,time,result,channels] = preprocess(signal,time,parms,key)
 % parms.filtfilt.lowpass = {'lowpassfir','FilterOrder',2,'CutOffFrequency',120}
 % and then removes a single linear trend
 % parms.detrend  = {1,'Continuous', true};
-
+    
 if ismatrix(signal) % [samples channels]
     signal = permute(signal,[1 3 2]); % Add singleton trial dimension
 end
 [nrSamples,nrTrials,nrChannels] = size(signal);
 channels = 1:nrChannels;  
+result = struct('dummy',true);
+
+if isfield(parms,'enable') && ~parms.enable
+    % Return unchanged
+    signal = squeeze(signal);
+    return;
+end
+
 if isfield(parms,"badChannel")
     badChannels   = parms.badChannel.channels;
     removeBadChannels = parms.badChannel.remove;
@@ -54,7 +62,7 @@ else
 end                
 samplingRate = 1./mode(diff(time));
 fn =string(fieldnames(parms))';
-result = struct('dummy',true);
+
 for f=fn
     % In order to apply same transformations multiple times at different
     % orders the parms field can end with an identifier number, which is

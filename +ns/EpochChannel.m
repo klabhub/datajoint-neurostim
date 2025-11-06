@@ -61,7 +61,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             % Determine mean, ste and n averaging over the pv.average
             % dimension (anything that is left out of grouping)
             grouping = setdiff(["subject" "session_date" "starttime" "paradigm"  "condition" "trial" "channel"  ],pv.average,'stable');            
-            G = ns.EpochChannel.cacheCompute(tbl.cache,@ns.EpochChannel.msten,["mean" "ste" "n"],channel=pv.channel,trial=pv.trial,grouping=grouping);
+            G = ns.EpochChannel.cacheCompute(tbl.cache,@ns.EpochChannel.do_msten,["mean" "ste" "n"],channel=pv.channel,trial=pv.trial,grouping=grouping);
             
             if pv.raster
                 % Concatenate the trials into a raster matrix in G.
@@ -428,12 +428,12 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 noise =noise/sum(kernel); % Average instead of sum
                 v = {noise};           
         end
-        function v = msten(x)
+        function v = do_msten(x)
             % Determine mean, standard error, and N and return as a single cell.
             % Note that time dimension must be rows for cacheCompute to
             % work
             X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing")', ...  % Mean
+            v = {median(X,2,"omitmissing")', ...  % Mean
                 (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
                 sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
         end

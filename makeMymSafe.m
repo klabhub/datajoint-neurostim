@@ -5,14 +5,16 @@ function tpl =makeMymSafe(tpl)
 arguments
     tpl (:,1) struct
 end
-warning('off','MATLAB:structOnObject')
+
 for t = 1:numel(tpl)
     fn =fieldnames(tpl(t));
     nrFields= numel(fn);
     for f=1:nrFields
         thisField= tpl(t).(fn{f});
         if isobject(thisField) && ~isstring(thisField)
+            warning('off','MATLAB:structOnObject')
             thisField = struct(thisField);
+            warning('on','MATLAB:structOnObject')
             tpl(t).(fn{f}) = thisField;
         end
         switch class(thisField)
@@ -32,5 +34,4 @@ for t = 1:numel(tpl)
         end
     end  
 end
-warning('on','MATLAB:structOnObject')
 end

@@ -9,6 +9,7 @@ arguments
     search = []  % Use @startsWith or @contains to search for groups of labels.
 end
 
+% Data from https://www.egi.com/images/HydroCelGSN_10-10.pdf
 T = cell2table({"C3"	59	1.029910
     "AF3"	34	0.509761
     "C4"	183	0.623156

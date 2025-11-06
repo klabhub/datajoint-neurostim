@@ -33,9 +33,9 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 pv.dimension (1,1) string
                 pv.window (1,2) 
                 pv.channels (1,:) {mustBeNumeric} = []
-                pv.prepparms (1,1) {prep.mustBePrepParm}  = false;
-                pv.artparms  (1,1) {prep.mustBeArtParm} = false;
-                pv.plgparms (1,1) {prep.mustBePlgParm} = false 
+                pv.prepparms (1,1) struct {prep.mustBePrepParm}  = struct('enable',false);
+                pv.artparms  (1,1) struct  {prep.mustBeArtParm} = struct('enable',false);
+                pv.plgparms (1,1) struct  {prep.mustBePlgParm} = struct('enable',falsee);
                 pv.align (1,1) struct =struct('dummy',true);
             end  
 

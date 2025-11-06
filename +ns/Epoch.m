@@ -77,18 +77,15 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 alignTpl.trialtime(noSuchEvent) =[];
             end
 
-            if isstruct(parmTpl.plgparms) 
-                % Select trials based on behavior/plugin parameters
-                badByPlg = prep.pluginState(ns.Experiment& key,unique(alignTpl.trial),parmTpl.plgparms);                
-                outBasedOnPlg  = ismember(alignTpl.trial,badByPlg.all);
-                if any(outBasedOnPlg  )
-                    fprintf('Removing %d trials based on plugin parameter selection (%s).\n',sum(outBasedOnPlg ),strjoin(fieldnames(parmTpl.plgparms),'/'));
-                    alignTpl.data(outBasedOnPlg) = [];
-                    alignTpl.trial(outBasedOnPlg) =[];
-                    alignTpl.trialtime(outBasedOnPlg) =[];
-                end
-            else
-                badByPlg = prep.badBy; % Empty
+
+            % Select trials based on behavior/plugin parameters
+            badByPlg = prep.pluginState(ns.Experiment& key,unique(alignTpl.trial),parmTpl.plgparms);
+            outBasedOnPlg  = ismember(alignTpl.trial,badByPlg.all);
+            if any(outBasedOnPlg)
+                fprintf('Removing %d trials based on plugin parameter selection (%s).\n',sum(outBasedOnPlg ),strjoin(fieldnames(parmTpl.plgparms),'/'));
+                alignTpl.data(outBasedOnPlg) = [];
+                alignTpl.trial(outBasedOnPlg) =[];
+                alignTpl.trialtime(outBasedOnPlg) =[];
             end
 
             [trials,ia] = unique(alignTpl.trial,'stable','last');
@@ -126,22 +123,17 @@ classdef Epoch < dj.Computed & dj.DJInstance
             fprintf("\t Filtering is complete after %s\n",toc);
             %% --- Artifact/Outlier Rejection ---
             tic;
-            if isstruct(parmTpl.artparms) || (islogical(parmTpl.artparms) && parmTpl.artparms)
-                fprintf("Artifact detection ...\n");
-                parmTpl.artparms.epoch_no = trials;
-                pv =namedargs2cell(parmTpl.artparms);
-                [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,pv{:});
-                % Remove epochs that were identified as having artifacts
-                out = ismember(trials,badByArt.all);
-                signal(:,out,:) = [];
-                trials(out) = [];
-                condition(out) = [];
-                startTime(out) = [];
-                nrTrials =numel(trials);
-                fprintf("\t Artifact detection complete after %s\n",toc);
-            else
-                badByArt=struct('dummy',true);
-            end
+            fprintf("Artifact detection ...\n");
+            pv =namedargs2cell(parmTpl.artparms);
+            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,'epoch_no',trials,pv{:});
+            % Remove epochs that were identified as having artifacts
+            out = ismember(trials,badByArt.all);
+            signal(:,out,:) = [];
+            trials(out) = [];
+            condition(out) = [];
+            startTime(out) = [];
+            nrTrials =numel(trials);
+            fprintf("\t Artifact detection complete after %s\n",toc);
 
             %% --- Submit to the server ---
             tic;
