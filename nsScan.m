@@ -538,13 +538,15 @@ if pv.readJson || pv.jsonOnly
             end
         end
 
-        %% Read sessionlog.pdf
+        %% Check if sessionlog.pdf exists.
         sessionLogFile = strrep(txtFile,".txt",".sessionlog.pdf");
         if exist(sessionLogFile,"file")
-            if ~ismember('sessionLog',tSession.Properties.VariableNames)
+            if ~ismember('log',tSession.Properties.VariableNames)
                 tSession =addvars(tSession,emptyInit,'NewVariableNames','log');
             end
-            tSession{i,'log'} = "link";
+            tSession{i,'log'} = "yes";
+        elseif ~ismember('log',tSession.Properties.VariableNames)               
+            tSession{i,'log'} = "no";
         end
 
         metaFieldsFromJson = fieldnames(thisJson);
