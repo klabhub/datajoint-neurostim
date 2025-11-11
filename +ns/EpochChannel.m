@@ -433,7 +433,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             % Note that time dimension must be rows for cacheCompute to
             % work
             X =cat(2,x{:});
-            v = {median(X,2,"omitmissing")', ...  % Mean
+            v = {mean(X,2,"omitmissing")', ...  % Mean
                 (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
                 sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
         end
