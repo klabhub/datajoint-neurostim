@@ -233,6 +233,8 @@ if isfield(parms,'eeglab')
                 cd (here)
             case 'filt'
                 EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filt.locutoff,'hicutoff',parms.eeglab.filt.hicutoff,'plotfreqz',0,'usefftfilt',true);
+            otherwise
+                error('Unknown eeglab preprocessing struct %s  \n',fn{f})
         end
     end
     signal =EEG.data(channels,stay)';
