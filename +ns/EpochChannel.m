@@ -52,7 +52,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             end
             % Start a new tile when these values change:
             newTileEach = ["paradigm" "subject" "session_date" "starttime"];
-
+            dimension = unique(tbl.cache.dimension);
             %% Fill the cache, then perform averaging per group
             fillCache(tbl);
             if pv.raster
@@ -120,8 +120,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     p = patch([t flip(t)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);                
                     p.EdgeColor = h(end).Color;
                     plot(xlim,[0 0],'k');
-                    ylabel 'EP (\muV)'
-                    legStr = [legStr G.condition(i)]; %#ok<AGROW>
+                    ylabel 'EP (\muV)'                    
+                    legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
                     titlePV= setdiff(["paradigm" grouping],"condition",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 end
