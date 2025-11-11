@@ -32,6 +32,6 @@ for t = 1:numel(tpl)
             otherwise
                 %Nothing to do
         end
-    end  
+    end
 end
 end

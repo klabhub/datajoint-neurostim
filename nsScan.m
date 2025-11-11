@@ -545,7 +545,7 @@ if pv.readJson || pv.jsonOnly
                 tSession =addvars(tSession,emptyInit,'NewVariableNames','log');
             end
             tSession{i,'log'} = "yes";
-        elseif ~ismember('log',tSession.Properties.VariableNames)               
+        elseif ~ismember('log',tSession.Properties.VariableNames)
             tSession{i,'log'} = "no";
         end
 
