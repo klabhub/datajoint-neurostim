@@ -106,7 +106,7 @@ if ~isempty(options.highPassCutoff)  && options.highPassCutoff > 0
 end
 
 % --- Call Artifact Detection Functions Sequentially ---
-funs = {@badByNanFlat, @badByAmplitude @badByDeviation @badByHfNoise @badByCorrelation,@badByRansac};
+funs = {@badByNanFlat, @badByAmplitude, @badByDeviation, @badByHfNoise, @badByCorrelation, @badByRansac};
 BB = prep.badBy(options); % Initalize the flags object
 channels = 1:nChannels;
 goodChannels = 1:nChannels; %Initially all are assumed good.
@@ -124,7 +124,7 @@ for f =1:numel(funs)
         fprintf('No good channels left. Exiting... \n');
         break;
     end
-    if options.interpolationMethod ~="" && any(thisBad)
+    if (~isfield(options, 'enableInterpolation') || options.enableInterpolation) && any(thisBad)
         %Robust referencing - recalculate the global mean 
         intpSignalForMean = options.interp_func(signal, options.channelLocations,goodChannels, BB.all, options.interpParams{:});
         robustMean = median(intpSignalForMean, 1);       
@@ -164,7 +164,7 @@ try
     isBad = deviationZ > options.deviationThreshold;
 catch ME
     warning(ME.identifier, 'Deviation check failed: %s', ME.message);
-    isBad = false(size(channel,1),1,1);
+    isBad = false(size(signal,1),1,1);
 end
 end % detect_bads_by_deviation
 
@@ -268,9 +268,9 @@ end % detect_bads_by_hf_noise
 % --- RANSAC ---
 function isBad = badByRansac(signal,options)
 % Detects channels poorly predicted by their neighbors using RANSAC.
-isBad = [];
+[nChannels,nTimepoints] = size(signal);
+isBad = false(nChannels,1);
 % Check enough channels remain
-[nChannels,nTimepoints] =size(signal);
 if nChannels <  options.ransacMinimumSampleSize + 1
     fprintf('Not enough good channels (%d) remaining for RANSAC (minimum %d required). Skipping.', nChannels, options.ransacMinimumSampleSize + 1);    
     return;

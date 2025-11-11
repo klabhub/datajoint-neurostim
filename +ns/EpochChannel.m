@@ -19,7 +19,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
     end
 
     properties (Dependent)
-        channels                % Channels contributing to this Epoch tabke
+        channels                % Channels contributing to this Epoch table
     end
 
     methods 

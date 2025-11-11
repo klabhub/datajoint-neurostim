@@ -23,8 +23,8 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 %           Set this to true to use all default parameters, or set it to a
 %           struct with fieldnames that match the PREP parameters to use
 %           different settings.
-% parms.eeglab.filt      - Fitering with pop_eegfiltnew. Must be a struct
-%                           with fields that match eegfitnew input
+% parms.eeglab.filtfilt  - Filtering with pop_eegfiltnew. Must be a struct
+%                           with fields that match eegfiltnew input
 %                           parameters.
 %               
 % The TCP events in the MFF file  contain timing events sent by Neurostim (see
@@ -134,7 +134,7 @@ if isfield(parms,'eeglab')
             case 'zapline'
                 if isstruct(parms.eeglab.zapline)
                     zapParms = namedargs2cell(parms.eeglab.zapline);
-                elseif islogical(parms.eeglab.zapling) && parms.eeglab.zapling
+                elseif islogical(parms.eeglab.zapline) && parms.eeglab.zapline
                     zapParms = {};
                 end
                 EEG = pop_zapline_plus(EEG, zapParms{:});
@@ -232,7 +232,7 @@ if isfield(parms,'eeglab')
                 channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';
                 cd (here)
             case 'filt'
-                EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filtfilt.locutoff,'hicutoff',parms.eeglab.filtfilt.hicutoff,'plotfreqz',0,'usefftfilt',true);
+                EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filt.locutoff,'hicutoff',parms.eeglab.filt.hicutoff,'plotfreqz',0,'usefftfilt',true);
         end
     end
     signal =EEG.data(channels,stay)';
