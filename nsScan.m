@@ -291,25 +291,25 @@ fullName=fullName(stay);
 nrExperiments = numel(meta);
 
 
-if pv.newOnly || pv.jsonOnly    
+if pv.newOnly || pv.jsonOnly
     djTable = fetchtable(ns.Experiment & meta);
-    eInDj = ns.Experiment;    
+    eInDj = ns.Experiment;
     pk = eInDj.primaryKey;
     metaTable = struct2table(meta);
     metaTable = metaTable(:,pk);
     if pv.jsonOnly
         % Update json based meta information for existing files only
-        stay  = ismember(metaTable,djTable);    
+        stay  = ismember(metaTable,djTable);
         if pv.verbose
             fprintf('Skipping %d files not in database \n',sum(~stay));
         end
     elseif pv.newOnly
         % Ignore experiments that are already in datajoint
-        stay = ~ismember(metaTable,djTable);        
+        stay = ~ismember(metaTable,djTable);
         if pv.verbose
             fprintf('Skipping %d files already in database \n',sum(~stay));
         end
-    end    
+    end
     meta = meta(stay);
     fullName=fullName(stay);
     nrExperiments = numel(meta);
@@ -392,13 +392,19 @@ if pv.readJson || pv.jsonOnly
     definitionFile = fullfile(pv.root,"experiment_definition" +  pv.metaDefinitionTag + ".json");
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
-        isLocked.experiment = json.Locked =="1";
-        experimentMetaFields = fieldnames(json.Fields);
-        experimentMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
-        if any(ismember({'starttime'},experimentMetaFields))
-            error('The experiment meta definition file %s should only define new meta properties, not ''starttime''',definitionFile);
+        if ~isempty(json)
+            isLocked.experiment = json.Locked =="1";
+            experimentMetaFields = fieldnames(json.Fields);
+            experimentMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
+            if any(ismember({'starttime'},experimentMetaFields))
+                error('The experiment meta definition file %s should only define new meta properties, not ''starttime''',definitionFile);
+            end
+            nrExperimentMetaFields= numel(experimentMetaFields);
+        else
+            fprintf(2,"Could not read %s\n",definitionFile)
+            nrExperimentMetaFields =0;
+            isLocked.experiment = false;
         end
-        nrExperimentMetaFields= numel(experimentMetaFields);
     elseif pv.metaDefinitionTag==""
         % Use no meta definition
         isLocked.experiment = false;
@@ -478,13 +484,19 @@ if pv.readJson || pv.jsonOnly
     definitionFile = fullfile(pv.root,"session_definition"+ pv.metaDefinitionTag +".json");
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
-        isLocked.session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
-        sessionMetaFields = fieldnames(json.Fields);
-        sessionMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
-        if any(ismember({'subject','session_date'},sessionMetaFields))
-            error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
+        if ~isempty(json)
+            isLocked.session = json.Locked =="1"; % The _definition file states that there should be no other meta fields.
+            sessionMetaFields = fieldnames(json.Fields);
+            sessionMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
+            if any(ismember({'subject','session_date'},sessionMetaFields))
+                error('The session meta definition file %s should only define new meta properties, not ''session_date''',definitionFile);
+            end
+            nrSessionMetaFields= numel(sessionMetaFields);
+        else
+            fprintf(2,"Could not read %s\n",definitionFile)
+            isLocked.session =false;
+            nrSessionMetaFields= 0;
         end
-        nrSessionMetaFields= numel(sessionMetaFields);
     elseif pv.metaDefinitionTag==""
         nrSessionMetaFields= 0;
     else
@@ -499,6 +511,7 @@ if pv.readJson || pv.jsonOnly
 
     % See if there are any Session JSON files and put information in the table
     for i=1:nrSessions
+        %% Read session notes (subject.txt) and add to json comments
         if nrSessions==1
             sessionJsonFile = fullfile(pv.root,strrep(tSession.session_date,'-',filesep),tSession.subject + ".json");
             % Check to see if there are any .txt session notes (subjectNr.txt)
@@ -524,6 +537,18 @@ if pv.readJson || pv.jsonOnly
                 thisJson.comments = txt;
             end
         end
+
+        %% Check if sessionlog.pdf exists.
+        sessionLogFile = strrep(txtFile,".txt",".sessionlog.pdf");
+        if exist(sessionLogFile,"file")
+            if ~ismember('log',tSession.Properties.VariableNames)
+                tSession =addvars(tSession,emptyInit,'NewVariableNames','log');
+            end
+            tSession{i,'log'} = "yes";
+        elseif ~ismember('log',tSession.Properties.VariableNames)
+            tSession{i,'log'} = "no";
+        end
+
         metaFieldsFromJson = fieldnames(thisJson);
         for j=1:numel(metaFieldsFromJson)
             if ~ismember(metaFieldsFromJson{j},tSession.Properties.VariableNames)
@@ -550,13 +575,20 @@ if pv.readJson || pv.jsonOnly
     definitionFile = fullfile(pv.root,"subject_definition" +  pv.metaDefinitionTag + ".json");
     if exist(definitionFile,'file')
         json = readJson(definitionFile);
-        isLocked.subject = json.Locked =="1"; % No new meta fields allowed according to _definition
-        subjectMetaFields = fieldnames(json.Fields);
-        subjectMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
-        if ismember('subject',subjectMetaFields)
-            error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
+        if ~isempty(json)
+            isLocked.subject = json.Locked =="1"; % No new meta fields allowed according to _definition
+            subjectMetaFields = fieldnames(json.Fields);
+            subjectMetaDescription = string(struct2cell(structfun(@(x)(string(x.Description)),json.Fields,'uni',false)));
+            if ismember('subject',subjectMetaFields)
+                error('The subject meta definition file %s should only define new meta properties, not ''subject''',definitionFile);
+            end
+            nrSubjectMetaFields= numel(subjectMetaFields);
+        else
+            fprintf(2,"Could not read %s\n",definitionFile)
+            nrSubjectMetaFields =0;
+            isLocked.subject =false;
         end
-        nrSubjectMetaFields= numel(subjectMetaFields);
+
     elseif pv.metaDefinitionTag==""
         nrSubjectMetaFields= 0;
     else

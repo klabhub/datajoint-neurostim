@@ -61,6 +61,8 @@ arguments (Input)
     % Data dimensions: Epochs x Channels x Timepoints
     data (:,:,:) double {mustBeNumeric}
     srate (1,1) double {mustBeNumeric, mustBePositive} % Required positional
+    
+    options.enable (1,1) logical = true % If set to true; artifact detection is done.
 
     % Optional Name-Value arguments collected into 'options' structure
     options.flat_threshold_sd (1,1) double {mustBeNumeric, mustBeNonnegative} = .1 % Default 1 uV
@@ -76,9 +78,13 @@ arguments (Input)
     options.exclude (:,1) {mustBeNumeric, mustBeInteger, mustBePositive} = [] % Epochs to exclude from analysis
 end
 arguments (Output)
-    flags (1, 1) prep.NSFlags
+    flags (1, 1) prep.badBy
 end
-
+% --- Initialization ---
+flags = prep.badBy(options);
+if ~options.enable
+    return;
+end
 
 % --- Get Data Dimensions ---
 [n_epochs, n_channels, n_timepoints] = size(data);
@@ -110,8 +116,7 @@ end
         warning('HF cutoff frequency (%.1f Hz) is >= Nyquist frequency (%.1f Hz). Check parameters.', options.hf_cutoff_hz, srate/2);
     end
 
-% --- Initialization ---
-flags = prep.NSFlags(options);
+
 
 % =========================================================================
 % --- Calculate Flags using Nested Functions ---

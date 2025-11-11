@@ -1,5 +1,5 @@
-classdef NSFlags < dynamicprops
-    % NSFlags A class for managing flags and associated parameters.
+classdef badBy < dynamicprops
+    % A class for managing flags and associated parameters.
     % This class allows dynamic creation of 'badBy...' properties, which
     % are integer vectors, via direct assignment or the setProperty method.
     % It includes a 'parameters' struct and a dependent property 'all'
@@ -18,20 +18,26 @@ classdef NSFlags < dynamicprops
     end
 
     methods
-        function obj = NSFlags(initialParams)
-            % NSFlags Construct an instance of this class
+        function disp(self)
+            fprintf('BadBy (total: %d unique channels)\n',numel(self.all))
+            for c=self.categories'
+                fprintf('\t %s: %d [%s ] \n',c,self.("n_" + c),strjoin(string(self.(c)),','))
+            end
+        end
+        function obj = badBy(initialParams)
+            % badBy Construct an instance of this class
             if nargin > 0
                 if isstruct(initialParams)
                     obj.parameters = initialParams;
                 else
-                    error('NSFlags:Constructor:InvalidInput', 'Initial parameters must be a struct.');
+                    error('badBy:Constructor:InvalidInput', 'Initial parameters must be a struct.');
                 end
             end
         end
 
         function set.parameters(obj, value)
             if ~isstruct(value)
-                error('NSFlags:setparameters:InvalidType', 'The ''parameters'' property must be a struct.');
+                error('badBy:setparameters:InvalidType', 'The ''parameters'' property must be a struct.');
             end
             obj.parameters = value;
         end
@@ -40,7 +46,7 @@ classdef NSFlags < dynamicprops
             % get.BadByDataNames Getter for the list of 'badBy...' data property names.
             % These are properties that are Dynamic, not Dependent, and start with 'badBy'.
             props = string(properties(obj));
-            names = props(startsWith(props, 'badBy'));
+            names = string(props(startsWith(props, 'badBy')));
         end
 
         function value = get.all(obj)
@@ -67,27 +73,27 @@ classdef NSFlags < dynamicprops
             % transformed: e.g., 'issue' becomes 'badByIssue'.
 
             if ~ischar(propName) && ~isstring(propName)
-                error('NSFlags:setProperty:InvalidPropertyNameType', 'Property name must be a character array or string.');
+                error('badBy:setProperty:InvalidPropertyNameType', 'Property name must be a character array or string.');
             end
             originalPropName = char(propName);
             
             if strcmpi(originalPropName, 'parameters') || strcmpi(originalPropName, 'all') || ...
-               startsWith(lower(originalPropName), 'n_badby') || strcmpi(originalPropName, 'BadByDataNames')
-                error('NSFlags:setProperty:ReservedName', ...
-                      ['Cannot use setProperty for reserved names like ''parameters'', ''all'', ''BadByDataNames'', or ''n_badBy...''. Assign to ''parameters'' directly if needed.']);
+               startsWith(lower(originalPropName), 'n_badby') || strcmpi(originalPropName, 'badByDataNames')
+                error('badBy:setProperty:ReservedName', ...
+                      'Cannot use setProperty for reserved names like ''parameters'', ''all'', ''badByDataNames'', or ''n_badBy...''. Assign to ''parameters'' directly if needed.');
             end
 
             finalPropName = originalPropName;
             if ~startsWith(finalPropName, 'badBy')
                 if isempty(finalPropName)
-                    error('NSFlags:setProperty:EmptyPropertyName', 'Property name cannot be empty.');
+                    error('badBy:setProperty:EmptyPropertyName', 'Property name cannot be empty.');
                 end
                 finalPropName(1) = upper(finalPropName(1));
                 finalPropName = ['badBy', finalPropName];
             end
 
-            if ~isvector(value) || ~isnumeric(value) || ~all(round(value) == value)
-                error('NSFlags:setProperty:InvalidPropertyValue', ...
+            if ~isempty(value) && (~isvector(value) || ~isnumeric(value) || ~all(round(value) == value))
+                error('badBy:setProperty:InvalidPropertyValue', ...
                       ['Value for ''', finalPropName, ''' (from original input ''', originalPropName, ''') must be an integer vector.']);
             end
 
@@ -118,7 +124,7 @@ classdef NSFlags < dynamicprops
 
                 if strcmp(propName, 'parameters')
                     obj.parameters = val;
-                elseif strcmp(propName, 'all') || startsWith(propName, 'n_badBy') || strcmp(propName, 'BadByDataNames')
+                elseif strcmp(propName, 'all') || startsWith(propName, 'n_badBy') || strcmp(propName, 'badByDataNames')
                     error('MATLAB:class:SetProhibited', ...
                           ['Setting the ''', propName, ''' property of the ''', ...
                            class(obj), ''' class is not allowed.']);
@@ -136,13 +142,13 @@ classdef NSFlags < dynamicprops
                 flg = repmat("",flg,1);
             end
 
-            categories = obj.categories;
+            cats = obj.categories;
 
-            n_cat = numel(categories);
+            n_cat = numel(cats);
 
             for ii = 1:n_cat
 
-                catN = categories(ii);
+                catN = cats(ii);
                 flg(obj.(catN)) = catN;
 
             end
@@ -153,7 +159,7 @@ classdef NSFlags < dynamicprops
     methods (Static)
         function obj = loadobj(s)
             if isstruct(s)
-                obj = NSFlags();
+                obj = badBy();
                 fields = fieldnames(s);
                 for i = 1:length(fields)
                     fieldName = fields{i};
@@ -177,11 +183,11 @@ classdef NSFlags < dynamicprops
                             if metaCountProp.Dynamic && metaCountProp.Dependent
                                 metaCountProp.GetMethod = @(~) numel(obj.(dataPropName));
                             else
-                                warning('NSFlags:loadobj:IncorrectCountPropertyState', ...
+                                warning('badBy:loadobj:IncorrectCountPropertyState', ...
                                     'Property %s is not correctly configured as a dependent count property.', countPropName);
                             end
                         else
-                             warning('NSFlags:loadobj:MissingCountProperty', ...
+                             warning('badBy:loadobj:MissingCountProperty', ...
                                  'Recreating missing count property: %s', countPropName);
                              p_count = obj.addprop(countPropName);
                              p_count.Dependent = true;
