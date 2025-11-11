@@ -45,7 +45,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 pv.delta (1,1) string = ""              % Show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
-                pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date"])} = ["trial" "channel"]  % Average over these dimensions
+                pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date" ""])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = true        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,1) logical = false         % Set to true to show trials as rasters (removes "trial" from pv.average)
