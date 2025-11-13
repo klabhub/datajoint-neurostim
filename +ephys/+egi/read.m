@@ -251,8 +251,8 @@ else % Use non eeglab preprocessing (deprecated)
     signal =EEG.data(channels,stay)';
     neurostimTime = neurostimTime(stay);
     % Layout necessary for certain referencing and interpolation functions
-    parms.layout = MFF.etc.layout;
-    parms.layout.ChannelLocations = [[MFF.chanlocs.X]', [MFF.chanlocs.Y]', [MFF.chanlocs.Z]'];
+    parms.layout = EEG.etc.layout;
+    parms.layout.ChannelLocations = [[EEG.chanlocs.X]', [EEG.chanlocs.Y]', [EEG.chanlocs.Z]'];
     % If assigned badElectrodes file, the electrodes will have been marked
     % during preprocessing
     badElectrodes = ephys.egi.badElectrodes(exp_tpl,struct(filename = 'badElectrodes', extension = '.xlsx'));
