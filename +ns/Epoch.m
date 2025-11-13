@@ -478,24 +478,32 @@ classdef Epoch < dj.Computed & dj.DJInstance
             
             all_conds = repelem("",count(eTbl),1);
             prev_ep_idx = 0;
-            for ii = 1:n_c_rows
+            for iC = 1:n_c_rows
 
-                eTblN = eTbl & cTbl(ii);
-                n_epN = count(eTblN);
-                dTbl = ns.DimensionCondition & eTblN;
-                dTbl = fetch(dTbl,'trials');
-                trials = fetch(eTblN,'trial');
-                trials = [trials(:).trial]';
-                ep_idx = prev_ep_idx + (1:n_epN);
+                cTblN = cTbl(iC);
+                eTblN = eTbl & cTblN;
+                epTblN = ns.EpochParm & eTblN;
+                for iEP = 1:count(epTblN)
+
+                    dimN = fetchtable(epTblN(iEP));
+                    dim_qryN = sprintf("dimension = '%s'", dimN.dimension);
+                    n_epN = count(eTblN);
+                    dTbl = ns.DimensionCondition & cTblN & dim_qryN;
+                    dTbl = fetch(dTbl,'trials');
+                    trials = fetch(eTblN,'trial');
+                    trials = [trials(:).trial]';
+                    ep_idx = prev_ep_idx + (1:n_epN);
+        
+                    for jj = 1:length(dTbl)
+        
+                      
+                        all_conds(ep_idx(ismember(trials,dTbl(jj).trials))) = dTbl(jj).name;
+                    
+                    end
     
-                for jj = 1:length(dTbl)
-    
-                  
-                    all_conds(ep_idx(ismember(trials,dTbl(jj).trials))) = dTbl(jj).name;
-                
+                    prev_ep_idx = prev_ep_idx + n_epN;
+
                 end
-
-                prev_ep_idx = prev_ep_idx + n_epN;
 
 
             end
