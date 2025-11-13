@@ -1,43 +1,80 @@
-function varargout = getTimepointsAroundTrials(varargin)
+function [isTimepointAroundTrials, subsampled_timepoints] = getTimepointsAroundTrials(nsTbl, buffer, options)
+% Subsamples signal to the segments defined by buffer around trials.
+% [isAround, t_sub] = getTimepointsAroundTrials(exp_tbl, buffer, timepoints=t, plugin=plugin1)
+%
+% --- Inputs ---
+%   nsTbl       : (1,1) ns.C OR ns.Experiment
+%   buffer      : (1,:) double. 
+%                 If scalar: [start-buffer, stop+buffer]
+%                 If 2-element: [start-buffer(1), stop+buffer(2)]
+%   timepoints  : (1,:) double = missing. Required if nsTbl is ns.Experiment.
+%   plugin      : text = 'cic'. The plugin name used in the get() query.
 
-% Subsamples signal to the segments +- buffer_t (time) around trials
-% [isTimepointAroundTrials, subsampled_ timepoints] = getTimepointsAroundTrials(c_tbl, buffer_t)
-% [isTimepointAroundTrials, subsampled_ timepoints] = getTimepointsAroundTrials(exp_tbl, timepoints, buffer_t)
-% Outputs:
-%   isTimepointAroundTrials
-%   subsampled_ timepoints
+arguments
+    nsTbl {mustBeA(nsTbl, ["ns.C", "ns.Experiment"])}
+    buffer (1,:) double {mustBeNonempty}
+    options.timepoints (1,:) double = missing
+    options.plugin {mustBeText} = 'cic'
+end
 
-if nargin == 2 && isa(varargin{1}, "ns.C")
-    c_tbl = varargin{1};
-    exp_tbl = ns.Experiment & c_tbl;
-    buffer_t = varargin{2};
-    assert(count(c_tbl)==1, "The function only accepts a single entry in C table.")
-    t = sampleTime(c_tbl);
-elseif nargin == 3 && isa(varargin{1}, "ns.Experiment")
-    exp_tbl = varargin{1};
-    t = varargin{2};
-    buffer_t = varargin{3};
+% --- 1. Process Buffer ---
+if isscalar(buffer)
+    % Symmetric buffer
+    buf_pre = - buffer;
+    buf_post = buffer;
+elseif numel(buffer) == 2
+    % Asymmetric buffer: buffer(1) before start, buffer(2) after stop
+    buf_pre = buffer(1);
+    buf_post = buffer(2);
 else
-    error("If the first input is ns.C second and only other input must be buffer_t. If first input is ns.Experiment, second input must be timepoints, and third input must be buffer_t.");
+    error("Buffer must be a scalar or a 2-element vector.");
+end
+
+% --- 2. Process Table Type & Timepoints ---
+if isa(nsTbl, "ns.C")
+    % Syntax 1: ns.C
+    assert(count(nsTbl)==1, "The function only accepts a single entry in C table.");
+    
+    % Derive Experiment and Time from C table
+    exp_tbl = ns.Experiment & nsTbl;
+    t = sampleTime(nsTbl);
+    
+    % Ensure t is (1,:) as requested by the timepoints signature
+    if size(t,1) > 1 && size(t,2) == 1
+        t = t'; 
+    end
+
+elseif isa(nsTbl, "ns.Experiment")
+    % Syntax 2: ns.Experiment
+    if ismissing(options.timepoints)
+        error("If the first input is ns.Experiment, 'timepoints' (arg3) must be provided.");
+    end
+    
+    exp_tbl = nsTbl;
+    t = options.timepoints;
 end
 
 assert(count(exp_tbl)==1, "The function only accepts a single entry in Experiment table.");
-trl_start_t = get(exp_tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-trl_stop_t = get(exp_tbl, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');
+
+% --- 3. Get Trial Timings ---
+% Using the 'plugin' variable in the get query
+trl_start_t = get(exp_tbl, options.plugin, 'prm', 'firstFrame', 'atTrialTime', inf, 'what', 'clocktime');
+trl_stop_t  = get(exp_tbl, options.plugin, 'prm', 'trialStopTime', 'atTrialTime', inf, 'what', 'clocktime');
+
 n_trl = length(trl_start_t);
+isInSubsamp = false(size(t)); 
 
-isInSubsamp = ones(size(t))==0;
-
+% --- 4. Loop & Threshold ---
 for ii = 1:n_trl
-
-    buffer_winN = [trl_start_t(ii), trl_stop_t(ii)] + [-1, 1]*buffer_t;
-
-    isInSubsamp = do.ifwithin(t, buffer_winN) | isInSubsamp;
-
+    % Apply buffer: Start - buf_pre, Stop + buf_post
+    curr_win = [trl_start_t(ii) + buf_pre, trl_stop_t(ii) + buf_post];
+    
+    % Accumulate logical mask
+    isInSubsamp = do.ifwithin(t, curr_win) | isInSubsamp;
 end
 
-varargout = cell(1, nargout);
-varargout{1} = isInSubsamp;
-if nargout > 1, varargout{2} = t(isInSubsamp); end
+% --- 5. Outputs ---
+isTimepointAroundTrials = isInSubsamp;
+subsampled_timepoints = t(isInSubsamp);
 
 end
