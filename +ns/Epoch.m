@@ -87,12 +87,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 alignTpl.trialtime(outBasedOnPlg) =[];
             end
 
-            [trials,ia] = unique(alignTpl.trial,'stable','last');
-            if numel(trials) < numel(alignTpl.trial)
+            allTrials = fliplr(alignTpl.trial);
+            allTrialTimes = fliplr(alignTpl.trialtime);
+            [trials,ia] = unique(allTrials,'stable'); % R2024a and earlier dont allow stable, last. This has the same effect
+            if numel(trials) < numel(allTrials)
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
             end
 
-            startTime = alignTpl.trialtime(ia);
+            startTime = allTrialTimes(ia);
             nrTrials = numel(trials);
             nrConditions = numel(conditionTpl);
             condition = repmat("",nrTrials,1);
