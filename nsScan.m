@@ -325,7 +325,7 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
 
     for i=1:nrExperiments
         try
-            [tmp,c{i}] = ns.Experiment.readCicContents(meta(i),'root',pv.root);
+            [tmp,c{i}] = ns.Experiment.read(meta(i),'root',pv.root);
             tmpMeta{i} = mergestruct(meta(i),tmp); % Merge to keep json/provenance meta.
         catch
             if pv.verbose

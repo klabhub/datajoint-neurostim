@@ -22,7 +22,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
     properties (Dependent)
 
-        first_frame_onsets      
+        first_frame_onsets
     end
 
     methods (Access = public)
@@ -33,10 +33,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %
             %  INPUT
             % tbl  an ns.Experiment table
-            % referenceParadigm - The name of the reference paradigm. When absent, the 
-            % first  experiment in the session is considered to be the reference. Sessions 
+            % referenceParadigm - The name of the reference paradigm. When absent, the
+            % first  experiment in the session is considered to be the reference. Sessions
             % in which the reference paradigm did not occur are not
-            % included in the table. 
+            % included in the table.
             %
             % OUTPUT
             %  A tablewith the same columns as ns.Experiment plus:
@@ -47,8 +47,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % relative - Index relative to a reference paradigm. (0=
             %           reference paradigm, -1 is the one just before the reference
             %           paradigm).
-            %                      
-            % 
+            %
+            %
             % EXAMPLE
             % Consider a session in which one experiment represents a
             % manipulation (e.g. stimulation) and we want to select experimets
@@ -57,7 +57,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % before =T & 'relative <0'; % The experimens before the
             % "stimulation" paradigm.
             % after = T & 'relative >0'; % The experimens after
-            % stimulation.           
+            % stimulation.
             arguments
                 tbl (1,1) ns.Experiment
                 referenceParadigm (1,1) string = ""
@@ -81,9 +81,9 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             earlierThanReference = (allEWithRef * proj(allEWithRef, 'subject', 'session_date', 'starttime->starttime2') ) & 'starttime2< reference';
             B= aggr(allEWithRef, earlierThanReference, 'count(starttime2)+1->rIx');
             R  =proj(A*B,'absolute-rIx->relative','absolute','dt');
-            
+
             % Join back to the base relation to attach the index and dt
-            v = tbl * R;            
+            v = tbl * R;
         end
         function what(tbl,pv)
             % Pass an experiment table to get an overview of the paradigms
@@ -575,23 +575,23 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         function [isOk, t] = getTimepointsAroundTrials(expt,t,halfWidth)
             %  Identify timepoints in t (ms) that are between firstFrame and
-            % trialStopTime  with slack of halfWidth (ms) on either end. 
+            % trialStopTime  with slack of halfWidth (ms) on either end.
             arguments
                 expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
-                t (1,:) double 
-                halfWidth (1,1) double 
+                t (1,:) double
+                halfWidth (1,1) double
             end
             start = get(expt, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');            
+            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');
             isOk = false(size(t));
             for ii = 1:length(start)
                 isOk = isOk |  (t>= (start(ii)-halfWidth) & t< (stop(ii)+halfWidth));
-            end                
+            end
             if nargout > 1, t  = t(isOk); end
         end
 
 
-        function updateWithFileContents(tbl,cic,pv)
+        function updateWithFileContents(tbl,nsData,pv)
             % function updateWithFileContents(self)
             % Read neurostim files to fill the database with the
             % information contained in plugins/stimuli. This can be done
@@ -601,13 +601,13 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %
             % INPUT
             % tbl - (A subset of) the ns.Experiment table to update.
-            % cic - A vector of cic objects already loaded (by nsScan) and
+            % cic - A vector of neurostim data objects already loaded (by nsScan) and
             %           corresponding to the rows of the tbl.
             % newOnly  - Set to true to update only those experiments that
             % have no information in the database currently. [true]
             arguments
                 tbl ns.Experiment
-                cic (1,:) = []
+                nsData (1,:) = []
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
             end
@@ -616,11 +616,11 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             keyCntr = 0;
             pkey = tbl.primaryKey;
 
-            if ~isempty(cic)
+            if ~isempty(nsData)
                 % Restrict the tbl to the rows that correspond to these
-                % cics
-                for cicCntr = 1:numel(cic)
-                    restrict(cicCntr) = ns.Experiment.tplFromCic(cic(cicCntr)); %#ok<AGROW>
+                % data files
+                for cntr = 1:numel(nsData)
+                    restrict(cntr) = ns.Experiment.metaTpl(nsData(cntr)); %#ok<AGROW>
                 end
                 tbl = tbl & restrict;
             end
@@ -629,22 +629,23 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
-                if isempty(cic)
+                if isempty(nsData)
                     % Read from files
                     % Check if this eperiment already has file data, if newOnly
                     % is true, we skip those.
                     if pv.newOnly && ~isnan(fetchn(tbl & key,'stimuli'))
                         continue;
                     end
-                    [thisTpl,thisC] = ns.Experiment.readCicContents(key);
+                    [thisTpl,thisData] = ns.Experiment.read(key);
                 else
-                    % Cic was passed check that it matches, then add
+                    % Data was passed check that it matches, then add
                     % contents. The order of the tbl is not guaranteed, so make sure
-                    % to matchup with the correct cic.
-                    cicUID = string(datetime({cic.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({cic.file})+".mat";
-                    stay = cicUID==string([key.session_date key.file]);
-                    thisC = cic(stay);
-                    thisTpl = ns.Experiment.tplFromCic(thisC);
+                    % to matchup with the correct data file.
+                    
+                    UID = string(datetime({nsData.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({nsData.file});                    
+                    stay = startsWith(UID,string([key.session_date key.file]));
+                    thisData = nsData(stay);
+                    thisTpl = ns.Experiment.metaTpl(thisData);
                     thisTpl =mergestruct(key,thisTpl); % Errors if this Cic does not belong to this key.
                 end
 
@@ -673,10 +674,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 if exists(ns.Plugin & key)
                     del(ns.Plugin & key);
                 end
-                if max([thisC.prms.trial.log{:}])>0
+                if thisTpl.nrtrials>0
                     % re-add each plugin (pluginOrder includes stimuli and behaviors),
                     % cic
-                    plgsToAdd= [thisC.pluginOrder thisC ];
+                    plgsToAdd= [thisData.pluginOrder thisData ];
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
                     for plg = plgsToAdd
                         try
@@ -697,10 +698,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 addMissingFiles(ns.File,key)
             end
         end
-        
+
         function v = id(tbl)
             tpl = fetch(tbl,'subject','session_date','starttime');
-            v = string({tpl.subject})' + "/" +string({tpl.session_date})' + "@" + string({tpl.starttime})';           
+            v = string({tpl.subject})' + "/" +string({tpl.session_date})' + "@" + string({tpl.starttime})';
         end
     end
 
@@ -710,7 +711,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
         function o = get.first_frame_onsets(expTbl)
             o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
         end
-        
+
     end
 
     methods (Static)
@@ -720,7 +721,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             s  = load(filename,'c');
             o=s.c;
         end
-        function [tpl,c] = readCicContents(tpl,pv)
+        function [tpl,c] = read(tpl,pv)
             % This is called by nsScan to read the contents of a neurostim
             % output file and extract some meta data to store in DataJoint
             % or show in nsMeta. This is a static so that it can be used
@@ -729,67 +730,92 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tpl
                 pv.root {mustBeText} = getenv('NS_ROOT');
             end
-
             file = fullfile(pv.root,strrep(tpl.session_date,'-','/'),tpl.file);
-            % If the file cannot be read fully (for instance because some
-            % classes are not on the current Matlab path) the cic object
-            % will be incomplete and some of the code below will fail.
-
-            % Turn off this warning as it is more or less expected that
-            % some will fail, but we're ignoring them anyway
-            warnstate= warning('query');
-            warning('off','MATLAB:load:classNotFound');
-            warning('off','MATLAB:class:DefaultObjectSubstitution');
-            try
-                c  = ns.Experiment.load(file);
-            catch
-                % Make sure that the experiment key is in the table
-                fprintf(2,'Failed to load %s . Is NS_ROOT (%s) correct? \n',file,getenv('NS_ROOT'))
-                return;
+            [~,~,ext] =  fileparts(file);
+            switch upper(ext)
+                case ".MAT"
+                    % Matlab based neurostim file
+                    % If the file cannot be read fully (for instance because some
+                    % classes are not on the current Matlab path) the cic object
+                    % will be incomplete and some of the code below will fail.
+                    % Turn off this warning as it is more or less expected that
+                    % some will fail, but we're ignoring them anyway
+                    warnstate= warning('query');
+                    warning('off','MATLAB:load:classNotFound');
+                    warning('off','MATLAB:class:DefaultObjectSubstitution');
+                    try
+                        c  = ns.Experiment.load(file);
+                    catch
+                        % Make sure that the experiment key is in the table
+                        fprintf(2,'Failed to load %s . Is NS_ROOT (%s) correct? \n',file,getenv('NS_ROOT'))
+                        return;
+                    end
+                    warning(warnstate)                    
+                case ".NMLD"
+                    % C++ based neurostim file
+                    assert(exist('sibascic','class'),"The @sib class must be on the path to read (old!) neurostim c++ files.")
+                    c=sibascic(file);                    
+                otherwise
+                    error('Unknown file type %s',ext)
             end
-            warning(warnstate)
-
-            tpl = ns.Experiment.tplFromCic(c);
+            tpl = ns.Experiment.metaTpl(c);
         end
-        function tpl = tplFromCic(c)
-            % Construct a tpl from a CIC object
+
+        function tpl = metaTpl(c)
+            % Construct a tpl from Neurostim data
             arguments
-                c (1,1) neurostim.cic
+                c (1,1)              
             end
-
-            if isfield(c,'ptbVersion')
-                ptbVersion = c.ptbVersion.version;
-            else
-                ptbVersion = 'unknown'; % Early versions did not store this
-            end
-            actualNrTrialsStarted = max([c.prms.trial.log{:}]);
-            if actualNrTrialsStarted <1
-                % Cannot read some information in a file without trials..
-                % Just putting zeros.
-                fprintf('Skipping %s - no completed trials\n',c.file);
-                tpl = struct('stimuli',0,'blocks',0,...
-                    'conditions',0,'nrtrials',actualNrTrialsStarted,...
-                    'matlab',c.matlabVersion,'ptb',ptbVersion,...
-                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',[c.file '.mat']);
-            else
-                % Pull the top level information to put in the tbl
-                if isempty(c.runNr)
-                    runNr =0;  % early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
-                else
+            [~,~,ext] =  fileparts(c.file);
+            
+            switch upper(ext)
+                case ".NMLD"
+                    % Old C++ Neurostim file
                     runNr = c.runNr;
-                end
-                if isempty(c.seqNr)
-                    seqNr = 0;% early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
-                else
-                    seqNr = c.seqNr;
-                end
+                    if isnan(runNr);runNr=0;end
+                    tpl = struct('starttime',c.time, ...
+                        'session_date',char(datetime(c.date,'InputFormat','dd-MMM-yyyy','Format','yyyy-MM-dd')), ...
+                        'subject',c.subject, ...
+                        'stimuli',numel(c.stimulusNames),'blocks',0,...
+                        'conditions',c.nrConditions,'nrtrials',c.nrTrialsCompleted,...
+                        'matlab','c++','ptb','c++',...
+                        'ns',num2str(c.CURRENTVERSION),'run',runNr,'seq',0,'paradigm',c.paradigm,'file',[c.fileOnly '.nmld']);
+                case ".MAT"
+                    % Matlab based neurostim.cic file
+                    if isfield(c,'ptbVersion')
+                        ptbVersion = c.ptbVersion.version;
+                    else
+                        ptbVersion = 'unknown'; % Early versions did not store this
+                    end
+                    actualNrTrialsStarted = max([c.prms.trial.log{:}]);
+                    if actualNrTrialsStarted <1
+                        % Cannot read some information in a file without trials..
+                        % Just putting zeros.
+                        fprintf('Skipping %s - no completed trials\n',c.file);
+                        tpl = struct('stimuli',0,'blocks',0,...
+                            'conditions',0,'nrtrials',actualNrTrialsStarted,...
+                            'matlab',c.matlabVersion,'ptb',ptbVersion,...
+                            'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',[c.file '.mat']);
+                    else
+                        % Pull the top level information to put in the tbl
+                        if isempty(c.runNr)
+                            runNr =0;  % early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
+                        else
+                            runNr = c.runNr;
+                        end
+                        if isempty(c.seqNr)
+                            seqNr = 0;% early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
+                        else
+                            seqNr = c.seqNr;
+                        end
 
-                tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
-                    'conditions',c.nrConditions,'nrtrials',actualNrTrialsStarted,...
-                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',[c.file '.mat']);
+                        tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
+                            'conditions',c.nrConditions,'nrtrials',actualNrTrialsStarted,...
+                            'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',[c.file '.mat']);
+                    end
+                    key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
+                    tpl  =mergestruct(key,tpl);
             end
-            key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
-            tpl  =mergestruct(key,tpl);
         end
     end
 end
