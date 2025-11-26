@@ -641,8 +641,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     % Data was passed check that it matches, then add
                     % contents. The order of the tbl is not guaranteed, so make sure
                     % to matchup with the correct data file.
-                    
-                    UID = string(datetime({nsData.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({nsData.file});                    
+
+                    UID = string(datetime({nsData.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({nsData.file});
                     stay = startsWith(UID,string([key.session_date key.file]));
                     thisData = nsData(stay);
                     thisTpl = ns.Experiment.metaTpl(thisData);
@@ -677,7 +677,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 if thisTpl.nrtrials>0
                     % re-add each plugin (pluginOrder includes stimuli and behaviors),
                     % cic
-                    plgsToAdd= [thisData.pluginOrder thisData ];
+                    plgsToAdd= [thisData.pluginOrder thisData];
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
                     for plg = plgsToAdd
                         try
@@ -750,11 +750,11 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                         fprintf(2,'Failed to load %s . Is NS_ROOT (%s) correct? \n',file,getenv('NS_ROOT'))
                         return;
                     end
-                    warning(warnstate)                    
+                    warning(warnstate)
                 case ".NMLD"
                     % C++ based neurostim file
                     assert(exist('sibascic','class'),"The @sib class must be on the path to read (old!) neurostim c++ files.")
-                    c=sibascic(file);                    
+                    c=sibascic(file);
                 otherwise
                     error('Unknown file type %s',ext)
             end
@@ -764,58 +764,42 @@ classdef Experiment  < dj.Manual & dj.DJInstance
         function tpl = metaTpl(c)
             % Construct a tpl from Neurostim data
             arguments
-                c (1,1)              
+                c (1,1)  % Can be a cic or a sibascic
             end
-            [~,~,ext] =  fileparts(c.file);
             
-            switch upper(ext)
-                case ".NMLD"
-                    % Old C++ Neurostim file
-                    runNr = c.runNr;
-                    if isnan(runNr);runNr=0;end
-                    tpl = struct('starttime',c.time, ...
-                        'session_date',char(datetime(c.date,'InputFormat','dd-MMM-yyyy','Format','yyyy-MM-dd')), ...
-                        'subject',c.subject, ...
-                        'stimuli',numel(c.stimulusNames),'blocks',0,...
-                        'conditions',c.nrConditions,'nrtrials',c.nrTrialsCompleted,...
-                        'matlab','c++','ptb','c++',...
-                        'ns',num2str(c.CURRENTVERSION),'run',runNr,'seq',0,'paradigm',c.paradigm,'file',[c.fileOnly '.nmld']);
-                case ".MAT"
-                    % Matlab based neurostim.cic file
-                    if isfield(c,'ptbVersion')
-                        ptbVersion = c.ptbVersion.version;
-                    else
-                        ptbVersion = 'unknown'; % Early versions did not store this
-                    end
-                    actualNrTrialsStarted = max([c.prms.trial.log{:}]);
-                    if actualNrTrialsStarted <1
-                        % Cannot read some information in a file without trials..
-                        % Just putting zeros.
-                        fprintf('Skipping %s - no completed trials\n',c.file);
-                        tpl = struct('stimuli',0,'blocks',0,...
-                            'conditions',0,'nrtrials',actualNrTrialsStarted,...
-                            'matlab',c.matlabVersion,'ptb',ptbVersion,...
-                            'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',[c.file '.mat']);
-                    else
-                        % Pull the top level information to put in the tbl
-                        if isempty(c.runNr)
-                            runNr =0;  % early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
-                        else
-                            runNr = c.runNr;
-                        end
-                        if isempty(c.seqNr)
-                            seqNr = 0;% early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
-                        else
-                            seqNr = c.seqNr;
-                        end
-
-                        tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
-                            'conditions',c.nrConditions,'nrtrials',actualNrTrialsStarted,...
-                            'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',[c.file '.mat']);
-                    end
-                    key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
-                    tpl  =mergestruct(key,tpl);
+            if isfield(c,'ptbVersion')
+                ptbVersion = c.ptbVersion.version;
+            else
+                ptbVersion = 'unknown'; % Early versions did not store this
             end
+            
+            if c.nrTrialsCompleted<1
+                % Cannot read some information in a file without trials..
+                % Just putting zeros.
+                fprintf('Skipping %s - no completed trials\n',c.file);
+                tpl = struct('stimuli',0,'blocks',0,...
+                    'conditions',0,'nrtrials',c.nrTrialsCompleted,...
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,...
+                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',c.file);
+            else
+                % Pull the top level information to put in the tbl
+                if isempty(c.runNr)
+                    runNr =0;  % early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
+                else
+                    runNr = c.runNr;
+                end
+                if isempty(c.seqNr)
+                    seqNr = 0;% early cic did not define this. Default to 0 ( nan or [] causes mysql trouble)
+                else
+                    seqNr = c.seqNr;
+                end
+
+                tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
+                    'conditions',c.nrConditions,'nrtrials',c.nrTrialsCompleted,...
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',c.file);
+            end
+            key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
+            tpl  =mergestruct(key,tpl);
         end
     end
 end
