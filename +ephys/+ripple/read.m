@@ -52,8 +52,14 @@ entities = [hFile.Entity];
 % The Neurostim ripple plugin sets the digital out of the NIP and generates a trialStart event
 % We use this to synchronize the clocks
 prms  = get(ns.Experiment & key,{'cic','ripple'});
-% The second event in each trial is the one to keep
-keep = find([true;diff(prms.ripple.trialStartTrial)>0])+1;
+if numel(prms.ripple.trialStartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
+    % The second event in each trial is the one to keep (in Matlab
+    % neurostim)
+    keep = find([true;diff(prms.ripple.trialStartTrial)>0])+1;
+else
+    % C++ neurostim has no duplicatio of these events. Keep all
+    keep = true(1,numel(prms.ripple.trialStartTrial));
+end
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
 trialStartTimeNeurostim  = prms.ripple.trialStartNsTime(keep)/1000;% Seconds

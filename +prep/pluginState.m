@@ -8,8 +8,11 @@ function BB = pluginState(expt,trials,parms)
 % parms.fix.plugin = "fixation"         -> look in the plugin named fixation
 % parms.fix.parameter = "state"         -> consider the state parameter
 % parms.fix.atTrialTime = Inf            -> at the end of the trial
-% parms.fix.mode = "data"               -> read the data
-% parms.fix.data = "SUCCESS"            -> and compare those data with the  value "SUCCESS"
+% parms.fix.data = "SUCCESS"            -> compare data with the  value "SUCCESS"
+%
+% parms.fix.plugin = "eye"              -> look in the eye plugin
+% parms.fix.parameter = "fixationStop"  -> find the fixationStop event
+% parms.fix.occurred = false ;          -> if the event occurred, remove the trial
 %
 % Additional criteria can be added by adding more fields to the parms
 % struct. (The name of the field is only used for reporting).
@@ -31,10 +34,20 @@ nrCriteria= numel(fn);
 for c= 1:nrCriteria  % Loop over all criteria
     BB.(fn{c}) = []; % Initialize empty
     thisParms = parms.(fn{c});
-    if ~isfield(thisParms,'mode')
-        thisParms.mode ="data"; % Default to comparing data
-    end
-    switch thisParms.mode
+    
+    mode= intersect(["occurred" "data"],fieldnames(thisParms));
+    assert(isscalar(mode),"More than one specified of 'occurred' or 'data'");
+    switch mode
+        case "occurred"
+            trialsEventOccurred = get(expt,thisParms.plugin,'prm',thisParms.parameter,'what',"trial",'trial',trials);                            
+            if thisParms.occurred
+                % Remove trials in which the event did not occur
+                out = setdiff(trials,trialsEventOccurred);
+            else
+                % Remove trials in which the event occurred
+                out  = intersect(trials,trialsEventOccurred);
+            end
+            BB.(fn{c}) = out;
         case "data"
             plgData = get(expt,thisParms.plugin,'prm',thisParms.parameter,'atTrialTime',thisParms.atTrialTime,'what',["data" "trial"],'trial',trials);
             if ischar(thisParms.data) || isstring(thisParms.data) || iscellstr(thisParms.data)

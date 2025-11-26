@@ -133,8 +133,9 @@ classdef File < dj.Imported
             % Search for files with matching prefix (subject.paradigm.startTime.*) in
             % the same folder and all files in the folder with this name.
             exptTpl = fetch(ns.Experiment &key,'*');
+            [~,fileOnly,~] = fileparts(exptTpl.file);
             pth =  folder(ns.Experiment &key);
-            prefix  = fullfile(pth,regexprep(exptTpl.file,'(\.mat$)','*')); % Swap extension
+            prefix  = fullfile(pth,[ fileOnly '*']); % Swap extension
             inFolder = dir(prefix);
             % Search for a folder with matching prefix; add its content
             % (inluding content in all sub/sub folders).
