@@ -1,7 +1,7 @@
 %{
 # A class representing a Neurostim parameter/property
 -> ns.Plugin
-property_name : varchar(25)     # The name of the neurostim.parameter
+property_name : varchar(25)     # The lower case name of the neurostim.parameter
 ---
 property_value = NULL : longblob    # The value(s) of the constant/trial parameter/event 
 property_time = NULL : longblob     # Trial time at which the event occured
@@ -39,7 +39,7 @@ classdef PluginParameter < dj.Part
                 replace =false
             end
 
-            key.property_name = name;
+            key.property_name = lower(name);
             if exists(tbl & key) && replace
                 delQuick(tbl&key);
             end
@@ -131,7 +131,7 @@ classdef PluginParameter < dj.Part
                     value = true(size(value));
                 end
 
-                key(i).property_name = thisPrm.name;
+                key(i).property_name = lower(thisPrm.name);
                 key(i).property_value= value;
                 key(i).property_type = type;
                 key(i).property_time = time;
