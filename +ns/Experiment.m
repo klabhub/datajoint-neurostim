@@ -530,7 +530,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
                 notFound = ~isfield(v,plg);
                 if any(notFound)
-                    fprintf('This experiment (%s:%s/%s@%s) did not use the %s plugin(s) or the plugin does not have the reuqested parameter.\n',exptKey.paradigm,exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'));
+                    fprintf('This experiment (%s:%s/%s@%s) did not use the %s plugin(s) or the plugin does not have the %s parameter.\n',exptKey.paradigm,exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'),pv.prm);
                     out{exptCntr} = [];
                     continue; % Next experiment
                 end
