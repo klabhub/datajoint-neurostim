@@ -273,7 +273,7 @@ if ~isempty(pv.paradigm) && ~(isscalar(pv.paradigm) && pv.paradigm == "")
     % Remove non-matching based on paradigm and (for ns.Paradigm based selection) from/to
     pdmMatch = false(size(stay));
     for pdm=1:numel(pv.paradigm)
-        thisMatch = ~cellfun(@isempty, regexpi({meta.paradigm},pv.paradigm{pdm}));
+        thisMatch = ismember(upper({meta.paradigm}),pv.paradigm{pdm});
         if ~isempty(from{pdm})
             thisMatch =thisMatch &  cellfun(@(x) x>=from(pdm),{meta.session_date});
         end
@@ -327,24 +327,22 @@ if  nrExperiments> 0 && (pv.readFileContents || any(pv.minNrTrials >1))  && ~pv.
         try
             [tmp,c{i}] = ns.Experiment.read(meta(i),'root',pv.root);
             tmpMeta{i} = mergestruct(meta(i),tmp); % Merge to keep json/provenance meta.
+            if ~isempty(pv.paradigm)
+                % Find which minium number of trials to apply (paradigm dependent)
+                thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
+                % Remove if too few trials
+                tooFew = c{i}.nrTrialsCompleted < thisMinNrTrials;
+                if tooFew && pv.verbose
+                    fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
+                    out(i) =true;
+                end
+            end
         catch
             if pv.verbose
                 fprintf(2,'Failed to read %s. Skipping\n',meta(i).file);
             end
             lasterr %#ok<LERR>
             out(i)=true;
-        end
-        if ~isempty(pv.paradigm)
-            % Find which minium number of trials to apply (paradigm dependent)
-            thisMinNrTrials = pv.minNrTrials(upper(c{i}.paradigm) == pv.paradigm);
-            % Remove if too few trials
-            tooFew = c{i}.nrTrialsCompleted < thisMinNrTrials;
-            if tooFew && pv.verbose
-                fprintf('Skipping %s ( %d trials)\n',meta(i).file,c{i}.nrTrialsCompleted);
-                out(i) =true;
-            end
-        else
-            out(i)  =false;
         end
     end
     meta  =[tmpMeta{~out}];

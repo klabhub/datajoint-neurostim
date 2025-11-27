@@ -107,11 +107,17 @@ classdef File < dj.Imported
                     md5Hash = ns.File.checksum(ff);
                     d = dir(ff);
                     bytes = d.bytes;                    
+                    if strlength(ext)>10
+                        fprintf('Skipping %s (extension %s too long).\n',filename,ext);
+                        continue;
+                    else
                     fprintf('Adding %s to the database (%d bytes).\n',filename,bytes);
+
                     qry.extension = ext;
                     qry.bytes =bytes;
                     qry.checksum = md5Hash;
                     insert(tbl,qry);
+                    end
                 end
             end
         end
