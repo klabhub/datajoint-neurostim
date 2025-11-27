@@ -120,7 +120,7 @@ arguments
     pv.metaDefinitionTag (1,1) string = ""
     pv.minNrTrials (1,:) double = 0
     pv.verbose (1,1) logical = true
-    pv.fileType (1,1) string = "*.mat"
+    pv.fileType (1,:) string = ["*.mat" "*.nmld"]
     pv.analyze  (1,1) logical = true % Show files only when analyze= true
 end
 assert(exist(pv.root,"dir"),"The root folder (%s) does not exist.",pv.root);
@@ -184,11 +184,14 @@ if pv.verbose
 end
 
 % Find the files matching the wildcard
-dirInfo= dir(fullfile(srcFolder,pv.fileType));
+dirInfo =[];
+for ft = pv.fileType
+    dirInfo= [dirInfo;dir(fullfile(srcFolder,ft))]; %#ok<AGROW>
+end
 
 if isempty(dirInfo)
     if pv.verbose
-        fprintf('No %s files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',pv.fileType,srcFolder,pv.root);
+        fprintf('No %s files found in this folder: (%s)\n Is the root folder (%s ) correct? \n',strjoin(pv.fileType,"/"),srcFolder,pv.root);
     end
     return;
 end
@@ -543,7 +546,7 @@ if pv.readJson || pv.jsonOnly
                 tSession =addvars(tSession,emptyInit,'NewVariableNames','log');
             end
             tSession{i,'log'} = "yes";
-        elseif ~ismember('log',tSession.Properties.VariableNames)
+        elseif ismember('log',tSession.Properties.VariableNames)
             tSession{i,'log'} = "no";
         end
 
