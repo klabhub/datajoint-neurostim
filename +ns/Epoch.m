@@ -87,9 +87,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 alignTpl.trialtime(outBasedOnPlg) =[];
             end
 
-            allTrials = fliplr(alignTpl.trial);
-            allTrialTimes = fliplr(alignTpl.trialtime);
-            [trials,ia] = unique(allTrials,'stable'); % R2024a and earlier dont allow stable, last. This has the same effect
+            %  If an event occurs more than once, use the last.
+            %  R2024a and earlier dont allow combininb 'stable', 'last'.
+            %  This has the same effect
+            allTrials = flip(alignTpl.trial);
+            allTrialTimes = flip(alignTpl.trialtime);
+            [trials,ia] = unique(allTrials,'stable'); 
             if numel(trials) < numel(allTrials)
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
             end

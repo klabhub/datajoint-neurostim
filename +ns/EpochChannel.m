@@ -160,7 +160,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance
             %           for each fun
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
-            % grouping - Group analysis by these fields
+            % grouping - Group analysis by these fields. Signals are
+            %            averaged within group before applying the fun.
             arguments
                 self (1,1) ns.EpochChannel
                 fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten"])}
@@ -257,7 +258,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 pv.trial   (:,1) double = []  % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf] % Select a time window
                 pv.grouping (1,: ) string = ["subject" "session_date" "starttime" "condition"]                
-                pv.signal (1,1) string = "signal"; % Which column of the cached table to operate on
+                pv.signal (1,1) string = "signal"; % Which column of the cached table to operate on                
             end
             nrNames  = numel(names);
             if ~isempty(pv.channel)
@@ -281,7 +282,12 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                 error('No data in this table');
             end
             [grp,G] = findgroups(T(:,pv.grouping));
-            results = splitapply(fun,T.(pv.signal),grp);
+            % Average first within group
+            M = splitapply(@(x) {mean(cat(2,x{:}),2)},T.(pv.signal),grp);
+            nrGrps = height(M);
+            % Then apply the fun to the mean signal
+            results = splitapply(fun,M,(1:nrGrps)');
+            
             assert(size(results,2)==nrNames,"The fun (%s) returns %d values, but %d names have been provided",func2str(fun),size(results,2),nrNames);
             % Rename
             for r=1:nrNames
