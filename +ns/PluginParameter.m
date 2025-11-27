@@ -190,6 +190,7 @@ classdef PluginParameter < dj.Part
             if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.
             [vals,names,nsTimes] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name','property_nstime');
+            names =lower(names);
             % Create the struct with name/value
             glbl = cell(1,2*numel(names));
             [glbl{1:2:end}] =deal(names{:});
@@ -208,14 +209,13 @@ classdef PluginParameter < dj.Part
             % Parameters - they do not change within a trial. The
             % output struct will have a vector/cell with one value for
             % each trial
-
             % Events - these can happen at any time. The struct
             % contains both the values and the times at which they
             % occurred (e.g. v.X and v.XTime)
-
             %Bytestream - can contain objects, coded as bytes.
             % Decode here.
             [vals,names,times,nsTimes,trials,parmTypes] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
+            names =lower(names);
             for j=1:numel(names)
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
