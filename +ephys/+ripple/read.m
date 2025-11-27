@@ -49,23 +49,23 @@ fprintf('Done in %d seconds.\n ',round(toc))
 entities = [hFile.Entity];
 
 %% Determine trial start events to convert nip time to NS time.
-% The Neurostim ripple plugin sets the digital out of the NIP and generates a trialStart event
+% The Neurostim ripple plugin sets the digital out of the NIP and generates a trialstart event
 % We use this to synchronize the clocks
 prms  = get(ns.Experiment & key,{'cic','ripple'});
-if numel(prms.ripple.trialStartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
+if numel(prms.ripple.trialstartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
     % The second event in each trial is the one to keep (in Matlab
     % neurostim)
-    keep = find([true;diff(prms.ripple.trialStartTrial)>0])+1;
+    keep = find([true;diff(prms.ripple.trialstartTrial)>0])+1;
 else
     % C++ neurostim has no duplicatio of these events. Keep all
-    keep = true(1,numel(prms.ripple.trialStartTrial));
+    keep = true(1,numel(prms.ripple.trialstartTrial));
 end
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
-trialStartTimeNeurostim  = prms.ripple.trialStartNsTime(keep)/1000;% Seconds
-trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialStartTime(keep)/1000;% Seconds
-% Find wich bit stored the trialStartEvent and get the time on the NIP
-bit = unique(get(ns.Experiment & key,'ripple','prm','trialBit','atTrialTime',0));
+trialStartTimeNeurostim  = prms.ripple.trialstartNsTime(keep)/1000;% Seconds
+trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialstartTime(keep)/1000;% Seconds
+% Find wich bit stored the trialstart event and get the time on the NIP
+bit = unique(get(ns.Experiment & key,'ripple','prm','trialbit','atTrialTime',0));
 eventIx  = find(ismember({entities.EntityType},'Event'));
 expression = ['\<SMA\s*' num2str(bit)];
 trialBitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));

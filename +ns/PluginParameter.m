@@ -190,6 +190,7 @@ classdef PluginParameter < dj.Part
             if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.
             [vals,names,nsTimes] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name','property_nstime');
+            names= lower(names);
             % Create the struct with name/value
             glbl = cell(1,2*numel(names));
             [glbl{1:2:end}] =deal(names{:});
@@ -216,6 +217,7 @@ classdef PluginParameter < dj.Part
             %Bytestream - can contain objects, coded as bytes.
             % Decode here.
             [vals,names,times,nsTimes,trials,parmTypes] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
+            names= lower(names);
             for j=1:numel(names)
                 if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
                     oldName = names{j};
@@ -228,8 +230,6 @@ classdef PluginParameter < dj.Part
                     % blockTrial are both cic properties. Unlikely to
                     % happen anywhere else.
                 end
-
-
                 name = names{j};
                 if strcmpi(parmTypes(j),'ByteStream')
                     v.(name) =getArrayFromByteStream(vals{j});
