@@ -97,14 +97,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
             end
             startTime = allTrialTimes(ia);
-            nrTrials = numel(trials);
-           
+                       
             C = ns.C & key;
             if isempty(parmTpl.channels)
                 % Use all channels by default
                 parmTpl.channels = C.channels';
             end
-            parmTpl.channels =1;
             %% Extract aligned segments from ns.C
             tic;
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
