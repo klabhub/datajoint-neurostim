@@ -79,8 +79,8 @@ try
                 jsonFile  =fullfile(folder(ns.Session&key),[key.subject '.json']);
                 thisJson = readIfExists(jsonFile);
             case 'ns.Experiment'
-                matFile  =file(ns.Experiment & key);
-                jsonFile= regexprep(matFile,'(\.mat$)','.json'); % Swap extension
+                [fldr,matFile]  =fileparts(file(ns.Experiment & key));
+                jsonFile= fullfile(fldr,matFile + ".json");
                 thisJson = readIfExists(jsonFile);
         end
         if ~isempty(thisJson)
