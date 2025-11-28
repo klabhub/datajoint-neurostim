@@ -188,7 +188,7 @@ classdef C < dj.Computed & dj.DJInstance
                 pv.value  (1,:) double = NaN
             end
             for tpl = fetch(tbl*ns.CChannel,'time','nrsamples','signal')'
-                zeroTime = get(ns.Experiment & tpl,'cic','prm','firstFrame','what','clocktime');
+                zeroTime = get(ns.Experiment & tpl,'cic','prm','firstframe','what','clocktime');
                 if ~isnan(pv.value(1))
                     stay = ismember(tpl.signal,pv.value);
                 else
@@ -274,7 +274,7 @@ classdef C < dj.Computed & dj.DJInstance
             %
             % EXAMPLE:
             % Determine the onset of a visual stimulus in experiment expt
-            % onset  = get(ns.Experiment & expt,'flicker','prm','startTime','what','trialtime','atTrialTime',inf);
+            % onset  = get(ns.Experiment & expt,'flicker','prm','starttime','what','trialtime','atTrialTime',inf);
             % Plot the timecourse of channels 1 and 2 of the eeg C data, grouped by the
             % isFlick dimension, aligned to the stimulus onset:
             % plot(ns.C & 'ctag=''eeg''',[1 2 ],expt,"isFlick",prctileMax=99, start =-100,stop =500,align=onset,mode ="TIMECOURSE",perTrial =true);
@@ -728,7 +728,7 @@ classdef C < dj.Computed & dj.DJInstance
                 if ~pv.crossTrial
                     if isscalar(trialStartTime)
                         % Single trial  - use all of it
-                        pv.stop  = get(ns.Experiment & tbl, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime')-trialStartTime;
+                        pv.stop  = get(ns.Experiment & tbl, 'cic','prm','trialstoptime','atTrialTime',inf,'what','clocktime')-trialStartTime;
                     else
                         % Multiple trial limit to maximum trial duration to setup the T table
                         pv.stop = max(diff(trialStartTime));

@@ -61,7 +61,7 @@ end
 
 % Assuming that the
 samplingRate =unique(round(1./diff(time),2));
-assert(numel(samplingRate)==1,"This sampling rate has more than 2 decimals??")
+assert(isscalar(samplingRate),"This sampling rate has more than 2 decimals??")
 
 nannedData = sparse(isnan(signal));
 signal(nannedData) = 0;

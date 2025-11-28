@@ -120,7 +120,7 @@ egiSampleTime = (0:nrSamples-1)/EEG.srate;
 neurostimTime = polyval(clockParms,egiSampleTime);
 % Now we have a time axis for the EGI data in Neurostim time
 % Keep only from the start of the first until the end of the last trial.
-stay = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialStopTimeNsTime(end);
+stay = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstopTimeNsTime(end);
 channels = 1:nrChannels;
 
 %% Preprocess with EEGLab 

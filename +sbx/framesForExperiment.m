@@ -17,7 +17,7 @@ else
     start = 0;
 end
 keepFrameIx =start + (1:exptT.nrframes(row));
-frameNsTime = get(ns.Experiment & key,'mdaq','prm','laserOnDigHigh','what',"clocktime");
+frameNsTime = get(ns.Experiment & key,'mdaq','prm','laserondighigh','what',"clocktime");
 nrTTL = numel(frameNsTime);
 % There always appears to be 1 extraneous TTL; check the match with
 % this assumption

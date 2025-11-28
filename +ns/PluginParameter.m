@@ -1,7 +1,7 @@
 %{
 # A class representing a Neurostim parameter/property
 -> ns.Plugin
-property_name : varchar(25)     # The lower case name of the neurostim.parameter
+property_name : varchar(25)     # The name of the neurostim.parameter
 ---
 property_value = NULL : longblob    # The value(s) of the constant/trial parameter/event 
 property_time = NULL : longblob     # Trial time at which the event occured

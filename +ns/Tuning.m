@@ -215,7 +215,7 @@ classdef Tuning <dj.Computed
             % pluginNane:parameterName:Value. Assuming these values are
             % double..
 
-            onset = get(ns.Experiment & key,parms.stimulus,'prm','startTime','what','trialtime');
+            onset = get(ns.Experiment & key,parms.stimulus,'prm','starttime','what','trialtime');
             % Get the responses for all trials (some may not be part of this
             % condition group)
             T= align(ns.C & key,channel =key.channel, align=onset, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation,crossTrial=true);
