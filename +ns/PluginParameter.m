@@ -39,7 +39,7 @@ classdef PluginParameter < dj.Part
                 replace =false
             end
 
-            key.property_name = lower(name);
+            key.property_name = name;
             if exists(tbl & key) && replace
                 delQuick(tbl&key);
             end
@@ -131,7 +131,7 @@ classdef PluginParameter < dj.Part
                     value = true(size(value));
                 end
 
-                key(i).property_name = lower(thisPrm.name);
+                key(i).property_name = thisPrm.name;  
                 key(i).property_value= value;
                 key(i).property_type = type;
                 key(i).property_time = time;
@@ -186,6 +186,7 @@ classdef PluginParameter < dj.Part
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
+            % Properties are always lower casee
             persistent warnedAlready
             if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.

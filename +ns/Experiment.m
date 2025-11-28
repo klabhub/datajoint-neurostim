@@ -581,8 +581,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 t (1,:) double
                 halfWidth (1,1) double
             end
-            start = get(expt, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');
+            start = get(expt, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
+            stop = get(expt, 'cic','prm','trialstoptime','atTrialTime',inf,'what','clocktime');
             isOk = false(size(t));
             for ii = 1:length(start)
                 isOk = isOk |  (t>= (start(ii)-halfWidth) & t< (stop(ii)+halfWidth));
@@ -709,9 +709,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     methods
 
         function o = get.first_frame_onsets(expTbl)
-            o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-        end
 
+            o = get(expTbl, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
+
+        end
     end
 
     methods (Static)

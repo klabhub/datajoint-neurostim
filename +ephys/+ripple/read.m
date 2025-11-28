@@ -65,10 +65,10 @@ end
 trialStartTimeNeurostim  = prms.ripple.trialstartNsTime(keep)/1000;% Seconds
 trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialstartTime(keep)/1000;% Seconds
 % Find wich bit stored the trialstart event and get the time on the NIP
-bit = unique(get(ns.Experiment & key,'ripple','prm','trialbit','atTrialTime',0));
 eventIx  = find(ismember({entities.EntityType},'Event'));
-expression = ['\<SMA\s*' num2str(bit)];
+expression = ['\<SMA\s*' num2str(prms.ripple.trialbit)];
 trialBitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
+assert(isscalar(trialBitEnttityIx),'There should be 1 trialbit in the file. %d found',numel(trialBitEntityIx));    
 [errCode, trialBitTime,trialBitValue] = ns_GetEventData(hFile, eventIx(trialBitEntityIx), 1:entities(eventIx(trialBitEntityIx)).Count);
 if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
 % There are various issues with the timing on the NIP (some events can be
