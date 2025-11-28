@@ -666,7 +666,7 @@ classdef C < dj.Computed & dj.DJInstance
             end
             % Expt info.
             exptTpl = fetch(ns.Experiment & tbl,'nrtrials');
-            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
+            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
             t = tbl.time; % Time in milliseconds
             timeStep = tbl.dt; % Time step in ms
             if pv.step==0

@@ -88,7 +88,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             end
 
             %  If an event occurs more than once, use the last.
-            %  R2024a and earlier dont allow combininb 'stable', 'last'.
+            %  R2024a and earlier dont allow combining 'stable', 'last'.
             %  This has the same effect
             allTrials = flip(alignTpl.trial);
             allTrialTimes = flip(alignTpl.trialtime);
@@ -96,26 +96,30 @@ classdef Epoch < dj.Computed & dj.DJInstance
             if numel(trials) < numel(allTrials)
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
             end
-
             startTime = allTrialTimes(ia);
             nrTrials = numel(trials);
-            nrConditions = numel(conditionTpl);
-            condition = repmat("",nrTrials,1);
-            for c=1:nrConditions
-                condition(ismember(trials,conditionTpl(c).trials)) = conditionTpl(c).name;
-            end
-
+           
             C = ns.C & key;
             if isempty(parmTpl.channels)
                 % Use all channels by default
                 parmTpl.channels = C.channels';
             end
-
+            parmTpl.channels =1;
             %% Extract aligned segments from ns.C
             tic;
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
+            % NOte that this uses the unique trials in which the event
+            % occurred and the corresponding align times. These are not
+            % stored ascending, but align resorts (and can remove trials
+            % too if there are artifacts for instance)
             [T,~,channelsWithData] = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+            
             parmTpl.channels =channelsWithData(:)';
+            % Extract the actual trials (in order of signal cols) that have
+            % been extracted
+            trials = T.Properties.CustomProperties.trials'; 
+            startTime = T.Properties.CustomProperties.alignTime';
+            
             fprintf("\t Segmenting is complete after %s\n",toc);
 
             %% --- Preprocess epochs ---
@@ -131,12 +135,18 @@ classdef Epoch < dj.Computed & dj.DJInstance
             pv =namedargs2cell(parmTpl.artparms);
             [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,'epoch_no',trials,pv{:});
             % Remove epochs that were identified as having artifacts
-            out = ismember(trials,badByArt.all);
+            out = ismember((1:nrTrials)',badByArt.all);
             signal(:,out,:) = [];
             trials(out) = [];
-            condition(out) = [];
             startTime(out) = [];
             nrTrials =numel(trials);
+
+            nrConditions = numel(conditionTpl);
+            condition = repmat("",nrTrials,1);
+            for c=1:nrConditions
+                condition(ismember(trials,conditionTpl(c).trials)) = conditionTpl(c).name;
+            end
+
             fprintf("\t Artifact detection complete after %s\n",toc);
 
             %% --- Submit to the server ---
