@@ -643,7 +643,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     % to matchup with the correct data file.
 
                     UID = string(datetime({nsData.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({nsData.file});
-                    stay = startsWith(UID,string([key.session_date key.file]));
+                    stay = startsWith(UID,key.session_date) & endsWith(UID,strrep(key.starttime,':',''));
                     thisData = nsData(stay);
                     thisTpl = ns.Experiment.metaTpl(thisData);
                     thisTpl =mergestruct(key,thisTpl); % Errors if this Cic does not belong to this key.
@@ -781,7 +781,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tpl = struct('stimuli',0,'blocks',0,...
                     'conditions',0,'nrtrials',c.nrTrialsCompleted,...
                     'matlab',c.matlabVersion,'ptb',ptbVersion,...
-                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',c.file);
+                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',c.fileWithExt);
             else
                 % Pull the top level information to put in the tbl
                 if isempty(c.runNr)
@@ -797,7 +797,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
                 tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
                     'conditions',c.nrConditions,'nrtrials',c.nrTrialsCompleted,...
-                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',c.file);
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',c.fileWithExt);
             end
             key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
             tpl  =mergestruct(key,tpl);
