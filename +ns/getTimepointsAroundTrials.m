@@ -58,9 +58,11 @@ assert(count(exp_tbl)==1, "The function only accepts a single entry in Experimen
 
 % --- 3. Get Trial Timings ---
 % Using the 'plugin' variable in the get query
-trl_start_t = get(exp_tbl, options.plugin, 'prm', 'firstFrame', 'atTrialTime', inf, 'what', 'clocktime');
-trl_stop_t  = get(exp_tbl, options.plugin, 'prm', 'trialStopTime', 'atTrialTime', inf, 'what', 'clocktime');
-
+trl_start_t = get(exp_tbl, options.plugin, 'prm', 'startTime', 'atTrialTime', inf, 'what', 'clocktime');
+trl_stop_t  = get(exp_tbl, options.plugin, 'prm', 'stopTime', 'atTrialTime', inf, 'what', 'clocktime');
+isVldTrl = ~any(isinf([trl_start_t, trl_stop_t]),2);
+trl_start_t = trl_start_t(isVldTrl);
+trl_stop_t = trl_stop_t(isVldTrl);
 n_trl = length(trl_start_t);
 isInSubsamp = false(size(t)); 
 
