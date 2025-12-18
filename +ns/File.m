@@ -8,6 +8,19 @@ bytes = NULL : float     # Bytes in the file
 checksum = NULL : char(32) # MD5 Hash checksum
 %}
 %
+% If you want to exclude certain files from being added to the table,
+% create a function nsFileExclude.m and put it on the Matlab path.
+% This funciton should take a filename (string) as input and return true if
+% the file should be excluded. For instance, this function will skip files
+% with the .cache extension.
+% 
+% function tf = nsFileExclude(filename)
+%    arguments
+%        filename (1,1) string
+%    end
+%    tf = tf | endsWith(filename,'.cache') 
+% 
+% end
 % BK = April 2022
 
 classdef File < dj.Imported
@@ -83,8 +96,22 @@ classdef File < dj.Imported
             % Usually called from makeTuples to add the standard files
             % named according to NS conventions, but can be called to add
             % other file,s that don't match that format.
-            linkedFiles([linkedFiles.isdir])=[];
-            pth =  folder(ns.Experiment &key);
+            linkedFiles([linkedFiles.isdir])=[];            
+            
+            persistent warnedForExclusion 
+            if isempty(warnedForExclusion)
+                warnedForExclusion= false;
+            end
+    
+            % Check if the user has defined a function that excludes
+            % certain files.
+            hasExcludeFun = exist("nsFileExclude.m","file");
+            if hasExcludedFun && ~warnedForExclusion
+                % Warn once
+                warning('Excluding files based on %s', which('nsFileExclude'));
+                warnedForExclusion = true;
+            end                
+            
             for f=1:numel(linkedFiles)              
                 [~,~,ext] =fileparts(linkedFiles(f).name);
                 % Remove the part of the path that points to the folder
@@ -99,8 +126,10 @@ classdef File < dj.Imported
                 filename  = strrep(fullfile(relFolder,linkedFiles(f).name),'\','/'); % Force / convention.
                 qry = mergestruct(key,struct('filename',filename));
                 thisFile = ns.File & qry;
-                if thisFile.exists
+                if thisFile.exists 
                     %fprintf('%s already exists in the database. Not changed.\n',filename);
+                elseif (hasExcludeFun  && nsFileExclude(filename))
+                    fprintf('%s excluded based on nsFileExclude.\n',filename);
                 else
                     % Add byte counts and checksum
                     ff = fullfile(linkedFiles(f).folder,linkedFiles(f).name);

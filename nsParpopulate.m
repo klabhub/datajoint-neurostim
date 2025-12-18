@@ -27,6 +27,7 @@ arguments
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
     pv.env (1,:) string = "" % Additions to the environment on the cluster for this call only
     pv.jobName (1,1) string = "" % Informative name for the job used in SLURM sacct. Does not need to be unique
+    pv.local (1,1) logical = false; % See this to true to ignore the cls and run parpopulate locally 
 end
 warnState = warning('query');
 warning('off','DataJoint:longCondition');
@@ -92,7 +93,13 @@ if nrToDo >0
         else
             env = [cls.env pv.env];
         end
-        cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);
+        if pv.local
+            % Dont send to the cluster, but run parpopulate locally. (Bit
+            % of a hack to make it easier to run the same code locally).
+            eval(cmd)
+        else
+            cls.remote(cmd,'nrWorkers',nrWorkers,'expressionName',exp,'sbatchOptions',opts,'env',env,'jobName',pv.jobName);
+        end
     end
 else
     fprintf("%s Nothing to populate for %s (table has %d rows already computed)\n",drMsg,cmd,nrChildren);
