@@ -133,7 +133,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             pv =namedargs2cell(parmTpl.artparms);
             [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,'epoch_no',trials,pv{:});
             % Remove epochs that were identified as having artifacts
-            out = ismember((1:nrTrials)',badByArt.all);
+            out = ismember(trials,badByArt.all);
             signal(:,out,:) = [];
             trials(out) = [];
             startTime(out) = [];
