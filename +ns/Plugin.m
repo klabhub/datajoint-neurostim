@@ -31,7 +31,7 @@ classdef Plugin < dj.Manual
                     % 1.  create a blockName property that stores the names of
                     % the blocks.
                     blockNameTpl = fetch(ns.PluginParameter & key & 'property_name="block"','*');
-                    blockNameTpl.property_name = 'blockName';
+                    blockNameTpl.property_name = 'blockname';
                     blockNr  = blockNameTpl.property_value ;
                     blockNameTpl.property_value = cell(size(blockNr));
                     stay =blockNr>0;

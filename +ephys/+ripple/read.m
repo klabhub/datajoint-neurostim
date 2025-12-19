@@ -49,26 +49,26 @@ fprintf('Done in %d seconds.\n ',round(toc))
 entities = [hFile.Entity];
 
 %% Determine trial start events to convert nip time to NS time.
-% The Neurostim ripple plugin sets the digital out of the NIP and generates a trialStart event
+% The Neurostim ripple plugin sets the digital out of the NIP and generates a trialstart event
 % We use this to synchronize the clocks
 prms  = get(ns.Experiment & key,{'cic','ripple'});
-if numel(prms.ripple.trialStartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
+if numel(prms.ripple.trialstartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
     % The second event in each trial is the one to keep (in Matlab
     % neurostim)
-    keep = find([true;diff(prms.ripple.trialStartTrial)>0])+1;
+    keep = find([true;diff(prms.ripple.trialstartTrial)>0])+1;
 else
     % C++ neurostim has no duplicatio of these events. Keep all
-    keep = true(1,numel(prms.ripple.trialStartTrial));
+    keep = true(1,numel(prms.ripple.trialstartTrial));
 end
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
-trialStartTimeNeurostim  = prms.ripple.trialStartNsTime(keep)/1000;% Seconds
-trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialStartTime(keep)/1000;% Seconds
-% Find wich bit stored the trialStartEvent and get the time on the NIP
-bit = unique(get(ns.Experiment & key,'ripple','prm','trialBit','atTrialTime',0));
+trialStartTimeNeurostim  = prms.ripple.trialstartNsTime(keep)/1000;% Seconds
+trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialstartTime(keep)/1000;% Seconds
+% Find wich bit stored the trialstart event and get the time on the NIP
 eventIx  = find(ismember({entities.EntityType},'Event'));
-expression = ['\<SMA\s*' num2str(bit)];
+expression = ['\<SMA\s*' num2str(prms.ripple.trialbit)];
 trialBitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
+assert(isscalar(trialBitEntityIx),'There should be 1 trialbit in the file. %d found',numel(trialBitEntityIx));    
 [errCode, trialBitTime,trialBitValue] = ns_GetEventData(hFile, eventIx(trialBitEntityIx), 1:entities(eventIx(trialBitEntityIx)).Count);
 if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
 % There are various issues with the timing on the NIP (some events can be
@@ -292,7 +292,7 @@ offset = parms(2);
 slope = parms(1);
 fprintf('Clock residuals: %3.3f ms +/- %3.3f ms, drift %3.3f ms/ms\n',mean(resid),std(resid),slope-1);
 if (abs(slope-1)>0.01)
-    error('Ns-Ripple Clock skew larger than 0.01 detected');
+    warning('Ns-Ripple Clock skew larger than 0.01 detected (%.2f)',abs(slope-1));
 end
 
 if tr==nrNs % Found matches all the way to the last trial

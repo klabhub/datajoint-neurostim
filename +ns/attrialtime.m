@@ -30,7 +30,7 @@ arguments
     what (1,:) string = "data"
     trial (1,:) double =[]
 end
-
+propName = lower(propName); % All properties are lower case
 if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
     % Special case: single value, for all  times and trials
     for wh = what
@@ -42,7 +42,7 @@ if isnan(time)  || isscalar(props.(propName)) || ischar(props.(propName))
                 end
                 if ~isnan(time)
                     % atTrialTime was specified- repmat to one per trial
-                    ret.data = repmat(ret.data,[numel(c.firstFrame) 1]);%  One per trial
+                    ret.data = repmat(ret.data,[numel(c.firstframe) 1]);%  One per trial
                 end
             case "trialtime"
                 if isfield(props,propName +"Time")

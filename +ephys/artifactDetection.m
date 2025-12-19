@@ -38,8 +38,8 @@ end
 %Pull signal at the sampling rate
 signal = align(C,removeArtifacts =false,crossTrial =false,start=parms.start,stop=parms.stop,step=step,interpolation="nearest");
 signal = timetableToDouble(signal);
-trialStartTime = get(ns.Experiment & C, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-trialStopTime= get(ns.Experiment & C,'cic','prm','trialStopTime','what','clocktime');
+trialStartTime = get(ns.Experiment & C, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
+trialStopTime= get(ns.Experiment & C,'cic','prm','trialstoptime','what','clocktime');
 trialDuration = diff([trialStartTime;trialStopTime(end)])';
 [nrSamples,nrTrials,nrChannels] = size(signal);
 

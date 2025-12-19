@@ -181,7 +181,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance
                     assert(isempty(options),"fft does not take any options")
                     fun = @(x) ns.EpochChannel.do_fft(x,samplingRate);
                     names = ["fft" "phase" "frequency"];
-               case "psd"
+                case "psd"
                    if isempty(options)
                         opts ={};
                    else

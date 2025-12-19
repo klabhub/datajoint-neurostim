@@ -67,7 +67,7 @@ trialIDEvents = messageEvents(isTrialID);
 trialIDTimeEyelink  = nan(nrTrials,1);
 trialIDTimeEyelink(trials) = [trialIDEvents.sttime]; % The time of all TRIALID events on the eyelink clock
 % Get the equivalent time from Neurostim.
-trialIDTimeNeurostim = get(ns.Experiment & key,'eye','prm','eyeClockTime','atTrialTime',0,'what','clocktime');
+trialIDTimeNeurostim = get(ns.Experiment & key,'eye','prm','eyeclocktime','atTrialTime',0,'what','clocktime');
 if nrTrials >3
     % Fit a line to translate eyelink time to nsTime. Even though some TRIALID
     % events can be lost or delayed, a linear fit does a good job linking the
@@ -147,7 +147,7 @@ time = double([time(1) time(end) nrSamples]);
 signal  = single(signal);
 
 %% Parse events to add as plugin parameter
-trialStartTime = get(ns.Experiment & key,'cic','prm','firstFrame','what','clocktime');
+trialStartTime = get(ns.Experiment & key,'cic','prm','firstframe','what','clocktime');
 % nrBlinks = numel(startBlink);
 % startBlinkTrial = nan(nrBlinks,1);
 % % Assign to trial

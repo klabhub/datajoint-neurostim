@@ -45,9 +45,9 @@ fprintf('Done in %d seconds.\n ',round(toc))
 % registered on the neurostim clock by the mdaq plugin. Check if they are
 % already stored as events in the ns.PluginParameter, if not, read the bin
 % file to exract.
-if exists(ns.PluginParameter & key & 'plugin_name=''mdaq''' & 'property_name=''laserOn''')
+if exists(ns.PluginParameter & key & 'plugin_name=''mdaq''' & 'property_name=''laseron''')
     % Digital events have been created to represent laserOn triggers
-    time = get(ns.Experiment &key,'mdaq','prm','laserOn','what','clockTime');
+    time = get(ns.Experiment &key,'mdaq','prm','laseron','what','clockTime');
 else
     % Read the bin file
     nsFile  = file(ns.Experiment& key);

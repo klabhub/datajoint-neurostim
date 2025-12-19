@@ -581,8 +581,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 t (1,:) double
                 halfWidth (1,1) double
             end
-            start = get(expt, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-            stop = get(expt, 'cic','prm','trialStopTime','atTrialTime',inf,'what','clocktime');
+            start = get(expt, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
+            stop = get(expt, 'cic','prm','trialstoptime','atTrialTime',inf,'what','clocktime');
             isOk = false(size(t));
             for ii = 1:length(start)
                 isOk = isOk |  (t>= (start(ii)-halfWidth) & t< (stop(ii)+halfWidth));
@@ -643,7 +643,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     % to matchup with the correct data file.
 
                     UID = string(datetime({nsData.date},'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd'))+string({nsData.file});
-                    stay = startsWith(UID,string([key.session_date key.file]));
+                    stay = startsWith(UID,key.session_date) & endsWith(UID,strrep(key.starttime,':',''));
                     thisData = nsData(stay);
                     thisTpl = ns.Experiment.metaTpl(thisData);
                     thisTpl =mergestruct(key,thisTpl); % Errors if this Cic does not belong to this key.
@@ -709,9 +709,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
     methods
 
         function o = get.first_frame_onsets(expTbl)
-            o = get(expTbl, 'cic','prm','firstFrame','atTrialTime',inf,'what','clocktime');
-        end
 
+            o = get(expTbl, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
+
+        end
     end
 
     methods (Static)
@@ -780,7 +781,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tpl = struct('stimuli',0,'blocks',0,...
                     'conditions',0,'nrtrials',c.nrTrialsCompleted,...
                     'matlab',c.matlabVersion,'ptb',ptbVersion,...
-                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',c.file);
+                    'ns','#','run',0,'seq',0,'paradigm',c.paradigm,'file',c.fileWithExt);
             else
                 % Pull the top level information to put in the tbl
                 if isempty(c.runNr)
@@ -796,7 +797,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
                 tpl =struct('stimuli',c.nrStimuli,'blocks',c.nrBlocks,...
                     'conditions',c.nrConditions,'nrtrials',c.nrTrialsCompleted,...
-                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',c.file);
+                    'matlab',c.matlabVersion,'ptb',ptbVersion,'ns','#','run',runNr,'seq',seqNr,'paradigm',c.paradigm,'file',c.fileWithExt);
             end
             key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
             tpl  =mergestruct(key,tpl);
