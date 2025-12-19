@@ -292,7 +292,7 @@ offset = parms(2);
 slope = parms(1);
 fprintf('Clock residuals: %3.3f ms +/- %3.3f ms, drift %3.3f ms/ms\n',mean(resid),std(resid),slope-1);
 if (abs(slope-1)>0.01)
-    error('Ns-Ripple Clock skew larger than 0.01 detected');
+    warning('Ns-Ripple Clock skew larger than 0.01 detected (%.2f)',abs(slope-1));
 end
 
 if tr==nrNs % Found matches all the way to the last trial
