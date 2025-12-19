@@ -27,7 +27,7 @@ arguments
     pv.dryrun (1,1) logical = false % Set to true to get command line feedback on which jobs would be started
     pv.env (1,:) string = "" % Additions to the environment on the cluster for this call only
     pv.jobName (1,1) string = "" % Informative name for the job used in SLURM sacct. Does not need to be unique
-    pv.local (1,1) logical = false; % See this to true to ignore the cls and run parpopulate locally 
+    pv.local (1,1) logical = false; % Set this to true to ignore the cls and run parpopulate locally 
 end
 warnState = warning('query');
 warning('off','DataJoint:longCondition');

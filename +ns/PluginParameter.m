@@ -186,7 +186,7 @@ classdef PluginParameter < dj.Part
             % Retrieve all properties in the table as a struct
             % Used by ns.Experiment.get
             % Returns a struct with one field per property.
-            % Properties are always lower casee
+            % Properties are always lower case
             persistent warnedAlready
             if isempty(warnedAlready);warnedAlready ={};end
             %% First the Global consts.

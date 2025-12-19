@@ -106,7 +106,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             %% Extract aligned segments from ns.C
             tic;
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
-            % NOte that this uses the unique trials in which the event
+            % Note that this uses the unique trials in which the event
             % occurred and the corresponding align times. These are not
             % stored ascending, but align resorts (and can remove trials
             % too if there are artifacts for instance)

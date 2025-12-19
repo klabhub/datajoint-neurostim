@@ -57,14 +57,14 @@ if numel(prms.ripple.trialstartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.
     % neurostim)
     keep = find([true;diff(prms.ripple.trialstartTrial)>0])+1;
 else
-    % C++ neurostim has no duplicatio of these events. Keep all
+    % C++ neurostim has no duplication of these events. Keep all
     keep = true(1,numel(prms.ripple.trialstartTrial));
 end
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
 trialStartTimeNeurostim  = prms.ripple.trialstartNsTime(keep)/1000;% Seconds
 trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialstartTime(keep)/1000;% Seconds
-% Find wich bit stored the trialstart event and get the time on the NIP
+% Find which bit stored the trialstart event and get the time on the NIP
 eventIx  = find(ismember({entities.EntityType},'Event'));
 expression = ['\<SMA\s*' num2str(prms.ripple.trialbit)];
 trialBitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));

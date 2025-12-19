@@ -10,7 +10,7 @@ checksum = NULL : char(32) # MD5 Hash checksum
 %
 % If you want to exclude certain files from being added to the table,
 % create a function nsFileExclude.m and put it on the Matlab path.
-% This funciton should take a filename (string) as input and return true if
+% This function should take a filename (string) as input and return true if
 % the file should be excluded. For instance, this function will skip files
 % with the .cache extension.
 % 
@@ -106,7 +106,7 @@ classdef File < dj.Imported
             % Check if the user has defined a function that excludes
             % certain files.
             hasExcludeFun = exist("nsFileExclude.m","file");
-            if hasExcludedFun && ~warnedForExclusion
+            if hasExcludeFun && ~warnedForExclusion
                 % Warn once
                 warning('Excluding files based on %s', which('nsFileExclude'));
                 warnedForExclusion = true;
