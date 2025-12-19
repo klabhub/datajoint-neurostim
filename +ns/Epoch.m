@@ -10,10 +10,7 @@ art   : blob            # Struct with information on artifact removal (.artparms
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
 classdef Epoch < dj.Computed & dj.DJInstance
-    properties (GetAccess =public,SetAccess = protected)
-        cache table
-        cacheQry (1,1) string =""
-    end
+   
     properties (Dependent)
         time
         samplingRate
