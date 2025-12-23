@@ -39,7 +39,6 @@ classdef (Abstract) cache < handle
                 pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.             
             end
 
-
             %% Fill the cache, then perform averaging per group
             fill(o);% Fill the cache if needed
             dimension = unique(o.T.dimension);
@@ -63,7 +62,7 @@ classdef (Abstract) cache < handle
                 % Concatenate the trials into a raster matrix in G.
                 grouping = setdiff(grouping,"trial",'stable');
                 P = groupsummary(G, grouping, @(x) x(1,:), ["align" xName]);
-                P = renamevars(P,["fun1_align" "fun1_"+o.independentVariable ],["align" xName]);
+                P = renamevars(P,["fun1_align" "fun1_"+xName],["align" xName]);
                 G = groupsummary(G,grouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
                 G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
                 G = innerjoin(G,P);
@@ -153,8 +152,13 @@ classdef (Abstract) cache < handle
             %           for each fun
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
+            % timeWindow - Select a time window 
             % grouping - Group analysis by these fields. Signals are
             %            averaged within group before applying the fun.
+            % OUTPUT
+            % G  - A table with the results
+            % dv -  The name of the dependent variable.
+            % idv - the name of the independent variable.
             arguments
                 o (1,1)
                 fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten" "wavelet"])}

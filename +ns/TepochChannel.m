@@ -12,7 +12,7 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
     end 
 
     properties (Dependent)
-        channels                % Channels contributing to this Epoch table
+        channels                % Channels contributing to this TEpoch table
         samplingRate 
     end
 
