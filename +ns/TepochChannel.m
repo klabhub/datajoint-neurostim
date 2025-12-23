@@ -4,7 +4,7 @@
 channel : int       # Channel number
 trial : int         # Trial number 
 ---
-y : longblob         # Data 
+signal : longblob         # (Transformed) Data 
 %}
 classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache    
     properties (SetAccess = protected)
@@ -18,7 +18,7 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods (Access = protected)
         function src = getCacheQuery(o)
-            src = o*ns.Tepoch* proj(getCacheQuery(ns.EpochChannel & o),'condition','paradigm','align');
+            src = o*ns.Tepoch* proj(getCacheQuery(ns.EpochChannel & proj(o)),'condition','paradigm','align');
         end
     end
 

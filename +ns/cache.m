@@ -3,12 +3,21 @@ classdef (Abstract) cache < handle
     properties (GetAccess =public,SetAccess = protected)
         T (:,:) table  = table;
         qry (1,1) string =""  % Stores the query that fetched the data
+        independent (1,:) string = "time"
+        dependent (1,:) string = "signal"
     end
 
     methods
         function v =get.T(o)
             % Fill the cache and return as as table
             fill(o);
+            if ismember("dependent", o.T.Properties.VariableNames)
+                % Tepoch - rename
+                o.dependent = o.T.dependent(1);
+                o.independent = o.T.independent(1);
+                o.T = renamevars(o.T,["signal" "x"], [o.dependent o.independent]);
+                o.T = removevars(o.T,["dependent" "independent"]);
+            end
             v = o.T;
         end
     end
@@ -27,8 +36,7 @@ classdef (Abstract) cache < handle
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,1) logical = false         % Set to true to show trials as rasters (removes "trial" from pv.average)
-                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
-                pv.x = ""
+                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.             
             end
 
 
@@ -42,27 +50,20 @@ classdef (Abstract) cache < handle
             % Determine mean, ste and n averaging over the pv.average
             % dimension (anything that is left out of grouping)
             grouping = setdiff(["subject" "session_date" "starttime" "paradigm"  "condition" "trial" "channel"  ],pv.average,'stable');
-            G = compute(o,"msten");
-            if pv.x ==""
-                % Try to guess the independent variable
-                if ismember("time",G.Properties.VariableNames)
-                    x= G{1,"time"};
-                    pv.x = "time";
-                    if numel(x) ==3
-                        x = linspace(x(1),x(2),x(3));
-                    end
-                elseif ismember("frequency",G.Properties.VariableNames)
-                    x = G{1,"frequency"};
-                    pv.x = "frequency";
-                end
-            else
-                x = G{1,pv.x};
+            
+            % Epochs always contain signal and time
+            xName = o.independent;
+            yName = o.dependent;
+            G = compute(o,"msten",x=xName,y=yName);
+            x = G{1,xName};
+            if xName =="time" && numel(x) ==3
+               x = linspace(x(1),x(2),x(3));
             end
             if pv.raster
                 % Concatenate the trials into a raster matrix in G.
                 grouping = setdiff(grouping,"trial",'stable');
-                P = groupsummary(G, grouping, @(x) x(1,:), ["align" pv.x]);
-                P = renamevars(P,["fun1_align" "fun1_"+o.independentVariable ],["align" pv.x]);
+                P = groupsummary(G, grouping, @(x) x(1,:), ["align" xName]);
+                P = renamevars(P,["fun1_align" "fun1_"+o.independentVariable ],["align" xName]);
                 G = groupsummary(G,grouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
                 G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
                 G = innerjoin(G,P);
@@ -162,8 +163,8 @@ classdef (Abstract) cache < handle
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
                 pv.grouping (1,:) string {mustBeMember(pv.grouping,["subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["subject" "session_date" "starttime" "condition"]
-                pv.x (1,1) string = "time"
-                pv.y (1,:) string = "signal"
+                pv.x (1,1) string = "time"     
+                pv.y (1,1) string = "signal"
             end
             fill(o);% Fill the cache
 
@@ -198,12 +199,15 @@ classdef (Abstract) cache < handle
             %%  Average/group
             [grp,G] = findgroups(restrictedT(:,pv.grouping));
             % Average per group
+            if iscell(restrictedT{1,pv.y})
             M = splitapply(@(x) {mean(cat(2,x{:}),2)},restrictedT.(pv.y),grp);
+            else
+                M = splitapply(@(x) {mean(x,1)'},restrictedT.(pv.y),grp);
+            end
             nrGrps = height(M);
 
-            %% Determine which function to comput
-            % Map string to function handle and do error checking
-            % for known functions
+            %% Determine which function to compute
+            % Map string to function handle and do error checking            
             switch fun
                 case "msten"
                     fun =@ns.cache.do_msten;
@@ -247,6 +251,7 @@ classdef (Abstract) cache < handle
                     idv = ["frequency" "time"];
                     dv = "power";
                 case "snr"
+                    %TODO
                     if isempty(options)
                         options =struct('bin', 5,'bin_skip',2);
                     end
