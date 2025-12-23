@@ -4,6 +4,8 @@
 -> ns.TepochParm
 ---
 x : longblob
+dependent : varchar(32)
+independent : varchar(32) 
 %}
 classdef Tepoch < dj.Computed & dj.DJInstance   
    methods
@@ -11,8 +13,10 @@ classdef Tepoch < dj.Computed & dj.DJInstance
    end
     methods (Access = protected)
         function makeTuples(tbl, key)
-            parms = fetch(ns.TepochParm & key,'*');
-            
+            % Apply a computation/transform to a collection of Epochs and
+            % store as Tepoch.
+
+            parms = fetch(ns.TepochParm & key,'*');           
 
             % Restrict the epoch channels and trials if requested
             ecTbl = ns.EpochChannel & key;
@@ -31,16 +35,22 @@ classdef Tepoch < dj.Computed & dj.DJInstance
                 parms.window = fetch(ns.EpochParm & key,'window');                
             end
 
-            ecTbl.cache; % Fill the cache with the latest
-            % Compute 
-            [T,dv,iv] = compute(ecTbl,parms.fun,parms.options,grouping=parms.grouping,timeWindow=parms.window);
+            % Compute - uses the ns.cache/compute function  (abstract
+            % superclass).
+            [T,dv,idv] = compute(ecTbl,parms.fun,parms.options,grouping=parms.grouping,timeWindow=parms.window);
                       
            % Insert in the table
            tpl = key;
-           tpl.x = T.(iv);
+           tpl.x = T{1,idv}; % Store the first row only-all others are the same (see fill)
+           tpl.dependent = dv;
+           tpl.independent = idv;
            insert(tbl,tpl);
+           y = T.(dv);
+           if isnumeric(y)
+               y = num2cell(y,2);
+           end
             tpl = mergestruct(key,...
-                        struct('y',T.(dv),...
+                        struct('y',y,...
                                 'channel',num2cell(T.channel),...
                                 'trial', num2cell(T.trial)));
            insert(ns.TepochChannel,tpl)

@@ -18,7 +18,7 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods (Access = protected)
         function src = getCacheQuery(o)
-             src = proj(o * ns.Epoch * ns.EpochParm*ns.EpochChannel*proj(ns.Experiment,'paradigm'));
+            src = o*ns.Tepoch* proj(getCacheQuery(ns.EpochChannel & o),'condition','paradigm','align');
         end
     end
 
