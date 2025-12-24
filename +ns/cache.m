@@ -53,7 +53,7 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,"msten",x=xName,y=yName);
+            G = compute(o,"msten",x=xName,y=yName,grouping = ["subject" "session_date" "starttime" "condition" "trial"]);
             x = G{1,xName};
             if xName =="time" && numel(x) ==3
                x = linspace(x(1),x(2),x(3));
@@ -161,7 +161,7 @@ classdef (Abstract) cache < handle
             % idv - the name of the independent variable.
             arguments
                 o (1,1)
-                fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten" "wavelet"])}
+                fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten" "wavelet" "snr"])}
                 options (1,:) struct = struct([]);  % Options for the fun
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
@@ -204,9 +204,9 @@ classdef (Abstract) cache < handle
             [grp,G] = findgroups(restrictedT(:,pv.grouping));
             % Average per group
             if iscell(restrictedT{1,pv.y})
-            M = splitapply(@(x) {mean(cat(2,x{:}),2)},restrictedT.(pv.y),grp);
+                M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
             else
-                M = splitapply(@(x) {mean(x,1)'},restrictedT.(pv.y),grp);
+                M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(pv.y),grp);
             end
             nrGrps = height(M);
 
@@ -229,6 +229,10 @@ classdef (Abstract) cache < handle
                         opts = namedargs2cell(options);
                     end
                     fun = @(x) ns.cache.do_psd(x,o.samplingRate,opts{:});
+                    idv = "frequency";
+                    dv = "power";
+                case "snr"
+                    fun = @(x) ns.cache.do_snr(x,o.samplingRate,options);
                     idv = "frequency";
                     dv = "power";
                 case "pmtm"
@@ -254,7 +258,7 @@ classdef (Abstract) cache < handle
                     fun = @(x) ns.cache.do_wavelet(x,o.samplingRate,options.fwhm,options.nfrex,options.limits);
                     idv = ["frequency" "time"];
                     dv = "power";
-                case "snr"
+                case "OLDsnr"
                     %TODO
                     if isempty(options)
                         options =struct('bin', 5,'bin_skip',2);
@@ -339,6 +343,7 @@ classdef (Abstract) cache < handle
             % Power spectral density.
             % Table with power and frequency
             signal =cat(2,signal{:}); % Concatenate epochs
+            signal = signal - mean(signal,1,"omitmissing");
             [power, freq] = pspectrum(signal, fs, varargin{:});
             v= table(power(:)',freq(:)','VariableNames',{'power','frequency'});
         end
@@ -385,19 +390,6 @@ classdef (Abstract) cache < handle
             power = abs(spectrogram).^2;
             % Store power spectrogram and frequency
             v = table({power},freq(:)','VariableNames',{'power','frequency'});
-        end
-
-        function v= do_noise(signal,kernel)
-            % Mean power in neighboring frequency bins.
-            kernel = kernel(:); % Force column to operate along samples
-            signal =cat(2,signal{:}); % Concatenate epochs
-            signal = abs(signal);
-            kernelWidth = floor(numel(kernel)/2);
-            noise = conv2(signal, kernel, 'same');% Uses zero padding
-            noise(1:kernelWidth,:) = NaN;
-            noise(end-kernelWidth+1:end,:) = NaN;
-            noise =noise/sum(kernel); % Average instead of sum
-            v = {noise};
         end
         function v = do_msten(x)
             % Mean, standard error, and N
