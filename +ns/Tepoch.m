@@ -3,22 +3,20 @@
 -> ns.Epoch         # The epochs that were transformed
 -> ns.TepochParm    # Parameters used for the transformation
 ---
-x : longblob            # The values of the independent variable
-dependent : varchar(32)  # The name of the dependent variable(s) - vector of strings 
-independent : varchar(32)  #  The name of the independent variable - vector of strings
+x : blob            # The values of the independent variable
+dependent : varchar(64)  # The name of the dependent variable(s) - vector of strings 
+independent : varchar(64)  #  The name of the independent variable - vector of strings
 %}
 %
 % To use this table, define a TepochParm and run populate(ns.Tepoch).
 % 
 % See Also ns.TepochParm
-%
 classdef Tepoch < dj.Computed & dj.DJInstance   
    
     methods (Access = protected)
         function makeTuples(tbl, key)
             % Apply a computation/transform to a collection of Epochs and
             % store as Tepoch.
-
             parms = fetch(ns.TepochParm & key,'*');           
 
             % Restrict the epoch channels and trials if requested in the

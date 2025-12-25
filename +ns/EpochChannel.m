@@ -23,15 +23,8 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
 
     end
     methods (Access = protected)
-        function [src]= getCacheQuery(o)
-            
+        function [src]= getCacheQuery(o)            
              src = o * ns.Epoch * ns.EpochParm * proj(ns.Experiment,'paradigm');
-             % Safety check; time and align should match for all rows
-             % in the table. 
-             preFetch = fetchtable(src,'time','align');
-             assert(isscalar(unique(preFetch.time(:,3))),'Rows of the EpochChannel table must have the same numbers of samples.');
-             assert(isscalar(unique({preFetch.align.plugin})),'Rows of the EpochChannel should be aligned to the same plugin.');
-             assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');          
              src = proj(src,'time','align','signal','condition','paradigm');
         end
     end

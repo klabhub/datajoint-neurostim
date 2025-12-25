@@ -1,10 +1,26 @@
 classdef (Abstract) cache < handle
-
+    % Abstract superclass used by ns.Epoch and ns.Epoch
+    % When working with a set of T/Epochs one often wants to compute
+    % derived measures (e.g. a spectrum from a signal), average in
+    % different ways (across trials or channels, or subjects), or visualize
+    % raw or computed data. 
+    % This cache class prevents multiple round trips to the server to fetch
+    % the data. Instead, the data are fetched once and stored internally in
+    % a Matlab table (.T) that also tracks the various primary keys of each
+    % row in the DJ table.
+    %
+    % EXAMPLE
+    %
+    % 
+    % BK - Dec 2025
+    properties (Constant)
+        GROUPVARS = ["subject" "session_date" "starttime" "condition" "trial" "channel"];
+    end
     properties (GetAccess =public,SetAccess = protected)
-        T (:,:) table  = table;
-        qry (1,1) string =""  % Stores the query that fetched the data
-        independent (1,:) string = "time"
-        dependent (1,:) string = "signal"
+        T (:,:) table  = table;  % The Matlab table that stores the data
+        qry (1,1) string =""     % The query that fetched the data
+        independent (1,:) string = "time" % The name(s) of the independent variables
+         dependent (1,:) string = "signal"  % The name(s) of the dependent variables
     end
 
     methods
@@ -44,25 +60,22 @@ classdef (Abstract) cache < handle
             dimension = unique(o.T.dimension);
             if pv.raster
                 % Raster plot cannot average over trials
-                pv.average = setdiff(pv.average,"trial");
+                pv.average = setdiff(pv.average,"trial",'stable');
             end
-            % Determine mean, ste and n averaging over the pv.average
-            % dimension (anything that is left out of grouping)
-            grouping = setdiff(["subject" "session_date" "starttime" "paradigm"  "condition" "trial" "channel"  ],pv.average,'stable');
+            grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
             
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,"msten",x=xName,y=yName,grouping = ["subject" "session_date" "starttime" "condition" "trial"]);
+            G = compute(o,"msten",x=xName,y=yName,average= pv.average);
             x = G{1,xName};
             if xName =="time" && numel(x) ==3
                x = linspace(x(1),x(2),x(3));
             end
             if pv.raster
                 % Concatenate the trials into a raster matrix in G.
-                grouping = setdiff(grouping,"trial",'stable');
-                P = groupsummary(G, grouping, @(x) x(1,:), ["align" xName]);
-                P = renamevars(P,["fun1_align" "fun1_"+xName],["align" xName]);
+                P = groupsummary(G, grouping, @(x) x(1,:), ["align" xName "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+xName "fun1_paradigm"],["align" xName "paradigm"]);
                 G = groupsummary(G,grouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
                 G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
                 G = innerjoin(G,P);
@@ -148,27 +161,37 @@ classdef (Abstract) cache < handle
         function [G,dv,idv] =  compute(o,fun,options,pv)
             % Compute derived measures from the EpochChannel table.
             % fun - fft, psd, pmtm, snr, msten
+            %       fft - Uses fft() to compute amplitude, phase as a function of frequency
+            %        psd - Uses pspectrum to compute power spectral density as a function of frequency
+            %        pmtm - Uses multittaper pmtm to compute a spectrogram as a function of time and frequency
             % options - Struct passed to the compute function - different
-            %           for each fun
+            %           for each fun.
+            %        fft - no options
+            %        psd
+            %       pmtm 
+            %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
             % timeWindow - Select a time window 
-            % grouping - Group analysis by these fields. Signals are
-            %            averaged within group before applying the fun.
+            % average  - Analysis is applied after averaging over these
+            %               fields. 
+            %               Defaults to ["trial" "channel"], but can be 
+            %               any of ["subject" "session_date" "starttime" "condition" "trial" "channel"]
+            %           Use "" to compute for each trial and channel.
             % OUTPUT
             % G  - A table with the results
             % dv -  The name of the dependent variable.
             % idv - the name of the independent variable.
             arguments
                 o (1,1)
-                fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten" "wavelet" "snr"])}
+                fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten" "wavelet"])}
                 options (1,:) struct = struct([]);  % Options for the fun
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
-                pv.grouping (1,:) string {mustBeMember(pv.grouping,["subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["subject" "session_date" "starttime" "condition"]
-                pv.x (1,1) string = "time"     
-                pv.y (1,1) string = "signal"
+                pv.average (1,:) string {mustBeMember(pv.average,["" "subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
+                pv.x (1,1) string = o.independent  % Which  column in .T to use on the horizontal axis 
+                pv.y (1,1) string = o.dependent    % Column in .T to use as the dependent variable
             end
             fill(o);% Fill the cache
 
@@ -201,12 +224,19 @@ classdef (Abstract) cache < handle
             end
 
             %%  Average/group
-            [grp,G] = findgroups(restrictedT(:,pv.grouping));
-            % Average per group
-            if iscell(restrictedT{1,pv.y})
-                M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
+            if pv.average~=""
+                grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
+                [grp,G] = findgroups(restrictedT(:,grouping));
+
+                % Average per group
+                if iscell(restrictedT{1,pv.y})
+                    M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
+                else
+                    M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(pv.y),grp);
+                end
             else
-                M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(pv.y),grp);
+                G = restrictedT;
+                M = restrictedT;
             end
             nrGrps = height(M);
 
@@ -257,34 +287,7 @@ classdef (Abstract) cache < handle
                     end
                     fun = @(x) ns.cache.do_wavelet(x,o.samplingRate,options.fwhm,options.nfrex,options.limits);
                     idv = ["frequency" "time"];
-                    dv = "power";
-                case "OLDsnr"
-                    %TODO
-                    if isempty(options)
-                        options =struct('bin', 5,'bin_skip',2);
-                    end
-                    % First compute power using FFT
-                    signalFun = @(x) ns.cache.do_fft(x,o.samplingRate);
-                    pwrT     = splitapply(signalFun,M,(1:nrGrps)');
-
-
-                    fq_res = mode(diff(pwrT{1,"frequency"}));
-                    n_bins = round(options.bin/fq_res);
-                    n_bins_skip = round(options.bin_skip/fq_res);
-                    mid_bin = n_bins + 1;
-                    kernel = true(1, 2*n_bins + 1);
-                    kernel(mid_bin-n_bins_skip : mid_bin+n_bins_skip) = false;
-                    noiseFun = @(x) ns.cache.do_noise(x,kernel);
-                    noiseNames = "noise";
-                    N = ns.cache.cacheCompute(pwrT,noiseFun,noiseNames,signal="fft",grouping=pv.grouping);
-
-                    snr = cellfun(@(sig,nois) abs(sig)./nois,pwrT.fft,N.noise,'UniformOutput',false);
-                    pwrT= addvars(pwrT,snr);
-                    pwrT= removevars(pwrT,signalNames);
-                    G = pwrT;
-                    dv   = "snr";
-                    idv   = "frequency";
-                    return; % All done.
+                    dv = "power";               
                 otherwise
                     error('Unknown function %s', fun);
             end
@@ -296,9 +299,11 @@ classdef (Abstract) cache < handle
             % Combine with align/time/paradigm information. Note this
             % assumes these are constant across the group (picking
             % only the first here). fill() assures this is the case.
-            P = groupsummary(restrictedT, pv.grouping, @(x) x(1,:), ["align" pv.x "paradigm"]);
-            P = renamevars(P,["fun1_align" "fun1_"+pv.x "fun1_paradigm"],["align" pv.x "paradigm"]);
-            G =innerjoin(G,P);
+            if pv.average ~=""
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" pv.x "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+pv.x "fun1_paradigm"],["align" pv.x "paradigm"]);            
+                G =innerjoin(G,P);
+            end 
 
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
@@ -409,6 +414,12 @@ classdef (Abstract) cache < handle
             % Fetch the data if the underlying query has changed
             [src] = getCacheQuery(o);
             if canonicalize(string(src.sql)) ~=canonicalize(o.qry)
+                % Safety check; time and align should match for all rows
+                % in the table. 
+                preFetch = fetchtable(src,'time','align');
+                assert(isscalar(unique(preFetch.time(:,3))),'Rows of the EpochChannel table must have the same numbers of samples.');
+                assert(isscalar(unique({preFetch.align.plugin})),'Rows of the EpochChannel should be aligned to the same plugin.');
+                assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');                    
                 o.T =fetchtable(src,'*','ORDER BY channel');
                 o.qry = src.sql;
             end

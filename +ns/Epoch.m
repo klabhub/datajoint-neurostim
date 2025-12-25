@@ -2,7 +2,7 @@
 # Preprocessed epoch data, with epochs stored per trial and channel in the part table ns.EpochChannel
 -> ns.C             # The continuous data that were epoched
 -> ns.EpochParm     # Parameters used to epoch
--> ns.Dimension     # Dimension that determines the conditions
+-> ns.Dimension     # Dimension that determines the conditions and selects the trials
 ---
 time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
 prep : blob             # Struct with information on preprocessing (.prepparms) done during epoching
