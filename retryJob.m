@@ -25,13 +25,23 @@ end
 if isempty(tpl.error_stack)
     fprintf('No error stack; just retrying without a breakpoint\n');
 else
-[p,f] =fileparts(tpl.error_stack(1).file);
-[~,nmspc] =fileparts(p);
-if contains(nmspc,'+')
-    fname = [nmspc(2:end) '.' f];
-else
-    fname =f;
-end
+    % Determine the function that caused the error
+    ffile = tpl.error_stack(1).file;
+    if contains(ffile,'+')
+        % Part of a (nested) namespace - resolve to the a.b.c name
+        if contains(ffile,'/')
+            fs = '/';
+        else
+            fs = '\';
+        end
+        fname =extractAfter(ffile,[fs '+']);
+        fname  = strrep(fname,'+','');
+        fname =extractBefore(fname,'.m');
+        fname = strrep(fname,fs,'.');
+    else
+        % No namespace used: fname should be on the path.
+        [~,fname] =fileparts(ffile);
+    end
 fprintf('Setting breakpoint at line %d in %s\n',tpl.error_stack(1).line,fname);
 dbstop('in', string(fname),'at', string(tpl.error_stack(1).line));
 end

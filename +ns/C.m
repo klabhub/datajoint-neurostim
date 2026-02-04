@@ -918,7 +918,7 @@ classdef C < dj.Computed & dj.DJInstance
                     end
                     thisT = timetable(milliseconds(trialTime),signal(staySamples,:)-baseline); % The table for this trial, at the original sampling rate.
                     % Now retime the table to the new time axis. Never extrapolation
-                    thisTRetimed = retimeWithNan(thisT,newTimes,interpolation= pv.interpolation,endValues =NaN,keepNan =pv.keepNan);
+                    thisTRetimed = retimeWithNan(thisT,newTimes,pv.interpolation,endValues =NaN,keepNan =pv.keepNan);
                     T.(varNames(trCntr)) = table2array(thisTRetimed);
                 end
                 T(:,trialOut) = [];

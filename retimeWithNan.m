@@ -1,16 +1,32 @@
-function retimedT= retimeWithNan(T,newTimes,pv)
+function retimedT= retimeWithNan(T,newTimes,method,pv)
 arguments
     T (:,:) timetable
-    newTimes (:,1) duration
-    pv.interpolation (1,1) string = "linear"
-    pv.endValues (1,1) =  NaN
-    pv.keepNaN (1,1) logical = true
+    newTimes  %  datetimes or character vector specifying the time step
+    method ="default"
+    pv.TimeStep (1,1) duration = seconds(0)
+    pv.SampleRate (1,1) double  = 0
+    pv.EndValues (1,1) =  "extrap"
+    pv.Constant (1,1)  = 123456789
+    pv.IncludedEdge (1,1) string = "left"
+    pv.KeepNaN (1,1) logical = true
 end
-
+keepNaN = pv.KeepNaN;
+pv =rmfield(pv,'KeepNaN');
+if pv.Constant == 123456789
+    pv =rmfield(pv,'Constant');
+end
+if pv.TimeStep == seconds(0)
+    pv =rmfield(pv,'TimeStep');
+end
+if pv.SampleRate ==0 
+    pv = rmfield(pv,'SampleRate');
+end
+args= namedargs2cell(pv);
 % First retime as instructed
-retimedT= retime(T,newTimes,pv.interpolation,'EndValues',pv.endValues);
+retimedT= retime(T,newTimes,method,args{:});
+    
 
-if pv.keepNaN
+if keepNaN
     % The time points that are nan in T should be nan in retimedT
     % Matlab does not have a built-in way to handle this
 

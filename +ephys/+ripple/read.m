@@ -63,7 +63,6 @@ end
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
 trialStartTimeNeurostim  = prms.ripple.trialstartNsTime(keep)/1000;% Seconds
-trialStartTimeNeurostim  = trialStartTimeNeurostim-prms.ripple.trialstartTime(keep)/1000;% Seconds
 % Find wich bit stored the trialstart event and get the time on the NIP
 eventIx  = find(ismember({entities.EntityType},'Event'));
 expression = ['\<SMA\s*' num2str(prms.ripple.trialbit)];
