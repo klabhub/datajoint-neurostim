@@ -3,7 +3,7 @@ classdef (Abstract) cache < handle
     % When working with a set of T/Epochs one often wants to compute
     % derived measures (e.g. a spectrum from a signal), average in
     % different ways (across trials or channels, or subjects), or visualize
-    % raw or computed data. 
+    % raw or computed data.
     % This cache class prevents multiple round trips to the server to fetch
     % the data. Instead, the data are fetched once and stored internally in
     % a Matlab table (.T) that also tracks the various primary keys of each
@@ -11,7 +11,7 @@ classdef (Abstract) cache < handle
     %
     % EXAMPLE
     %
-    % 
+    %
     % BK - Dec 2025
     properties (Constant)
         GROUPVARS = ["subject" "session_date" "starttime" "condition" "trial" "channel"];
@@ -20,7 +20,7 @@ classdef (Abstract) cache < handle
         T (:,:) table  = table;  % The Matlab table that stores the data
         qry (1,1) string =""     % The query that fetched the data
         independent (1,:) string = "time" % The name(s) of the independent variables
-         dependent (1,:) string = "signal"  % The name(s) of the dependent variables
+        dependent (1,:) string = "signal"  % The name(s) of the dependent variables
     end
 
     methods
@@ -51,32 +51,33 @@ classdef (Abstract) cache < handle
                 pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date" ""])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
-                pv.raster (1,1) logical = false         % Set to true to show trials as rasters (removes "trial" from pv.average)
-                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.             
+                pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
+                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
             end
 
             %% Fill the cache, then perform averaging per group
             fill(o);% Fill the cache if needed
             dimension = unique(o.T.dimension);
-            if pv.raster
-                % Raster plot cannot average over trials
-                pv.average = setdiff(pv.average,"trial",'stable');
-            end
+            % if pv.raster
+            %     % Raster plot cannot average over trials
+            %     pv.average = setdiff(pv.average,"trial",'stable');
+            % end
             grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
-            
+
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
             G = compute(o,"msten",x=xName,y=yName,average= pv.average);
             x = G{1,xName};
             if xName =="time" && numel(x) ==3
-               x = linspace(x(1),x(2),x(3));
+                x = linspace(x(1),x(2),x(3));
             end
-            if pv.raster
+            if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
-                P = groupsummary(G, grouping, @(x) x(1,:), ["align" xName "paradigm"]);
+                rasterGrouping = setdiff(ns.cache.GROUPVARS,[pv.raster pv.average]);
+                P = groupsummary(G, rasterGrouping, @(x) x(1,:), ["align" xName "paradigm"]);
                 P = renamevars(P,["fun1_align" "fun1_"+xName "fun1_paradigm"],["align" xName "paradigm"]);
-                G = groupsummary(G,grouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
+                G = groupsummary(G,rasterGrouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
                 G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
                 G = innerjoin(G,P);
                 pv.newTileEach = union(pv.newTileEach,"condition");
@@ -110,18 +111,19 @@ classdef (Abstract) cache < handle
                     legStr = string([]);
                     hold on
                 end
-                if pv.raster
+                if pv.raster~=""
                     % Show each condition in a separate tile
                     nrTrials= size(G.mean{i},1);
                     imagesc(x,1:nrTrials, G.mean{i})
+                    axis xy
                     n = mean(G.n{i},"all");
-                    ylabel ("Trial")
-                    titlePV= setdiff(["paradigm" grouping],"",'stable');
+                    ylabel ("")
+                    titlePV= setdiff(["paradigm" rasterGrouping],"",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 else
                     m = G.mean(i,:);
                     ste = G.ste(i,:);
-                    n = mean(G.n(i,:));
+                    n = mean(G.n(i,:));                    
                     h = [h plot(x,m)];                %#ok<AGROW>
                     p = patch([x flip(x)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);
                     p.EdgeColor = h(end).Color;
@@ -168,14 +170,14 @@ classdef (Abstract) cache < handle
             %           for each fun.
             %        fft - no options
             %        psd
-            %       pmtm 
+            %       pmtm
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
-            % timeWindow - Select a time window 
+            % timeWindow - Select a time window
             % average  - Analysis is applied after averaging over these
-            %               fields. 
-            %               Defaults to ["trial" "channel"], but can be 
+            %               fields.
+            %               Defaults to ["trial" "channel"], but can be
             %               any of ["subject" "session_date" "starttime" "condition" "trial" "channel"]
             %           Use "" to compute for each trial and channel.
             % OUTPUT
@@ -190,7 +192,7 @@ classdef (Abstract) cache < handle
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
                 pv.average (1,:) string {mustBeMember(pv.average,["" "subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
-                pv.x (1,1) string = o.independent  % Which  column in .T to use on the horizontal axis 
+                pv.x (1,1) string = o.independent  % Which  column in .T to use on the horizontal axis
                 pv.y (1,1) string = o.dependent    % Column in .T to use as the dependent variable
             end
             fill(o);% Fill the cache
@@ -227,12 +229,16 @@ classdef (Abstract) cache < handle
             if pv.average~=""
                 grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
                 [grp,G] = findgroups(restrictedT(:,grouping));
-
                 % Average per group
-                if iscell(restrictedT{1,pv.y})
-                    M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
+                if fun=="msten"
+                    M = splitapply(@ns.cache.msten,restrictedT.(pv.y),grp);
+                    
                 else
-                    M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(pv.y),grp);
+                    if iscell(restrictedT{1,pv.y})
+                        M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
+                    else
+                        M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(pv.y),grp);
+                    end
                 end
             else
                 G = restrictedT;
@@ -241,70 +247,72 @@ classdef (Abstract) cache < handle
             nrGrps = height(M);
 
             %% Determine which function to compute
-            % Map string to function handle and do error checking            
-            switch fun
-                case "msten"
-                    fun =@ns.cache.do_msten;
-                    dv = "mean";
-                    idv = "time";
-                case "fft"
-                    assert(isempty(options),"fft does not take any options")
-                    fun = @(x) ns.cache.do_fft(x,o.samplingRate);
-                    dv = ["amplitude" "phase"];
-                    idv = "frequency";
-                case "psd"
-                    if isempty(options)
-                        opts ={};
-                    else
-                        opts = namedargs2cell(options);
-                    end
-                    fun = @(x) ns.cache.do_psd(x,o.samplingRate,opts{:});
-                    idv = "frequency";
-                    dv = "power";
-                case "snr"
-                    fun = @(x) ns.cache.do_snr(x,o.samplingRate,options);
-                    idv = "frequency";
-                    dv = "power";
-                case "pmtm"
-                    if ~isfield(options,"args")
-                        % Defaults
-                        args = {4,7}; % time-halfbandwidth product =4, averaging weights =7
-                    else
-                        args = options.args;
-                    end
-                    options = rmfield(options,'args');
-                    if isempty(options)
-                        options = {};
-                    else
-                        options = namedargs2cell(options); % The rest as parm/value pairs
-                    end
-                    fun = @(x) ns.cache.do_pmtm(x,args{:},o.samplingRate,options{:});
-                    idv = "frequency";
-                    dv = "power";
-                case "wavelet"
-                    if isempty(options)
-                        options= struct('limits', [0.5 100],'fwhm',[2 0.2],'nfrex',40);
-                    end
-                    fun = @(x) ns.cache.do_wavelet(x,o.samplingRate,options.fwhm,options.nfrex,options.limits);
-                    idv = ["frequency" "time"];
-                    dv = "power";               
-                otherwise
-                    error('Unknown function %s', fun);
+            % Map string to function handle and do error checking
+            if fun=="msten"
+                dv = "mean";
+                idv = "time";
+                % Combine with G
+                G = [G M];
+            else
+                switch fun
+                    case "fft"
+                        assert(isempty(options),"fft does not take any options")
+                        fun = @(x) ns.cache.do_fft(x,o.samplingRate);
+                        dv = ["amplitude" "phase"];
+                        idv = "frequency";
+                    case "psd"
+                        if isempty(options)
+                            opts ={};
+                        else
+                            opts = namedargs2cell(options);
+                        end
+                        fun = @(x) ns.cache.do_psd(x,o.samplingRate,opts{:});
+                        idv = "frequency";
+                        dv = "power";
+                    case "snr"
+                        fun = @(x) ns.cache.do_snr(x,o.samplingRate,options);
+                        idv = "frequency";
+                        dv = "power";
+                    case "pmtm"
+                        if ~isfield(options,"args")
+                            % Defaults
+                            args = {4,7}; % time-halfbandwidth product =4, averaging weights =7
+                        else
+                            args = options.args;
+                        end
+                        options = rmfield(options,'args');
+                        if isempty(options)
+                            options = {};
+                        else
+                            options = namedargs2cell(options); % The rest as parm/value pairs
+                        end
+                        fun = @(x) ns.cache.do_pmtm(x,args{:},o.samplingRate,options{:});
+                        idv = "frequency";
+                        dv = "power";
+                    case "wavelet"
+                        if isempty(options)
+                            options= struct('limits', [0.5 100],'fwhm',[2 0.2],'nfrex',40);
+                        end
+                        fun = @(x) ns.cache.do_wavelet(x,o.samplingRate,options.fwhm,options.nfrex,options.limits);
+                        idv = ["frequency" "time"];
+                        dv = "power";
+                    otherwise
+                        error('Unknown function %s', fun);
+                end
+
+                %% Apply the fun to the mean signal
+                results = splitapply(fun,M,(1:nrGrps)');
+                % Combine with G
+                G = [G results];               
             end
-
-            %% Apply the fun to the mean signal
-            results = splitapply(fun,M,(1:nrGrps)');
-            % Combine with G
-            G = [G results];
             % Combine with align/time/paradigm information. Note this
-            % assumes these are constant across the group (picking
-            % only the first here). fill() assures this is the case.
-            if pv.average ~=""
-                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" pv.x "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+pv.x "fun1_paradigm"],["align" pv.x "paradigm"]);            
-                G =innerjoin(G,P);
-            end 
-
+                % assumes these are constant across the group (picking
+                % only the first here). fill() assures this is the case.
+                if pv.average ~=""
+                    P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" pv.x "paradigm"]);
+                    P = renamevars(P,["fun1_align" "fun1_"+pv.x "fun1_paradigm"],["align" pv.x "paradigm"]);
+                    G =innerjoin(G,P);
+                end
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
         end
@@ -405,6 +413,15 @@ classdef (Abstract) cache < handle
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
         end
+
+        function v = msten(x)
+            X =cat(2,x{:});
+            v = {mean(X,2,"omitmissing")', ...  % Mean
+                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
+                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
+            % Make a table.
+            v = cell2table(v,"VariableNames",{'mean','ste','n'});
+        end
     end
 
 
@@ -415,11 +432,11 @@ classdef (Abstract) cache < handle
             [src] = getCacheQuery(o);
             if canonicalize(string(src.sql)) ~=canonicalize(o.qry)
                 % Safety check; time and align should match for all rows
-                % in the table. 
+                % in the table.
                 preFetch = fetchtable(src,'time','align');
                 assert(isscalar(unique(preFetch.time(:,3))),'Rows of the EpochChannel table must have the same numbers of samples.');
                 assert(isscalar(unique({preFetch.align.plugin})),'Rows of the EpochChannel should be aligned to the same plugin.');
-                assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');                    
+                assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');
                 o.T =fetchtable(src,'*','ORDER BY channel');
                 o.qry = src.sql;
             end
