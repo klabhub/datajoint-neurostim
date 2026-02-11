@@ -58,11 +58,11 @@ classdef (Abstract) cache < handle
             %% Fill the cache, then perform averaging per group
             fill(o);% Fill the cache if needed
             dimension = unique(o.T.dimension);
-            % if pv.raster
-            %     % Raster plot cannot average over trials
-            %     pv.average = setdiff(pv.average,"trial",'stable');
-            % end
-            grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
+            
+           % Raster plot cannot average over 
+           pv.average = setdiff(pv.average,pv.raster,'stable');
+           
+            grouping = setdiff(ns.cache.GROUPVARS,[pv.average pv.raster],'stable');
 
             % Epochs always contain signal and time
             xName = o.independent;

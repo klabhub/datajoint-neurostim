@@ -77,8 +77,77 @@ clockParms = matchRiplleNeurostim(trialBitTime(:),trialBitValue(:),trialStartTim
 
 %%
 
+%% Parse events to add as plugin parameter
+trialStartTime = get(ns.Experiment & key,'cic','prm','firstframe','what','clocktime');
+plgTpl = fetch(ns.Plugin & key & 'plugin_name="ripple"');
+prmTpl  = mergestruct(plgTpl,struct('property_name','','property_time',[],'property_nstime',[],'property_trial',[],'property_value',[],'property_type','Parameter'));
+for sma=1:4
+    thisName = ['SMA' num2str(sma)];
+    
+    eventIx  = find(ismember({entities.EntityType},'Event'));
+    if isempty(eventIx);continue;end
+    expression = ['\<SMA\s*' num2str(sma)];
+    bitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
+    if isempty(bitEntityIx);continue;end
+    [errCode,rippleBitTime,bitValue] = ns_GetEventData(hFile, eventIx(bitEntityIx  ), 1:entities(eventIx(bitEntityIx  )).Count);    
+    if ~strcmpi(errCode,'ns_OK');error('ns_GetEventData failed with %s', errCode);end
+  bitValue = bitValue';
+% Remove zeros at the leading edge.
+ix =find(bitValue>0,1);
+if isempty(ix)% No nonzero values; happens with UDP loopback.
+    continue;
+end
+bitValue(1:(ix-1)) = [];
+rippleBitTime(1:(ix-1))=[];
+% With UDP loopback enabled, digital output values are stored multiple times.
+% Here we detect that and just store the first.
+flip = [true; diff(bitValue)~=0];
+start = rippleBitTime(bitValue==32767);
+stop = rippleBitTime(bitValue==0);
+if sum(flip) ~=numel(flip)
+    %Seems robust. No need to warn. fprintf('Fixing Trellis UDP Lookback duplicate Up/Down events.\n')
+    start = rippleBitTime(flip & bitValue==32767);
+    stop  = rippleBitTime(flip & bitValue==0);
+end
+    % 
+    % 
+    % out= [diff(bitValue)==0 & diff(rippleBitTime)<0.001; false];
+    % rippleBitTime(out)=[];
+    % bitValue(out) = [];
+    eventTime =1000*polyval(clockParms,start);
+     thisParm = ns.PluginParameter & ['property_name="' thisName '"'] & (ns.Plugin & 'plugin_name="ripple"') & key;
+    % Delete old
+    if exists(thisParm)
+        delQuick(thisParm);
+    end
+    % Put in the new
+    nrEvtsThisType = numel(start);
+     eventTrial = nan(nrEvtsThisType,1);
+     % Assign to trial
+     for b= 1:nrEvtsThisType
+         tmp = find(trialStartTime > eventTime(b),1,'first');
+         if isempty(tmp)
+             eventTrial(b)= max(prms.cic.trial);
+         else
+             eventTrial(b) =max(1,tmp-1);
+         end
+     end
+    prmTpl.property_value = true(size(start));
+    prmTpl.property_name = thisName;
+    prmTpl.property_time = eventTime-trialStartTime(eventTrial);
+    prmTpl.property_nstime = eventTime;
+    prmTpl.property_trial = eventTrial;
+
+
+    insert(ns.PluginParameter,prmTpl);    
+end
+ 
+
+%%
+
 if strcmpi(parms.type,'DIGIN')
-    % Read digital bit inputs.
+    % Read digital bit inputs as continuous channel (in case the events
+    % stored above are not enough).
     eventIx  = find(ismember({entities.EntityType},'Event'));
     expression = ['\<SMA\s*' num2str(parms.channel)];
     bitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
