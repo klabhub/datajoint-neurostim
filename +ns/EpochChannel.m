@@ -35,8 +35,13 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
             ch = unique([ch(:).channel]');
         end        
         function v = get.samplingRate(self)
-            e = ns.Epoch &self;
-            v = uniquetol(e.samplingRate,0.01);
+            e = ns.Epoch & self;
+            v = uniquetol(e.samplingRate, 0.01);
+            if ~isscalar(v)
+                error('ns:EpochChannel:NonScalarSamplingRate', ...
+                    'Expected a single sampling rate across epochs, but found multiple values: %s', ...
+                    mat2str(v));
+            end
         end        
     end
 
