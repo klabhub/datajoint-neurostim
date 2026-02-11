@@ -226,7 +226,7 @@ classdef (Abstract) cache < handle
             end
 
             %%  Average/group
-            if pv.average~=""
+            if ~(isscalar(pv.average) && pv.average=="")
                 grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
                 [grp,G] = findgroups(restrictedT(:,grouping));
                 % Average per group
