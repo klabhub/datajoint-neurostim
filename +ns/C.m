@@ -910,7 +910,7 @@ classdef C < dj.Computed & dj.DJInstance
                             baselineTime = t(stayBaseline)-alignNsTime(trCntr);
                             thisT = timetable(milliseconds(baselineTime),signal(stayBaseline,:)-baseline);
                             % Retime the baseline table to the new time axis. Never extrapolation
-                            thisT = retimeWithNan(thisT,newBaselineTimes,interpolation= pv.interpolation,endValues= NaN,keepNan = pv.keepNan);
+                            thisT = retimeWithNan(thisT,newBaselineTimes,pv.interpolation,endValues= NaN,keepNan = pv.keepNan);
                             B.(varNames(trCntr)) = table2array(thisT);
                         end
                     else
