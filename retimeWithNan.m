@@ -2,7 +2,7 @@ function retimedT= retimeWithNan(T,newTimes,method,pv)
 arguments
     T (:,:) timetable
     newTimes  %  datetimes or character vector specifying the time step
-    method ="default"
+    method ="linear"
     pv.TimeStep (1,1) duration = seconds(0)
     pv.SampleRate (1,1) double  = 0
     pv.EndValues (1,1) =  "extrap"
