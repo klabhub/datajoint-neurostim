@@ -1,6 +1,6 @@
 classdef (Abstract) cache < handle
-    % Abstract superclass used by ns.Epoch and ns.Epoch
-    % When working with a set of T/Epochs one often wants to compute
+    % Abstract superclass used by ns.EpochChannel and ns.TepochChannel
+    % When working with a set of EpochChannel or TepochChannel objects one often wants to compute
     % derived measures (e.g. a spectrum from a signal), average in
     % different ways (across trials or channels, or subjects), or visualize
     % raw or computed data.
