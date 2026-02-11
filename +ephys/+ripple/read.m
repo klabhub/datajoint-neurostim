@@ -132,7 +132,7 @@ end
              eventTrial(b) =max(1,tmp-1);
          end
      end
-    prmTpl.property_value = true(size(start));
+    prmTpl.property_value = double(true(size(start)));
     prmTpl.property_name = thisName;
     prmTpl.property_time = eventTime-trialStartTime(eventTrial);
     prmTpl.property_nstime = eventTime;
