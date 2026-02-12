@@ -42,7 +42,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
 
             % Apply combined restriction
-            v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension)) & combinedWhere;
+            % Selecting only those dimensions that have actual conditions.
+            v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension & ns.DimensionCondition)) & combinedWhere;
         end
         function t =get.time(tbl)
             t = fetchn(tbl, 'time');
