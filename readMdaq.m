@@ -55,32 +55,36 @@ if any(out)
     fprintf('DaqStart = %s , but first trial started %d seconds later.\n',daqStartTime.data,round((trialStartTime.clocktime(trialStartTime.data==1)-daqStartTime.clocktime)/1000))
     fprintf('Removing %d samples from the mdaq that occurred before first trial start. \n',sum(out));
     T(out,:) =[];
-end 
+end
 
 if exists(ns.Plugin & key & 'plugin_name="scanbox"')
     % Hack for a special case where mdaq is used to record scanbox
     % triggers.
-    info = sbx.readInfoFile(ns.Experiment & key);    
-    laserLowToHigh = find([T.laserOnDig(1);diff(T.laserOnDig)>0]);
-    laserHighToLow =  find([false;diff(T.laserOnDig)<0]);
-    % A ttl pulse is sent for each plane in multiplane recordings. Trim
-    % down to 1 per stack. (All ttls will be stored as events below)
-    laserLowToHigh = laserLowToHigh(1:info.nrPlanes:end);
-    laserHighToLow = laserHighToLow(1:info.nrPlanes:end);
-    nrTTL = numel(laserLowToHigh);
-    if nrTTL >  info.nrFrames +1 
-        % 1 extra is expected and handled in sbx.read. Try to remove
-        % extraneous TTL here.
-        extraTTL = nrTTL-(info.nrFrames+1);
-        lastExtraTTLIx = laserHighToLow(extraTTL);
-        timeToRemove = T.nsTime(lastExtraTTLIx)-T.nsTime(1);
-        if timeToRemove < seconds(4)
-            T(1:lastExtraTTLIx,:) =[];
-        else
-            error('The mismatch in TTL vs. Frames is too large to remove (%s)',timeToRemove)
+    if ~exists(ns.File & key & 'extension=".sbx"')
+        fprintf('No sbx file associated with %s. Skipping laser ttl reading\n',key.filename);
+    else
+        info = sbx.readInfoFile(ns.Experiment & key);
+        laserLowToHigh = find([T.laserOnDig(1);diff(T.laserOnDig)>0]);
+        laserHighToLow =  find([false;diff(T.laserOnDig)<0]);
+        % A ttl pulse is sent for each plane in multiplane recordings. Trim
+        % down to 1 per stack. (All ttls will be stored as events below)
+        laserLowToHigh = laserLowToHigh(1:info.nrPlanes:end);
+        laserHighToLow = laserHighToLow(1:info.nrPlanes:end);
+        nrTTL = numel(laserLowToHigh);
+        if nrTTL >  info.nrFrames +1
+            % 1 extra is expected and handled in sbx.read. Try to remove
+            % extraneous TTL here.
+            extraTTL = nrTTL-(info.nrFrames+1);
+            lastExtraTTLIx = laserHighToLow(extraTTL);
+            timeToRemove = T.nsTime(lastExtraTTLIx)-T.nsTime(1);
+            if timeToRemove < seconds(4)
+                T(1:lastExtraTTLIx,:) =[];
+            else
+                error('The mismatch in TTL vs. Frames is too large to remove (%s)',timeToRemove)
+            end
+        elseif nrTTL < info.nrFrames
+            error('TTL vs. Frames mismatch %d. This mdaq file cannot be aligned with SBX frames',nrTTL-info.nrFrames)
         end
-    elseif nrTTL < info.nrFrames
-        error('TTL vs. Frames mismatch %d. This mdaq file cannot be aligned with SBX frames',nrTTL-info.nrFrames)
     end
 end
 
@@ -124,15 +128,15 @@ if isfield(parms,'asEvent')
     plgKey  = fetch(ns.Plugin & key & 'plugin_name=''mdaq''');
 
     for ch = channelsAsEvent(:)'
-        threshold = parms.asEvent.(ch);        
-       [tf,channelIx]= ismember(ch,analogChannels);
-       if tf
-           % Analog channel; use the filtered signal
-           thisChannel = signal(:,channelIx);
-       else
-           % digital channel; use the raw signal (0
-           thisChannel = T{:,ch};
-       end
+        threshold = parms.asEvent.(ch);
+        [tf,channelIx]= ismember(ch,analogChannels);
+        if tf
+            % Analog channel; use the filtered signal
+            thisChannel = signal(:,channelIx);
+        else
+            % digital channel; use the raw signal (0
+            thisChannel = T{:,ch};
+        end
         if isnan(threshold)
             % Estimate, assuming bimodal
             vLowHigh = (prctile(thisChannel, [5 95]));

@@ -2,7 +2,7 @@
 # Preprocessed epoch data, with epochs stored per trial and channel in the part table ns.EpochChannel
 -> ns.C             # The continuous data that were epoched
 -> ns.EpochParm     # Parameters used to epoch
--> ns.Dimension     # Dimension that determines the conditions
+-> ns.Dimension     # Dimension that determines the conditions and selects the trials
 ---
 time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
 prep : blob             # Struct with information on preprocessing (.prepparms) done during epoching
@@ -10,10 +10,7 @@ art   : blob            # Struct with information on artifact removal (.artparms
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
 classdef Epoch < dj.Computed & dj.DJInstance
-    properties (GetAccess =public,SetAccess = protected)
-        cache table
-        cacheQry (1,1) string =""
-    end
+   
     properties (Dependent)
         time
         samplingRate
@@ -45,7 +42,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
 
             % Apply combined restriction
-            v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension)) & combinedWhere;
+            % Selecting only those dimensions that have actual conditions.
+            v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension & ns.DimensionCondition)) & combinedWhere;
         end
         function t =get.time(tbl)
             t = fetchn(tbl, 'time');

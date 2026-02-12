@@ -106,7 +106,7 @@ classdef File < dj.Imported
             % Check if the user has defined a function that excludes
             % certain files.
             hasExcludeFun = exist("nsFileExclude.m","file");
-            if hasExcludedFun && ~warnedForExclusion
+            if hasExcludeFun && ~warnedForExclusion
                 % Warn once
                 warning('Excluding files based on %s', which('nsFileExclude'));
                 warnedForExclusion = true;

@@ -126,7 +126,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 else
                     thisRestrict = restriction{i};
                 end
-                  
+
                 [dimTrials{i+1},dimValue{i+1}]  = fetchn((ns.Dimension&dTpl)*(ns.DimensionCondition & thisRestrict),'trials','value');
             end
             % Check what we have
@@ -146,6 +146,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
             trials(rowOut,:) = [];
             values(rowOut,:)=[];
         end
+
     end
     methods (Static)
         function define(expt,plg,prm,name,pv)
@@ -179,7 +180,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
             nrPrm = numel(prm);
             assert(nrPlg==nrPrm,"Please specify one parameter per plugin")
             existing = (ns.Dimension & 'dimension=''' + name + '''')  & expt ;
-            if pv.replace
+            if exists(existing) && pv.replace 
                 del(existing)
             end
             % Only process experiments in which this dimension has not already
@@ -224,8 +225,8 @@ classdef Dimension < dj.Manual & dj.DJInstance
                         prmValues = ret.data;
                         if isempty(ret.trial) && isscalar(unique(ret.data))
                             prmTrials = (1:nrTrials)';
-                        else    
-                            prmTrials = ret.trial; 
+                        else
+                            prmTrials = ret.trial;
                         end
                     end
                     if isempty(prmTrials) && isscalar(prmValues)
@@ -265,19 +266,17 @@ classdef Dimension < dj.Manual & dj.DJInstance
                     continue;
                 end
                 valStr = fillmissing(valStr,"constant","unknown");
+                isStayTrials = true(size(allTrials));
                 if ~isempty(pv.restrict)
                     % Determine which trials meet the specified condition
-                    isStayTrials = false(numel(allTrials),1);
                     for r = 1:3:numel(pv.restrict)
-                        restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{r},'prm',pv.restrict{r+1}, 'atTrialTime',pv.atTrialTime)';
-                        isStayTrials = isStayTrials | ismember(restrictValue,pv.restrict{r+2});
+                        restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{r},'prm',pv.restrict{r+1}, 'atTrialTime',pv.atTrialTime);
+                        isStayTrials = isStayTrials & ismember(restrictValue(:),pv.restrict{r+2});
                     end
-                else
-                    isStayTrials = true(size(allTrials));
                 end
 
                 % Determine which trials meet the specified condition
-                % for exclusion                
+                % for exclusion
                 for r = 1:3:numel(pv.exclude)
                     excludeValue = get(ns.Experiment & exptTpl(e),pv.exclude{r},'prm',pv.exclude{r+1}, 'atTrialTime',pv.atTrialTime)';
                     isStayTrials = isStayTrials & ~ismember(excludeValue,pv.exclude{r+2});
@@ -293,6 +292,12 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 valTbl = valTbl(ia,:);
                 nrConditions = size(uValStr,1);
                 %% Create tuples
+                % This creates an entry in the dimension table even if
+                % there are no associated conditions. That is probably
+                % correct and prevents define from running multiple times
+                % (because existing above will have an entry)
+                % BUt downstream code has to check for conditions, not just
+                % dimensions.
                 tplD = mergestruct(exptTpl(e), ...
                     struct('dimension',name, ...
                     'description',pv.description,...
@@ -319,6 +324,46 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 totalNrTpl = totalNrTpl + numel(tplC);
             end
             fprintf('Done in %s s. Added %d condition tuples.\n',seconds(toc),totalNrTpl);
+        end
+        function [nrTrialsPerCondition,overlappingTrials] = summary(expt,pv)
+            % Summarize the dimensions in an experiment
+            % Returns one table with the number of trials for each
+            % condition in each dimension and another table with the number
+            % of trials that occur in conditions of separate dimensions
+            %
+            arguments
+                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
+                pv =1
+            end
+
+
+            dims = ns.Dimension & expt;
+            assert(exists(dims),"No dimensions have been defined for this experiment (%s on %s @%s)",expt{1}.subject, expt{1}.session_date,expt{1}.starttime);
+
+            dimCons = fetchtable(ns.DimensionCondition & dims,'trials');
+            % Pivot tabulating hte number of trials per condition
+            % in each dimension
+            nrTrialsPerCondition = pivot(dimCons,Columns="dimension",Rows= "name",DataVariable="trials", Method = @(x) numel(x{1}));
+
+            % Get unique trials and dimensions
+            allUniqueTrials = unique(cat(1, dimCons.trials{:}));
+            allUniqueDims = unique(dimCons.dimension);
+            % Create a logical map: Rows = Dimensions, Cols = Trials
+            % membership(i, j) is true if Dimension i contains Trial j
+            membership = false(numel(allUniqueDims), numel(allUniqueTrials));
+
+            for i = 1:numel(allUniqueDims)
+                currentTrials = dimCons.trials(strcmp(dimCons.dimension, allUniqueDims{i}));
+                currentTrials = cat(1, currentTrials{:});
+                membership(i, :) = ismember(allUniqueTrials, currentTrials);
+            end
+
+            % Now your intersection matrix M is just matrix multiplication!
+            M = double(membership) * double(membership)';
+            
+            % Convert the matrix M to a table
+            overlappingTrials= array2table(M, 'VariableNames', allUniqueDims, 'RowNames', allUniqueDims);
+
         end
     end
 end
