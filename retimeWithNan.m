@@ -1,4 +1,13 @@
 function retimedT= retimeWithNan(T,newTimes,method,pv)
+% This function wraps around the built-in retime, with an additional option
+% (AnyNanIsNanSum) that specifies how to handle missing data with the "sum"
+% retime method
+% If there are no missing data, this function just calls retime
+% If there are missing data:
+%   AnyNanIsNanSum=true, a bin with one ore more NaN and method="sum" will  result in NaN.  
+%   AnyNanIsNanSum=false, a bin with all NaN result in NaN, but all other bins will result in the sum of the non-NaN elements
+%
+% The default is  AnyNanIsNanSum =true.
 arguments
     T (:,:) timetable
     newTimes  %  datetimes or character vector specifying the time step
@@ -8,10 +17,12 @@ arguments
     pv.EndValues (1,1) =  "extrap"
     pv.Constant (1,1)  = 123456789
     pv.IncludedEdge (1,1) string = "left"
-    pv.KeepNaN (1,1) logical = true
+    pv.AnyNanIsNanSum (1,1) logical = true
 end
-keepNaN = pv.KeepNaN;
-pv =rmfield(pv,'KeepNaN');
+
+% Massage the pv so that we can pass this to the builtin retime
+anyNanIsNaNSum = pv.AnyNanIsNanSum;
+pv =rmfield(pv,'AnyNanIsNanSum');
 if pv.Constant == 123456789
     pv =rmfield(pv,'Constant');
 end
@@ -22,30 +33,22 @@ if pv.SampleRate ==0
     pv = rmfield(pv,'SampleRate');
 end
 args= namedargs2cell(pv);
-% First retime as instructed
-retimedT= retime(T,newTimes,method,args{:});
-    
 
-if keepNaN
-    % The time points that are nan in T should be nan in retimedT
-    % Matlab does not have a built-in way to handle this
-
-    % Iterate over each variable
-    varNames = T.Properties.VariableNames;
-    for v = 1:numel(varNames)
-        col = T.(varNames{v});
-        isnanCol = isnan(col);
-
-        % Find runs of NaNs
-        nanStarts = T.Time(diff([false(1,size(isnanCol,2)); isnanCol]) == 1);
-        nanEnds   = T.Time(diff([isnanCol; false(1,size(isnanCol,2))]) == -1);
-
-        %Mask bad zones in the interpolated result
-        for i = 1:length(nanStarts)
-            inNaNPeriod = isbetween(retimedT.Time,nanStarts(i),nanEnds(i));
-            retimedT.(varNames{v})(inNaNPeriod) = NaN;
-        end
-    end
+if method=="sum" 
+    % How to handle NaN?    
+    % Matlab's default for sum is to simply ignore NaN, which results in 0 for a
+    % time bin with all NaN.       
+    if anyNanIsNaNSum    
+        % Even just one nan in the bin results in a NaN
+        method = @(x) sum(x, 'includemissing'); 
+    else
+        % Only all-Nan results in NaN
+        % For a timetable without NaN, this is the same as the built-in
+        % retime
+        method = @(x) sum(x, 'omitmissing') + 0./~all(isnan(x)); 
+    end    
 end
-
+% Call the built-in retime
+retimedT= retime(T,newTimes,method,args{:});
+  
 end
