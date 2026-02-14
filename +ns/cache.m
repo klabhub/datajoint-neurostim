@@ -166,11 +166,21 @@ classdef (Abstract) cache < handle
             %       fft - Uses fft() to compute amplitude, phase as a function of frequency
             %        psd - Uses pspectrum to compute power spectral density as a function of frequency
             %        pmtm - Uses multittaper pmtm to compute a spectrogram as a function of time and frequency
+            %
             % options - Struct passed to the compute function - different
             %           for each fun.
+            %       options.args is a cell array of postional arguments 
+            %       options.bla  = 5 will be  passed as 'bla',5 to the
+            %       function call.
+            %
             %        fft - no options
+            % 
             %        psd
+            %           
             %       pmtm
+            %           To calculate with 2 TW product and at frequencies
+            %           1:80, use options= struct('args',{{2,1:80}})
+            %           The sampling frequency is added automatically.
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
