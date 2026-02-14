@@ -5,7 +5,7 @@ function chunkedInsert(tbl,tpl)
 % (getenv("NS_BYTESPERINSERT")) or defaults to 5e6 bytes.
 bytesPerInsert = getenv("NS_BYTESPERINSERT");
 if isempty(bytesPerInsert)
-    bytesPerInsert = 5e6; % 5MB default chunk
+    bytesPerInsert = 50e6; % 50MB default chunk - ok for DJ server with large innodb_buffer and ram.
 end
 
 get_mem_size = @(x) whos('x').bytes;
@@ -24,7 +24,9 @@ end
 
 tic;
 nrTpls = numel(tpl);
-fprintf('Uploading to server: ')
+
+
+fprintf('Uploading to server (%d tuples with %d MB per chunk):',maxElementsPerChunk,round(maxElementsPerChunk*elementSize/1e6))
 
 i = 1;
 progress_old = 0;
@@ -32,7 +34,7 @@ progress_old = 0;
 while i <= nrTpls
 
     % Find optimal chunk size for this iteration without exceeding limit
-    currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);
+    currentChunkSize = min(maxElementsPerChunk, nrTpls - i + 1);    
     thisChunk = i:min(nrTpls,(i+currentChunkSize-1));
     insert(tbl,tpl(thisChunk));
     i = i + currentChunkSize;  % Move to the next chunk
@@ -44,5 +46,5 @@ while i <= nrTpls
     end
 end
 
-fprintf('\n\tDone in %d seconds.\n.',round(toc))
+fprintf('\n\tDone in %d seconds. Uploaded %d MB \n.',round(toc),round(totalMem/1e6));
 end
