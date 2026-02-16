@@ -241,7 +241,7 @@ classdef (Abstract) cache < handle
                 [grp,G] = findgroups(restrictedT(:,grouping));
                 % Average per group
                 if fun=="msten"
-                    M = splitapply(@ns.cache.msten,restrictedT.(pv.y),grp);
+                    M = splitapply(@ns.cache.do_msten,restrictedT.(pv.y),grp);
                     
                 else
                     if iscell(restrictedT{1,pv.y})
@@ -422,16 +422,7 @@ classdef (Abstract) cache < handle
                 sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
-        end
-
-        function v = msten(x)
-            X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing")', ...  % Mean
-                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
-                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
-            % Make a table.
-            v = cell2table(v,"VariableNames",{'mean','ste','n'});
-        end
+        end      
     end
 
 
