@@ -131,6 +131,23 @@ if isfield(parms,'eeglab')
     fn = fieldnames(parms.eeglab);
     for f= 1:numel(fn)
         switch fn{f}
+            case 'resample' 
+                if iscell(parms.eeglab.resample)
+                    % Passed verbatimg to pop_resample
+                    % Must be {freq [Hz] ,fc,df}
+                    %   fc         - anti-aliasing filter cutoff (pi rad / sample)
+                    %                {default 0.9}
+                    %   df         - anti-aliasing filter transition band width (pi rad /
+                    %                sample) {default 0.2}
+                    % fc and df are optional
+                    resampleParms = parms.eeglab.resample; 
+                elseif isnumeric(parms.eeglab.resample) && isscalar(parms.eeglab.resample)
+                    % Only frequency specified. 
+                    resampleParms = {parms.eeglab.resample}; 
+                else
+                    error('parms.eeglab.resample must be either a scalar double (frequency) or a cell array with frequency,fc, and df. see pop_resample');
+                end
+                EEG = pop_resample(EEG, resampleParms{:});                
             case 'zapline'
                 if isstruct(parms.eeglab.zapline)
                     zapParms = namedargs2cell(parms.eeglab.zapline);
