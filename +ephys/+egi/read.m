@@ -120,7 +120,7 @@ egiSampleTime = (0:nrSamples-1)/EEG.srate;
 neurostimTime = polyval(clockParms,egiSampleTime);
 % Now we have a time axis for the EGI data in Neurostim time
 % Keep only from the start of the first until the end of the last trial.
-stay = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptimeNsTime(end);
+stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptimeNsTime(end);
 channels = 1:nrChannels;
 
 %% Preprocess with EEGLab 
@@ -147,7 +147,11 @@ if isfield(parms,'eeglab')
                 else
                     error('parms.eeglab.resample must be either a scalar double (frequency) or a cell array with frequency,fc, and df. see pop_resample');
                 end
-                EEG = pop_resample(EEG, resampleParms{:});                
+                EEG = pop_resample(EEG, resampleParms{:});    
+                % Update time
+                egiSampleTime = EEG.times/1000;
+                neurostimTime = polyval(clockParms,egiSampleTime);
+                stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptimeNsTime(end);
             case 'zapline'
                 if isstruct(parms.eeglab.zapline)
                     zapParms = namedargs2cell(parms.eeglab.zapline);
@@ -254,8 +258,8 @@ if isfield(parms,'eeglab')
                 error('Unknown eeglab preprocessing struct %s  \n',fn{f})
         end
     end
-    signal =EEG.data(channels,stay)';
-    neurostimTime = neurostimTime(stay);
+    signal =EEG.data(channels,stayTime)';
+    neurostimTime = neurostimTime(stayTime);
 
     % RecordingInfo stores information on the session and the preprocessing
     recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed
@@ -265,8 +269,8 @@ if isfield(parms,'eeglab')
     channelInfo  = addvars(channelInfo,channels,false(height(channelInfo),1),'NewVariableNames',{'nr','interpolated'});
     channelInfo.interpolated(ismember(channelInfo.nr,EEG.etc.noiseDetection.interpolatedChannelNumbers)) =true;
 else % Use non eeglab preprocessing (deprecated)
-    signal =EEG.data(channels,stay)';
-    neurostimTime = neurostimTime(stay);
+    signal =EEG.data(channels,stayTime)';
+    neurostimTime = neurostimTime(stayTime);
     % Layout necessary for certain referencing and interpolation functions
     parms.layout = EEG.etc.layout;
     parms.layout.ChannelLocations = [[EEG.chanlocs.X]', [EEG.chanlocs.Y]', [EEG.chanlocs.Z]'];
@@ -318,11 +322,11 @@ else
         nmCntr = nmCntr+1;
         prmTpl(nmCntr).property_name = char(nm);
 
-        stay = eventCode == nm;
-        prmTpl(nmCntr).property_time = eventTrialTime(stay);
-        prmTpl(nmCntr).property_nstime=eventNsTime(stay);
-        prmTpl(nmCntr).property_trial=[EEG.event(stay).trial];
-        prmTpl(nmCntr).property_value = [EEG.event(stay)];
+        stayTime = eventCode == nm;
+        prmTpl(nmCntr).property_time = eventTrialTime(stayTime);
+        prmTpl(nmCntr).property_nstime=eventNsTime(stayTime);
+        prmTpl(nmCntr).property_trial=[EEG.event(stayTime).trial];
+        prmTpl(nmCntr).property_value = [EEG.event(stayTime)];
     end
     insert(ns.PluginParameter,prmTpl);
 end
