@@ -746,9 +746,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     warning('off','MATLAB:class:DefaultObjectSubstitution');
                     try
                         c  = ns.Experiment.load(file);
-                    catch
+                    catch me
                         % Make sure that the experiment key is in the table
-                        fprintf(2,'Failed to load %s . Is NS_ROOT (%s) correct? \n',file,getenv('NS_ROOT'))
+                        
+                        fprintf(2,'Failed to load %s. (%s).  Is NS_ROOT (%s) correct? \n',file,me.message,getenv('NS_ROOT'))
                         return;
                     end
                     warning(warnstate)
