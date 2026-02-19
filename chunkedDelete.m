@@ -1,4 +1,4 @@
-function chunkedDelete(targetQuery, batchSize)
+function chunkedDelete(targetQuery, batchSize, extraRelvars, autoDetectFK)
 % To avoid long server locks, delete rows in tables in batches.
 % This will first scan the query tree, and then delete rows from the bottom
 % up to avoid long table locks.
@@ -6,7 +6,9 @@ function chunkedDelete(targetQuery, batchSize)
 % the deletion plan)/
 arguments
     targetQuery (1,1) dj.internal.GeneralRelvar
-    batchSize (1,1) double = 100 %Delete this many rows each call.
+    batchSize (1,1) double = 500 %Delete this many rows each call.
+    extraRelvars cell = {} % Optional cell array of additional relvars (possibly cross-schema) to include.
+    autoDetectFK (1,1) logical = true % When true, include external FK children discovered via INFORMATION_SCHEMA
 end
 
 if ~exists(targetQuery)
@@ -16,7 +18,27 @@ end
 
 % 1.Analysis
 disp('Analyzing dependency tree and tuple counts...');
-list = targetQuery.descendants;
+
+% Collect all descendants, including optional cross-schema relvars.
+descBase = targetQuery.descendants;
+descExtra = {};
+for k = 1:numel(extraRelvars)
+    rv = extraRelvars{k};
+    if ischar(rv) || isstring(rv)
+        rv = feval(rv);
+    end
+    descExtra = [descExtra, rv.descendants]; %#ok<AGROW>
+end
+
+list = unique([descBase, descExtra], 'stable');
+
+% Optionally pull in external FK children by inspecting INFORMATION_SCHEMA.
+if autoDetectFK
+    listFullNames = cellfun(@(c) feval(c).fullTableName, list, 'uni', false);
+    extChildren = discoverExternalChildren(listFullNames);
+    list = unique([list, extChildren], 'stable');
+end
+
 list = flip(list);
 
 
@@ -86,4 +108,48 @@ for i = 1:length(list)
     end
 end
 disp('Resilient bottom-up deletion complete.');
+end
+
+
+function extList = discoverExternalChildren(fullTableNames)
+% Query INFORMATION_SCHEMA to find tables (any schema) that reference the
+% provided tables, then return their class names (including their own
+% descendants) so they can be deleted first.
+
+    extList = {};
+    if isempty(fullTableNames); return; end
+
+    % Build an IN (...) list like ('`db`.`table`','`db2`.`table2`')
+    quoted = cellfun(@(s) sprintf('''%s''', s), fullTableNames, 'uni', false);
+    inList = strjoin(quoted, ',');
+
+    sql = [ ...
+        'SELECT CONCAT(''`'',TABLE_SCHEMA,''`.'',''`'',TABLE_NAME,''`'') AS child, ' ...
+        'CONCAT(''`'',REFERENCED_TABLE_SCHEMA,''`.'',''`'',REFERENCED_TABLE_NAME,''`'') AS parent ' ...
+        'FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE ' ...
+        'WHERE REFERENCED_TABLE_SCHEMA IS NOT NULL ' ...
+        'AND CONCAT(''`'',REFERENCED_TABLE_SCHEMA,''`.'',''`'',REFERENCED_TABLE_NAME,''`'') IN (' inList ')'];
+
+    try
+        res = dj.conn().query(sql);
+    catch
+        return; % If the metadata query fails, fall back to no external tables.
+    end
+
+    if isempty(res)
+        return;
+    end
+
+    childTables = res.child;
+    for idx = 1:numel(childTables)
+        clsName = dj.conn().tableToClass(childTables{idx}, false);
+        try
+            cls = feval(clsName);
+            extList = [extList, cls.descendants]; %#ok<AGROW>
+        catch
+            % If the class cannot be resolved/loaded, skip it quietly.
+        end
+    end
+
+    extList = unique(extList, 'stable');
 end
