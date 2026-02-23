@@ -350,20 +350,37 @@ classdef Preprocessed < dj.Computed
             ff =strrep(char(ff),'.sbx','');
             expt  = ns.Experiment & file;
             info = sbx.readInfoFile(expt);
-          
-            X = sbxread(ff,pv.startFrame,min(pv.nrFrames,info.nrFrames));
-            X =squeeze(X);
+
+            % Determine how many frames to export, respecting available frames
+            maxAvailableFrames = max(0, info.nrFrames - pv.startFrame);
+            totalFramesToWrite = min(pv.nrFrames, maxAvailableFrames);
 
             [~,fname]= fileparts(ff);
             v = VideoWriter(fullfile(pv.trgFolder,fname), 'Uncompressed AVI');
             open(v);
-            for k = 1:size(X,3)
-                % Convert to double [0, 1] to keep the 16-bit precision during the write
-                frameDouble = double(X(:,:,k)) / 65535;
-                writeVideo(v, frameDouble);
+
+            % Stream frames in chunks to avoid holding the full movie in memory
+            chunkSize = 100;  % number of frames to read per chunk
+            framesWritten = 0;
+            while framesWritten < totalFramesToWrite
+                framesToRead = min(chunkSize, totalFramesToWrite - framesWritten);
+                % Read a chunk of frames starting at the appropriate offset
+                Xchunk = sbxread(ff, pv.startFrame + framesWritten, framesToRead);
+                Xchunk = squeeze(Xchunk);
+
+                for k = 1:size(Xchunk, 3)
+                    % Convert to double [0, 1] to keep the 16-bit precision during the write
+                    frameDouble = double(Xchunk(:, :, k)) / 65535;
+                    writeVideo(v, frameDouble);
+                end
+                framesWritten = framesWritten + framesToRead;
+                clear Xchunk;
             end
+
             close(v);
-            
+
+            % Do not keep the full movie in memory; return empty by default
+            X = [];
         end
     end
     methods (Access=protected)
