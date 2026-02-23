@@ -33,9 +33,9 @@ classdef PluginParameter < dj.Part
                 name (1,:) char
                 value
                 type
-                trialTime = NaN
-                trial =NaN
-                nsTime =NaN
+                trialTime = []
+                trial = []
+                nsTime = []
                 replace =false
             end
 
