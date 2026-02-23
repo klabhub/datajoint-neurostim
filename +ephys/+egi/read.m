@@ -133,7 +133,7 @@ if isfield(parms,'eeglab')
         switch fn{f}
             case 'resample' 
                 if iscell(parms.eeglab.resample)
-                    % Passed verbatimg to pop_resample
+                    % Passed verbatim to pop_resample
                     % Must be {freq [Hz] ,fc,df}
                     %   fc         - anti-aliasing filter cutoff (pi rad / sample)
                     %                {default 0.9}
