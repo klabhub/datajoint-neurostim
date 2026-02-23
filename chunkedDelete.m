@@ -95,7 +95,7 @@ for i = 1:length(list)
                 fprintf('\n[CONNECTION LOST] Attempting to reconnect...\n');
                 pause(5); % Give the server a moment to finish restarting
                 try
-                    dj.conn.reopen(); % Re-establish the pipe
+                    dj.conn().reopen(); % Re-establish the pipe
                     fprintf('[RECONNECTED] Resuming batch at index %d...\n', j);
                     % Loop repeats with the same j index
                 catch
