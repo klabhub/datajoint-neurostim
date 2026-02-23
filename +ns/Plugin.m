@@ -50,10 +50,8 @@ classdef Plugin < dj.Manual
                    addNew(ns.PluginParameter,key,'posterior_hdr',hdr,'Global',[],[],[]);
                    addNew(ns.PluginParameter,key,'posterior_threshold',threshold,'Global',[],[],[]);
                    addNew(ns.PluginParameter,key,'posterior_threshold_hdr',thresholdHdr,'Global',[],[],[]);
-                  
-                   %else
+
                     % 2. More can be added here
-                  
                 end
             end
         end
