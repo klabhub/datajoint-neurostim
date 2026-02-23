@@ -342,7 +342,8 @@ classdef Preprocessed < dj.Computed
                 pv.nrFrames (1,1) double = 10000
                 pv.trgFolder (1,1) string = "c:/temp"
             end
-            file = ns.File & 'extension = ".sbx"' & tbl & ['filename LIKE "' pv.file '"'];
+            pvFileEsc = strrep(pv.file, '''', '''''');
+            file = ns.File & 'extension = ".sbx"' & tbl & ['filename LIKE ''' pvFileEsc ''''];
             assert(count(file)==1,"Only one file can be used for a movie. Use a different wildcard for the file parm.");
             fldr = folder(ns.Session & tbl);
             
