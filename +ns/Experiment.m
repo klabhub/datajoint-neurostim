@@ -512,18 +512,28 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 % Always get ***all*** prms from cic
                 v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;
                 for pIx = 1:nrPlugins
-                    plgName = plg{pIx};
+                    plgName = plg{pIx};                   
                     if strcmpi(plgName,'cic');continue;end % skip
                     % Get the properties for this plugin
                     if strlength(pv.prm)==0
                         % All prms
-                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
+                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name LIKE ''' plgName '''']) ;
                     else
                         % One prm
-                        parms =  (ns.PluginParameter & "property_name='"+string(pv.prm) + "'") & (ns.Plugin * (tbl & exptKey) & ['plugin_name=''' plgName '''']) ;
+                        parms =  (ns.PluginParameter & "property_name='"+string(pv.prm) + "'") & (ns.Plugin * (tbl & exptKey) & ['plugin_name LIKE ''' plgName '''']) ;
                     end
                     if ~exists(parms)
                         continue;
+                    end
+                    if contains(plgName,'%')
+                        if count(parms)==1
+                            plgName = fetch1(parms,'plugin_name');
+                            plg{pIx} = plgName;
+                        else
+                            parms
+                            error('The wildcard %s matches more than one plugin.',plgName);
+                        end
+
                     end
                     v.(plgName) = get(parms);
                 end
@@ -746,9 +756,10 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     warning('off','MATLAB:class:DefaultObjectSubstitution');
                     try
                         c  = ns.Experiment.load(file);
-                    catch
+                    catch me
                         % Make sure that the experiment key is in the table
-                        fprintf(2,'Failed to load %s . Is NS_ROOT (%s) correct? \n',file,getenv('NS_ROOT'))
+                        
+                        fprintf(2,'Failed to load %s. (%s).  Is NS_ROOT (%s) correct? \n',file,me.message,getenv('NS_ROOT'))
                         return;
                     end
                     warning(warnstate)

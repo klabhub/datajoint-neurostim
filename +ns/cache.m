@@ -67,7 +67,7 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,"msten",x=xName,y=yName,average= pv.average);
+            G = compute(o,"msten",x=xName,y=yName,average= pv.average);            
             x = G{1,xName};
             if xName =="time" && numel(x) ==3
                 x = linspace(x(1),x(2),x(3));
@@ -166,11 +166,21 @@ classdef (Abstract) cache < handle
             %       fft - Uses fft() to compute amplitude, phase as a function of frequency
             %        psd - Uses pspectrum to compute power spectral density as a function of frequency
             %        pmtm - Uses multittaper pmtm to compute a spectrogram as a function of time and frequency
+            %
             % options - Struct passed to the compute function - different
             %           for each fun.
+            %       options.args is a cell array of postional arguments 
+            %       options.bla  = 5 will be  passed as 'bla',5 to the
+            %       function call.
+            %
             %        fft - no options
+            % 
             %        psd
+            %           
             %       pmtm
+            %           To calculate with 2 TW product and at frequencies
+            %           1:80, use struct('args',{{2,1:80}})
+            %           The sampling frequency is added automatically.
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -231,7 +241,7 @@ classdef (Abstract) cache < handle
                 [grp,G] = findgroups(restrictedT(:,grouping));
                 % Average per group
                 if fun=="msten"
-                    M = splitapply(@ns.cache.msten,restrictedT.(pv.y),grp);
+                    M = splitapply(@ns.cache.do_msten,restrictedT.(pv.y),grp);
                     
                 else
                     if iscell(restrictedT{1,pv.y})
@@ -363,6 +373,7 @@ classdef (Abstract) cache < handle
         function v = do_pmtm(signal, varargin)
             % Multitaper power and frequency
             signal =cat(2,signal{:}); % Concatenate epochs
+            signal(isinf(signal) | isnan(signal))=0;
             [power, freq] = pmtm(signal, varargin{:});
             % Make table, force rows
             v = table(power(:)',freq(:)','VariableNames',{'power','frequency'});
@@ -412,16 +423,7 @@ classdef (Abstract) cache < handle
                 sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
-        end
-
-        function v = msten(x)
-            X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing")', ...  % Mean
-                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
-                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
-            % Make a table.
-            v = cell2table(v,"VariableNames",{'mean','ste','n'});
-        end
+        end      
     end
 
 
