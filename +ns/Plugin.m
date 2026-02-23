@@ -44,12 +44,12 @@ classdef Plugin < dj.Manual
                     %
                     % Compute estimates and 75% threshold with HDR at 0.05
                     [m,sd,hdr,threshold,thresholdHdr]= posterior(plg,0.05);
-                   addNew(ns.PluginParameter,key,'psy',plg.psy,'Global');
-                   addNew(ns.PluginParameter,key,'posterior',m,'Global');
-                   addNew(ns.PluginParameter,key,'posterior_stdev',sd,'Global');
-                   addNew(ns.PluginParameter,key,'posterior_hdr',hdr,'Global');
-                   addNew(ns.PluginParameter,key,'posterior_threshold',threshold,'Global');
-                   addNew(ns.PluginParameter,key,'posterior_threshold_hdr',thresholdHdr,'Global');
+                   addNew(ns.PluginParameter,key,'psy',plg.psy,'Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior',m,'Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_stdev',sd,'Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_hdr',hdr,'Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_threshold',threshold,'Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_threshold_hdr',thresholdHdr,'Global',[],[],[]);
                   
                    %else
                     % 2. More can be added here
