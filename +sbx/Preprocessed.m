@@ -332,7 +332,39 @@ classdef Preprocessed < dj.Computed
                         fprintf('Not implemented yet')
                 end
             end
-        end   
+        end
+        function X = movie(tbl,pv)
+            % Create a movie from the raw sbx data 
+            arguments
+                tbl (1,1) sbx.Preprocessed {mustHaveRows(tbl,1)}
+                pv.file (1,:) char = '%'  
+                pv.startFrame (1,1) = 0
+                pv.nrFrames (1,1) double = 10000
+                pv.trgFolder (1,1) string = "c:/temp"
+            end
+            file = ns.File & 'extension = ".sbx"' & tbl & ['filename LIKE "' pv.file '"'];
+            assert(count(file)==1,"Only one file can be used for a movie. Use a different wildcard for the file parm.");
+            fldr = folder(ns.Session & tbl);
+            
+            ff = fullfile(fldr,fetch1(file,'filename'));
+            ff =strrep(char(ff),'.sbx','');
+            expt  = ns.Experiment & file;
+            info = sbx.readInfoFile(expt);
+          
+            X = sbxread(ff,pv.startFrame,min(pv.nrFrames,info.nrFrames));
+            X =squeeze(X);
+
+            [~,fname]= fileparts(ff);
+            v = VideoWriter(fullfile(pv.trgFolder,fname), 'Uncompressed AVI');
+            open(v);
+            for k = 1:size(X,3)
+                % Convert to double [0, 1] to keep the 16-bit precision during the write
+                frameDouble = double(X(:,:,k)) / 65535;
+                writeVideo(v, frameDouble);
+            end
+            close(v);
+            
+        end
     end
     methods (Access=protected)
 
@@ -401,11 +433,11 @@ classdef Preprocessed < dj.Computed
                 mismatch = abs(ttl(end)-frames(end)*nrPlanes(end));
                 assert(mismatch<=2,"Mismatch (%d)in %s/%s@%s between the TTLs in mdaq (%d) and frames in sbx (%d).",mismatch,e.subject,e.session_date,e.starttime,ttl(end),nrPlanes(end)*frames(end));
             end
-            
+
             [grp,~,depthRange] = sbx.Preprocessed.findgroups_slack(depth,parms.zslack);
             grpDepth = mean(depthRange,2);
             nrDepths= numel(grpDepth);
-            
+
 
             switch (parms.toolbox)
                 case 'suite2p'
@@ -414,7 +446,7 @@ classdef Preprocessed < dj.Computed
                     condaFldr = extractBefore(pyenv().Home,'envs');
 
                     % At each depth there can be multiple planes
-                    for depthNr = 1:nrDepths                        
+                    for depthNr = 1:nrDepths
                         thisGrp = grp==depthNr;
                         thisScale = scale(thisGrp,:);
                         thisNrPlanes = nrPlanes(thisGrp);
@@ -547,7 +579,7 @@ classdef Preprocessed < dj.Computed
                             fprintf('Completed at %s\n',datetime('now'));
                         end
 
-                      
+
                         % Load the save ops.npy to extract mean image and do
                         % sanity checks
                         for plane = 0:uNrPlanes-1
@@ -562,8 +594,8 @@ classdef Preprocessed < dj.Computed
                             N = double(opts.item{'nframes'});
                             assert(N==sum(thisFrames),"The number of frames in the npy file (%d) does not match the frames across experiments (%d). ",N,sum(thisFrames))
                             fs = double(opts.item{'fs'});           % These are constant across planes- the last one is added to the table
-                            nplanes = double(opts.item{'nplanes'});                            
-                            img{plane+1} = ndarrayToArray(opts.item{'meanImg'},single=true); %#ok<AGROW> % Each plane has its own mean image                            
+                            nplanes = double(opts.item{'nplanes'});
+                            img{plane+1} = ndarrayToArray(opts.item{'meanImg'},single=true); %#ok<AGROW> % Each plane has its own mean image
                         end
 
                         % Insert into sbx.Preprocessed
@@ -573,8 +605,8 @@ classdef Preprocessed < dj.Computed
                         % Create part table that links with the experiments
                         % at this depth
                         tpls = analyzeExptTpls(thisGrp);
-                        tpls = mergestruct(tpls,struct('depth',thisDepth,'prep',key.prep));                             
-                        insert(sbx.PreprocessedExperiment,tpls)                                           
+                        tpls = mergestruct(tpls,struct('depth',thisDepth,'prep',key.prep));
+                        insert(sbx.PreprocessedExperiment,tpls)
 
                         % Create the part table with per ROI information
                         makeTuples(sbx.PreprocessedRoi,key)
@@ -591,45 +623,45 @@ classdef Preprocessed < dj.Computed
 
     methods (Static)
         function [G, ID, ranges] = findgroups_slack(x, slack)
-% Group elements of vector x so that every pair in a group differs by ≤ slack.
-% Returns:
-%   G      : group index per element (like findgroups)
-%   ID     : representative value per group (group mean)
-%   ranges : [min max] for each group
+            % Group elements of vector x so that every pair in a group differs by ≤ slack.
+            % Returns:
+            %   G      : group index per element (like findgroups)
+            %   ID     : representative value per group (group mean)
+            %   ranges : [min max] for each group
 
-    if ~isvector(x), error('x must be a vector'); end
-    if slack < 0,    error('slack must be >= 0'); end
+            if ~isvector(x), error('x must be a vector'); end
+            if slack < 0,    error('slack must be >= 0'); end
 
-    x = x(:);
-    [xs, ord] = sort(x);                % sort to make contiguous ranges
-    n = numel(xs);
+            x = x(:);
+            [xs, ord] = sort(x);                % sort to make contiguous ranges
+            n = numel(xs);
 
-    Gs   = zeros(n,1);
-    lohi = NaN(n,2);                    % will trim later
-    k = 0; i = 1;
+            Gs   = zeros(n,1);
+            lohi = NaN(n,2);                    % will trim later
+            k = 0; i = 1;
 
-    while i <= n
-        k = k + 1;
-        anchor = xs(i);                 % group’s minimum (current start)
-        % include all following points whose distance from the group min ≤ slack
-        j = i + find(xs(i+1:end) - anchor > slack, 1, 'first');
-        if isempty(j), j = n + 1; end
-        j = j - 1;                      % last index in this group
+            while i <= n
+                k = k + 1;
+                anchor = xs(i);                 % group’s minimum (current start)
+                % include all following points whose distance from the group min ≤ slack
+                j = i + find(xs(i+1:end) - anchor > slack, 1, 'first');
+                if isempty(j), j = n + 1; end
+                j = j - 1;                      % last index in this group
 
-        Gs(i:j)      = k;
-        lohi(k, :)   = [anchor, xs(j)];
-        i            = j + 1;
-    end
+                Gs(i:j)      = k;
+                lohi(k, :)   = [anchor, xs(j)];
+                i            = j + 1;
+            end
 
-    lohi = lohi(1:k, :);                % [min max] per group
-    ID   = mean(lohi, 2);               % representative (group mean)
+            lohi = lohi(1:k, :);                % [min max] per group
+            ID   = mean(lohi, 2);               % representative (group mean)
 
-    % map group labels back to original order/shape
-    G = zeros(n,1);
-    G(ord) = Gs;
-    G = reshape(G, size(x));            % same shape as input
-    ranges = lohi;
-end
+            % map group labels back to original order/shape
+            G = zeros(n,1);
+            G(ord) = Gs;
+            G = reshape(G, size(x));            % same shape as input
+            ranges = lohi;
+        end
 
     end
 end
