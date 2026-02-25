@@ -484,102 +484,64 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %
             arguments
                 tbl (1,1) ns.Experiment {mustHaveRows}
-                plg {mustBeText} =  {''}
-                pv.prm {mustBeText} = ''
+                plg {mustBeText} =  "cic"
+                pv.prm {mustBeText} = string.empty
                 pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
                 pv.atTrialTime (1,1) double = NaN
-                pv.trial (1,:) double = []
-                pv.fetchOptions = 'ORDER BY session_date';
-            end
-            if ischar(plg)
-                plg = {plg};
+                pv.trial (1,:) double = []                
             end
 
-            nrPlugins = sum(cellfun(@(x) (strlength(x)>0),plg,'uni',true));
-
-            ix =1:count(tbl);
-            out = cell(numel(ix),1);
-            filename = cell(numel(ix),1);
-            exptCntr =0;
-            for exptKey=tbl.fetch('paradigm',pv.fetchOptions)'
-                exptCntr = exptCntr + 1;
-                filename{exptCntr} = fetch1(tbl &exptKey,'file');
-                if nrPlugins==0
-                    % Get info from all plugins
-                    plg  = fetchn( (tbl & exptKey) * ns.Plugin,'plugin_name');
-                    nrPlugins = numel(plg);
-                end
-                % Always get ***all*** prms from cic
-                v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;
-                for pIx = 1:nrPlugins
-                    plgName = plg{pIx};                   
-                    if strcmpi(plgName,'cic');continue;end % skip
-                    % Get the properties for this plugin
-                    if strlength(pv.prm)==0
-                        % All prms
-                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name LIKE ''' plgName '''']) ;
-                    else
-                        % One prm
-                        parms =  (ns.PluginParameter & "property_name='"+string(pv.prm) + "'") & (ns.Plugin * (tbl & exptKey) & ['plugin_name LIKE ''' plgName '''']) ;
-                    end
-                    if ~exists(parms)
-                        continue;
-                    end
-                    if contains(plgName,'%')
-                        if count(parms)==1
-                            plgName = fetch1(parms,'plugin_name');
-                            plg{pIx} = plgName;
-                        else
-                            parms
-                            error('The wildcard %s matches more than one plugin.',plgName);
-                        end
-
-                    end
-                    v.(plgName) = get(parms);
-                end
-
-                notFound = ~isfield(v,plg);
-                if any(notFound)
-                    fprintf('This experiment (%s:%s/%s@%s) did not use the %s plugin(s) or the plugin does not have the %s parameter.\n',exptKey.paradigm,exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'),pv.prm);
-                    out{exptCntr} = [];
-                    continue; % Next experiment
-                end
-
-
-                if strlength(pv.prm) ~=0  %prm was specified
-                    % Single prm from a specified plugin,  at a specific time
-                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what,pv.trial);
-                else
-                    % Everything
-                    % Return struct with all info
-                    out{exptCntr}=v;
-                end
+            
+            %% Construct the relvar
+            if isempty(pv.prm)            
+                % All parameters from one or more plugins               
+                rel = ns.PluginParameter & (( ns.Plugin & tbl) & in("plugin_name", string(plg)));                                
+            else
+                % One parameter from one plugin.  We need cic to compute
+                % atTrialTime.
+                assert(isscalar(plg),"When asking for a prm, only one plugin can be specified")
+                rel = ns.PluginParameter  &  ( ns.Plugin & tbl) & sprintf('plugin_name LIKE "%s" OR plugin_name="cic"' ,plg) ;               
             end
-
-            % Convenience; remove the wrappping cell if it only a single
-            % experiment was queried.
-            if isscalar(ix)
-                out = out{1}; % Single column
-                filename=filename{1};
+            % Pass to the ns.PluginParameter class
+            G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);            
+            expt = fetchtable(tbl,'file','ORDER BY "session_date, subject,starttime"');
+            missingPlugins = setdiff(plg,G.Properties.VariableNames);
+            if ~isempty(missingPlugins)
+                fprintf('These experiments did not use the %s plugin(s)\n ',strjoin(missingPlugins,'/'));
+            end                     
+            foundPlugins = setdiff(plg,missingPlugins);
+            for p = foundPlugins
+                missing = cellfun(@isempty,G.(p));
+                if any(missing)
+                    fprintf('These experiments did not use the %s plugin\n ',p);
+                    expt(missiing,:)
+                end                
             end
+                    
+            G = outerjoin(expt,G,RightVariables=foundPlugins,Type="left");
+            filename = G.file;
+            out = table2struct(G);
 
-            if strlength(pv.prm)~=0
-                % Single parm, join values as columns
-                if iscellstr(out)
-                    out = out(:)'; %trials as columns
-                elseif iscell(out)
-                    if all(cellfun(@numel,out)==numel(out{1}))
-                        out =cat(2,out{:}); %trials as columns
-                    else
-                        out = out'; % For trials as columns
-                        return
-                    end
-                end
-                if iscell(out) && ~iscellstr(out)
-                    out = cell2mat(out);
-                end
-            end
-
+           if ~isempty(pv.prm)
+               out  = [out.(plg)];                               
+               if isscalar(pv.what) 
+               % Return only the requested element                              
+               switch (pv.what)
+                   case "data"
+                        out =  {out.(pv.prm)};
+                   case "trialtime"
+                        out = {out.(pv.prm + "Time")};
+                   case "cloctime" 
+                        out = {out.(pv.prm + "NsTime")};
+                   case "trial"
+                        out = {out.(pv.prm + "Trial")};
+               end          
+               end
+               if isscalar(out)
+                   out = out{1};
+                   filename = filename{1};
+               end
+           end
 
         end
 
