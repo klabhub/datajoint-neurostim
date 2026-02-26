@@ -296,7 +296,7 @@ classdef PluginParameter < dj.Part
                 nm = lower(name(prm)); % Force lower case
                 if strcmpi(type,'ByteStream')
                     % Convert from bytestrem to matlab values
-                    value =getArrayFromByteStream(value{prm});
+                    value ={getArrayFromByteStream(value{prm})};
                 end
                 if iscellstr(value{prm}) || ischar(value{prm})
                     thisValue = string(value{prm});
@@ -341,13 +341,13 @@ classdef PluginParameter < dj.Part
             allEventNsTimes  = props.(propName).clocktime;
             if isnan(time)
                 % No time selection (but a trial selection)
-                [keepTrial,loc] = ismember(trial,allEventTrials);
+                [keepTrial,loc] = ismember(allEventTrials,trial);
                 if iscell(allEventValues)
                     thisValue = allEventValues{keepTrial};                    
                 else
                     thisValue = allEventValues(keepTrial);
                 end
-                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc),'clocktime',allEventNsTimes(keepTrial)); 
+                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc(keepTrial)),'clocktime',allEventNsTimes(keepTrial)); 
             else % Time selection : 1 per trial (optionally followed by trial selection)
                 % Initialize with nan
                 data = cell(nrTrials,1);

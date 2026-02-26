@@ -49,7 +49,7 @@ end
 T=  readBin(c.mdaq,file=filename,timeSync = ts);
 fprintf('Read file in %d seconds.\n ',round(toc))
 trialStartTime = get(ns.Experiment & key,'cic','prm','trial','what',["data" "clocktime"],'trial',1);
-daqStartTime = get(ns.Experiment & key,'mdaq','prm','startDaq','what',["data" "clocktime"],'trial',1);
+daqStartTime = get(ns.Experiment & key,'mdaq','prm','startdaq','what',["data" "clocktime"],'trial',1);
 out = T.nsTime <= seconds(trialStartTime.clocktime(trialStartTime.data==1)/1000);
 if any(out)
     fprintf('DaqStart = %s , but first trial started %d seconds later.\n',daqStartTime.data,round((trialStartTime.clocktime(trialStartTime.data==1)-daqStartTime.clocktime)/1000))
