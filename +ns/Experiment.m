@@ -532,7 +532,11 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                   fields=  fieldnames(out);
                   out = rmfield(out,setdiff(fields, pv.what));     
                   if isscalar(pv.what)
-                      out = {out.(pv.what)};
+                      if isscalar(out)
+                          out = out.(pv.what);
+                      else
+                          out = {out.(pv.what)};
+                      end
                   end                    
                end
            end

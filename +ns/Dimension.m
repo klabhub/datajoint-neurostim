@@ -214,7 +214,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
                         assert(ismember('trial',cat(2,thisTbl.primaryKey,thisTbl.nonKeyFields)),"The %s table must have a column called trial to use it in a dimension definition.", plg{i})
                         [prmValues,prmTrials] = fetchn(thisTbl & exptTpl(e),prm{i},'trial','ORDER BY trial');
                     else
-                        ret = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what',["data" "trial"])';
+                        ret = get(ns.Experiment & exptTpl(e),plg{i},'prm',prm{i},'atTrialTime',pv.atTrialTime,'what',["data" "trial"]);
                         if isempty(ret)
                             % This experiment did not use the plugin; error in
                             % the condition specification, skip to the next
@@ -270,7 +270,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 if ~isempty(pv.restrict)
                     % Determine which trials meet the specified condition
                     for r = 1:3:numel(pv.restrict)
-                        restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{r},'prm',pv.restrict{r+1}, 'atTrialTime',pv.atTrialTime);
+                        restrictValue = get(ns.Experiment & exptTpl(e),pv.restrict{r},'prm',pv.restrict{r+1}, 'atTrialTime',pv.atTrialTime,'what','data');
                         isStayTrials = isStayTrials & ismember(restrictValue(:),pv.restrict{r+2});
                     end
                 end
@@ -278,7 +278,7 @@ classdef Dimension < dj.Manual & dj.DJInstance
                 % Determine which trials meet the specified condition
                 % for exclusion
                 for r = 1:3:numel(pv.exclude)
-                    excludeValue = get(ns.Experiment & exptTpl(e),pv.exclude{r},'prm',pv.exclude{r+1}, 'atTrialTime',pv.atTrialTime)';
+                    excludeValue = get(ns.Experiment & exptTpl(e),pv.exclude{r},'prm',pv.exclude{r+1}, 'atTrialTime',pv.atTrialTime,'what','data');
                     isStayTrials = isStayTrials & ~ismember(excludeValue,pv.exclude{r+2});
                 end
 

@@ -52,20 +52,20 @@ entities = [hFile.Entity];
 % The Neurostim ripple plugin sets the digital out of the NIP and generates a trialstart event
 % We use this to synchronize the clocks
 prms  = get(ns.Experiment & key,{'cic','ripple'});
-if numel(prms.ripple.trialstartTrial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
+if numel(prms.ripple.trialstart.trial) > fetch1(ns.Experiment &key,'nrtrials')*1.5
     % The second event in each trial is the one to keep (in Matlab
     % neurostim)
-    keep = find([true;diff(prms.ripple.trialstartTrial)>0])+1;
+    keep = find([true;diff(prms.ripple.trialstart.trial)>0])+1;
 else
     % C++ neurostim has no duplicatio of these events. Keep all
-    keep = true(1,numel(prms.ripple.trialstartTrial));
+    keep = true(1,numel(prms.ripple.trialstart.trial));
 end
 % This is the time, on the neurostim clock, when the trialBit was set
 % high.
-trialStartTimeNeurostim  = prms.ripple.trialstartNsTime(keep)/1000;% Seconds
+trialStartTimeNeurostim  = prms.ripple.trialstart.clocktime(keep)/1000;% Seconds
 % Find wich bit stored the trialstart event and get the time on the NIP
 eventIx  = find(ismember({entities.EntityType},'Event'));
-expression = ['\<SMA\s*' num2str(prms.ripple.trialbit)];
+expression = ['\<SMA\s*' num2str(prms.ripple.trialbit.data)];
 trialBitEntityIx  = find(~cellfun(@isempty,regexp({entities(eventIx).Reason},expression,'match')));
 assert(isscalar(trialBitEntityIx),'There should be 1 trialbit in the file. %d found',numel(trialBitEntityIx));    
 [errCode, trialBitTime,trialBitValue] = ns_GetEventData(hFile, eventIx(trialBitEntityIx), 1:entities(eventIx(trialBitEntityIx)).Count);
