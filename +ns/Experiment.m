@@ -484,9 +484,9 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %
             arguments
                 tbl (1,1) ns.Experiment {mustHaveRows}
-                plg {mustBeText} =  "cic"
+                plg (1,:) string  =  "cic"
                 pv.prm {mustBeText} = string.empty
-                pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
+                pv.what (1,:) string {mustBeMember(pv.what,["data" "trialtime" "clocktime" "trial" "all"])} = "all"
                 pv.atTrialTime (1,1) double = NaN
                 pv.trial (1,:) double = []                
             end
@@ -505,41 +505,35 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % Pass to the ns.PluginParameter class
             G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);            
             expt = fetchtable(tbl,'file','ORDER BY "session_date, subject,starttime"');
-            missingPlugins = setdiff(plg,G.Properties.VariableNames);
-            if ~isempty(missingPlugins)
-                fprintf('These experiments did not use the %s plugin(s)\n ',strjoin(missingPlugins,'/'));
+       
+            if isempty(G) 
+                fprintf('None of the experiments used the %s plugin(s)\n ',strjoin(plg,'/'));               
+                out= struct([]);
+                filename = expt.file;
+                return;                
             end                     
-            foundPlugins = setdiff(plg,missingPlugins);
-            for p = foundPlugins
+
+            G = outerjoin(expt,G,RightVariables=plg,Type="left");
+            for p = plg
                 missing = cellfun(@isempty,G.(p));
                 if any(missing)
                     fprintf('These experiments did not use the %s plugin\n ',p);
-                    expt(missiing,:)
+                    expt(missing,:)
                 end                
             end
                     
-            G = outerjoin(expt,G,RightVariables=foundPlugins,Type="left");
-            filename = G.file;
-            out = table2struct(G);
-
-           if ~isempty(pv.prm)
-               out  = [out.(plg)];                               
-               if isscalar(pv.what) 
-               % Return only the requested element                              
-               switch (pv.what)
-                   case "data"
-                        out =  {out.(pv.prm)};
-                   case "trialtime"
-                        out = {out.(pv.prm + "Time")};
-                   case "cloctime" 
-                        out = {out.(pv.prm + "NsTime")};
-                   case "trial"
-                        out = {out.(pv.prm + "Trial")};
-               end          
-               end
-               if isscalar(out)
-                   out = out{1};
-                   filename = filename{1};
+           filename = G.file;
+           out = table2struct(G);
+           if ~isempty(pv.prm)                
+               [out(missing).(plg)] =deal(struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[])));
+               out  = [out.(plg)];  
+               out = [out.(pv.prm)];
+               if pv.what ~="all"                    
+                  fields=  fieldnames(out);
+                  out = rmfield(out,setdiff(fields, pv.what));     
+                  if isscalar(pv.what)
+                      out = {out.(pv.what)};
+                  end                    
                end
            end
 

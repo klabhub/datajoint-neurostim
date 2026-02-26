@@ -207,14 +207,15 @@ classdef PluginParameter < dj.Part
             % Group at the experiment level
             [ix,G ] = findgroups(T(:,["subject" "session_date" "starttime"]));
             S =splitapply(@(plg,name,value,time,nstime,trial,type) {ns.PluginParameter.nestedExperimentTable(plg,name,value,time,nstime,trial,type,pv)},T(:,["plugin_name" "property_name" "property_value" "property_time" "property_nstime" "property_trial" "property_type"]),ix);
-            plgNames = string(S{1}.Properties.VariableNames);
+            plgNames = unique(T.plugin_name);
             nrPlgs =numel(plgNames);
-            for plg= 1:nrPlgs
-                tmp  = cell(height(G),1);
+            for plg= 1:nrPlgs        
+                G = addvars(G,cell(height(G),1),'NewVariableNames',plgNames(plg));
                 for g= 1:height(G)
-                    tmp{g,1} = S{g}.(plgNames(plg));
+                    if ismember(plgNames(plg),S{g}.Properties.VariableNames) 
+                        G{g,plgNames(plg)} = {S{g}.(plgNames(plg))};
+                    end
                 end
-                G = addvars(G,tmp,'NewVariableNames',plgNames(plg));
             end
 
             if ~isempty(pv.nwbRoot)
@@ -251,7 +252,7 @@ classdef PluginParameter < dj.Part
                     end
                 end
             end
-        end    
+        end
     end
 
     methods (Static)
@@ -261,26 +262,27 @@ classdef PluginParameter < dj.Part
             % convert these to a nested table format, with one column per
             % plugin,
             [ix,grp] = findgroups(plg); % Find the plugins for this expt.
-            S = splitapply(@(name,value,time,nstime,trial,type) {ns.PluginParameter.nestedPluginTable(name,value,time,nstime,trial,type,pv)},name,value,time,nstime,trial,type,ix);
+            S = splitapply(@(name,value,time,nstime,trial,type) {ns.PluginParameter.nestedPluginTable(name,value,time,nstime,trial,type)},name,value,time,nstime,trial,type,ix);
             T= table(S{:},'VariableNames',cellstr(grp));
             if ~isempty(pv.prm) && (~isnan(pv.atTrialTime) || ~isempty(pv.trial))
                 if isscalar(unique(plg))
                     plg = "cic";
+                    if ~isfield(T.cic,pv.prm);return;end
                 else
                     plg = setdiff(plg,"cic");
                 end
-                T.(plg) = ns.PluginParameter.attrialtime(T.(plg),pv.prm,T.cic.firstframe,pv.atTrialTime,pv.trial);
+                T.(plg) = ns.PluginParameter.attrialtime(T.(plg),pv.prm,T.cic.firstframe.data,pv.atTrialTime,pv.trial);
             end
             if ismember("cic",T.Properties.VariableNames)
                 if plg~="cic"
                     T = removevars(T,"cic");
                 elseif ~isempty(pv.prm) && lower(pv.prm) ~="firstframe" && isfield(T.cic,'firstframe')
-                    T.cic = rmfield(T.cic,"firstframe"+["" "Trial" "Time" "NsTime"]);
+                    T.cic = rmfield(T.cic,"firstframe");
                 end
             end
         end
 
-        function S = nestedPluginTable(name,value,time,nstime,trial,type,pv)
+        function S = nestedPluginTable(name,value,time,nstime,trial,type)
             % Called from splitapply in nestedExperimentTable to create a
             % struct per plugin.
 
@@ -294,17 +296,15 @@ classdef PluginParameter < dj.Part
                 nm = lower(name(prm)); % Force lower case
                 if strcmpi(type,'ByteStream')
                     % Convert from bytestrem to matlab values
-                    value =getArrayFromByteStream(value);
+                    value =getArrayFromByteStream(value{prm});
                 end
-                S.(nm) = value{prm};
-                if iscellstr(S.(nm)) || ischar(S.(nm)) %#ok<ISCLSTR>
-                    S.(nm) = string(S.(nm));
+                if iscellstr(value{prm}) || ischar(value{prm})
+                    thisValue = string(value{prm});
+                else
+                    thisValue = value{prm};
                 end
-                S.(nm+"Trial") = trial{prm};
-                S.(nm+"Time") = time{prm};
-                S.(nm+"NsTime") = nstime{prm};
+                S.(nm) = struct('data',thisValue,'trialtime', time{prm},'trial',trial{prm},'clocktime',nstime{prm});
             end
-
         end
 
         function props = attrialtime(props,propName,firstFrame,time,trial)
@@ -335,93 +335,85 @@ classdef PluginParameter < dj.Part
 
             propName = lower(propName); % All properties are lower case
             nrTrials  = numel(firstFrame);
-            allEventValues = props.(propName);
-            if isfield(props,propName +"Trial")
-                allEventTrials = props.(propName +"Trial");
-            else
-                allEventTrials =1;
-            end
-            if isfield(props,propName +"Time")
-                allEventTimes  = props.(propName +"Time");
-            else
-                allEventTimes = -inf;
-            end
-
-            if isfield(props,propName +"NsTime")
-                allEventNsTimes  = props.(propName +"NsTime");
-            else
-                allEventNsTimes = -inf;
-            end
-
-            % Initialize with nan
-            data = cell(nrTrials,1);
-            eventTime = nan(nrTrials,1);
-            eventNsTime = nan(nrTrials,1);
-            [data{:}] = deal(NaN);
-            currentTrial =NaN;
-            % Loop through all events (= events when the property changed value)
-            % For many events this could be made more efficient by skipping successive
-            % events in a given trial, but the find needed for this is probably slower
-            % than this loop over all events
-            for e=1:numel(allEventTrials)
-                if ~isnan(currentTrial) && allEventTrials(e) > currentTrial+1
-                    % Fill in skipped trials with the currentValue
-                    trgTrials = currentTrial+1:allEventTrials(e)-1;
-                    [data{trgTrials}] =deal(currentValue);
-                    eventTime(trgTrials) = -inf; % Indicates that this value was set before the start of the trial
-                    eventNsTime(trgTrials) = currentNsTime;
-                end
-                % Next trial or same trial, update until atTrialTime reached.
-                currentTrial = allEventTrials(e);
-                currentTime = allEventTimes(e);
-                currentNsTime = allEventNsTimes(e);
+            allEventValues = props.(propName).data;
+            allEventTrials = props.(propName).trial;
+            allEventTimes  = props.(propName).trialtime;
+            allEventNsTimes  = props.(propName).clocktime;
+            if isnan(time)
+                % No time selection (but a trial selection)
+                [keepTrial,loc] = ismember(trial,allEventTrials);
                 if iscell(allEventValues)
-                    currentValue = allEventValues{e};
+                    thisValue = allEventValues{keepTrial};                    
                 else
-                    currentValue = allEventValues(e);
+                    thisValue = allEventValues(keepTrial);
                 end
-                if currentTime <= time
-                    data{currentTrial} = currentValue;
-                    eventTime (currentTrial) = currentTime;
-                    eventNsTime(currentTrial) = currentNsTime;
-                elseif isnan(eventTime(currentTrial))
-                    % The current event occurred after the atTrialTime and
-                    % there was no event in the current trial; use the value from the
-                    % previous trial
-                    if currentTrial >1
-                        data{currentTrial} = data{currentTrial-1};
-                        eventTime (currentTrial) = -inf;
-                        eventNsTime(currentTrial) = eventNsTime(currentTrial-1);
+                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc),'clocktime',allEventNsTimes(keepTrial)); 
+            else % Time selection : 1 per trial (optionally followed by trial selection)
+                % Initialize with nan
+                data = cell(nrTrials,1);
+                eventTime = nan(nrTrials,1);
+                eventNsTime = nan(nrTrials,1);
+                [data{:}] = deal(NaN);
+                currentTrial =NaN;
+                % Loop through all events (= events when the property changed value)
+                % For many events this could be made more efficient by skipping successive
+                % events in a given trial, but the find needed for this is probably slower
+                % than this loop over all events
+                for e=1:numel(allEventTrials)
+                    if ~isnan(currentTrial) && allEventTrials(e) > currentTrial+1
+                        % Fill in skipped trials with the currentValue
+                        trgTrials = currentTrial+1:allEventTrials(e)-1;
+                        [data{trgTrials}] =deal(currentValue);
+                        eventTime(trgTrials) = -inf; % Indicates that this value was set before the start of the trial
+                        eventNsTime(trgTrials) = currentNsTime;
+                    end
+                    % Next trial or same trial, update until atTrialTime reached.
+                    currentTrial = allEventTrials(e);
+                    currentTime = allEventTimes(e);
+                    currentNsTime = allEventNsTimes(e);
+                    if iscell(allEventValues)
+                        currentValue = allEventValues{e};
+                    else
+                        currentValue = allEventValues(e);
+                    end
+                    if currentTime <= time
+                        data{currentTrial} = currentValue;
+                        eventTime (currentTrial) = currentTime;
+                        eventNsTime(currentTrial) = currentNsTime;
+                    elseif isnan(eventTime(currentTrial))
+                        % The current event occurred after the atTrialTime and
+                        % there was no event in the current trial; use the value from the
+                        % previous trial
+                        if currentTrial >1
+                            data{currentTrial} = data{currentTrial-1};
+                            eventTime (currentTrial) = -inf;
+                            eventNsTime(currentTrial) = eventNsTime(currentTrial-1);
+                        end
                     end
                 end
-            end
-            % Fill in to the end from the last value that was stored.
-            if currentTrial~=nrTrials
-                [data{currentTrial+1:nrTrials}] =deal(currentValue);
-                eventNsTime(currentTrial+1:nrTrials) = currentNsTime;
-                eventTime(currentTrial+1:nrTrials)  =-inf;
-            end
-
-            if ~isempty(trial)
-                trialNrs = find(~isinf(eventNsTime));
-                keepTrial = ismember(trialNrs,trial);
-            else
-                keepTrial = true(numel(eventNsTime),1);
-            end
-
-
-            props.(propName) = data(keepTrial) ;
-            props.(propName + "Time")= eventTime(keepTrial);
-            props.(propName + "NsTime")= eventNsTime(keepTrial);
-            props.(propName + "Trial")= intersect(find(~isinf(eventNsTime)),find(keepTrial)); % Trials in which the event actually ocurred
-
-            % Try to convert to matrix
-            if iscell( props.(propName) )
-                if all(cellfun(@numel, props.(propName) )==1)
-                    props.(propName)  = cell2mat( props.(propName) );
+                % Fill in to the end from the last value that was stored.
+                if currentTrial~=nrTrials
+                    [data{currentTrial+1:nrTrials}] =deal(currentValue);
+                    eventNsTime(currentTrial+1:nrTrials) = currentNsTime;
+                    eventTime(currentTrial+1:nrTrials)  =-inf;
                 end
-            elseif iscellstr(props.(propName)) %#ok<ISCLSTR>
-                props.(propName) = string(props.(propName));
+
+                if ~isempty(trial)
+                    trialNrs = find(~isinf(eventNsTime));
+                    keepTrial = ismember(trialNrs,trial);
+                else
+                    keepTrial = true(numel(eventNsTime),1);
+                end
+                trialsWithTheEvent = intersect(find(~isinf(eventNsTime)),find(keepTrial)); % Trials in which the event actually ocurred
+                props.(propName) = struct('data',{data(keepTrial)},'trialtime', eventTime(keepTrial),'trial',trialsWithTheEvent,'clocktime',eventNsTime(keepTrial));     
+            end
+            % Try to convert to matrix
+            if iscell( props.(propName).data )
+                if all(cellfun(@numel, props.(propName).data )==1)
+                    props.(propName).data  = cell2mat( props.(propName).data );
+                end
+            elseif iscellstr(props.(propName).data) 
+                props.(propName).data = string(props.(propName).data);
             end
         end
     end

@@ -74,6 +74,7 @@ classdef Plugin < dj.Manual
                         end
                         for prm = 1:height(T)
                             cmd = sprintf('fprintf(2,''%s'');%s = get(ns.Experiment & struct(''subject'',''%s'',''session_date'',''%s'',''starttime'',''%s''),''%s'',''prm'',''%s'',''what'',''data''%s)',plg.plugin_name,T.property_name(prm),T.subject(prm),T.session_date(prm),T.starttime(prm),T.plugin_name(prm),T.property_name(prm),extra);
+                            
                             line= [line ' ' sprintf('<a href="matlab:%s">%s</a>',cmd,T.property_name(prm))]; %#ok<AGROW>
                         end
                         disp(sprintf('\t\t%-10s: %s\t',tp, line)) %#ok<DSPSP>
