@@ -320,9 +320,9 @@ classdef PluginParameter < dj.Part
             end
             for prm = 1:numel(name)
                 nm = lower(name(prm)); % Force lower case
-                if strcmpi(type,'ByteStream')
-                    % Convert from bytestrem to matlab values
-                    value ={getArrayFromByteStream(value{prm})};
+                if strcmpi(type(prm),'ByteStream')
+                    % Convert from bytestrem to matlab values for this parameter only
+                    value{prm} = getArrayFromByteStream(value{prm});
                 end
                 if iscellstr(value{prm}) || ischar(value{prm})
                     thisValue = string(value{prm});
