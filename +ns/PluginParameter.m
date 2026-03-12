@@ -175,7 +175,7 @@ classdef PluginParameter < dj.Part
         end
     end
 
-    methods (Access= public)
+    methods (Access= ?ns.Experiment)
 
         function G = get(tbl,pv)
             % Retrieve parameter values in a format that is used by
@@ -192,42 +192,44 @@ classdef PluginParameter < dj.Part
 
             if ~isempty(pv.prm)
                 restriction  = sprintf('property_name ="%s"',pv.prm);
-                if (~isempty(pv.trial) || ~isnan(pv.atTrialTime))
-                    % A selection is in place; we'll need firstFrame from cic.
-                    restriction = [restriction  ' OR property_name="firstframe"'];
-                end
-                tbl = tbl & restriction;
-                if ~exists(tbl)
+                if ~exists(tbl &restriction)
                     fprintf('The plugin does not have the property %s\n',pv.prm);
                     G=table;
                     return;
                 end
+                if (~isempty(pv.trial) || ~isnan(pv.atTrialTime))
+                    % A selection is in place; we'll need firstFrame from cic.
+                    restriction = [restriction  ' OR (plugin_name="cic" AND property_name="firstframe")'];
+                end
+                tbl = tbl & restriction;                
             end
 
             T = fetchtable(tbl ,'*');
 
+            % Determine whether there are plugins that are numbered
+            % versions (e.g. psybayes_1218748374)
+            % Rename those to psybayes1 if there is only one and psybayes1,
+            % psybayes2 if there are multiple occurrences.            
+            plgNames = T.plugin_name;
+            plgNamesMatch = regexp(plgNames,'(?<name>\w*)_[\d]+$','names');
+            hasNumberSuffix = ~cellfun(@isempty,plgNamesMatch);
+            if any(hasNumberSuffix)
+                prefixes = regexp(plgNames(hasNumberSuffix), '^[^_]+', 'match', 'once');
+                grp = findgroups(T(hasNumberSuffix, ["starttime" "session_date" "subject"]));
+                occurrence = cell2mat(accumarray(grp, 1, [], @(x) { (1:numel(x))' }));                                        
+                plgNames(hasNumberSuffix) = lower(compose("%s%d", prefixes, occurrence));
+                T.plugin_name = plgNames;
+            end
             
-            grp = findgroups(T(:, ["starttime" "session_date" "subject"]));
-    occurrence = accumarray(grp, 1, [], @(x) { (1:numel(x))' });
-occurrence = cell2mat(occurrence); % Flattens into a vector [1; 2; 1; 2; 3...]
-
-% 3. Extract the prefix (text before the underscore)
-% This works on the whole column at once
-prefixes = regexp(T.plugin_name, '^[^_]+', 'match', 'once');
-
-% 4. Combine them back into the table
-T.plugin_name = lower(compose("%s%d", prefixes, occurrence));
-
-
-                plgNames = unique(T.plugin_name);
-            
-
-            % Group at the experiment level
+            % Group at the experiment level to collect the data from the
+            % pluginparameter table
             [ix,G ] = findgroups(T(:,["subject" "session_date" "starttime"]));
             S =splitapply(@(plg,name,value,time,nstime,trial,type) {ns.PluginParameter.nestedExperimentTable(plg,name,value,time,nstime,trial,type,pv)},T(:,["plugin_name" "property_name" "property_value" "property_time" "property_nstime" "property_trial" "property_type"]),ix);
-            
+            % S will be a cell array of tables; unstack into columns of G
+            plgNames = unique(T.plugin_name);
             nrPlgs =numel(plgNames);
             for plg= 1:nrPlgs
+                if ~isempty(pv.prm) && nrPlgs==2 && plgNames(plg)=="cic" ;continue;end % If a .prm is requested S cab have an empty cic entry (to allow atTrialTime to work). Skip that.                  
                 G = addvars(G,cell(height(G),1),'NewVariableNames',plgNames(plg));
                 for g= 1:height(G)
                     if ismember(plgNames(plg),S{g}.Properties.VariableNames)
@@ -363,6 +365,7 @@ T.plugin_name = lower(compose("%s%d", prefixes, occurrence));
             allEventTrials = props.(propName).trial;
             allEventTimes  = props.(propName).trialtime;
             allEventNsTimes  = props.(propName).clocktime;
+            assert(~isempty(allEventTrials) && ~isempty(allEventTimes),"%s does not occur at a specific time or trial. Do not select trials or attrialtime",propName)
             if isnan(time)
                 % No time selection (but a trial selection)
                 [keepTrial,loc] = ismember(allEventTrials,trial);
@@ -379,6 +382,7 @@ T.plugin_name = lower(compose("%s%d", prefixes, occurrence));
                 eventNsTime = nan(nrTrials,1);
                 [data{:}] = deal(NaN);
                 currentTrial =NaN;
+                currentTime =NaN;
                 % Loop through all events (= events when the property changed value)
                 % For many events this could be made more efficient by skipping successive
                 % events in a given trial, but the find needed for this is probably slower

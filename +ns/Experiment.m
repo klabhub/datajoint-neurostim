@@ -501,7 +501,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 % One parameter from one plugin.  We need cic to compute
                 % atTrialTime.
                 assert(isscalar(plg),"When asking for a prm, only one plugin can be specified")
-                rel = ns.PluginParameter  &  ( ns.Plugin & tbl) & sprintf('plugin_name LIKE "%s" OR plugin_name="cic"' ,plg) ;
+                rel = ns.PluginParameter  &  ( ns.Plugin & tbl) & sprintf('plugin_name LIKE "%s" OR (plugin_name="cic" AND property_name="firstframe")' ,plg) ;
             end
             % Pass to the ns.PluginParameter class
             G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);
@@ -578,6 +578,12 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %           corresponding to the rows of the tbl.
             % newOnly  - Set to true to update only those experiments that
             % have no information in the database currently. [true]
+            % pedantic - Set to true to remove all plugins before adding
+            %               the new ones (guarantee referential integrity)
+            %               [false]
+            % plugin - Process only plugins whose name starts with any of
+            % the strings in this string array. string.empty (the default)
+            % processes all plugins.
             arguments
                 tbl ns.Experiment
                 nsData (1,:) = []
@@ -628,6 +634,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     % Restrict to the plugins we want to update
                     pluginsToUpdate = pluginsToUpdate(startsWith(pluginsToUpdate,pv.plugin));
                     if isempty(pluginsToUpdate)
+                        fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)
                         continue;% Skip to the next file
                     end
                 else
