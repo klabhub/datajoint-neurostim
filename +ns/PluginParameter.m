@@ -175,7 +175,7 @@ classdef PluginParameter < dj.Part
         end
     end
 
-    methods (Access= ?ns.Experiment)
+    methods (Access= {?ns.Experiment, ?ns.Plugin})
 
         function G = get(tbl,pv)
             % Retrieve parameter values in a format that is used by
