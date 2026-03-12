@@ -32,7 +32,7 @@ channelInfo =struct('name',{'frame','intensity'}','nr',{1,2}');
 %% Map frames to nsTime 
 if exists(ns.Plugin & key & 'plugin_name=''camera''')
     % A movie captured by the neurostim camera plugin
-    prms = get(ns.Experiment & key,'camera');
+    prms = get(ns.Experiment & key,"camera");
     withData= cellfun(@numel,prms.camera.firstvideoframe.data);
     %% This code is for SaveDuringTrial mode : 
     % one trigger before the trial starts triggers collection of a fixed number of frames.
