@@ -505,7 +505,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             end
             % Pass to the ns.PluginParameter class
             G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);
-            expt = fetchtable(tbl,'file','ORDER BY "session_date, subject,starttime"');
+            expt = fetchtable(tbl,'file','ORDER BY session_date, subject, starttime');
 
             if isempty(G)
                 fprintf('None of the experiments used the %s plugin(s)\n ',strjoin(plg,'/'));
