@@ -13,8 +13,8 @@ function nsInitializeDataJoint(code,databaseName,packageName,pv)
 % database.
 % To retrieve the data for a single Neurostim experiment (i.e. file), you
 % use a query to define the experiment :
-% For instance, this will return a struct array with plugin parametrs data for all
-% experiments for subject #12:
+% For instance, this will return a struct array with cic plugin parameters data for all
+% experiments for subject #12 (i.e. using the default plg="cic" behavior of ns.Experiment/get):
 % data = get(ns.Experiment & 'subject="12"')
 %
 % Alice can now add files to the u:\projects\memory\code\+ns that define
