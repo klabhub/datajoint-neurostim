@@ -123,6 +123,9 @@ classdef PluginParameter < dj.Part
                         % Really only one value
                         value = uValue;
                         type = 'Global';
+                        time = time(1);
+                        trial =trial(1);
+                        nsTime = nsTime(1);
                     end
                 end
 
@@ -203,16 +206,31 @@ classdef PluginParameter < dj.Part
 
             T = fetchtable(tbl ,'*');
 
+            
+            grp = findgroups(T(:, ["starttime" "session_date" "subject"]));
+    occurrence = accumarray(grp, 1, [], @(x) { (1:numel(x))' });
+occurrence = cell2mat(occurrence); % Flattens into a vector [1; 2; 1; 2; 3...]
+
+% 3. Extract the prefix (text before the underscore)
+% This works on the whole column at once
+prefixes = regexp(T.plugin_name, '^[^_]+', 'match', 'once');
+
+% 4. Combine them back into the table
+T.plugin_name = lower(compose("%s%d", prefixes, occurrence));
+
+
+                plgNames = unique(T.plugin_name);
+            
 
             % Group at the experiment level
             [ix,G ] = findgroups(T(:,["subject" "session_date" "starttime"]));
             S =splitapply(@(plg,name,value,time,nstime,trial,type) {ns.PluginParameter.nestedExperimentTable(plg,name,value,time,nstime,trial,type,pv)},T(:,["plugin_name" "property_name" "property_value" "property_time" "property_nstime" "property_trial" "property_type"]),ix);
-            plgNames = unique(T.plugin_name);
+            
             nrPlgs =numel(plgNames);
-            for plg= 1:nrPlgs        
+            for plg= 1:nrPlgs
                 G = addvars(G,cell(height(G),1),'NewVariableNames',plgNames(plg));
                 for g= 1:height(G)
-                    if ismember(plgNames(plg),S{g}.Properties.VariableNames) 
+                    if ismember(plgNames(plg),S{g}.Properties.VariableNames)
                         G{g,plgNames(plg)} = {S{g}.(plgNames(plg))};
                     end
                 end
@@ -288,9 +306,15 @@ classdef PluginParameter < dj.Part
 
             if ~iscell(value)
                 value= {value};
+            end
+            if ~iscell(trial)
                 trial = {trial};
+            end
+            if ~iscell(time)
                 time = {time};
-                nstime = {nstime};
+            end
+            if ~iscell(nstime )
+                nstime= {nstime};
             end
             for prm = 1:numel(name)
                 nm = lower(name(prm)); % Force lower case
@@ -343,11 +367,11 @@ classdef PluginParameter < dj.Part
                 % No time selection (but a trial selection)
                 [keepTrial,loc] = ismember(allEventTrials,trial);
                 if iscell(allEventValues)
-                    thisValue = allEventValues{keepTrial};                    
+                    thisValue = allEventValues{keepTrial};
                 else
                     thisValue = allEventValues(keepTrial);
                 end
-                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc(keepTrial)),'clocktime',allEventNsTimes(keepTrial)); 
+                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc(keepTrial)),'clocktime',allEventNsTimes(keepTrial));
             else % Time selection : 1 per trial (optionally followed by trial selection)
                 % Initialize with nan
                 data = cell(nrTrials,1);
@@ -405,14 +429,14 @@ classdef PluginParameter < dj.Part
                     keepTrial = true(numel(eventNsTime),1);
                 end
                 trialsWithTheEvent = intersect(find(~isinf(eventNsTime)),find(keepTrial)); % Trials in which the event actually ocurred
-                props.(propName) = struct('data',{data(keepTrial)},'trialtime', eventTime(keepTrial),'trial',trialsWithTheEvent,'clocktime',eventNsTime(keepTrial));     
+                props.(propName) = struct('data',{data(keepTrial)},'trialtime', eventTime(keepTrial),'trial',trialsWithTheEvent,'clocktime',eventNsTime(keepTrial));
             end
             % Try to convert to matrix
             if iscell( props.(propName).data )
                 if all(cellfun(@numel, props.(propName).data )==1)
                     props.(propName).data  = cell2mat( props.(propName).data );
                 end
-            elseif iscellstr(props.(propName).data) 
+            elseif iscellstr(props.(propName).data)
                 props.(propName).data = string(props.(propName).data);
             end
         end

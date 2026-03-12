@@ -442,7 +442,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
             end
         end
-        function [out,filename] = get(tbl,plg,pv)
+        function [out,filename,exptWithMissing] = get(tbl,plg,pv)
             % function [out,filename] = get(tbl,plg,pv)
             % Retrieve all information on a specific plugin in an experiment
             %
@@ -488,59 +488,62 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 pv.prm {mustBeText} = string.empty
                 pv.what (1,:) string {mustBeMember(pv.what,["data" "trialtime" "clocktime" "trial" "all"])} = "all"
                 pv.atTrialTime (1,1) double = NaN
-                pv.trial (1,:) double = []                
+                pv.trial (1,:) double = []
+                pv.asTable (1,1) logical = false
             end
 
-            
+
             %% Construct the relvar
-            if isempty(pv.prm)            
-                % All parameters from one or more plugins               
-                rel = ns.PluginParameter & (( ns.Plugin & tbl) & in("plugin_name", string(plg)));                                
+            if isempty(pv.prm)
+                % All parameters from one or more plugins
+                rel = ns.PluginParameter & (( ns.Plugin & tbl) & in("plugin_name", string(plg)));
             else
                 % One parameter from one plugin.  We need cic to compute
                 % atTrialTime.
                 assert(isscalar(plg),"When asking for a prm, only one plugin can be specified")
-                rel = ns.PluginParameter  &  ( ns.Plugin & tbl) & sprintf('plugin_name LIKE "%s" OR plugin_name="cic"' ,plg) ;               
+                rel = ns.PluginParameter  &  ( ns.Plugin & tbl) & sprintf('plugin_name LIKE "%s" OR plugin_name="cic"' ,plg) ;
             end
             % Pass to the ns.PluginParameter class
-            G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);            
+            G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);
             expt = fetchtable(tbl,'file','ORDER BY "session_date, subject,starttime"');
-       
-            if isempty(G) 
-                fprintf('None of the experiments used the %s plugin(s)\n ',strjoin(plg,'/'));               
+
+            if isempty(G)
+                fprintf('None of the experiments used the %s plugin(s)\n ',strjoin(plg,'/'));
                 out= struct([]);
                 filename = expt.file;
-                return;                
-            end                     
-
+                return;
+            end
+            plg = setdiff(G.Properties.VariableNames,["subject" "session_date" "starttime"]);
             G = outerjoin(expt,G,RightVariables=plg,Type="left");
             for p = plg
                 missing = cellfun(@isempty,G.(p));
                 if any(missing)
-                    fprintf('These experiments did not use the %s plugin\n ',p);
-                    expt(missing,:)
-                end                
+                    fprintf(2,'These experiments did not use the %s plugin\n ',p);
+                    exptWithMissing = expt(missing,:)
+                end
             end
-                    
-           filename = G.file;
-           out = table2struct(G);
-           if ~isempty(pv.prm)                
-               [out(missing).(plg)] =deal(struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[])));
-               out  = [out.(plg)];  
-               out = [out.(pv.prm)];
-               if pv.what ~="all"                    
-                  fields=  fieldnames(out);
-                  out = rmfield(out,setdiff(fields, pv.what));     
-                  if isscalar(pv.what)
-                      if isscalar(out)
-                          out = out.(pv.what);
-                      else
-                          out = {out.(pv.what)};
-                      end
-                  end                    
-               end
-           end
 
+            filename = G.file;
+            out = table2struct(G);
+            if ~isempty(pv.prm) && isscalar(plg)
+                [out(missing).(plg)] =deal(struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[])));
+                out  = [out.(plg)];
+                out = [out.(pv.prm)];
+                if pv.what ~="all"
+                    fields=  fieldnames(out);
+                    out = rmfield(out,setdiff(fields, pv.what));
+                    if isscalar(pv.what)
+                        if isscalar(out)
+                            out = out.(pv.what);
+                        else
+                            out = {out.(pv.what)};
+                        end
+                    end
+                end
+            end
+            if pv.asTable
+                out = struct2table(out);
+            end
         end
 
         function [isOk, t] = getTimepointsAroundTrials(expt,t,halfWidth)
@@ -580,6 +583,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 nsData (1,:) = []
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
+                pv.plugin (1,:) string = string.empty
             end
             tic;
             % Run all
@@ -587,8 +591,8 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             pkey = tbl.primaryKey;
 
             if ~isempty(nsData)
-                % Restrict the tbl to the rows that correspond to these
-                % data files
+                % Restrict the tbl to the rows that correspond to the cic
+                % objects in nsData
                 for cntr = 1:numel(nsData)
                     restrict(cntr) = ns.Experiment.metaTpl(nsData(cntr)); %#ok<AGROW>
                 end
@@ -619,35 +623,48 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     thisTpl =mergestruct(key,thisTpl); % Errors if this Cic does not belong to this key.
                 end
 
-                % Remove current Experiment tuple
-                if pv.pedantic
-                    if exists(tbl&key)
-                        del(tbl & key);
+                pluginsToUpdate = ["cic" string({thisData.pluginOrder.name})];
+                if ~isempty(pv.plugin)
+                    % Restrict to the plugins we want to update
+                    pluginsToUpdate = pluginsToUpdate(startsWith(pluginsToUpdate,pv.plugin));
+                    if isempty(pluginsToUpdate)
+                        continue;% Skip to the next file
                     end
-                    insert(tbl,thisTpl);
                 else
-                    %Update each field. Potential for referential integrity
-                    %loss (not in practice, though).
-                    fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
-                    % The update could change the tbl (if defined as a
-                    % query that uses the fields to be updated), so use
-                    % the full ns.Experiment  with a key restriction
-                    % instead
-                    for fld = fieldsToUpdate
-                        update(ns.Experiment &key,fld{1},thisTpl.(fld{1}))
+
+                    % Remove current Experiment tuple
+                    if pv.pedantic
+                        if exists(tbl&key)
+                            del(tbl & key);
+                        end
+                        insert(tbl,thisTpl);
+                    else
+                        %Update each field. Potential for referential integrity
+                        %loss (not in practice, though).
+                        fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
+                        % The update could change the tbl (if defined as a
+                        % query that uses the fields to be updated), so use
+                        % the full ns.Experiment  with a key restriction
+                        % instead
+                        for fld = fieldsToUpdate
+                            update(ns.Experiment &key,fld{1},thisTpl.(fld{1}))
+                        end
                     end
                 end
-
 
                 % Remove the current plugin info and store currently read
                 % information.
-                if exists(ns.Plugin & key)
-                    del(ns.Plugin & key);
+                existingPlugins =ns.Plugin & key & in('plugin_name',pluginsToUpdate);
+                if exists(existingPlugins)
+                    del(existingPlugins);
                 end
+                fprintf('Updating experiment %s\n',key.starttime)
                 if thisTpl.nrtrials>0
                     % re-add each plugin (pluginOrder includes stimuli and behaviors),
                     % cic
-                    plgsToAdd= [thisData.pluginOrder thisData];
+                    plgsToAdd = [thisData.pluginOrder thisData];
+                    stay  = ismember(string({plgsToAdd.name}),pluginsToUpdate);
+                    plgsToAdd = plgsToAdd(stay);
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
                     for plg = plgsToAdd
                         try
@@ -718,7 +735,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                         c  = ns.Experiment.load(file);
                     catch me
                         % Make sure that the experiment key is in the table
-                        
+
                         fprintf(2,'Failed to load %s. (%s).  Is NS_ROOT (%s) correct? \n',file,me.message,getenv('NS_ROOT'))
                         return;
                     end
@@ -738,13 +755,13 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             arguments
                 c (1,1)  % Can be a cic or a sibascic
             end
-            
+
             if isfield(c,'ptbVersion')
                 ptbVersion = c.ptbVersion.version;
             else
                 ptbVersion = 'unknown'; % Early versions did not store this
             end
-            
+
             if c.nrTrialsCompleted<1
                 % Cannot read some information in a file without trials..
                 % Just putting zeros.
