@@ -584,15 +584,23 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % plugin - Process only plugins whose name starts with any of
             % the strings in this string array. string.empty (the default)
             % processes all plugins.
+            % defaultScalarElement - Set this to true to find experiments
+            % that have a 'defaultScalarElement' plugin (which means the
+            % plugin was not on the path when the experiment was added).
+            % THese experiments are opened and then updated with the
+            % correct plugin information (assuming the plugin is on the
+            % path now).
+            % 
             arguments
                 tbl ns.Experiment
                 nsData (1,:) = []
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
                 pv.plugin (1,:) string = string.empty
+                pv.defaultScalarElement (1,1) logical = false 
+                pv.safemode (1,1) logical = true
             end
             tic;
-            % Run all
             keyCntr = 0;
             pkey = tbl.primaryKey;
 
@@ -605,8 +613,15 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tbl = tbl & restrict;
             end
 
+            if pv.defaultScalarElement
+                assert(isempty(nsData),'With defaultScalarElement no cic objects should be passed.')
+                tbl = tbl & (ns.Plugin & 'plugin_name="defaultScalarElement"');
+                pv.newOnly = false;
+            end
             fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
 
+            currentSafeMode = dj.config('safemode');
+            dj.config('safemode',pv.safemode);
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
                 if isempty(nsData)
@@ -634,11 +649,25 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     % Restrict to the plugins we want to update
                     pluginsToUpdate = pluginsToUpdate(startsWith(pluginsToUpdate,pv.plugin));
                     if isempty(pluginsToUpdate)
-                        fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)
+                        fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)                        
                         continue;% Skip to the next file
                     end
-                else
-
+                elseif pv.defaultScalarElement  
+                    if ismember("defaultScalarElement",pluginsToUpdate)
+                        fprintf(2, "Some plugins are not on the search path. \n");
+                        %Run this to find out what is missing: 
+                        % matlab.desktop.editor.newDocument(thisData.expScript);
+                        deleteDefaultScalarElement =false; %Dont delete so that we can fix this on the next run
+                    else
+                        deleteDefaultScalarElement =true;       
+                    end
+                    pluginsAlreadyInDJ  =fetchtable(ns.Plugin & key,'plugin_name');
+                    pluginsToUpdate = setdiff(pluginsToUpdate,pluginsAlreadyInDJ.plugin_name);
+                    if isempty(pluginsToUpdate)
+                        fprintf('Plugins up to date in  %s\n',key.starttime);
+                        continue;% Skip to the next file
+                    end
+                else %Updating all plugins, including the information stored directly in ns.Experiment
                     % Remove current Experiment tuple
                     if pv.pedantic
                         if exists(tbl&key)
@@ -673,16 +702,23 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     stay  = ismember(string({plgsToAdd.name}),pluginsToUpdate);
                     plgsToAdd = plgsToAdd(stay);
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
+                    hasError = false;
                     for plg = plgsToAdd
                         try
                             make(ns.Plugin,plgKey,plg);
                         catch me
                             fprintf(2,'Failed to add plugin %s information\n (%s)',plg.name,me.message);
+                            hasError = true;
                         end
                     end
-                end
-
+                    if pv.defaultScalarElement && ~hasError && deleteDefaultScalarElement   
+                        % All plugins updated successfully for this experiment
+                        % Now we can remove the defaultscalar element
+                        del((ns.Plugin & key) & 'plugin_name="defaultScalarElement"');
+                    end
+                end              
             end
+            dj.config('safemode',currentSafeMode);
         end
 
         function addMissingFiles(tbl)

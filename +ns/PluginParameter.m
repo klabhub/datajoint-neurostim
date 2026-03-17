@@ -252,7 +252,7 @@ classdef PluginParameter < dj.Part
                     name =names{j};
                     data= G{1,plgNames}{1}.(name);
                     if ~(isnumeric(data) || islogical(data))
-                        fprintf('Skipping %s in %s (non numeric data)\n',name,plgName);
+                        fprintf('Skipping %s in %s (non numeric data)\n',name,plgNames);
                     else
                         timestamps = G{1,plgNames}{1}.([name 'NsTime']);
                         if isempty(timestamps)
@@ -382,7 +382,7 @@ classdef PluginParameter < dj.Part
                 eventNsTime = nan(nrTrials,1);
                 [data{:}] = deal(NaN);
                 currentTrial =NaN;
-                currentTime =NaN;
+                
                 % Loop through all events (= events when the property changed value)
                 % For many events this could be made more efficient by skipping successive
                 % events in a given trial, but the find needed for this is probably slower
@@ -426,11 +426,10 @@ classdef PluginParameter < dj.Part
                     eventTime(currentTrial+1:nrTrials)  =-inf;
                 end
 
-                if ~isempty(trial)
-                    trialNrs = find(~isinf(eventNsTime));
-                    keepTrial = ismember(trialNrs,trial);
+                if ~isempty(trial)                    
+                    keepTrial = ismember(1:nrTrials,trial);
                 else
-                    keepTrial = true(numel(eventNsTime),1);
+                    keepTrial = true(nrTrials,1);
                 end
                 trialsWithTheEvent = intersect(find(~isinf(eventNsTime)),find(keepTrial)); % Trials in which the event actually ocurred
                 props.(propName) = struct('data',{data(keepTrial)},'trialtime', eventTime(keepTrial),'trial',trialsWithTheEvent,'clocktime',eventNsTime(keepTrial));
