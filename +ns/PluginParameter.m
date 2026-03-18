@@ -212,6 +212,7 @@ classdef PluginParameter < dj.Part
             % psybayes2 if there are multiple occurrences.            
             plgNames = T.plugin_name;
             plgNamesMatch = regexp(plgNames,'(?<name>\w*)_[\d]+$','names');
+            if ~isempty(plgNamesMatch)
             hasNumberSuffix = ~cellfun(@isempty,plgNamesMatch);
             if any(hasNumberSuffix)
                 prefixes = regexp(plgNames(hasNumberSuffix), '^[^_]+', 'match', 'once');
@@ -220,7 +221,7 @@ classdef PluginParameter < dj.Part
                 plgNames(hasNumberSuffix) = lower(compose("%s%d", prefixes, occurrence));
                 T.plugin_name = plgNames;
             end
-            
+            end
             % Group at the experiment level to collect the data from the
             % pluginparameter table
             [ix,G ] = findgroups(T(:,["subject" "session_date" "starttime"]));
@@ -362,9 +363,13 @@ classdef PluginParameter < dj.Part
             propName = lower(propName); % All properties are lower case
             nrTrials  = numel(firstFrame);
             allEventValues = props.(propName).data;
+            
             allEventTrials = props.(propName).trial;
             allEventTimes  = props.(propName).trialtime;
             allEventNsTimes  = props.(propName).clocktime;
+            if isscalar(allEventValues)
+                allEventValues= repmat(allEventValues,[numel(allEventTrials) 1]);
+            end
             assert(~isempty(allEventTrials) && ~isempty(allEventTimes),"%s does not occur at a specific time or trial. Do not select trials or attrialtime",propName)
             if isnan(time)
                 % No time selection (but a trial selection)

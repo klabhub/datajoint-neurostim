@@ -528,7 +528,12 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             if ~isempty(pv.prm) && isscalar(plg)
                 [out(missing).(plg)] =deal(struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[])));
                 out  = [out.(plg)];
-                out = [out.(pv.prm)];
+                try
+                    % Try to make into array
+                    out = [out.(pv.prm)];
+                catch
+                    %Ignore;
+                end
                 if pv.what ~="all"
                     fields=  fieldnames(out);
                     out = rmfield(out,setdiff(fields, pv.what));
@@ -541,7 +546,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     end
                 end
             end
-            if pv.asTable
+            if pv.asTable && isstruct(out)
                 out = struct2table(out);
             end
         end
