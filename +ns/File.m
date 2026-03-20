@@ -26,7 +26,7 @@ checksum = NULL : char(32) # MD5 Hash checksum
 classdef File < dj.Imported
 
     methods (Access = public)
-        function open(tbl)
+        function ff= open(tbl)
             % Open a file in the corresponding system application (Windows
             % only)
             arguments
