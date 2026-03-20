@@ -8,13 +8,13 @@ classdef PupilTracker < handle
     %       determine the typical brightness in the pupil. Eye selection is
     %       used to avoid searching for the pupil in impossible locations.
     %      The output of this process is saved to a JSON file next to the
-    %      mj2 movie and can be re-read at a later time. 
+    %      mj2 movie and can be re-read at a later time.
     % 3. Run track. This will use the initialization parameters and do
     %       automated detection for the full movie. Results are saved to a
     %       .tsv file with a BIDS format json sidecar (both in the same
     %       folder as the .mj2).
     %
-    % If parameter files (Step 2) 
+    % If parameter files (Step 2)
     % BK - Mar 2026
     properties (Constant)
         MaxSampleFrames = 50  % Frames used in the interactive initialization routine
@@ -36,6 +36,7 @@ classdef PupilTracker < handle
             arguments
                 experiment (1,1) ns.Experiment
                 pv.filename (1,1) string = 'filename LIKE "%eye.mj2"'
+                pv.overwrite (1,1) logical = false
             end
             obj.Experiment = experiment;
             %$ Find sessions with eye tracking movie in the scanbox setup
@@ -45,81 +46,83 @@ classdef PupilTracker < handle
             numFiles = numel(fileList);
             emptyRow = table(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
                 'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
-                                  'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
+                'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
             obj.Parameters = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.Results    = containers.Map('KeyType', 'char', 'ValueType', 'any');
             for i = 1:numFiles
                 obj.Parameters(char(fileList(i))) = emptyRow;
             end
+            jsonFiles = strrep(fileList, '.mj2', '_params.json'); % Files with initialization parameters
+            outputFiles = strrep(fileList, '.mj2', '_pupil.tsv'); % Files with tracking results
 
             %% Check for existing parameter JSON files
-            jsonFiles = strrep(fileList, '.mj2', '_params.json');
-            jsonExists = false(numFiles, 1);
-            for i = 1:numFiles
-                if obj.Parameters.isKey(char(fileList(i)))
-                    jsonExists(i) = exist(char(jsonFiles(i)), 'file');
+            if ~pv.overwrite
+                jsonExists = false(numFiles, 1);
+                for i = 1:numFiles
+                    if obj.Parameters.isKey(char(fileList(i)))
+                        jsonExists(i) = exist(char(jsonFiles(i)), 'file');
+                    end
                 end
-            end
 
-            if any(jsonExists)
-                fprintf('\n%d parameter file(s) found:\n', sum(jsonExists));
-                disp(jsonFiles(jsonExists));
-                response = input('Overwrite (re-initialize), Skip, or Read existing parameters? (o/s/r): ', 's');
-                switch lower(response)
-                    case {'o', 's'}
-                        % 'o': keep empty rows, initialize() will re-run interactively
-                        % 's': keep empty rows, call track() directly to reuse saved JSON later
-                    case 'r'
-                        for i = find(jsonExists(:))'
-                            try
-                                paramStruct = jsondecode(fileread(char(jsonFiles(i))));
-                                paramStruct = rmfield(paramStruct, 'FileName');
-                                obj.Parameters(char(fileList(i))) = struct2table(paramStruct);
-                                fprintf('  -> Loaded: %s\n', jsonFiles(i));
-                            catch
-                                warning('Could not read %s. Parameters left empty.', jsonFiles(i));
+                if any(jsonExists)
+                    fprintf('\n%d parameter file(s) found:\n', sum(jsonExists));
+                    disp(jsonFiles(jsonExists));
+                    response = input('Overwrite, Skip, or Read existing parameters? (o/s/r): ', 's');
+                    switch lower(response)
+                        case {'o', 's'}
+                            % 'o': keep empty rows, initialize() will re-run interactively
+                            % 's': keep empty rows, call track() directly to reuse saved JSON later
+                        case 'r'
+                            for i = find(jsonExists(:))'
+                                try
+                                    paramStruct = jsondecode(fileread(char(jsonFiles(i))));
+                                    paramStruct = rmfield(paramStruct, 'FileName');
+                                    obj.Parameters(char(fileList(i))) = struct2table(paramStruct);
+                                    fprintf('  -> Loaded: %s\n', jsonFiles(i));
+                                catch
+                                    warning('Could not read %s. Parameters left empty.', jsonFiles(i));
+                                end
                             end
-                        end
-                        fprintf('Loaded parameters for %d file(s).\n', sum(jsonExists));
-                    otherwise
-                        error('Invalid input. Please choose ''o'', ''s'', or ''r''.');
+                            fprintf('Loaded parameters for %d file(s).\n', sum(jsonExists));
+                        otherwise
+                            error('Invalid input. Please choose ''o'', ''s'', or ''r''.');
+                    end
                 end
-            end
 
-            %% Check for existing output (TSV) files
-            outputFiles = strrep(fileList, '.mj2', '_pupil.tsv');
-            fileExists = false(numFiles, 1);
-            for i = 1:numFiles
-                fileExists(i) = exist(char(outputFiles(i)), 'file');
-            end
-
-            if any(fileExists)
-                fprintf('\nWarning: %d output file(s) already exist:\n', sum(fileExists));
-                disp(outputFiles(fileExists));
-                response = input('Overwrite, Skip, Read, or Cancel? (o/s/r/c): ', 's');
-                switch lower(response)
-                    case 'o'
-                        % Overwrite: Do nothing, the track method will overwrite
-                    case 's'
-                        % Skip: Remove existing files from the parameters map
-                        for i = find(fileExists(:))'
-                            remove(obj.Parameters, char(fileList(i)));
-                        end
-                        fprintf('Skipping %d existing files.\n', sum(fileExists));
-                    case 'r'
-                        % Read: Load existing TSV files into Results
-                        for i = find(fileExists(:))'
-                            obj.Results(char(fileList(i))) = readtable(char(outputFiles(i)), 'FileType', 'text', 'Delimiter', '\t');
-                            fprintf('  -> Loaded: %s\n', outputFiles(i));
-                        end
-                        fprintf('Read %d existing file(s).\n', sum(fileExists));
-                    case 'c'
-                        % Cancel: Throw an error and stop
-                        error('Execution cancelled by user.');
-                    otherwise
-                        error('Invalid input. Please choose ''o'', ''s'', ''r'', or ''c''.');
+                %% Check for existing output (TSV) files
+                fileExists = false(numFiles, 1);
+                for i = 1:numFiles
+                    fileExists(i) = exist(char(outputFiles(i)), 'file');
                 end
-            end
+
+                if any(fileExists)
+                    fprintf('\nWarning: %d output file(s) already exist:\n', sum(fileExists));
+                    disp(outputFiles(fileExists));
+                    response = input('Overwrite, Skip, Read, or Cancel? (o/s/r/c): ', 's');
+                    switch lower(response)
+                        case 'o'
+                            % Overwrite: Do nothing, the track method will overwrite
+                        case 's'
+                            % Skip: Remove existing files from the parameters map
+                            for i = find(fileExists(:))'
+                                remove(obj.Parameters, char(fileList(i)));
+                            end
+                            fprintf('Skipping %d existing files.\n', sum(fileExists));
+                        case 'r'
+                            % Read: Load existing TSV files into Results
+                            for i = find(fileExists(:))'
+                                obj.Results(char(fileList(i))) = readtable(char(outputFiles(i)), 'FileType', 'text', 'Delimiter', '\t');
+                                fprintf('  -> Loaded: %s\n', outputFiles(i));
+                            end
+                            fprintf('Read %d existing file(s).\n', sum(fileExists));
+                        case 'c'
+                            % Cancel: Throw an error and stop
+                            error('Execution cancelled by user.');
+                        otherwise
+                            error('Invalid input. Please choose ''o'', ''s'', ''r'', or ''c''.');
+                    end
+                end
+            end            
         end
 
         function disp(obj)
@@ -138,11 +141,10 @@ classdef PupilTracker < handle
             end
         end
 
-        function initialize(obj, pv)
+        function initialize(obj)
             % INITIALIZE - Interactively define tracking parameters for multiple videos.
             arguments
-                obj
-                pv.overwrite (1,1) logical = false
+                obj                
             end
 
             disp('Starting batch parameter initialization...');
@@ -153,7 +155,7 @@ classdef PupilTracker < handle
 
                 % Skip files whose parameters were already loaded (e.g. from constructor)
                 p = obj.Parameters(currentFile);
-                if p.Threshold ~= 0 && ~pv.overwrite
+                if p.Threshold ~= 0 
                     fprintf('  [%d/%d] Parameters already set, skipping: %s\n', i, numel(paramFiles), currentFile);
                     continue;
                 end
@@ -166,58 +168,70 @@ classdef PupilTracker < handle
                     continue;
                 end
 
-                % Get random frame indices to sample typical pupil images
-                totalFrames = round(v.Duration * v.FrameRate);
-                numSample = min(sbx.PupilTracker.MaxSampleFrames, ceil(totalFrames / 20)); % Sample ~5% or max 50 frames
-                randomFrameIdx = sort(randperm(totalFrames, numSample));
-
-                % Read random frames and score brightness
-                fprintf('Sampling frames for brightness scoring...\n');
-                img = zeros(v.Height, v.Width, numSample, sprintf('uint%d', v.BitsPerPixel));
-                for ix = 1:numSample
-                    try
-                        img(:,:,ix) = read(v, randomFrameIdx(ix));
-                    catch
-                        % The max number of frames is estimated so an error
-                        % is possible. Just ignore.
-                    end
-                end
-
-                brightness = squeeze(median(img, [1 2]));
-                [~, sortedIdx] = sort(brightness, 'descend');
-                numToAverage = min(10, numSample);
-                topFramesIdx = sortedIdx(1:numToAverage);
-                % Average the top 10 for visualization
-                avgFrameGray = uint8(mean(img(:,:,topFramesIdx), 3));
-
-                % --- Interactive Input ---
+                [~, fname, ext] = fileparts(currentFile);
                 obj.Figure = findobj('Type', 'figure', 'Tag', obj.FigureTag);
                 if isempty(obj.Figure)
-                    obj.Figure = figure('Name', 'Pupil Initialization', 'Tag', obj.FigureTag, 'units', 'normalized', 'position', [0.25 0.25 0.5 0.5]);
+                    obj.Figure = figure('Name', [fname ext], 'Tag', obj.FigureTag, 'units', 'normalized', 'position', [0.25 0.25 0.5 0.5]);
                 else
                     figure(obj.Figure); % Bring to front
                     clf(obj.Figure);
-                    obj.Figure.Name = 'Pupil Initialization';
+                    obj.Figure.Name = [fname ext];
                 end
-                
-                imshow(avgFrameGray, 'InitialMagnification', 'fit');
-                title(sprintf('Draw an ellipse where the bright pupil appears.\nDouble-click inside to confirm.\nFile: %s', currentFile), 'Interpreter', 'none');
-                pupilRoi = drawellipse('Color', 'r', 'FaceAlpha', 0.2);
-                wait(pupilRoi);
 
-                title(sprintf('Draw an ellipse for the outer boundary of the eye.\nDouble-click to confirm.'));
-                eyeRoi = drawellipse('Color', 'b', 'FaceAlpha', 0.2);
-                wait(eyeRoi);
+                % Add Resample, Confirm, and Skip buttons
+                btnResample = uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Resample Frames', ...
+                    'Units', 'normalized', 'Position', [0.01 0.01 0.15 0.05], ...
+                    'Enable', 'on', ...
+                    'Callback', @(~,~) sbx.PupilTracker.resampleAndShow(v, obj.Figure));
+
+                [avgFrameGray, img] = sbx.PupilTracker.getAverageImg(v);
+                ax = axes(obj.Figure, 'Position', [0 0.07 1 0.93]);
+                imshow(avgFrameGray, 'Parent', ax, 'InitialMagnification', 'fit');
+                instrText = text(ax, 0.5, 0.03, ...
+                    sprintf('Draw an ellipse over the pupil. Double-click to confirm. Close window to skip.'), ...
+                    'Units', 'normalized', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+                    'Color', 'yellow', 'FontSize', 11, 'FontWeight', 'bold', ...
+                    'BackgroundColor', [0 0 0 0.5]);
+                pupilRoi = drawellipse(ax, 'Color', 'r', 'FaceAlpha', 0.2);
+                try wait(pupilRoi);catch ;end
+
+                if ishandle(obj.Figure) && isvalid(obj.Figure)
+                    pupilRoi.FaceAlpha = 0.5;
+                    pupilRoi.InteractionsAllowed = 'none';
+                    instrText.String = 'Draw an ellipse for the outer boundary of the eye. Double-click to confirm. Close window to skip.';
+                end
+
+                if ~ishandle(obj.Figure) || ~isvalid(obj.Figure)
+                    fprintf('  Skipped (figure closed): %s\n', currentFile);
+                    remove(obj.Parameters, currentFile);
+                    continue;
+                end
+                btnResample.Enable = 'off';
+
+                eyeRoi = drawellipse(ax, 'Color', 'b', 'FaceAlpha', 0.2);
+                try wait(eyeRoi);catch; end
+
+                if ishandle(obj.Figure) && isvalid(obj.Figure)
+                    eyeRoi.FaceAlpha = 0.5;
+                    eyeRoi.InteractionsAllowed = 'none';
+                end
+
+                if ~ishandle(obj.Figure) || ~isvalid(obj.Figure)
+                    fprintf('  Skipped (figure closed): %s\n', currentFile);
+                    remove(obj.Parameters, currentFile);
+                    continue;
+                end
 
                 % --- Extract and Calculate Parameters ---
                 pupilMask = createMask(pupilRoi);
                 eyeMask = createMask(eyeRoi);
 
-                % Calculate threshold from all sampled frames in the masked region        
+                % Calculate threshold from all sampled frames in the masked region
+                % img is provided by getAverageImg
                 eyeNotPupil = img(repmat(eyeMask & ~pupilMask, [1, 1, size(img, 3)]));
                 eyeNotPupilLevel = mean(eyeNotPupil, "all");
                 pupil = img(repmat(pupilMask, [1, 1, size(img, 3)]));
-                pupilLevel = mean(pupil,"all");
+                pupilLevel = mean(pupil, "all");
 
                 % Dynamic Parameter Estimation
                 drawnArea = sum(pupilMask(:));
@@ -231,14 +245,13 @@ classdef PupilTracker < handle
                     eyeRoi.Center(1), eyeRoi.Center(2), ...      % EyeCenterX, EyeCenterY
                     eyeRoi.SemiAxes(1) * 2, eyeRoi.SemiAxes(2) * 2, eyeRoi.RotationAngle, ... % EyeMajorAxis, EyeMinorAxis, EyeOrientation
                     'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
-                                      'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
+                    'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
 
                 % Do not close the figure, just clear it for the next one
                 clf(obj.Figure);
 
                 % Write parameters to a JSON file (store only filename, not full path)
                 paramStruct = table2struct(obj.Parameters(currentFile));
-                [~, fname, ext] = fileparts(currentFile);
                 paramStruct.FileName = [fname ext];
                 jsonTxt = jsonencode(paramStruct, "PrettyPrint", true);
                 fid = fopen(jsonFileName, 'w');
@@ -452,7 +465,7 @@ classdef PupilTracker < handle
                         drawnow limitrate;
                     end
                 end
-                
+
                 % Store results in the map
                 idx = 1:frameCount;
                 resultTable = table(Frames(idx), Centroid_X(idx), Centroid_Y(idx), PupilArea(idx), ...
@@ -497,12 +510,12 @@ classdef PupilTracker < handle
         function plot(obj, columns, pv)
             % PLOT - Plot one or more result columns for each tracked video.
             %   obj.plot("Area")
-            %   obj.plot(["Area","EM","FitQuality"])            
+            %   obj.plot(["Area","EM","FitQuality"])
             arguments
                 obj
                 columns (1,:) string {mustBeMember(columns, ["Frame","Centroid_X","Centroid_Y","Area","MajorAxis","MinorAxis", ...
-                                                    "Eccentricity","Orientation","BBox_X","BBox_Y","BBox_Width","BBox_Height", ...
-                                                    "Threshold","EM","FitQuality","IntensityRatio"])} = "Area" 
+                    "Eccentricity","Orientation","BBox_X","BBox_Y","BBox_Width","BBox_Height", ...
+                    "Threshold","EM","FitQuality","IntensityRatio"])} = "Area"
                 pv.Parent = []
             end
             resultFiles = keys(obj.Results);
@@ -542,6 +555,38 @@ classdef PupilTracker < handle
     end
 
     methods (Access = private, Static)
+        function [avgFrameGray, img] = getAverageImg(v)
+            % GETAVERAGEIMG - Sample random frames from a VideoReader and return
+            % an average of the brightest ones for use in the initialization figure.
+            totalFrames = round(v.Duration * v.FrameRate);
+            numSample = min(sbx.PupilTracker.MaxSampleFrames, ceil(totalFrames / 20));
+            randomFrameIdx = sort(randperm(totalFrames, numSample));
+            fprintf('Sampling %d frames for brightness scoring...\n', numSample);
+            img = zeros(v.Height, v.Width, numSample, sprintf('uint%d', v.BitsPerPixel));
+            for ix = 1:numSample
+                try
+                    img(:,:,ix) = read(v, randomFrameIdx(ix));
+                catch
+                    % Frame count is estimated; read errors near the end are expected.
+                end
+            end
+            brightness = squeeze(median(img, [1 2]));
+            [~, sortedIdx] = sort(brightness, 'descend');
+            topFramesIdx = sortedIdx(1:min(10, numSample));
+            avgFrameGray = uint8(mean(img(:,:,topFramesIdx), 3));
+        end
+
+        function resampleAndShow(v, fig)
+            % RESAMPLEANDSHOW - Button callback: resample frames and update the
+            % image CData in-place so existing ROIs are preserved.
+            [avgNew, ~] = sbx.PupilTracker.getAverageImg(v);
+            hImg = findobj(fig, 'Type', 'image');
+            if ~isempty(hImg)
+                hImg(1).CData = avgNew;
+                drawnow;
+            end
+        end
+
         function writeBidsJson(fileName)
             bidsInfo.Frame = struct('Description', 'Frame number from the video file.', 'Units', 'integer');
             bidsInfo.Centroid_X = struct('Description', 'X-coordinate of the pupil centroid.', 'Units', 'pixels');
