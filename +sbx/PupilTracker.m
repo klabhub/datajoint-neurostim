@@ -452,6 +452,7 @@ classdef PupilTracker < handle
                     ((Xgrid - eyeCenterX) * sin(theta) - (Ygrid - eyeCenterY) * cos(theta)).^2 / b^2) <= 1;
 
                 frameCount = 0;
+                progressStr = '';
 
                 while hasFrame(v) && frameCount < pv.maxFrames
                     frameCount = frameCount + 1;
@@ -462,8 +463,10 @@ classdef PupilTracker < handle
                         fpsEst = frameCount / max(elapsedVideo, 0.001);
                         etaSec = (estimatedFrames - frameCount) / fpsEst + ...
                             (numVideos - vIdx) * (estimatedFrames / fpsEst);
-                        fprintf('  [File %d/%d]  Frame: %d/%d (%.0f%%)  |  Overall: %.0f%%  |  ETA: %ds   \r', ...
+                        newMsg = sprintf('  [File %d/%d]  Frame: %d/%d (%.0f%%)  |  Overall: %.0f%%  |  ETA: %ds', ...
                             vIdx, numVideos, frameCount, estimatedFrames, pctFrames, pctOverall, round(etaSec));
+                        fprintf('%s%s', repmat('', 1, length(progressStr)), newMsg);
+                        progressStr = newMsg;
                     end
                     frame = readFrame(v);
                     if size(frame, 3) == 3, frame = rgb2gray(frame); end
