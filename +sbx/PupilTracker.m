@@ -1,32 +1,53 @@
 classdef PupilTracker < handle
     % A class for pupil tracking in Scanbox experiments.
     % Usage:
-    % 1.  Create an instance by passing an ns.Experiment table,
-    %      the class will locate the associated _eye.mj2 files.
+    % 1.  Create an instance by passing 
+    %           an ns.Experiment table
+    %           a folder/subject name  (e.g. "data\2024\02\23\252") 
+    %           or a previously created _params.json file 
+    %       the code will locate the associated _eye.mj2 files.
     % 2. Run initialize to manually select the location of the pupil and
     %       the eye. Pupil selection is used as a starting point and to
     %       determine the typical brightness in the pupil. Eye selection is
     %       used to avoid searching for the pupil in impossible locations.
     %      The output of this process is saved to a JSON file next to the
-    %      mj2 movie and can be re-read at a later time.
+    %      mj2 movie and can be re-read at a later time. 
+    %       
     % 3. Run track. This will use the initialization parameters and do
     %       automated detection for the full movie. Results are saved to a
     %       .tsv file with a BIDS format json sidecar (both in the same
     %       folder as the .mj2).
+    %  
+    % This process can also be started from nsMeta, by selecting a session
+    % and then pressing 'P' for pupil.
     %
-    % If parameter files (Step 2)
+    % To use this in DataJoint ns.C setup the CParm as follows. (A
+    % selection of the parameters estimated by the tracker is loaded into
+    % the CChannel table).
+    % With populate(ns.C,'ctag="pupil"'), movie files 
+    % * without an associated json file will generate an error with a link to run sbx.PupilTracker,
+    % * with a json file but without tsv (i.e. tracking results) will be processed to generate the tsv 
+    % * with a tsv file will be loaded into the CChannel table.
+    % A subset of output parameters can be defined in the CParm:
+    % ptParms = struct('method','PupilTracker','variables',{{'Centroid_X','Centroid_Y', 'Area' ,'FitQuality' ,'Threshold', 'IntensityRatio'}});
+    % eyePrep =struct('ctag','pupil','extension','.mj2','include','%_eye.mj2',...
+    %                'fun','sbx.readMovie','description','Use sbxPupilTracker to track the pupil','parms',ptParms);
+    % insertIfNew(ns.CParm,eyePrep);
     % BK - Mar 2026
     properties (Constant)
-        MaxSampleFrames = 50  % Frames used in the interactive initialization routine
         FigureTag = 'sbx.PupilTracker.Figure'  % Unique name of the reused figure
     end
 
     properties
-        Experiment % The ns.Experiment  table
-        Files       % A query table of the eye tracking files (ns.File)
         Parameters  % Map (filename -> parameter row table) for tracking, determined with the interactive initialization routine.
         Results     % Map (filename -> results table) with tracking results for each video
         Figure      % Handle to the GUI figure
+
+        MaxSampleFrames = 50  % Frames used in the interactive initialization routine
+        MinRadius       = 2   % Pixels
+        MinRadiusFrac   = 0.1  % Fraction of the radius drawn by the user
+        MinArea         = 4  % Pixels
+        MinAreaFrac     = 0.05  % Fraction of the area drawn by the user.
     end
 
     methods
@@ -34,15 +55,43 @@ classdef PupilTracker < handle
             % PUPIL Construct an instance of the pupil tracking class
             %   obj = sbx.PupilTracker(experiment)
             arguments
-                experiment (1,1) ns.Experiment
-                pv.filename (1,1) string = 'filename LIKE "%eye.mj2"'
+                experiment (1,1)
+                pv.endsWith (1,1) string = 'eye.mj2"'
                 pv.overwrite (1,1) logical = false
+                pv.initialize (1,1) logical = false  % Open figure to initialize 
             end
-            obj.Experiment = experiment;
-            %$ Find sessions with eye tracking movie in the scanbox setup
-            obj.Files = obj.Experiment * (ns.File & pv.filename);
+            if isa(experiment,"ns.Experiment")
+                % Extract files from datajoint experiment table
+                files = experiment * (ns.File & sprintf('filename LIKE "%%%s"',pv.endsWith));
+                fileList = fullfile(folder(experiment & proj(files)), fetchn(files, 'filename'));
+            elseif endsWith(experiment,"_params.json")
+                % experiment is a json parameter file previously produced by
+                % PupilTracker. Read params and run track non-interactively.
+                jsonPath = char(experiment);
+                paramStruct = jsondecode(fileread(jsonPath));
+                % Derive the .mj2 path from the JSON filename and the stored FileName field
+                [jsonDir, ~, ~] = fileparts(jsonPath);
+                mj2File = fullfile(jsonDir, strrep(paramStruct.FileName, '_params.json', '.mj2'));
+                fileList = string(mj2File);
+
+                obj.Parameters = containers.Map('KeyType', 'char', 'ValueType', 'any');
+                obj.Results    = containers.Map('KeyType', 'char', 'ValueType', 'any');
+                paramStruct = rmfield(paramStruct, 'FileName');
+                obj.Parameters(char(fileList)) = struct2table(paramStruct);
+                fprintf('Loaded parameters from: %s\n', jsonPath);
+                track(obj,visualize=false);
+                return;
+            elseif endsWith(experiment,"_eye.mj2")
+                fileList = experiment;
+            else
+                % experiment is a string with a session name (from nsMeta)
+                % e,g, \root\2024\02\23\252  
+                files = dir(experiment + "*\**\*" + pv.endsWith);
+                fileList = string(fullfile({files.folder},{files.name}))';
+            end
+
             % Pre-populate parameters and results maps (keyed by full file path)
-            fileList = fullfile(folder(ns.Experiment & proj(obj.Files)), fetchn(obj.Files, 'filename'));
+            
             numFiles = numel(fileList);
             emptyRow = table(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
                 'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
@@ -122,7 +171,10 @@ classdef PupilTracker < handle
                             error('Invalid input. Please choose ''o'', ''s'', ''r'', or ''c''.');
                     end
                 end
-            end            
+            end
+            if pv.initialize
+                initialize(obj);
+            end
         end
 
         function disp(obj)
@@ -136,7 +188,7 @@ classdef PupilTracker < handle
 
         function delete(obj)
             % DELETE - Close the figure when the object is deleted.
-            if ~isempty(obj.Figure) && ishandle(obj.Figure)
+            if isgraphics(obj.Figure)
                 close(obj.Figure);
             end
         end
@@ -182,9 +234,9 @@ classdef PupilTracker < handle
                 btnResample = uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Resample Frames', ...
                     'Units', 'normalized', 'Position', [0.01 0.01 0.15 0.05], ...
                     'Enable', 'on', ...
-                    'Callback', @(~,~) sbx.PupilTracker.resampleAndShow(v, obj.Figure));
+                    'Callback', @(~,~) sbx.PupilTracker.resampleAndShow(v, obj.MaxSampleFrames, obj.Figure));
 
-                [avgFrameGray, img] = sbx.PupilTracker.getAverageImg(v);
+                [avgFrameGray, img] = sbx.PupilTracker.getAverageImg(v,obj.MaxSampleFrames);
                 ax = axes(obj.Figure, 'Position', [0 0.07 1 0.93]);
                 imshow(avgFrameGray, 'Parent', ax, 'InitialMagnification', 'fit');
                 instrText = text(ax, 0.5, 0.03, ...
@@ -195,13 +247,13 @@ classdef PupilTracker < handle
                 pupilRoi = drawellipse(ax, 'Color', 'r', 'FaceAlpha', 0.2);
                 try wait(pupilRoi);catch ;end
 
-                if ishandle(obj.Figure) && isvalid(obj.Figure)
+                if isgraphics(obj.Figure)
                     pupilRoi.FaceAlpha = 0.5;
                     pupilRoi.InteractionsAllowed = 'none';
                     instrText.String = 'Draw an ellipse for the outer boundary of the eye. Double-click to confirm. Close window to skip.';
                 end
 
-                if ~ishandle(obj.Figure) || ~isvalid(obj.Figure)
+                if ~isgraphics(obj.Figure)
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
                     continue;
@@ -211,12 +263,12 @@ classdef PupilTracker < handle
                 eyeRoi = drawellipse(ax, 'Color', 'b', 'FaceAlpha', 0.2);
                 try wait(eyeRoi);catch; end
 
-                if ishandle(obj.Figure) && isvalid(obj.Figure)
+                if isgraphics(obj.Figure)
                     eyeRoi.FaceAlpha = 0.5;
                     eyeRoi.InteractionsAllowed = 'none';
                 end
 
-                if ~ishandle(obj.Figure) || ~isvalid(obj.Figure)
+                if ~isgraphics(obj.Figure)
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
                     continue;
@@ -240,8 +292,8 @@ classdef PupilTracker < handle
                 obj.Parameters(currentFile) = table( ...
                     (eyeNotPupilLevel + pupilLevel) / 2, ...     % Threshold: midpoint between pupil and surrounding eye
                     pupilRoi.Center(1), pupilRoi.Center(2), ...  % StartX, StartY
-                    max(2,  round(sqrt(drawnArea / pi) * 0.1)), ... % SeRadius: 10% of radius (min 2)
-                    max(15, round(drawnArea * 0.05)), ...         % MinArea: 5% of drawn area (min 15px)
+                    max(obj.MinRadius,  round(sqrt(drawnArea / pi) * obj.MinRadiusFrac)), ... % SeRadius: 10% of radius (min 2)
+                    max(obj.MinArea, round(drawnArea * obj.MinAreaFrac)), ...         % MinArea: 5% of drawn area (min 4px)
                     eyeRoi.Center(1), eyeRoi.Center(2), ...      % EyeCenterX, EyeCenterY
                     eyeRoi.SemiAxes(1) * 2, eyeRoi.SemiAxes(2) * 2, eyeRoi.RotationAngle, ... % EyeMajorAxis, EyeMinorAxis, EyeOrientation
                     'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
@@ -264,6 +316,39 @@ classdef PupilTracker < handle
                 end
             end
             disp('Finished collecting parameters. Run track() to generate a pupil tracking tsv file.');
+            if isgraphics(obj.Figure)
+                setappdata(obj.Figure, 'runTrack', false);
+                setappdata(obj.Figure, 'runTrackPreview', false);
+                obj.Figure.Name = 'Initialization complete';
+                uicontrol(obj.Figure, 'Style', 'text', ...
+                    'String', 'All files initialized.', ...
+                    'Units', 'normalized', 'Position', [0.1 0.62 0.8 0.08], ...
+                    'FontSize', 13, 'HorizontalAlignment', 'center');
+                uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Track with Preview', ...
+                    'Units', 'normalized', 'Position', [0.35 0.51 0.30 0.09], ...
+                    'BackgroundColor', [0.2 0.5 0.8], 'ForegroundColor', 'white', ...
+                    'FontSize', 12, 'FontWeight', 'bold', ...
+                    'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'runTrackPreview', true));
+                uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Track', ...
+                    'Units', 'normalized', 'Position', [0.35 0.40 0.30 0.09], ...
+                    'BackgroundColor', [0.2 0.6 0.2], 'ForegroundColor', 'white', ...
+                    'FontSize', 12, 'FontWeight', 'bold', ...
+                    'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'runTrack', true));
+                uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Close', ...
+                    'Units', 'normalized', 'Position', [0.35 0.29 0.30 0.08], ...
+                    'FontSize', 11, ...
+                    'Callback', @(~,~) uiresume(obj.Figure));
+                uiwait(obj.Figure);
+            end
+            if isgraphics(obj.Figure) && ...
+                    isappdata(obj.Figure, 'runTrackPreview') && getappdata(obj.Figure, 'runTrackPreview')
+                obj.track(visualize=true);
+            elseif isgraphics(obj.Figure) && ...
+                    isappdata(obj.Figure, 'runTrack') && getappdata(obj.Figure, 'runTrack')
+                close(obj.Figure);
+                obj.Figure = [];
+                obj.track();
+            end
         end
 
         function track(obj, pv)
@@ -303,6 +388,7 @@ classdef PupilTracker < handle
                 end
             end
 
+            trackStart = tic; %#ok<NASGU>
             for vIdx = 1:numVideos
                 videoFile = videoFiles{vIdx};
                 outputFile = strrep(videoFile, '.mj2', '_pupil.tsv');
@@ -330,6 +416,7 @@ classdef PupilTracker < handle
                 end
 
                 estimatedFrames = ceil(v.Duration * v.FrameRate);
+                videoStart = tic;
 
                 % Core Arrays
                 Frames = (1:estimatedFrames)';
@@ -368,6 +455,16 @@ classdef PupilTracker < handle
 
                 while hasFrame(v) && frameCount < pv.maxFrames
                     frameCount = frameCount + 1;
+                    if mod(frameCount, 25) == 0 || frameCount == 1
+                        pctFrames = 100 * frameCount / estimatedFrames;
+                        pctOverall = 100 * (vIdx - 1 + frameCount / estimatedFrames) / numVideos;
+                        elapsedVideo = toc(videoStart);
+                        fpsEst = frameCount / max(elapsedVideo, 0.001);
+                        etaSec = (estimatedFrames - frameCount) / fpsEst + ...
+                            (numVideos - vIdx) * (estimatedFrames / fpsEst);
+                        fprintf('  [File %d/%d]  Frame: %d/%d (%.0f%%)  |  Overall: %.0f%%  |  ETA: %ds   \r', ...
+                            vIdx, numVideos, frameCount, estimatedFrames, pctFrames, pctOverall, round(etaSec));
+                    end
                     frame = readFrame(v);
                     if size(frame, 3) == 3, frame = rgb2gray(frame); end
 
@@ -383,7 +480,7 @@ classdef PupilTracker < handle
                         currentThreshold = pupilThreshold;
                     end
 
-                    if pv.visualize  && ishandle(obj.Figure)
+                    if pv.visualize  && isgraphics(obj.Figure)
                         imshow(frame, 'Parent', gca(obj.Figure),'initialMagnification','fit'); hold(gca(obj.Figure), 'on');
                     end
                     % Image Processing: Search within the defined eye boundary
@@ -434,7 +531,7 @@ classdef PupilTracker < handle
                         BoundingBox_Height(frameCount) = bestBlob.BoundingBox(4);
                     end
 
-                    if pv.visualize && ishandle(obj.Figure)
+                    if pv.visualize && isgraphics(obj.Figure)
                         phi_eye = linspace(0, 2*pi, 50);
                         R_eye = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
                         xy_eye = R_eye * [a*cos(phi_eye); b*sin(phi_eye)];
@@ -465,6 +562,7 @@ classdef PupilTracker < handle
                         drawnow limitrate;
                     end
                 end
+                fprintf('\n');
 
                 % Store results in the map
                 idx = 1:frameCount;
@@ -485,7 +583,7 @@ classdef PupilTracker < handle
                 fprintf('    -> Wrote BIDS sidecar to: %s\n', jsonOutputName);
             end
 
-            if pv.visualize && ishandle(obj.Figure), clf(obj.Figure); end
+            if pv.visualize && isgraphics(obj.Figure), clf(obj.Figure); end
             disp('Batch processing complete!');
         end
 
@@ -514,7 +612,7 @@ classdef PupilTracker < handle
             %   obj.plot(["Area","EM"], normalize=false)
             arguments
                 obj
-                columns (1,:) string {mustBeMember(columns, ["Frame","Centroid_X","Centroid_Y","Area","MajorAxis","MinorAxis", ...
+                columns (1,:) string {mustBeMember(columns, ["Centroid_X","Centroid_Y","Area","MajorAxis","MinorAxis", ...
                     "Eccentricity","Orientation","BBox_X","BBox_Y","BBox_Width","BBox_Height", ...
                     "Threshold","EM","FitQuality","IntensityRatio"])} = "Area"
                 pv.normalize (1,1) logical = true   % Min-max normalize to [0,1] when multiple columns are plotted
@@ -549,7 +647,7 @@ classdef PupilTracker < handle
                                 vals = zeros(size(vals));
                             end
                         end
-                        plot(ax, t.Frame, vals, 'DisplayName', col);
+                        plot(ax, 1:numel(vals), vals, 'DisplayName', col);
                     else
                         warning('Column "%s" not found in Results for "%s".', col, resultFiles{i});
                     end
@@ -571,11 +669,11 @@ classdef PupilTracker < handle
     end
 
     methods (Access = private, Static)
-        function [avgFrameGray, img] = getAverageImg(v)
+        function [avgFrameGray, img] = getAverageImg(v,maxNrSamples)
             % GETAVERAGEIMG - Sample random frames from a VideoReader and return
             % an average of the brightest ones for use in the initialization figure.
             totalFrames = round(v.Duration * v.FrameRate);
-            numSample = min(sbx.PupilTracker.MaxSampleFrames, ceil(totalFrames / 20));
+            numSample = min(maxNrSamples, ceil(totalFrames / 20));
             randomFrameIdx = sort(randperm(totalFrames, numSample));
             fprintf('Sampling %d frames for brightness scoring...\n', numSample);
             img = zeros(v.Height, v.Width, numSample, sprintf('uint%d', v.BitsPerPixel));
@@ -592,10 +690,15 @@ classdef PupilTracker < handle
             avgFrameGray = uint8(mean(img(:,:,topFramesIdx), 3));
         end
 
-        function resampleAndShow(v, fig)
+        function resumeWithFlag(fig, flag, val)
+            setappdata(fig, flag, val);
+            uiresume(fig);
+        end
+
+        function resampleAndShow(v,maxNrSamples,fig)
             % RESAMPLEANDSHOW - Button callback: resample frames and update the
             % image CData in-place so existing ROIs are preserved.
-            [avgNew, ~] = sbx.PupilTracker.getAverageImg(v);
+            [avgNew, ~] = sbx.PupilTracker.getAverageImg(v,maxNrSamples);
             hImg = findobj(fig, 'Type', 'image');
             if ~isempty(hImg)
                 hImg(1).CData = avgNew;
@@ -604,7 +707,6 @@ classdef PupilTracker < handle
         end
 
         function writeBidsJson(fileName)
-            bidsInfo.Frame = struct('Description', 'Frame number from the video file.', 'Units', 'integer');
             bidsInfo.Centroid_X = struct('Description', 'X-coordinate of the pupil centroid.', 'Units', 'pixels');
             bidsInfo.Centroid_Y = struct('Description', 'Y-coordinate of the pupil centroid.', 'Units', 'pixels');
             bidsInfo.Area = struct('Description', 'Area of the detected pupil.', 'Units', 'pixels^2');

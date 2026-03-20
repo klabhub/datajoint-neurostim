@@ -110,20 +110,47 @@ if contains(filename,'_ball')
     channelInfo= struct('name',{'velocity','quality'},'nr',{1,2});
 elseif contains(filename,'_eye')
     switch upper(parms.method)
+        case 'PUPILTRACKER'
+            parmFilename = strrep(filename,'_eye.mj2','_eye_params.json');
+            tsvFilename  = strrep(filename,'_eye.mj2','_eye_pupil.tsv');
+            if exist(parmFilename,"file")
+                % Initialization parameters have been set (in the
+                % sbx.PupilTracker gui)
+                    if ~exist(tsvFilename,"file")
+                        % Tracking has not been completed yet. Do it now                    
+                        sbx.PupilTracker(parmFilename)
+                    end
+                    assert(exist(tsvFilename,"file"),"%s not found. Pupil tracking failed?")
+            else
+                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true)">Click here to initialize pupil tracking </a>',filename,filename);                
+            end
+            P =readtable(tsvFilename,filetype ="text");
+            if isfield(parms,'variables')
+                keepVars = parms.variables;
+                varNames = keepVars;
+            else 
+                keepVars =  1:width(P);
+                varNames = P.Properties.VariableNames;
+            end                
+            signal = P{:,keepVars}; 
+            channelInfo= struct('name',varNames','nr',num2cell(1:size(signal,2))');
         case {'PHASECODE','TWOSTAGE'}
             % Pupil tracking, using imfindcircles
             [x,y,a,quality] = sbxImfindcircles(movie, parms);
+            signal =  [x y a quality];
+            channelInfo= struct('name',{'x','y','a','quality'},'nr',{1,2,3,4});
+
         otherwise
             if startsWith(parms.method,'DLC','IgnoreCase',true)
                 % Any method that starts with DLC is processed with
                 % DLC to allow DLC model comparisons.
                 [x,y,a,quality] =sbxDlc(movie, parms);
+                signal =  [x y a quality];
+                channelInfo= struct('name',{'x','y','a','quality'},'nr',{1,2,3,4});
             else
                 error('Unknown method %s ',parms.method);
             end
     end
-    signal =  [x y a quality];
-    channelInfo= struct('name',{'x','y','a','quality'},'nr',{1,2,3,4});
 else
     error('Unknown SBX movie file %s',filename)
 end
