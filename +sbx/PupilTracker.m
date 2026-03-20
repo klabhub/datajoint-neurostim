@@ -511,13 +511,16 @@ classdef PupilTracker < handle
             % PLOT - Plot one or more result columns for each tracked video.
             %   obj.plot("Area")
             %   obj.plot(["Area","EM","FitQuality"])
+            %   obj.plot(["Area","EM"], normalize=false)
             arguments
                 obj
                 columns (1,:) string {mustBeMember(columns, ["Frame","Centroid_X","Centroid_Y","Area","MajorAxis","MinorAxis", ...
                     "Eccentricity","Orientation","BBox_X","BBox_Y","BBox_Width","BBox_Height", ...
                     "Threshold","EM","FitQuality","IntensityRatio"])} = "Area"
+                pv.normalize (1,1) logical = true   % Min-max normalize to [0,1] when multiple columns are plotted
                 pv.Parent = []
             end
+            doNormalize = pv.normalize && numel(columns) > 1;
             resultFiles = keys(obj.Results);
             if isempty(resultFiles)
                 disp('No results to plot. Run track() or read() first.');
@@ -536,7 +539,17 @@ classdef PupilTracker < handle
                 for c = 1:numel(columns)
                     col = columns(c);
                     if ismember(col, t.Properties.VariableNames)
-                        plot(ax, t.Frame, t.(col), 'DisplayName', col);
+                        vals = t.(col);
+                        if doNormalize
+                            lo = min(vals, [], 'omitnan');
+                            hi = max(vals, [], 'omitnan');
+                            if hi > lo
+                                vals = (vals - lo) ./ (hi - lo);
+                            else
+                                vals = zeros(size(vals));
+                            end
+                        end
+                        plot(ax, t.Frame, vals, 'DisplayName', col);
                     else
                         warning('Column "%s" not found in Results for "%s".', col, resultFiles{i});
                     end
@@ -547,6 +560,9 @@ classdef PupilTracker < handle
                 xlabel(ax, 'Frame');
                 if numel(columns) > 1
                     legend(ax, 'Location', 'best');
+                    if doNormalize
+                        ylabel(ax, 'Normalized value [0–1]');
+                    end
                 else
                     ylabel(ax, columns(1));
                 end
