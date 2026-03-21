@@ -4,7 +4,7 @@ classdef PupilTracker < handle
     % 1.  Create an instance by passing 
     %           an ns.Experiment table
     %           a folder/subject name  (e.g. "data\2024\02\23\252") 
-    %           or a previously created _params.json file 
+    %           or a previously created _pupil.json file 
     %       the code will locate the associated _eye.mj2 files.
     % 2. Run initialize to manually select the location of the pupil and
     %       the eye. Pupil selection is used as a starting point and to
@@ -15,8 +15,7 @@ classdef PupilTracker < handle
     %       
     % 3. Run track. This will use the initialization parameters and do
     %       automated detection for the full movie. Results are saved to a
-    %       .tsv file with a BIDS format json sidecar (both in the same
-    %       folder as the .mj2).
+    %       .tsv file in the same folder as the .mj2.
     %  
     % This process can also be started from nsMeta, by selecting a session
     % and then pressing 'P' for pupil.
@@ -29,7 +28,7 @@ classdef PupilTracker < handle
     % * with a json file but without tsv (i.e. tracking results) will be processed to generate the tsv 
     % * with a tsv file will be loaded into the CChannel table.
     % A subset of output parameters can be defined in the CParm:
-    % ptParms = struct('method','PupilTracker','variables',{{'Centroid_X','Centroid_Y', 'Area' ,'FitQuality' ,'Threshold', 'IntensityRatio'}});
+    % ptParms = struct('method','PupilTracker','variables',{{'X','Y', 'Area' ,'FitQuality' ,'Threshold', 'IntensityRatio'}});
     % eyePrep =struct('ctag','pupil','extension','.mj2','include','%_eye.mj2',...
     %                'fun','sbx.readMovie','description','Use sbxPupilTracker to track the pupil','parms',ptParms);
     % insertIfNew(ns.CParm,eyePrep);
@@ -64,14 +63,14 @@ classdef PupilTracker < handle
                 % Extract files from datajoint experiment table
                 files = experiment * (ns.File & sprintf('filename LIKE "%%%s"',pv.endsWith));
                 fileList = fullfile(folder(experiment & proj(files)), fetchn(files, 'filename'));
-            elseif endsWith(experiment,"_params.json")
+            elseif endsWith(experiment,"_pupil.json")
                 % experiment is a json parameter file previously produced by
                 % PupilTracker. Read params and run track non-interactively.
                 jsonPath = char(experiment);
                 paramStruct = jsondecode(fileread(jsonPath));
                 % Derive the .mj2 path from the JSON filename and the stored FileName field
                 [jsonDir, ~, ~] = fileparts(jsonPath);
-                mj2File = fullfile(jsonDir, strrep(paramStruct.FileName, '_params.json', '.mj2'));
+                mj2File = fullfile(jsonDir, strrep(paramStruct.FileName, '_pupil.json', '.mj2'));
                 fileList = string(mj2File);
 
                 obj.Parameters = containers.Map('KeyType', 'char', 'ValueType', 'any');
@@ -101,7 +100,7 @@ classdef PupilTracker < handle
             for i = 1:numFiles
                 obj.Parameters(char(fileList(i))) = emptyRow;
             end
-            jsonFiles = strrep(fileList, '.mj2', '_params.json'); % Files with initialization parameters
+            jsonFiles = strrep(fileList, '.mj2', '_pupil.json'); % Files with initialization parameters
             outputFiles = strrep(fileList, '.mj2', '_pupil.tsv'); % Files with tracking results
 
             %% Check for existing parameter JSON files
@@ -203,7 +202,7 @@ classdef PupilTracker < handle
             paramFiles = keys(obj.Parameters);
             for i = 1:numel(paramFiles)
                 currentFile = paramFiles{i};
-                jsonFileName = strrep(currentFile, '.mj2', '_params.json');
+                jsonFileName = strrep(currentFile, '.mj2', '_pupil.json');
 
                 % Skip files whose parameters were already loaded (e.g. from constructor)
                 p = obj.Parameters(currentFile);
@@ -420,8 +419,8 @@ classdef PupilTracker < handle
 
                 % Core Arrays
                 Frames = (1:estimatedFrames)';
-                Centroid_X = NaN(estimatedFrames, 1);
-                Centroid_Y = NaN(estimatedFrames, 1);
+                X = NaN(estimatedFrames, 1);
+                Y = NaN(estimatedFrames, 1);
                 PupilArea = NaN(estimatedFrames, 1);
                 ThresholdUsed = NaN(estimatedFrames, 1);
 
@@ -509,8 +508,8 @@ classdef PupilTracker < handle
                         [~, largestIdx] = max([stats_ellipse.Area]);
                         bestEllipse = stats_ellipse(largestIdx);
 
-                        Centroid_X(frameCount) = bestEllipse.Centroid(1);
-                        Centroid_Y(frameCount) = bestEllipse.Centroid(2);
+                        X(frameCount) = bestEllipse.Centroid(1);
+                        Y(frameCount) = bestEllipse.Centroid(2);
                         PupilArea(frameCount) = bestEllipse.Area;
 
                         MajorAxis(frameCount) = bestEllipse.MajorAxisLength;
@@ -569,21 +568,17 @@ classdef PupilTracker < handle
 
                 % Store results in the map
                 idx = 1:frameCount;
-                resultTable = table(Frames(idx), Centroid_X(idx), Centroid_Y(idx), PupilArea(idx), ...
+                resultTable = table(Frames(idx), X(idx), Y(idx), PupilArea(idx), ...
                     MajorAxis(idx), MinorAxis(idx), Eccentricity(idx), Orientation(idx), ...
                     BoundingBox_X(idx), BoundingBox_Y(idx), BoundingBox_Width(idx), BoundingBox_Height(idx), ...
                     ThresholdUsed(idx), EM(idx), FitQuality(idx), IntensityRatio(idx));
-                resultTable.Properties.VariableNames = {'Frame', 'Centroid_X', 'Centroid_Y', 'Area', ...
+                resultTable.Properties.VariableNames = {'Frame', 'X', 'Y', 'Area', ...
                     'MajorAxis', 'MinorAxis', 'Eccentricity', 'Orientation', ...
                     'BBox_X', 'BBox_Y', 'BBox_Width', 'BBox_Height', 'Threshold', 'EM', 'FitQuality', 'IntensityRatio'};
                 obj.Results(videoFile) = resultTable;
 
                 writetable(resultTable, outputFile, 'FileType', 'text', 'Delimiter', '\t');
-                fprintf('    -> Saved data to: %s\n', outputFile);
-
-                jsonOutputName = strrep(outputFile, '.tsv', '.json');
-                sbx.PupilTracker.writeBidsJson(jsonOutputName);
-                fprintf('    -> Wrote BIDS sidecar to: %s\n', jsonOutputName);
+                fprintf('    -> Saved data to: %s\n', outputFile);               
             end
 
             if pv.visualize && isgraphics(obj.Figure), clf(obj.Figure); end
@@ -615,7 +610,7 @@ classdef PupilTracker < handle
             %   obj.plot(["Area","EM"], normalize=false)
             arguments
                 obj
-                columns (1,:) string {mustBeMember(columns, ["Centroid_X","Centroid_Y","Area","MajorAxis","MinorAxis", ...
+                columns (1,:) string {mustBeMember(columns, ["X","Y","Area","MajorAxis","MinorAxis", ...
                     "Eccentricity","Orientation","BBox_X","BBox_Y","BBox_Width","BBox_Height", ...
                     "Threshold","EM","FitQuality","IntensityRatio"])} = "Area"
                 pv.normalize (1,1) logical = true   % Min-max normalize to [0,1] when multiple columns are plotted
@@ -671,6 +666,48 @@ classdef PupilTracker < handle
         end
     end
 
+    methods (Static)
+        function pt = fromFolder(rootFolder)
+            % FROMFOLDER - Recursively find all *_eye.mj2 files under rootFolder
+            % that do not yet have a corresponding *_eye_pupil.json parameter file,
+            % and return a PupilTracker configured for those files.
+            %
+            %   pt = sbx.PupilTracker.fromFolder("D:\data\subject01")
+            arguments
+                rootFolder (1,1) string
+            end
+            allMj2  = dir(fullfile(rootFolder, '**', '*_eye.mj2'));
+            pending = {};
+            for k = 1:numel(allMj2)
+                mj2Path  = fullfile(allMj2(k).folder, allMj2(k).name);
+                jsonPath = strrep(mj2Path, '.mj2', '_pupil.json');
+                if ~isfile(jsonPath)
+                    pending{end+1} = mj2Path; %#ok<AGROW>
+                end
+            end
+            if isempty(pending)
+                fprintf('No untracked *_eye.mj2 files found under %s\n', rootFolder);
+                pt = [];
+                return;
+            end
+            fprintf('Found %d untracked file(s):\n', numel(pending));
+            for k = 1:numel(pending)
+                fprintf('  %s\n', pending{k});
+            end
+            % Construct with the first file (constructor takes a scalar string),
+            % then add the remaining files directly to the Parameters map.
+            pt = sbx.PupilTracker(string(pending{1}));
+            if numel(pending) > 1
+                emptyRow = table(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
+                    'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
+                    'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
+                for k = 2:numel(pending)
+                    pt.Parameters(pending{k}) = emptyRow;
+                end
+            end
+        end
+    end
+
     methods (Access = private, Static)
         function [avgFrameGray, img] = getAverageImg(v,maxNrSamples)
             % GETAVERAGEIMG - Sample random frames from a VideoReader and return
@@ -709,9 +746,13 @@ classdef PupilTracker < handle
             end
         end
 
+        % Seems over the top to write this with every file
+        % jsonOutputName = strrep(outputFile, '.tsv', '.json');
+       % sbx.PupilTracker.writeBidsJson(jsonOutputName);
+       % fprintf('    -> Wrote BIDS sidecar to: %s\n', jsonOutputName);
         function writeBidsJson(fileName)
-            bidsInfo.Centroid_X = struct('Description', 'X-coordinate of the pupil centroid.', 'Units', 'pixels');
-            bidsInfo.Centroid_Y = struct('Description', 'Y-coordinate of the pupil centroid.', 'Units', 'pixels');
+            bidsInfo.X = struct('Description', 'X-coordinate of the pupil centroid.', 'Units', 'pixels');
+            bidsInfo.Y = struct('Description', 'Y-coordinate of the pupil centroid.', 'Units', 'pixels');
             bidsInfo.Area = struct('Description', 'Area of the detected pupil.', 'Units', 'pixels^2');
             bidsInfo.MajorAxis = struct('Description', 'Length of the major axis of the ellipse fitted to the pupil.', 'Units', 'pixels');
             bidsInfo.MinorAxis = struct('Description', 'Length of the minor axis of the ellipse fitted to the pupil.', 'Units', 'pixels');
