@@ -486,12 +486,13 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 tbl (1,1) ns.Experiment {mustHaveRows}
                 plg (1,:) string  =  "cic"
                 pv.prm {mustBeText} = string.empty
-                pv.what (1,:) string {mustBeMember(pv.what,["data" "trialtime" "clocktime" "trial" "all"])} = "all"
+                pv.what (1,:) string = "all"
                 pv.atTrialTime (1,1) double = NaN
                 pv.trial (1,:) double = []
                 pv.asTable (1,1) logical = false
             end
-
+            pv.what = lower(pv.what);
+            mustBeMember(pv.what,["data" "trialtime" "clocktime" "trial" "all"]);
 
             %% Construct the relvar
             if isempty(pv.prm)
