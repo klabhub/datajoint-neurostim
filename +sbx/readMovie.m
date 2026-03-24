@@ -111,8 +111,8 @@ if contains(filename,'_ball')
 elseif contains(filename,'_eye')
     switch upper(parms.method)
         case 'PUPILTRACKER'
-            parmFilename = strrep(filename,'_eye.mj2','_pupil.json');
-            tsvFilename  = strrep(filename,'_eye.mj2','_pupil.tsv');
+            parmFilename = strrep(filename,'_eye.mj2','_eye_pupil.json');
+            tsvFilename  = strrep(filename,'_eye.mj2','_eye_pupil.tsv');
             if exist(parmFilename,"file")
                 % Initialization parameters have been set (in the
                 % sbx.PupilTracker gui)
@@ -122,7 +122,7 @@ elseif contains(filename,'_eye')
                     end
                     assert(exist(tsvFilename,"file"),"%s not found. Pupil tracking failed?")
             else
-                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true)">Click here to initialize pupil tracking </a>',filename,filename);                
+                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true,track=true)">Click here to initialize pupil tracking </a>',filename,filename);                
             end
             P =readtable(tsvFilename,filetype ="text");
             if isfield(parms,'variables')

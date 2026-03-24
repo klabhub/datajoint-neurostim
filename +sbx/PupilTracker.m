@@ -123,6 +123,7 @@ classdef PupilTracker < handle
                 pv.endsWith (1,1) string = "_eye.mj2"
                 pv.overwrite (1,1) logical = false
                 pv.initialize (1,1) logical = false  % Open figure to initialize 
+                pv.track (1,1) logical =false % Run tracking (without visualization)
             end
             if isa(experiment,"ns.Experiment")
                 % Extract files from datajoint experiment table
@@ -239,6 +240,9 @@ classdef PupilTracker < handle
             if pv.initialize
                 initialize(obj);
             end
+            if pv.track
+                track(obj);
+            end
         end
 
         function disp(obj)
@@ -252,7 +256,7 @@ classdef PupilTracker < handle
 
         function delete(obj)
             % DELETE - Close the figure when the object is deleted.
-            if isgraphics(obj.Figure)
+            if ~isempty(obj.Figure)  && isgraphics(obj.Figure)
                 close(obj.Figure);
             end
         end
@@ -350,7 +354,7 @@ classdef PupilTracker < handle
 
                 eyeRoi = drawellipse(ax_eye, 'Color', 'b', 'FaceAlpha', 0.15);
                 try wait(eyeRoi); catch; end
-                if ~isgraphics(obj.Figure)
+                if ~isempty(obj.Figure)  &&  ~isgraphics(obj.Figure)
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
                     continue;
@@ -437,11 +441,11 @@ classdef PupilTracker < handle
                 for t = 1:obj.NrPupilImages
                     pupilRois{t} = drawellipse(sampleAxes{t}, 'Color', 'r', 'FaceAlpha', 0.15);
                     try wait(pupilRois{t}); catch; end
-                    if ~isgraphics(obj.Figure), skipFile = true; break; end
+                    if ~isempty(obj.Figure)  &&  ~isgraphics(obj.Figure), skipFile = true; break; end
                     pupilRois{t}.InteractionsAllowed = 'none';
                     title(sampleAxes{t}, sprintf('Rank %d/%d', quantPos(t), nPool), 'Color', 'w', 'FontSize', 7);
                 end
-                if skipFile || ~isgraphics(obj.Figure)
+                if skipFile || (~isempty(obj.Figure)  &&  ~isgraphics(obj.Figure))
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
                     continue;
@@ -456,7 +460,7 @@ classdef PupilTracker < handle
                 validCentroids = zeros(0, 2);
                 validAreas     = zeros(0, 1);
                 for t = 1:obj.NrPupilImages
-                    if ~isgraphics(pupilRois{t}), continue; end
+                    if  ~isgraphics(pupilRois{t}), continue; end
                     cx_p = pupilRois{t}.Center(1);  cy_p = pupilRois{t}.Center(2);
                     ci = round(cy_p);  cj = round(cx_p);
                     if ci < 1 || ci > v.Height || cj < 1 || cj > v.Width, continue; end
@@ -529,10 +533,10 @@ classdef PupilTracker < handle
                     'Callback', @(~,~) close(obj.Figure));
                 uiwait(obj.Figure);
             end
-            if isgraphics(obj.Figure) && ...
+            if ~isempty(obj.Figure) && isgraphics(obj.Figure) && ...
                     isappdata(obj.Figure, 'runTrackPreview') && getappdata(obj.Figure, 'runTrackPreview')
                 obj.track(visualize=true);
-            elseif isgraphics(obj.Figure) && ...
+            elseif ~isempty(obj.Figure)  && isgraphics(obj.Figure) && ...
                     isappdata(obj.Figure, 'runTrack') && getappdata(obj.Figure, 'runTrack')
                 close(obj.Figure);
                 obj.Figure = [];
@@ -688,7 +692,7 @@ classdef PupilTracker < handle
                     cleanImage   = bwareaopen(imopen(imfill(binaryImage, 'holes'), se), round(thisParameters.Area * obj.MinAreaFrac));
                     
 
-                    if pv.visualize && isgraphics(obj.Figure)
+                    if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure)
                         imshow(frame, 'Parent', gca(obj.Figure), 'initialMagnification', 'fit'); hold(gca(obj.Figure), 'on');
                     end
 
@@ -728,7 +732,7 @@ classdef PupilTracker < handle
                         end
                     end
 
-                    if pv.visualize && isgraphics(obj.Figure)
+                    if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure)
                         phi_eye = linspace(0, 2*pi, 50);
                         R_eye = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
                         xy_eye = R_eye * [a*cos(phi_eye); b*sin(phi_eye)];
@@ -776,7 +780,7 @@ classdef PupilTracker < handle
                 fprintf('    -> Saved data to: %s\n', outputFile);               
             end
 
-            if pv.visualize && isgraphics(obj.Figure), clf(obj.Figure); end
+            if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure), clf(obj.Figure); end
             disp('Batch processing complete!');
         end
 
