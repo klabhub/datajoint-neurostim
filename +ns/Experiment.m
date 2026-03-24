@@ -535,7 +535,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 catch
                     %Ignore;
                 end
-                if pv.what ~="all"
+                if ~ismember("all",pv.what)
                     fields=  fieldnames(out);
                     out = rmfield(out,setdiff(fields, pv.what));
                     if isscalar(pv.what)
