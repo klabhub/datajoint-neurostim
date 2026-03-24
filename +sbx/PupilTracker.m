@@ -120,7 +120,7 @@ classdef PupilTracker < handle
             %   obj = sbx.PupilTracker(experiment)
             arguments
                 experiment (1,1)
-                pv.endsWith (1,1) string = 'eye.mj2"'
+                pv.endsWith (1,1) string = "_eye.mj2"
                 pv.overwrite (1,1) logical = false
                 pv.initialize (1,1) logical = false  % Open figure to initialize 
             end
