@@ -93,7 +93,7 @@ classdef Plugin < dj.Manual
             end
             %Export to NWB format. Called from ns.Experiment/nwbExport only
             for plgTpl = fetch(tbl,'*')'
-                get(ns.PluginParameter&plgTpl,nwbRoot,plgTpl.plugin_name);
+                get(ns.PluginParameter&plgTpl,'nwbRoot',nwbRoot);
             end
         end
 
