@@ -27,14 +27,27 @@ classdef File < dj.Imported
 
     methods (Access = public)
         function ff= open(tbl)
-            % Open a file in the corresponding system application (Windows
-            % only)
+            % Open a file in the corresponding system application.
+            % On Windows, uses winopen. On other platforms, uses a
+            % best-effort system call (open / xdg-open), or errors if
+            % unsupported.
             arguments
                 tbl (1,1) ns.File {mustHaveRows(tbl,1)}
             end
             fname =fetch1(tbl,'filename');
             ff = fullfile(folder(ns.Experiment &tbl),fname);
-            winopen(ff)
+            if ispc
+                winopen(ff);
+            elseif ismac
+                % macOS: use the 'open' command to open with default app
+                system(sprintf('open "%s"', ff));
+            elseif isunix
+                % Linux/Unix: use xdg-open to open with default app
+                system(sprintf('xdg-open "%s"', ff));
+            else
+                error('ns.File:open:UnsupportedPlatform', ...
+                    'Opening files is not supported on this platform.');
+            end
         end
         function nwb(tbl,nwbRoot,pv)
             for tpl = fetch(tbl,'*')'
