@@ -19,6 +19,11 @@ classdef PupilTracker < handle
     %   _pupil.json already exists its parameters are loaded automatically.
     %   Pass overwrite=true to force re-initialization.
     %
+    %  When scanning folders for files, the pupiltracker will ask whether
+    %  existing configuration json files (the output of initialize) should 
+    %  be overwritten, skipped, or read. The same options are given for 
+    % existing tsv files (the output of track).
+    %
     % WORKFLOW
     %   Step 1 — initialize()
     %     Samples MaxSampleFrames random frames, shows their pixel-average,
@@ -36,7 +41,8 @@ classdef PupilTracker < handle
     %     initialization parameters will be generated for that movie).
     %     
     %     The figure now shows 6 (NrPupilImages) individual frames (brightness-ranked,
-    %     blinks discarded)  
+    %     blinks discarded). If the blue eye outline looks wrong (e.g., it 
+    %    overlaps with the eye lid), press restart to redo this file.
     %  
     %     GOAL: draw a red ellipse to capture the (bright) pupil as
     %     closely as you can. Confirm each one with a double click or by pressing
@@ -45,7 +51,7 @@ classdef PupilTracker < handle
     %
     %     Once all have been confirmed, parameters are written to a JSON file next to
     %     the .mj2 movie so they can be reloaded without repeating this
-    %     initialize() step.  Once this step is complete (for all movies),
+    %     initialize() step.  Once this step is complete (for all experiments),
     %     the figure will show a three button interface to start the
     %     (automated) tracking. 
     %    
@@ -336,6 +342,12 @@ classdef PupilTracker < handle
                 end
 
                 %% ---- Sample frames once (reused for both eye and pupil selection) ----
+                skippedFile = false;
+                restartFile = true;
+                while restartFile
+                restartFile = false;
+                setappdata(obj.Figure, 'restartFile', false);
+
                 fprintf('  Sampling %d frames...\n', obj.MaxSampleFrames);
                 framePool = sbx.PupilTracker.getFramePool(v, obj.MaxSampleFrames);
                 brightnessPerFrame = squeeze(mean(framePool,[1 2]));
@@ -353,12 +365,15 @@ classdef PupilTracker < handle
                     'Callback', @(~,~) sbx.PupilTracker.resampleAverageFrame(v, ax_eye, obj.MaxSampleFrames));
 
                 eyeRoi = drawellipse(ax_eye, 'Color', 'b', 'FaceAlpha', 0.15);
-                try wait(eyeRoi); catch; end
-                if ~isempty(obj.Figure)  &&  ~isgraphics(obj.Figure)
+                lEye = addlistener(eyeRoi, 'ROIClicked', @(~,evt) sbx.PupilTracker.roiConfirmIfDouble(obj.Figure, evt));
+                uiwait(obj.Figure);
+                delete(lEye);
+                if ~isempty(obj.Figure) && ~isgraphics(obj.Figure)
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
-                    continue;
+                    skippedFile = true; break;
                 end
+                if getappdata(obj.Figure, 'restartFile'), restartFile = true; continue; end
                 eyeRoi.InteractionsAllowed = 'none';
 
                 % Capture eye parameters before clearing the figure
@@ -395,7 +410,7 @@ classdef PupilTracker < handle
                 end
                 nDiscarded = sum(~keepFrame);
                 if nDiscarded > 0
-                    fprintf('  Discarded %d frame(s) as likely blinks (eye mean > 4 SD below reference).\n', nDiscarded);
+                    fprintf('  Discarded %d frame(s) as likely blinks (eye mean < 5th percentile).\n', nDiscarded);
                 end
                 % Rerank only the kept frames; fall back to all frames if too few survive
                 keptIdx = find(keepFrame);
@@ -435,20 +450,35 @@ classdef PupilTracker < handle
                 end
                 drawnow;
 
-                % Draw pupil ellipses one by one
+                % Draw pupil ellipses one by one (Restart button goes back to eye selection)
+                uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Restart', ...
+                    'Units', 'normalized', 'Position', [0.84 0.01 0.15 0.05], ...
+                    'BackgroundColor', [0.75 0.25 0.1], 'ForegroundColor', 'white', ...
+                    'FontSize', 10, 'FontWeight', 'bold', ...
+                    'Callback', @(~,~) sbx.PupilTracker.restartInitFile(obj.Figure));
                 skipFile  = false;
                 pupilRois = cell(obj.NrPupilImages, 1);
                 for t = 1:obj.NrPupilImages
                     pupilRois{t} = drawellipse(sampleAxes{t}, 'Color', 'r', 'FaceAlpha', 0.15);
-                    try wait(pupilRois{t}); catch; end
-                    if ~isempty(obj.Figure)  &&  ~isgraphics(obj.Figure), skipFile = true; break; end
+                    % Check flags immediately after drawellipse's blocking draw phase.
+                    % If Restart was clicked while the user was drawing, uiresume could not
+                    % interrupt drawellipse's internal event loop — but setappdata still ran.
+                    % Catching the flag here avoids proceeding to uiwait unnecessarily.
+                    if ~isgraphics(obj.Figure), skipFile = true; break; end
+                    if getappdata(obj.Figure, 'restartFile'), restartFile = true; break; end
+                    lPupil = addlistener(pupilRois{t}, 'ROIClicked', @(~,evt) sbx.PupilTracker.roiConfirmIfDouble(obj.Figure, evt));
+                    uiwait(obj.Figure);
+                    delete(lPupil);
+                    if ~isgraphics(obj.Figure), skipFile = true; break; end
+                    if getappdata(obj.Figure, 'restartFile'), restartFile = true; break; end
                     pupilRois{t}.InteractionsAllowed = 'none';
                     title(sampleAxes{t}, sprintf('Rank %d/%d', quantPos(t), nPool), 'Color', 'w', 'FontSize', 7);
                 end
+                if restartFile, continue; end  % while restartFile — restart from Phase 1
                 if skipFile || (~isempty(obj.Figure)  &&  ~isgraphics(obj.Figure))
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
-                    continue;
+                    skippedFile = true; break;
                 end
 
                 %% --- Extract and Calculate Pupil Parameters ---
@@ -476,9 +506,8 @@ classdef PupilTracker < handle
                 end
 
                 if isempty(allPupilPixels)
-                    warning('No valid pupil ellipses drawn inside the eye boundary for %s. Skipping...', currentFile);
-                    remove(obj.Parameters, currentFile);
-                    continue;
+                    warning('No valid pupil ellipses drawn inside the eye boundary for %s. Restarting...', currentFile);
+                    restartFile = true; continue;  % while restartFile
                 end
 
                 % Store all parameters as a single row in the map
@@ -507,6 +536,8 @@ classdef PupilTracker < handle
                     fclose(fid);
                     fprintf('  -> Saved parameters to: %s\n', jsonFileName);
                 end
+                end  % while restartFile
+                if skippedFile, continue; end  % for i — skip to next file
             end
             disp('Finished collecting parameters. Run track() to generate a pupil tracking tsv file.');
             if isgraphics(obj.Figure)
@@ -912,6 +943,28 @@ classdef PupilTracker < handle
         function resumeWithFlag(fig, flag, val)
             setappdata(fig, flag, val);
             uiresume(fig);
+        end
+
+        function restartInitFile(fig)
+            % RESTARTINITFILE - Restart button callback: sets the restart flag
+            % and resumes uiwait so the current phase unblocks immediately.
+            % Disable the button immediately to prevent a rapid double-click
+            % from queuing a second uiresume that would bypass Phase 1.
+            if isgraphics(fig)
+                btn = findobj(fig, 'Style', 'pushbutton', 'String', 'Restart');
+                if ~isempty(btn), set(btn, 'Enable', 'off'); end
+                setappdata(fig, 'restartFile', true);
+                uiresume(fig);
+            end
+        end
+
+        function roiConfirmIfDouble(fig, evt)
+            % Confirm (advance to next step) when the user double-clicks the ROI.
+            % images.roi.ROIClickedEventData uses 'double' for double-clicks
+            % (distinct from the figure SelectionType which uses 'open').
+            if strcmpi(evt.SelectionType, 'double') && isgraphics(fig)
+                uiresume(fig);
+            end
         end
 
         function resampleSingleFrame(v, ax)
