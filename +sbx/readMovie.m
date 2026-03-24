@@ -111,8 +111,8 @@ if contains(filename,'_ball')
 elseif contains(filename,'_eye')
     switch upper(parms.method)
         case 'PUPILTRACKER'
-            parmFilename = strrep(filename,'_eye.mj2','_eye_params.json');
-            tsvFilename  = strrep(filename,'_eye.mj2','_eye_pupil.tsv');
+            parmFilename = strrep(filename,'_eye.mj2','_pupil.json');
+            tsvFilename  = strrep(filename,'_eye.mj2','_pupil.tsv');
             if exist(parmFilename,"file")
                 % Initialization parameters have been set (in the
                 % sbx.PupilTracker gui)
