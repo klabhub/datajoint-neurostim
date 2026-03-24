@@ -1,37 +1,103 @@
 classdef PupilTracker < handle
-    % A class for pupil tracking in Scanbox experiments.
-    % Usage:
-    % 1.  Create an instance by passing 
-    %           an ns.Experiment table
-    %           a folder/subject name  (e.g. "data\2024\02\23\252") 
-    %           or a previously created _pupil.json file 
-    %       the code will locate the associated _eye.mj2 files.
-    % 2. Run initialize to manually select the location of the pupil and
-    %       the eye. Pupil selection is used as a starting point and to
-    %       determine the typical brightness in the pupil. Eye selection is
-    %       used to avoid searching for the pupil in impossible locations.
-    %      The output of this process is saved to a JSON file next to the
-    %      mj2 movie and can be re-read at a later time. 
-    %       
-    % 3. Run track. This will use the initialization parameters and do
-    %       automated detection for the full movie. Results are saved to a
-    %       .tsv file in the same folder as the .mj2.
-    %  
-    % This process can also be started from nsMeta, by selecting a session
-    % and then pressing 'P' for pupil.
+    % sbx.PupilTracker  Interactive pupil tracker for Scanbox eye movies.
     %
-    % To use this in DataJoint ns.C setup the CParm as follows. (A
-    % selection of the parameters estimated by the tracker is loaded into
-    % the CChannel table).
-    % With populate(ns.C,'ctag="pupil"'), movie files 
-    % * without an associated json file will generate an error with a link to run sbx.PupilTracker,
-    % * with a json file but without tsv (i.e. tracking results) will be processed to generate the tsv 
-    % * with a tsv file will be loaded into the CChannel table.
-    % A subset of output parameters can be defined in the CParm:
-    % ptParms = struct('method','PupilTracker','variables',{{'X','Y', 'Area' ,'FitQuality' ,'Threshold', 'IntensityRatio'}});
-    % eyePrep =struct('ctag','pupil','extension','.mj2','include','%_eye.mj2',...
-    %                'fun','sbx.readMovie','description','Use sbxPupilTracker to track the pupil','parms',ptParms);
-    % insertIfNew(ns.CParm,eyePrep);
+    % QUICK START
+    %   pt = sbx.PupilTracker(experiment)   % create object and queue files
+    %   pt.initialize()                     % interactive parameter setup
+    %   pt.track()                          % run automated tracking
+    %
+    % CONSTRUCTION
+    %   pt = sbx.PupilTracker(experiment)
+    %   pt = sbx.PupilTracker(experiment, overwrite=true)
+    %   pt = sbx.PupilTracker(experiment, initialize=true)
+    %
+    %   'experiment' can be:
+    %     - an ns.Experiment table row
+    %     - a folder/subject path (e.g. "data\2024\02\23\252")
+    %     - the full path to an existing _pupil.json parameter file
+    %   The constructor locates all associated _eye.mj2 files. If a
+    %   _pupil.json already exists its parameters are loaded automatically.
+    %   Pass overwrite=true to force re-initialization.
+    %
+    % WORKFLOW
+    %   Step 1 — initialize()
+    %     Samples MaxSampleFrames random frames, shows their pixel-average,
+    %     and asks you to draw a blue ellipse around the eye region.
+    %     
+    %     GOAL: draw an ellipse where the pupil might appear. Try to mark
+    %     the eye ball, and avoid the eye lid because that is often quite
+    %     bright  and could be mistaken for the pupil. If the image is
+    %     unclear, press the button to read a new random set of 100 frames.
+    %     Sometimes pressing the "new average" button a few times is needed
+    %     to get a good idea of the outline of the eye ball. Double click
+    %     or press enter to continue.
+    %
+    %     To skip a file, close the figure (no json file with
+    %     initialization parameters will be generated for that movie).
+    %     
+    %     The figure now shows 6 (NrPupilImages) individual frames (brightness-ranked,
+    %     blinks discarded)  
+    %  
+    %     GOAL: draw a red ellipse to capture the (bright) pupil as
+    %     closely as you can. Confirm each one with a double click or by pressing
+    %     enter. If no pupil is visible, then draw the red "pupil" ellipse 
+    %     outside the blue eye ellipse; the subsequent code will ignore that image.
+    %
+    %     Once all have been confirmed, parameters are written to a JSON file next to
+    %     the .mj2 movie so they can be reloaded without repeating this
+    %     initialize() step.  Once this step is complete (for all movies),
+    %     the figure will show a three button interface to start the
+    %     (automated) tracking. 
+    %    
+    %
+    %   Step 2 — track()
+    %     Reads every frame (or every frameStep-th frame), thresholds,
+    %     morphologically cleans the binary image, and fits both a region-
+    %     props ellipse and a bounding-box blob. Results are written to a
+    %     tab-separated .tsv file next to the .mj2 movie.
+    %
+    %    To get an idea of how well the tracking works, click on Track
+    %     with Preview. You can close the preview figure at any time; 
+    %     tracking will continue (and be much faster).
+    %         
+    %
+    % RESULTS TABLE COLUMNS
+    %   Frame        – original video frame index
+    %   X, Y         – pupil centroid (pixels)
+    %   Area         – pupil area (pixels)
+    %   MajorAxis    – ellipse major axis length (pixels)
+    %   MinorAxis    – ellipse minor axis length (pixels)
+    %   Eccentricity – ellipse eccentricity (0=circle, 1=line)
+    %   Orientation  – ellipse orientation (degrees)
+    %   BBox         – bounding box [x y w h] of the blob
+    %   Threshold    – threshold used for this frame (reserved, currently NaN)
+    %   FitQuality   – ratio of blob area to fitted ellipse area (1=perfect)
+    %   EllipseIR    – ellipse mean intensity / mean eye intensity
+    %   BlobIR       – blob mean intensity / mean eye intensity
+    %
+    % nsMeta INTEGRATION
+    %  In nsMeta, pressing 'P' with a session selected will construct a PupilTracker object
+    %  for that session's eye movies and launch the interactive initialization routine.
+    %
+    % DATAJOINT INTEGRATION
+    %   populate(ns.C,'ctag="pupil"') will:
+    %     * raise an error (with link) if no JSON exists yet
+    %     * run track() if a JSON exists but no TSV
+    %     * load the TSV into the CChannel table if both files exist
+    %
+    %   Example CParm setup:
+    %     ptParms = struct('method','PupilTracker', ...
+    %                      'variables',{{"X","Y","Area","FitQuality", ...
+    %                                    "Threshold","IntensityRatio"}});
+    %     eyePrep = struct('ctag','pupil','extension','.mj2', ...
+    %                      'include','%_eye.mj2','fun','sbx.readMovie', ...
+    %                      'description','Use sbx.PupilTracker', ...
+    %                      'parms',ptParms);
+    %     insertIfNew(ns.CParm, eyePrep);
+    %
+    % See also  sbx.PupilTracker.initialize, sbx.PupilTracker.track,
+    %           sbx.PupilTracker.read, sbx.PupilTracker.plot
+    %
     % BK - Mar 2026
     properties (Constant)
         FigureTag = 'sbx.PupilTracker.Figure'  % Unique name of the reused figure
@@ -42,11 +108,10 @@ classdef PupilTracker < handle
         Results     % Map (filename -> results table) with tracking results for each video
         Figure      % Handle to the GUI figure
 
-        MaxSampleFrames = 50  % Frames used in the interactive initialization routine
-        MinRadius       = 2   % Pixels
-        MinRadiusFrac   = 0.1  % Fraction of the radius drawn by the user
-        MinArea         = 4  % Pixels
-        MinAreaFrac     = 0.05  % Fraction of the area drawn by the user.
+        MaxSampleFrames = 100  % Frames used in the interactive initialization routine
+        MinRadius       = 2   % Pixels used with imopen to clean small elements.        
+        MinAreaFrac     = 0.05  % Fraction of the median pupil area drawn by the user.
+        NrPupilImages   = 6;   % Number of frames shown in the interactive initialization routine for pupil selection (ranked by brightness within the eye)
     end
 
     methods
@@ -93,8 +158,8 @@ classdef PupilTracker < handle
             
             numFiles = numel(fileList);
             emptyRow = table(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-                'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
-                'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
+                'VariableNames', {'Threshold', 'Floor', 'StartX', 'StartY', 'Area', ...
+                'EyeX', 'EyeY', 'EyeMajor', 'EyeMinor', 'EyeOrientation'});
             obj.Parameters = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.Results    = containers.Map('KeyType', 'char', 'ValueType', 'any');
             for i = 1:numFiles
@@ -192,10 +257,47 @@ classdef PupilTracker < handle
             end
         end
 
-        function initialize(obj)
-            % INITIALIZE - Interactively define tracking parameters for multiple videos.
+        function initialize(obj,pv)
+            % INITIALIZE  Interactively set tracking parameters for all queued videos.
+            %
+            %   obj.initialize()
+            %   obj.initialize(overwrite=true)
+            %
+            % For each video the routine proceeds in two phases:
+            %
+            %   Phase 1 — Eye boundary
+            %     Displays the pixel-average of MaxSampleFrames random frames.
+            %     Draw a blue ellipse around the eye and double-click to confirm.
+            %     "New Average" resamples and recomputes the average in-place.
+            %     Close the window to skip that file.
+            %
+            %   Phase 2 — Pupil selection
+            %     The same frame pool is blink-filtered (frames whose mean
+            %     eye-region brightness falls below the 5th percentile of the
+            %     average frame are discarded) and then NrPupilImages frames
+            %     are chosen at equal intervals across the remaining brightness
+            %     rank. Draw a red ellipse over the pupil in each tile.
+            %     Drawing outside the blue eye ellipse silently skips that tile.
+            %
+            % Parameters saved to JSON (reloaded automatically on next construction):
+            %   Threshold      – detection threshold (midpoint of pupil / eye medians)
+            %   Floor          – median eye-region intensity
+            %   StartX, StartY – median pupil centroid across drawn ellipses
+            %   Area           – median geometric area of drawn ellipses
+            %   EyeX, EyeY     – eye ellipse centre
+            %   EyeMajor, EyeMinor, EyeOrientation – eye ellipse dimensions
+            %
+            % Options:
+            %   overwrite (logical, default false) — re-initialize files that
+            %     already have parameters.
+            %
+            % After all files are processed an optional confirmation dialog
+            % offers to run track() immediately (with or without preview).
+            %
+            % See also  sbx.PupilTracker, sbx.PupilTracker.track
             arguments
-                obj                
+                obj           
+                pv.overwrite (1,1) logical = false
             end
 
             disp('Starting batch parameter initialization...');
@@ -206,7 +308,7 @@ classdef PupilTracker < handle
 
                 % Skip files whose parameters were already loaded (e.g. from constructor)
                 p = obj.Parameters(currentFile);
-                if p.Threshold ~= 0 
+                if p.Threshold ~= 0  && ~ pv.overwrite
                     fprintf('  [%d/%d] Parameters already set, skipping: %s\n', i, numel(paramFiles), currentFile);
                     continue;
                 end
@@ -222,81 +324,169 @@ classdef PupilTracker < handle
                 [~, fname, ext] = fileparts(currentFile);
                 obj.Figure = findobj('Type', 'figure', 'Tag', obj.FigureTag);
                 if isempty(obj.Figure)
-                    obj.Figure = figure('Name', [fname ext], 'Tag', obj.FigureTag, 'units', 'normalized', 'position', [0.25 0.25 0.5 0.5]);
+                    obj.Figure = figure('Name', [fname ext], 'Tag', obj.FigureTag, 'units', 'normalized', 'position', [0.05 0.05 0.9 0.9]);
                 else
                     figure(obj.Figure); % Bring to front
                     clf(obj.Figure);
                     obj.Figure.Name = [fname ext];
                 end
 
-                % Add Resample, Confirm, and Skip buttons
-                btnResample = uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Resample Frames', ...
+                %% ---- Sample frames once (reused for both eye and pupil selection) ----
+                fprintf('  Sampling %d frames...\n', obj.MaxSampleFrames);
+                framePool = sbx.PupilTracker.getFramePool(v, obj.MaxSampleFrames);
+                brightnessPerFrame = squeeze(mean(framePool,[1 2]));
+                keep = brightnessPerFrame > prctile(brightnessPerFrame,50);
+                eyeSelFrame = uint8(mean(double(framePool(:,:,keep)), 3));
+
+                %% ---- Phase 1: Eye selection on averaged frame -------------------------
+                clf(obj.Figure);
+                ax_eye = axes(obj.Figure, 'Position', [0 0.07 1 0.93]);
+                hImg = imshow(eyeSelFrame, 'Parent', ax_eye, 'InitialMagnification', 'fit');
+                title(ax_eye, 'Draw eye boundary (blue). Double-click to confirm. Close window to skip.', ...
+                    'Color', 'black', 'FontSize', 10);
+                uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'New Average', ...
                     'Units', 'normalized', 'Position', [0.01 0.01 0.15 0.05], ...
-                    'Enable', 'on', ...
-                    'Callback', @(~,~) sbx.PupilTracker.resampleAndShow(v, obj.MaxSampleFrames, obj.Figure));
+                    'Callback', @(~,~) sbx.PupilTracker.resampleAverageFrame(v, ax_eye, obj.MaxSampleFrames));
 
-                [avgFrameGray, img] = sbx.PupilTracker.getAverageImg(v,obj.MaxSampleFrames);
-                ax = axes(obj.Figure, 'Position', [0 0.07 1 0.93]);
-                imshow(avgFrameGray, 'Parent', ax, 'InitialMagnification', 'fit');
-                instrText = text(ax, 0.5, 0.03, ...
-                    sprintf('Draw an ellipse over the pupil. Double-click to confirm. Close window to skip.'), ...
-                    'Units', 'normalized', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
-                    'Color', 'yellow', 'FontSize', 11, 'FontWeight', 'bold', ...
-                    'BackgroundColor', [0 0 0 0.5]);
-                pupilRoi = drawellipse(ax, 'Color', 'r', 'FaceAlpha', 0.2);
-                try wait(pupilRoi);catch ;end
-
-                if isgraphics(obj.Figure)
-                    pupilRoi.FaceAlpha = 0.5;
-                    pupilRoi.InteractionsAllowed = 'none';
-                    instrText.String = 'Draw an ellipse for the outer boundary of the eye. Double-click to confirm. Close window to skip.';
-                end
-
+                eyeRoi = drawellipse(ax_eye, 'Color', 'b', 'FaceAlpha', 0.15);
+                try wait(eyeRoi); catch; end
                 if ~isgraphics(obj.Figure)
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
                     continue;
                 end
-                btnResample.Enable = 'off';
+                eyeRoi.InteractionsAllowed = 'none';
 
-                eyeRoi = drawellipse(ax, 'Color', 'b', 'FaceAlpha', 0.2);
-                try wait(eyeRoi);catch; end
+                % Capture eye parameters before clearing the figure
+                eyeCenter   = eyeRoi.Center;
+                eyeSemiAxes = eyeRoi.SemiAxes;
+                eyeAngle    = eyeRoi.RotationAngle;
 
-                if isgraphics(obj.Figure)
-                    eyeRoi.FaceAlpha = 0.5;
-                    eyeRoi.InteractionsAllowed = 'none';
+                % Build eye mask geometrically (matches track() sign convention)
+                [Xg, Yg]  = meshgrid(1:v.Width, 1:v.Height);
+                a_eye     = eyeSemiAxes(1);  b_eye = eyeSemiAxes(2);
+                theta_eye = -deg2rad(eyeAngle);
+                eyeMask   = (((Xg - eyeCenter(1)) * cos(theta_eye) + (Yg - eyeCenter(2)) * sin(theta_eye)).^2 / a_eye^2 + ...
+                             ((Xg - eyeCenter(1)) * sin(theta_eye) - (Yg - eyeCenter(2)) * cos(theta_eye)).^2 / b_eye^2) <= 1;
+
+                
+                               
+                %% ---- Phase 2: rank frames by brightness inside the eye ---------------
+                fprintf('  Ranking %d frames by eye-region brightness...\n', size(framePool, 3));
+                nPool     = size(framePool, 3);
+
+                % Discard frames whose mean eye-region intensity is below the 5th percentile of the 
+                % averaged eye frame.  These are probably blinks
+                eyeSelFrame = hImg(1).CData;
+                eyePixelsRef  = double(eyeSelFrame(eyeMask));                
+                eyeFloorRef   = prctile(eyePixelsRef,5);
+                eyeBrightness = zeros(nPool, 1);
+                keepFrame     = true(nPool, 1);
+                for f = 1:nPool
+                    frameSlice       = double(framePool(:,:,f));
+                    eyeBrightness(f) = mean(frameSlice(eyeMask));
+                    if eyeBrightness(f) < eyeFloorRef
+                        keepFrame(f) = false;
+                    end
                 end
+                nDiscarded = sum(~keepFrame);
+                if nDiscarded > 0
+                    fprintf('  Discarded %d frame(s) as likely blinks (eye mean > 4 SD below reference).\n', nDiscarded);
+                end
+                % Rerank only the kept frames; fall back to all frames if too few survive
+                keptIdx = find(keepFrame);
+                if numel(keptIdx) < obj.NrPupilImages
+                    warning('Too few frames passed the blink filter (%d); using all frames.', numel(keptIdx));
+                    keptIdx = 1:nPool;
+                end
+                [~, rankAmongKept] = sort(eyeBrightness(keptIdx));   % ascending within kept set
+                rankOrder          = keptIdx(rankAmongKept);
 
-                if ~isgraphics(obj.Figure)
+                % Pick equally distributed over the rank range
+                
+                nKept    = numel(rankOrder);
+                quantPos = round(linspace(1, nKept, obj.NrPupilImages));
+                tileIdx  = rankOrder(quantPos);
+                framePool = framePool(:,:,tileIdx);
+                % Eye outline coordinates for overlay (same rotation as track())
+                phi_eye = linspace(0, 2*pi, 100);
+                alpha   = deg2rad(eyeAngle);
+                R_eye   = [cos(alpha) sin(alpha); -sin(alpha) cos(alpha)];
+                xy_eye  = R_eye * [a_eye * cos(phi_eye); b_eye * sin(phi_eye)];
+
+                %% Show tiled frames with eye outline
+                clf(obj.Figure);
+                tLayout = tiledlayout(obj.Figure, "Flow", 'TileSpacing', 'compact', 'Padding', 'compact');
+                sampleAxes   = cell(obj.NrPupilImages, 1);               
+                for t = 1:obj.NrPupilImages
+                    sampleAxes{t}   = nexttile(tLayout);                    
+                    imshow(framePool(:,:,t), 'Parent', sampleAxes{t}, 'InitialMagnification', 'fit');
+                    hold(sampleAxes{t}, 'on');
+                    plot(sampleAxes{t}, xy_eye(1,:) + eyeCenter(1), xy_eye(2,:) + eyeCenter(2), ...
+                        'b-', 'LineWidth', 1.5);
+                    hold(sampleAxes{t}, 'off');
+                    title(sampleAxes{t}, ...
+                        sprintf('Rank %d/%d — draw pupil (red). Double-click to confirm.', quantPos(t), nKept), ...
+                        'Color', 'black', 'FontSize', 7);
+                end
+                drawnow;
+
+                % Draw pupil ellipses one by one
+                skipFile  = false;
+                pupilRois = cell(obj.NrPupilImages, 1);
+                for t = 1:obj.NrPupilImages
+                    pupilRois{t} = drawellipse(sampleAxes{t}, 'Color', 'r', 'FaceAlpha', 0.15);
+                    try wait(pupilRois{t}); catch; end
+                    if ~isgraphics(obj.Figure), skipFile = true; break; end
+                    pupilRois{t}.InteractionsAllowed = 'none';
+                    title(sampleAxes{t}, sprintf('Rank %d/%d', quantPos(t), nPool), 'Color', 'w', 'FontSize', 7);
+                end
+                if skipFile || ~isgraphics(obj.Figure)
                     fprintf('  Skipped (figure closed): %s\n', currentFile);
                     remove(obj.Parameters, currentFile);
                     continue;
                 end
 
-                % --- Extract and Calculate Parameters ---
-                pupilMask = createMask(pupilRoi);
-                eyeMask = createMask(eyeRoi);
+                %% --- Extract and Calculate Pupil Parameters ---
+                % Collect pupil pixels only from ellipses whose centroid is inside the eye mask
+                % This allows users to skip one frame by drawing outside
+                % the blue ellipse
+                allPupilPixels = [];
+                allEyePixels = [];             
+                validCentroids = zeros(0, 2);
+                validAreas     = zeros(0, 1);
+                for t = 1:obj.NrPupilImages
+                    if ~isgraphics(pupilRois{t}), continue; end
+                    cx_p = pupilRois{t}.Center(1);  cy_p = pupilRois{t}.Center(2);
+                    ci = round(cy_p);  cj = round(cx_p);
+                    if ci < 1 || ci > v.Height || cj < 1 || cj > v.Width, continue; end
+                    if ~eyeMask(ci, cj), continue; end   % centroid must lie inside the eye
+                    maskT  = createMask(pupilRois{t});
+                    thisFrame = framePool(:,:,t);
+                    thisEyePixels = double(thisFrame(eyeMask & ~maskT));
+                    thisPupilPixels = double(thisFrame(maskT));                    
+                    allPupilPixels             = [allPupilPixels; thisPupilPixels];           %#ok<AGROW>
+                    allEyePixels             = [allEyePixels             ; thisEyePixels];           %#ok<AGROW>                    
+                    validCentroids(end+1, :)   = [cx_p, cy_p];                      %#ok<AGROW>
+                    validAreas(end+1)           = pi * prod(pupilRois{t}.SemiAxes);  %#ok<AGROW>
+                end
 
-                % Calculate threshold from all sampled frames in the masked region
-                % img is provided by getAverageImg
-                eyeNotPupil = img(repmat(eyeMask & ~pupilMask, [1, 1, size(img, 3)]));
-                eyeNotPupilLevel = mean(eyeNotPupil, "all");
-                pupil = img(repmat(pupilMask, [1, 1, size(img, 3)]));
-                pupilLevel = mean(pupil, "all");
-
-                % Dynamic Parameter Estimation
-                drawnArea = sum(pupilMask(:));
+                if isempty(allPupilPixels)
+                    warning('No valid pupil ellipses drawn inside the eye boundary for %s. Skipping...', currentFile);
+                    remove(obj.Parameters, currentFile);
+                    continue;
+                end
 
                 % Store all parameters as a single row in the map
                 obj.Parameters(currentFile) = table( ...
-                    (eyeNotPupilLevel + pupilLevel) / 2, ...     % Threshold: midpoint between pupil and surrounding eye
-                    pupilRoi.Center(1), pupilRoi.Center(2), ...  % StartX, StartY
-                    max(obj.MinRadius,  round(sqrt(drawnArea / pi) * obj.MinRadiusFrac)), ... % SeRadius: 10% of radius (min 2)
-                    max(obj.MinArea, round(drawnArea * obj.MinAreaFrac)), ...         % MinArea: 5% of drawn area (min 4px)
-                    eyeRoi.Center(1), eyeRoi.Center(2), ...      % EyeCenterX, EyeCenterY
-                    eyeRoi.SemiAxes(1) * 2, eyeRoi.SemiAxes(2) * 2, eyeRoi.RotationAngle, ... % EyeMajorAxis, EyeMinorAxis, EyeOrientation
-                    'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
-                    'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
+                    (median(allPupilPixels)+median(allEyePixels))/2, ...            % Threshold: midpoint of pupil/eye medians
+                    median(allEyePixels), ...                                      % EyeMedian: median eye-region intensity (threshold floor)                    
+                    median(validCentroids(:, 1)), median(validCentroids(:, 2)), ...  % StartX, StartY: mean centroid of valid pupil ellipses
+                    median(validAreas), ...                                      % TargetArea: mean geometric area of drawn pupil ellipses
+                    eyeCenter(1), eyeCenter(2), ...                     % EyeCenterX, EyeCenterY
+                    eyeSemiAxes(1) * 2, eyeSemiAxes(2) * 2, eyeAngle, ... % EyeMajorAxis, EyeMinorAxis, EyeOrientation                    
+                    'VariableNames', {'Threshold', 'Floor','StartX', 'StartY', 'Area',... 
+                                        'EyeX', 'EyeY', 'EyeMajor', 'EyeMinor', 'EyeOrientation'});
 
                 % Do not close the figure, just clear it for the next one
                 clf(obj.Figure);
@@ -336,7 +526,7 @@ classdef PupilTracker < handle
                 uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Close', ...
                     'Units', 'normalized', 'Position', [0.35 0.29 0.30 0.08], ...
                     'FontSize', 11, ...
-                    'Callback', @(~,~) uiresume(obj.Figure));
+                    'Callback', @(~,~) close(obj.Figure));
                 uiwait(obj.Figure);
             end
             if isgraphics(obj.Figure) && ...
@@ -351,12 +541,41 @@ classdef PupilTracker < handle
         end
 
         function track(obj, pv)
-            % TRACK - Run pupil tracking on all videos.
+            % TRACK  Run automated pupil tracking on all queued videos.
+            %
+            %   obj.track()
+            %   obj.track(visualize=true)
+            %   obj.track(maxFrames=500)
+            %   obj.track(frameStep=3)
+            %
+            % For each video the method:
+            %   1. Reads frames indexed by frameIndices = 1:frameStep:NumFrames
+            %   2. Applies the threshold from initialize() within the eye mask
+            %   3. Cleans the binary image with imopen + imfill + bwareaopen
+            %   4. Calls regionprops to fit an ellipse and a bounding-box blob
+            %   5. Selects the best region via composite rank (centroid distance,
+            %      area deviation, mean intensity) using bestRegion()
+            %   6. Stores all results as a tab-separated .tsv file next to the
+            %      .mj2 movie and in obj.Results
+            %
+            % Options:
+            %   visualize (logical, default false) — show each processed frame
+            %     with the fitted ellipse and bounding box overlaid.
+            %   maxFrames (double, default inf) — stop after this many processed
+            %     frames per video (useful for quick sanity checks).
+            %   frameStep (double, default 1) — process every n-th frame;
+            %     e.g. frameStep=5 processes frames 1, 6, 11, … and runs ~5x
+            %     faster at the cost of temporal resolution.
+            %
+            % Output columns — see help(sbx.PupilTracker) for the full list.
+            %
+            % See also  sbx.PupilTracker, sbx.PupilTracker.initialize,
+            %           sbx.PupilTracker.read, sbx.PupilTracker.plot
             arguments
                 obj
-                pv.minThreshold (1,1) double = 0.1 % Fraction of the initial threshold to allow when adjusting
                 pv.visualize (1,1) logical = false  % Set to true to show the frames and the detected regions
                 pv.maxFrames (1,1) double = inf  % For quick debugging; process only up to maxFrames
+                pv.frameStep (1,1) double = 1    % Step size between processed frames (>1 fast-forwards)
             end
 
             if obj.Parameters.Count == 0
@@ -391,19 +610,9 @@ classdef PupilTracker < handle
             for vIdx = 1:numVideos
                 videoFile = videoFiles{vIdx};
                 outputFile = strrep(videoFile, '.mj2', '_pupil.tsv');
-                p = obj.Parameters(videoFile);
+                thisParameters = obj.Parameters(videoFile);
 
-                % Load Dynamic Parameters
-                pupilThreshold = p.Threshold;
-                se = strel('disk', p.SeRadius);
-                minPupilArea = p.MinArea;
-
-                % Eye boundary parameters
-                eyeCenterX = p.EyeCenterX;
-                eyeCenterY = p.EyeCenterY;
-                eyeMajorAxis = p.EyeMajorAxis;
-                eyeMinorAxis = p.EyeMinorAxis;
-                eyeOrientation = p.EyeOrientation;
+                se = strel('disk', obj.MinRadius);
 
                 fprintf('\n[%d/%d] Processing: %s\n \t\t -> %s\n', vIdx, numVideos, videoFile, outputFile);
 
@@ -413,131 +622,117 @@ classdef PupilTracker < handle
                     warning('Could not read %s. Skipping...', videoFile);
                     continue;
                 end
-
-                estimatedFrames = ceil(v.Duration * v.FrameRate);
+                
+                frameIndices = 1 : pv.frameStep : min(v.NumFrames, pv.maxFrames);
+                nFrames = numel(frameIndices);
+                lastFrame = frameIndices(end);
                 videoStart = tic;
 
                 % Core Arrays
-                Frames = (1:estimatedFrames)';
-                X = NaN(estimatedFrames, 1);
-                Y = NaN(estimatedFrames, 1);
-                PupilArea = NaN(estimatedFrames, 1);
-                ThresholdUsed = NaN(estimatedFrames, 1);
+                Frames = NaN(nFrames, 1);
+                X = NaN(nFrames, 1);
+                Y = NaN(nFrames, 1);
+                PupilArea = NaN(nFrames, 1);
+                ThresholdUsed = NaN(nFrames, 1);
 
                 % Ellipse-specific Arrays
-                MajorAxis = NaN(estimatedFrames, 1);
-                MinorAxis = NaN(estimatedFrames, 1);
-                Eccentricity = NaN(estimatedFrames, 1);
-                Orientation = NaN(estimatedFrames, 1);
-                EM = NaN(estimatedFrames, 1);
-                FitQuality = NaN(estimatedFrames, 1);
-                IntensityRatio = NaN(estimatedFrames, 1);
+                MajorAxis = NaN(nFrames, 1);
+                MinorAxis = NaN(nFrames, 1);
+                Eccentricity = NaN(nFrames, 1);
+                Orientation = NaN(nFrames, 1);
+                FitQuality = NaN(nFrames, 1);
+                EllipseIR = NaN(nFrames, 1);
+                BlobIR    = NaN(nFrames, 1);
 
                 % Blob-specific Arrays
-                BoundingBox_X = NaN(estimatedFrames, 1);
-                BoundingBox_Y = NaN(estimatedFrames, 1);
-                BoundingBox_Width = NaN(estimatedFrames, 1);
-                BoundingBox_Height = NaN(estimatedFrames, 1);
+                BoundingBox = NaN(nFrames, 4);
 
                 [Xgrid, Ygrid] = meshgrid(1:v.Width, 1:v.Height);
 
                 % Create a static elliptical mask for the eye
-                a = eyeMajorAxis / 2;
-                b = eyeMinorAxis / 2;
-                theta = -deg2rad(eyeOrientation); % Convert to radians and invert for calculation
+                a = thisParameters.EyeMajor / 2;
+                b = thisParameters.EyeMinor / 2;
+                theta = -deg2rad(thisParameters.EyeOrientation); % Convert to radians and invert for calculation
 
                 % Rotated ellipse equation
-                eyeMask = (((Xgrid - eyeCenterX) * cos(theta) + (Ygrid - eyeCenterY) * sin(theta)).^2 / a^2 + ...
-                    ((Xgrid - eyeCenterX) * sin(theta) - (Ygrid - eyeCenterY) * cos(theta)).^2 / b^2) <= 1;
+                eyeMask = (((Xgrid - thisParameters.EyeX) * cos(theta) + (Ygrid - thisParameters.EyeY) * sin(theta)).^2 / a^2 + ...
+                    ((Xgrid - thisParameters.EyeX) * sin(theta) - (Ygrid - thisParameters.EyeY) * cos(theta)).^2 / b^2) <= 1;
 
-                frameCount = 0;
                 progressStr = '';
 
-                while hasFrame(v) && frameCount < pv.maxFrames
-                    frameCount = frameCount + 1;
-                    if mod(frameCount, 25) == 0 || frameCount == 1
-                        pctFrames = 100 * frameCount / estimatedFrames;
-                        pctOverall = 100 * (vIdx - 1 + frameCount / estimatedFrames) / numVideos;
+                for iFrame = 1:nFrames
+                    frameNum = frameIndices(iFrame);
+                    Frames(iFrame) = frameNum;
+                    %% Progress indicator
+                    if mod(iFrame, 25) == 0 || iFrame == 1
+                        pctFrames = 100 * iFrame / nFrames;
+                        pctOverall = 100 * (vIdx - 1 + iFrame / nFrames) / numVideos;
                         elapsedVideo = toc(videoStart);
-                        fpsEst = frameCount / max(elapsedVideo, 0.001);
-                        etaSec = (estimatedFrames - frameCount) / fpsEst + ...
-                            (numVideos - vIdx) * (estimatedFrames / fpsEst);
+                        fpsEst = iFrame / max(elapsedVideo, 0.001);
+                        etaSec = (nFrames - iFrame) / fpsEst + ...
+                            (numVideos - vIdx) * (nFrames / fpsEst);
                         newMsg = sprintf('  [File %d/%d]  Frame: %d/%d (%.0f%%)  |  Overall: %.0f%%  |  ETA: %ds', ...
-                            vIdx, numVideos, frameCount, estimatedFrames, pctFrames, pctOverall, round(etaSec));
+                            vIdx, numVideos, frameNum,lastFrame , pctFrames, pctOverall, round(etaSec));
                         fprintf('%s%s', repmat('', 1, length(progressStr)), newMsg);
                         progressStr = newMsg;
                     end
-                    frame = readFrame(v);
+                    %% Get the image and clean it.
+                    try
+                        frame = read(v, frameNum);
+                    catch
+                        continue;
+                    end
                     if size(frame, 3) == 3, frame = rgb2gray(frame); end
+                    % Detect pupil by thresholding and filling.
+                    binaryImage  = (frame > thisParameters.Threshold) & eyeMask;
+                    cleanImage   = bwareaopen(imopen(imfill(binaryImage, 'holes'), se), round(thisParameters.Area * obj.MinAreaFrac));
+                    
 
-                    [level, em] = graythresh(frame(eyeMask));
-                    EM(frameCount) = em;
-                    % Quality check on graythresh (effectiveness metric) and threshold limit
-                    if em > 0.5 % Check if histogram is reasonably bimodal
-                        currentThreshold = level * max(frame(:));
-                        % Enforce minimum threshold to be at least a fraction of the original
-                        currentThreshold = max(currentThreshold, pv.minThreshold* pupilThreshold);
-                    else
-                        % graythresh failed, likely no pupil, use default
-                        currentThreshold = pupilThreshold;
+                    if pv.visualize && isgraphics(obj.Figure)
+                        imshow(frame, 'Parent', gca(obj.Figure), 'initialMagnification', 'fit'); hold(gca(obj.Figure), 'on');
                     end
 
-                    if pv.visualize  && isgraphics(obj.Figure)
-                        imshow(frame, 'Parent', gca(obj.Figure),'initialMagnification','fit'); hold(gca(obj.Figure), 'on');
-                    end
-                    % Image Processing: Search within the defined eye boundary
-                    binaryImage = (frame > currentThreshold) & eyeMask;
-                    cleanImage = bwareaopen(imopen(imfill(binaryImage, 'holes'), se), minPupilArea);
-                    ThresholdUsed(frameCount) = currentThreshold;
-
-                    % Calculate intensity ratio quality metric
-                    if any(cleanImage(:))
-                        insideMask = cleanImage;
-                        outsideMask = eyeMask & ~insideMask;
-                        meanInside = mean(frame(insideMask));
-                        meanOutside = mean(frame(outsideMask));
-                        if meanInside > 0
-                            IntensityRatio(frameCount) =  meanInside/meanOutside ; % Higher ratio suggests better contrast
-                        end
-                    end
-
-                    stats_ellipse = regionprops(cleanImage, 'Area', 'Centroid', 'MajorAxisLength', 'MinorAxisLength', 'Eccentricity', 'Orientation');
-                    stats_blob = regionprops(cleanImage, 'Area', 'Centroid', 'BoundingBox');
-
+                    %% Find an ellipes or 
+                    eyePixels  = double(frame(eyeMask));
+                    meanEye    = mean(eyePixels);                    
+                    stats_ellipse = regionprops(cleanImage, frame, 'Area', 'Centroid', 'MajorAxisLength', 'MinorAxisLength', 'Eccentricity', 'Orientation', 'MeanIntensity');
                     if ~isempty(stats_ellipse)
-                        [~, largestIdx] = max([stats_ellipse.Area]);
-                        bestEllipse = stats_ellipse(largestIdx);
+                        bestIdx = sbx.PupilTracker.bestRegion(stats_ellipse, thisParameters.StartX, thisParameters.StartY, thisParameters.Area);
+                        bestEllipse = stats_ellipse(bestIdx);
 
-                        X(frameCount) = bestEllipse.Centroid(1);
-                        Y(frameCount) = bestEllipse.Centroid(2);
-                        PupilArea(frameCount) = bestEllipse.Area;
+                        X(iFrame) = bestEllipse.Centroid(1);
+                        Y(iFrame) = bestEllipse.Centroid(2);
+                        PupilArea(iFrame) = bestEllipse.Area;
 
-                        MajorAxis(frameCount) = bestEllipse.MajorAxisLength;
-                        MinorAxis(frameCount) = bestEllipse.MinorAxisLength;
-                        Eccentricity(frameCount) = bestEllipse.Eccentricity;
-                        Orientation(frameCount) = bestEllipse.Orientation;
+                        MajorAxis(iFrame) = bestEllipse.MajorAxisLength;
+                        MinorAxis(iFrame) = bestEllipse.MinorAxisLength;
+                        Eccentricity(iFrame) = bestEllipse.Eccentricity;
+                        Orientation(iFrame) = bestEllipse.Orientation;
 
                         ellipseArea = pi * (bestEllipse.MajorAxisLength / 2) * (bestEllipse.MinorAxisLength / 2);
                         if ellipseArea > 0
-                            FitQuality(frameCount) = bestEllipse.Area / ellipseArea;
+                            FitQuality(iFrame) = bestEllipse.Area / ellipseArea;
+                        end
+                        if meanEye > 0
+                            EllipseIR(iFrame) = bestEllipse.MeanIntensity / meanEye;
                         end
                     end
 
+                    stats_blob = regionprops(cleanImage, frame, 'Area', 'Centroid', 'BoundingBox', 'MeanIntensity');
                     if ~isempty(stats_blob)
-                        [~, largestIdx] = max([stats_blob.Area]);
-                        bestBlob = stats_blob(largestIdx);
-
-                        BoundingBox_X(frameCount) = bestBlob.BoundingBox(1);
-                        BoundingBox_Y(frameCount) = bestBlob.BoundingBox(2);
-                        BoundingBox_Width(frameCount) = bestBlob.BoundingBox(3);
-                        BoundingBox_Height(frameCount) = bestBlob.BoundingBox(4);
+                        bestBlobIdx = sbx.PupilTracker.bestRegion(stats_blob, thisParameters.StartX, thisParameters.StartY, thisParameters.Area);
+                        bestBlob = stats_blob(bestBlobIdx);
+                        BoundingBox(iFrame,:) = bestBlob.BoundingBox;
+                        if meanEye > 0
+                            BlobIR(iFrame) = bestBlob.MeanIntensity / meanEye;
+                        end
                     end
 
                     if pv.visualize && isgraphics(obj.Figure)
                         phi_eye = linspace(0, 2*pi, 50);
                         R_eye = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
                         xy_eye = R_eye * [a*cos(phi_eye); b*sin(phi_eye)];
-                        plot(obj.Figure.CurrentAxes, xy_eye(1,:) + eyeCenterX, xy_eye(2,:) + eyeCenterY, 'b--', 'LineWidth', 1);
+                        plot(obj.Figure.CurrentAxes, xy_eye(1,:) + thisParameters.EyeX, xy_eye(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
 
                         if ~isempty(stats_ellipse)
                             plot(obj.Figure.CurrentAxes, bestEllipse.Centroid(1), bestEllipse.Centroid(2), 'g+', 'MarkerSize', 8, 'LineWidth', 2);
@@ -556,25 +751,25 @@ classdef PupilTracker < handle
 
                         if isempty(stats_blob) && isempty(stats_ellipse)
                             imshow(frame, 'Parent', gca(obj.Figure), 'initialMagnification', 'fit');
-                            title(gca(obj.Figure), sprintf('Frame %d | BLINK', frameCount), 'Color', 'r');
+                            title(gca(obj.Figure), sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
                         else
-                            title(gca(obj.Figure), sprintf('Frame %d | Area: %d | EM: %.2f | Fit: %.2f | IR: %.2f', frameCount, bestEllipse.Area, em, FitQuality(frameCount), IntensityRatio(frameCount)), 'Interpreter', 'none');
+                            title(gca(obj.Figure), sprintf('Frame %d | Area: %d | Fit: %.2f | EIR: %.2f | BIR: %.2f', frameNum, bestEllipse.Area, FitQuality(iFrame), EllipseIR(iFrame), BlobIR(iFrame)), 'Interpreter', 'none');
                         end
                         hold(gca(obj.Figure), 'off');
                         drawnow limitrate;
                     end
-                end
+                end  % for iFrame
                 fprintf('\n');
 
                 % Store results in the map
-                idx = 1:frameCount;
+                idx = 1:nFrames;
                 resultTable = table(Frames(idx), X(idx), Y(idx), PupilArea(idx), ...
                     MajorAxis(idx), MinorAxis(idx), Eccentricity(idx), Orientation(idx), ...
-                    BoundingBox_X(idx), BoundingBox_Y(idx), BoundingBox_Width(idx), BoundingBox_Height(idx), ...
-                    ThresholdUsed(idx), EM(idx), FitQuality(idx), IntensityRatio(idx));
+                    BoundingBox(idx,:),...
+                    ThresholdUsed(idx), FitQuality(idx), EllipseIR(idx), BlobIR(idx));
                 resultTable.Properties.VariableNames = {'Frame', 'X', 'Y', 'Area', ...
                     'MajorAxis', 'MinorAxis', 'Eccentricity', 'Orientation', ...
-                    'BBox_X', 'BBox_Y', 'BBox_Width', 'BBox_Height', 'Threshold', 'EM', 'FitQuality', 'IntensityRatio'};
+                    'BBox','Threshold','FitQuality', 'EllipseIR', 'BlobIR'};
                 obj.Results(videoFile) = resultTable;
 
                 writetable(resultTable, outputFile, 'FileType', 'text', 'Delimiter', '\t');
@@ -606,13 +801,13 @@ classdef PupilTracker < handle
         function plot(obj, columns, pv)
             % PLOT - Plot one or more result columns for each tracked video.
             %   obj.plot("Area")
-            %   obj.plot(["Area","EM","FitQuality"])
-            %   obj.plot(["Area","EM"], normalize=false)
+            %   obj.plot(["Area","FitQuality","EllipseIR","BlobIR"])
+            %   obj.plot(["Area","FitQuality"], normalize=false)
             arguments
                 obj
                 columns (1,:) string {mustBeMember(columns, ["X","Y","Area","MajorAxis","MinorAxis", ...
-                    "Eccentricity","Orientation","BBox_X","BBox_Y","BBox_Width","BBox_Height", ...
-                    "Threshold","EM","FitQuality","IntensityRatio"])} = "Area"
+                    "Eccentricity","Orientation","BBox",...
+                    "Threshold","FitQuality","EllipseIR","BlobIR"])} = "Area"
                 pv.normalize (1,1) logical = true   % Min-max normalize to [0,1] when multiple columns are plotted
                 pv.Parent = []
             end
@@ -645,7 +840,7 @@ classdef PupilTracker < handle
                                 vals = zeros(size(vals));
                             end
                         end
-                        plot(ax, 1:numel(vals), vals, 'DisplayName', col);
+                        plot(ax, 1:size(vals,1), vals, 'DisplayName', col);
                     else
                         warning('Column "%s" not found in Results for "%s".', col, resultFiles{i});
                     end
@@ -699,8 +894,8 @@ classdef PupilTracker < handle
             pt = sbx.PupilTracker(string(pending{1}));
             if numel(pending) > 1
                 emptyRow = table(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-                    'VariableNames', {'Threshold', 'StartX', 'StartY', 'SeRadius', 'MinArea', ...
-                    'EyeCenterX', 'EyeCenterY', 'EyeMajorAxis', 'EyeMinorAxis', 'EyeOrientation'});
+                    'VariableNames', {'Threshold', 'Floor', 'StartX', 'StartY', 'Area', ...
+                    'EyeX', 'EyeY', 'EyeMajor', 'EyeMinor', 'EyeOrientation'});
                 for k = 2:numel(pending)
                     pt.Parameters(pending{k}) = emptyRow;
                 end
@@ -709,69 +904,74 @@ classdef PupilTracker < handle
     end
 
     methods (Access = private, Static)
-        function [avgFrameGray, img] = getAverageImg(v,maxNrSamples)
-            % GETAVERAGEIMG - Sample random frames from a VideoReader and return
-            % an average of the brightest ones for use in the initialization figure.
-            totalFrames = round(v.Duration * v.FrameRate);
-            numSample = min(maxNrSamples, ceil(totalFrames / 20));
-            randomFrameIdx = sort(randperm(totalFrames, numSample));
-            fprintf('Sampling %d frames for brightness scoring...\n', numSample);
-            img = zeros(v.Height, v.Width, numSample, sprintf('uint%d', v.BitsPerPixel));
-            for ix = 1:numSample
-                try
-                    img(:,:,ix) = read(v, randomFrameIdx(ix));
-                catch
-                    % Frame count is estimated; read errors near the end are expected.
-                end
-            end
-            brightness = squeeze(median(img, [1 2]));
-            [~, sortedIdx] = sort(brightness, 'descend');
-            topFramesIdx = sortedIdx(1:min(10, numSample));
-            avgFrameGray = uint8(mean(img(:,:,topFramesIdx), 3));
-        end
-
+       
         function resumeWithFlag(fig, flag, val)
             setappdata(fig, flag, val);
             uiresume(fig);
         end
 
-        function resampleAndShow(v,maxNrSamples,fig)
-            % RESAMPLEANDSHOW - Button callback: resample frames and update the
-            % image CData in-place so existing ROIs are preserved.
-            [avgNew, ~] = sbx.PupilTracker.getAverageImg(v,maxNrSamples);
-            hImg = findobj(fig, 'Type', 'image');
+        function resampleSingleFrame(v, ax)
+            % RESAMPLESINGLEFRAME - Button callback for Phase 1:
+            % reads one new random frame and swaps the image CData in-place
+            % so any drawn ROI is preserved.
+            newFrame = sbx.PupilTracker.getFramePool(v,1);
+            hImg = findobj(ax, 'Type', 'image');
             if ~isempty(hImg)
-                hImg(1).CData = avgNew;
+                hImg(1).CData = newFrame;
                 drawnow;
             end
         end
 
-        % Seems over the top to write this with every file
-        % jsonOutputName = strrep(outputFile, '.tsv', '.json');
-       % sbx.PupilTracker.writeBidsJson(jsonOutputName);
-       % fprintf('    -> Wrote BIDS sidecar to: %s\n', jsonOutputName);
-        function writeBidsJson(fileName)
-            bidsInfo.X = struct('Description', 'X-coordinate of the pupil centroid.', 'Units', 'pixels');
-            bidsInfo.Y = struct('Description', 'Y-coordinate of the pupil centroid.', 'Units', 'pixels');
-            bidsInfo.Area = struct('Description', 'Area of the detected pupil.', 'Units', 'pixels^2');
-            bidsInfo.MajorAxis = struct('Description', 'Length of the major axis of the ellipse fitted to the pupil.', 'Units', 'pixels');
-            bidsInfo.MinorAxis = struct('Description', 'Length of the minor axis of the ellipse fitted to the pupil.', 'Units', 'pixels');
-            bidsInfo.Eccentricity = struct('Description', 'Eccentricity of the ellipse fitted to the pupil (0=circle, <1=ellipse).', 'Units', 'ratio');
-            bidsInfo.Orientation = struct('Description', 'Orientation of the ellipse fitted to the pupil.', 'Units', 'degrees');
-            bidsInfo.BBox_X = struct('Description', 'X-coordinate of the upper-left corner of the bounding box around the pupil.', 'Units', 'pixels');
-            bidsInfo.BBox_Y = struct('Description', 'Y-coordinate of the upper-left corner of the bounding box around the pupil.', 'Units', 'pixels');
-            bidsInfo.BBox_Width = struct('Description', 'Width of the bounding box around the pupil.', 'Units', 'pixels');
-            bidsInfo.BBox_Height = struct('Description', 'Height of the bounding box around the pupil.', 'Units', 'pixels');
-            bidsInfo.Threshold = struct('Description', 'The grayscale threshold value used for pupil detection in this frame.', 'Units', 'grayscale_value');
-            bidsInfo.EM = struct('Description', 'Effectiveness metric of the threshold, indicating bimodality of the histogram.', 'Units', 'ratio');
-            bidsInfo.FitQuality = struct('Description', 'Goodness of fit for the ellipse, calculated as the ratio of pixel area to the geometric area of the fitted ellipse. A value near 1 indicates a good fit.', 'Units', 'ratio');
-            bidsInfo.IntensityRatio = struct('Description', 'Ratio of the mean intensity inside the pupil to outside the pupil, within the eye mask. Higher values suggest better contrast.', 'Units', 'ratio');
-
-            jsonTxt = jsonencode(bidsInfo, "PrettyPrint", true);
-            fid = fopen(fileName, 'w');
-            if fid == -1, error('Cannot create JSON file: %s', fileName); end
-            fwrite(fid, jsonTxt, 'char');
-            fclose(fid);
+        function resampleAverageFrame(v, ax, n)
+            % RESAMPLEAVERAGEFRAME - Button callback for Phase 1 (average mode):
+            % re-samples n random frames, averages them, and swaps CData in-place.
+            pool = sbx.PupilTracker.getFramePool(v, n);
+            brightnessPerFrame = squeeze(mean(pool,[1 2]));
+            keep = brightnessPerFrame > prctile(brightnessPerFrame,50);
+            avgFrame = uint8(mean(double(pool(:,:,keep)), 3));            
+            hImg = findobj(ax, 'Type', 'image');
+            if ~isempty(hImg)
+                hImg(1).CData = avgFrame;
+                drawnow;
+            end
         end
+
+        function idx = bestRegion(stats, refX, refY, targetArea)
+            % BESTREGION - Select the region with the best composite rank.
+            % Regions are ranked on three criteria (lower rank = better):
+            %   1) Distance of centroid from (refX, refY)        -> ascending
+            %   2) Absolute deviation of area from targetArea     -> ascending
+            %   3) Mean intensity                                  -> descending
+            % The region with the lowest summed rank is returned.
+            n = numel(stats);
+            if n == 1, idx = 1; return; end
+            centroids = vertcat(stats.Centroid);
+            dists  = sqrt((centroids(:,1) - refX).^2 + (centroids(:,2) - refY).^2);
+            areas  = [stats.Area]';
+            intens = [stats.MeanIntensity]';
+            [~, o] = sort(dists,                'ascend');  rankPos  = zeros(n,1); rankPos(o)  = 1:n;
+            [~, o] = sort(abs(areas-targetArea),'ascend');  rankArea = zeros(n,1); rankArea(o) = 1:n;
+            [~, o] = sort(intens,               'descend'); rankInt  = zeros(n,1); rankInt(o)  = 1:n;
+            [~, idx] = min(rankPos + rankArea + rankInt);
+        end
+
+        
+        function img = getFramePool(v, n)
+            % GETFRAMEPOOL - Sample n random frames from a VideoReader and
+            % return them as an H x W x n array.
+            totalFrames = round(v.Duration * v.FrameRate);
+            n = min(n, totalFrames);
+            frameIdx = sort(randperm(totalFrames, n));
+            fprintf('Sampling %d frames...\n', n);
+            img = zeros(v.Height, v.Width, n, sprintf('uint%d', v.BitsPerPixel));
+            for ix = 1:n
+                try
+                    img(:,:,ix) = read(v, frameIdx(ix));
+                catch
+                    % Near end of video — leave as zeros
+                end
+            end
+        end
+      
     end
 end
