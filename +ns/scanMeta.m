@@ -25,6 +25,7 @@ metaTbl = feval([className 'Meta']) & tbl;
 if strcmpi(className ,'ns.Subject')
     % Read the single json
     jsonFile  =fullfile(pv.NS_ROOT,'subject.json');
+    assert(exist(jsonFile,"file"),"%s file not found.",jsonFile)
     allJson = readJson(jsonFile);
     % Limit to subjects already in the database with different values
     % But this only checks for "meta" datain the ns.Subject table ; the

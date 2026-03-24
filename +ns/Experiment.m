@@ -442,7 +442,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 title (sprintf('%s:%s:%s',tpl.subject,tpl.session_date,tpl.starttime));
             end
         end
-        function [out,filename] = get(tbl,plg,pv)
+        function [out,filename,exptWithMissing] = get(tbl,plg,pv)
             % function [out,filename] = get(tbl,plg,pv)
             % Retrieve all information on a specific plugin in an experiment
             %
@@ -484,103 +484,72 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %
             arguments
                 tbl (1,1) ns.Experiment {mustHaveRows}
-                plg {mustBeText} =  {''}
-                pv.prm {mustBeText} = ''
-                pv.what {mustBeNonzeroLengthText,mustBeMember(pv.what,["data" "trialtime" "trial" "clocktime"])} = "data"
+                plg (1,:) string  =  "cic"
+                pv.prm {mustBeText} = string.empty
+                pv.what (1,:) string = "all"
                 pv.atTrialTime (1,1) double = NaN
                 pv.trial (1,:) double = []
-                pv.fetchOptions = 'ORDER BY session_date';
+                pv.asTable (1,1) logical = false
             end
-            if ischar(plg)
-                plg = {plg};
+            pv.what = lower(pv.what);
+            mustBeMember(pv.what,["data" "trialtime" "clocktime" "trial" "all"]);
+
+            %% Construct the relvar
+            if isempty(pv.prm)
+                % All parameters from one or more plugins
+                rel = ns.PluginParameter & (( ns.Plugin & tbl) & in("plugin_name", string(plg)));
+            else
+                % One parameter from one plugin.  We need cic to compute
+                % atTrialTime.
+                assert(isscalar(plg),"When asking for a prm, only one plugin can be specified")
+                rel = ns.PluginParameter  &  ( ns.Plugin & tbl) & sprintf('plugin_name LIKE "%s" OR (plugin_name="cic" AND property_name="firstframe")' ,plg) ;
             end
+            % Pass to the ns.PluginParameter class
+            G =get(rel,prm = pv.prm, atTrialTime=pv.atTrialTime,trial = pv.trial);
+            expt = fetchtable(tbl,'file','ORDER BY session_date, subject, starttime');
 
-            nrPlugins = sum(cellfun(@(x) (strlength(x)>0),plg,'uni',true));
-
-            ix =1:count(tbl);
-            out = cell(numel(ix),1);
-            filename = cell(numel(ix),1);
-            exptCntr =0;
-            for exptKey=tbl.fetch('paradigm',pv.fetchOptions)'
-                exptCntr = exptCntr + 1;
-                filename{exptCntr} = fetch1(tbl &exptKey,'file');
-                if nrPlugins==0
-                    % Get info from all plugins
-                    plg  = fetchn( (tbl & exptKey) * ns.Plugin,'plugin_name');
-                    nrPlugins = numel(plg);
+            if isempty(G)
+                fprintf('None of the experiments used the %s plugin(s)\n ',strjoin(plg,'/'));
+                out= struct([]);
+                filename = expt.file;
+                return;
+            end
+            plg = setdiff(G.Properties.VariableNames,["subject" "session_date" "starttime"]);
+            G = outerjoin(expt,G,RightVariables=plg,Type="left");
+            for p = plg
+                missing = cellfun(@isempty,G.(p));
+                if any(missing)
+                    fprintf(2,'These experiments did not use the %s plugin\n ',p);
+                    exptWithMissing = expt(missing,:)
                 end
-                % Always get ***all*** prms from cic
-                v.cic =  get(ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & 'plugin_name=''cic''')) ;
-                for pIx = 1:nrPlugins
-                    plgName = plg{pIx};                   
-                    if strcmpi(plgName,'cic');continue;end % skip
-                    % Get the properties for this plugin
-                    if strlength(pv.prm)==0
-                        % All prms
-                        parms =  ns.PluginParameter  & (ns.Plugin * (tbl & exptKey) & ['plugin_name LIKE ''' plgName '''']) ;
-                    else
-                        % One prm
-                        parms =  (ns.PluginParameter & "property_name='"+string(pv.prm) + "'") & (ns.Plugin * (tbl & exptKey) & ['plugin_name LIKE ''' plgName '''']) ;
-                    end
-                    if ~exists(parms)
-                        continue;
-                    end
-                    if contains(plgName,'%')
-                        if count(parms)==1
-                            plgName = fetch1(parms,'plugin_name');
-                            plg{pIx} = plgName;
+            end
+
+            filename = G.file;
+            out = table2struct(G);
+            if ~isempty(pv.prm) && isscalar(plg)
+                [out(missing).(plg)] =deal(struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[])));
+                out  = [out.(plg)];
+                try
+                    % Try to make into array
+                    out = [out.(pv.prm)];
+                catch
+                    %Ignore;
+                end
+                if ~ismember("all",pv.what)
+                    fields=  fieldnames(out);
+                    out = rmfield(out,setdiff(fields, pv.what));
+                    if isscalar(pv.what)
+                        if isscalar(out)
+                            out = out.(pv.what);
                         else
-                            parms
-                            error('The wildcard %s matches more than one plugin.',plgName);
+                            out = {out.(pv.what)};
                         end
-
-                    end
-                    v.(plgName) = get(parms);
-                end
-
-                notFound = ~isfield(v,plg);
-                if any(notFound)
-                    fprintf('This experiment (%s:%s/%s@%s) did not use the %s plugin(s) or the plugin does not have the %s parameter.\n',exptKey.paradigm,exptKey.subject,exptKey.session_date,exptKey.starttime, strjoin(plg(notFound),'/'),pv.prm);
-                    out{exptCntr} = [];
-                    continue; % Next experiment
-                end
-
-
-                if strlength(pv.prm) ~=0  %prm was specified
-                    % Single prm from a specified plugin,  at a specific time
-                    out{exptCntr} = ns.attrialtime(v.(plg{1}),pv.prm,pv.atTrialTime,v.cic,pv.what,pv.trial);
-                else
-                    % Everything
-                    % Return struct with all info
-                    out{exptCntr}=v;
-                end
-            end
-
-            % Convenience; remove the wrappping cell if it only a single
-            % experiment was queried.
-            if isscalar(ix)
-                out = out{1}; % Single column
-                filename=filename{1};
-            end
-
-            if strlength(pv.prm)~=0
-                % Single parm, join values as columns
-                if iscellstr(out)
-                    out = out(:)'; %trials as columns
-                elseif iscell(out)
-                    if all(cellfun(@numel,out)==numel(out{1}))
-                        out =cat(2,out{:}); %trials as columns
-                    else
-                        out = out'; % For trials as columns
-                        return
                     end
                 end
-                if iscell(out) && ~iscellstr(out)
-                    out = cell2mat(out);
-                end
             end
-
-
+            if pv.asTable && isstruct(out)
+                out = struct2table(out);
+            end
         end
 
         function [isOk, t] = getTimepointsAroundTrials(expt,t,halfWidth)
@@ -615,28 +584,51 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %           corresponding to the rows of the tbl.
             % newOnly  - Set to true to update only those experiments that
             % have no information in the database currently. [true]
+            % pedantic - Set to true to remove all plugins before adding
+            %               the new ones (guarantee referential integrity)
+            %               [false]
+            % plugin - Process only plugins whose name starts with any of
+            % the strings in this string array. string.empty (the default)
+            % processes all plugins.
+            % defaultScalarElement - Set this to true to find experiments
+            % that have a 'defaultScalarElement' plugin (which means the
+            % plugin was not on the path when the experiment was added).
+            % THese experiments are opened and then updated with the
+            % correct plugin information (assuming the plugin is on the
+            % path now).
+            % 
             arguments
                 tbl ns.Experiment
                 nsData (1,:) = []
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
+                pv.plugin (1,:) string = string.empty
+                pv.defaultScalarElement (1,1) logical = false 
+                pv.safemode (1,1) logical = true
             end
             tic;
-            % Run all
             keyCntr = 0;
             pkey = tbl.primaryKey;
 
             if ~isempty(nsData)
-                % Restrict the tbl to the rows that correspond to these
-                % data files
+                % Restrict the tbl to the rows that correspond to the cic
+                % objects in nsData
                 for cntr = 1:numel(nsData)
                     restrict(cntr) = ns.Experiment.metaTpl(nsData(cntr)); %#ok<AGROW>
                 end
                 tbl = tbl & restrict;
             end
 
+            if pv.defaultScalarElement
+                assert(isempty(nsData),'With defaultScalarElement no cic objects should be passed.')
+                tbl = tbl & (ns.Plugin & 'plugin_name="defaultScalarElement"');
+                pv.newOnly = false;
+            end
             fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
 
+            currentSafeMode = dj.config('safemode');
+            safeModeCleanup = onCleanup(@() dj.config('safemode', currentSafeMode));
+            dj.config('safemode',pv.safemode);
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
                 if isempty(nsData)
@@ -659,46 +651,82 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     thisTpl =mergestruct(key,thisTpl); % Errors if this Cic does not belong to this key.
                 end
 
-                % Remove current Experiment tuple
-                if pv.pedantic
-                    if exists(tbl&key)
-                        del(tbl & key);
+                pluginsToUpdate = ["cic" string({thisData.pluginOrder.name})];
+                if ~isempty(pv.plugin)
+                    % Restrict to the plugins we want to update
+                    keep = any(startsWith(pluginsToUpdate, pv.plugin), 2);
+                    pluginsToUpdate = pluginsToUpdate(keep);
+                    if isempty(pluginsToUpdate)
+                        fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)                        
+                        continue;% Skip to the next file
                     end
-                    insert(tbl,thisTpl);
-                else
-                    %Update each field. Potential for referential integrity
-                    %loss (not in practice, though).
-                    fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
-                    % The update could change the tbl (if defined as a
-                    % query that uses the fields to be updated), so use
-                    % the full ns.Experiment  with a key restriction
-                    % instead
-                    for fld = fieldsToUpdate
-                        update(ns.Experiment &key,fld{1},thisTpl.(fld{1}))
+                elseif pv.defaultScalarElement  
+                    if ismember("defaultScalarElement",pluginsToUpdate)
+                        fprintf(2, "Some plugins are not on the search path. \n");
+                        %Run this to find out what is missing: 
+                        % matlab.desktop.editor.newDocument(thisData.expScript);
+                        deleteDefaultScalarElement =false; %Dont delete so that we can fix this on the next run
+                    else
+                        deleteDefaultScalarElement =true;       
+                    end
+                    pluginsAlreadyInDJ  =fetchtable(ns.Plugin & key,'plugin_name');
+                    pluginsToUpdate = setdiff(pluginsToUpdate,pluginsAlreadyInDJ.plugin_name);
+                    if isempty(pluginsToUpdate)
+                        fprintf('Plugins up to date in  %s\n',key.starttime);
+                        continue;% Skip to the next file
+                    end
+                else %Updating all plugins, including the information stored directly in ns.Experiment
+                    % Remove current Experiment tuple
+                    if pv.pedantic
+                        if exists(tbl&key)
+                            del(tbl & key);
+                        end
+                        insert(tbl,thisTpl);
+                    else
+                        %Update each field. Potential for referential integrity
+                        %loss (not in practice, though).
+                        fieldsToUpdate = setdiff(fieldnames(thisTpl),pkey)';
+                        % The update could change the tbl (if defined as a
+                        % query that uses the fields to be updated), so use
+                        % the full ns.Experiment  with a key restriction
+                        % instead
+                        for fld = fieldsToUpdate
+                            update(ns.Experiment &key,fld{1},thisTpl.(fld{1}))
+                        end
                     end
                 end
-
 
                 % Remove the current plugin info and store currently read
                 % information.
-                if exists(ns.Plugin & key)
-                    del(ns.Plugin & key);
+                existingPlugins =ns.Plugin & key & in('plugin_name',pluginsToUpdate);
+                if exists(existingPlugins)
+                    del(existingPlugins);
                 end
+                fprintf('Updating experiment %s\n',key.starttime)
                 if thisTpl.nrtrials>0
                     % re-add each plugin (pluginOrder includes stimuli and behaviors),
                     % cic
-                    plgsToAdd= [thisData.pluginOrder thisData];
+                    plgsToAdd = [thisData.pluginOrder thisData];
+                    stay  = ismember(string({plgsToAdd.name}),pluginsToUpdate);
+                    plgsToAdd = plgsToAdd(stay);
                     plgKey = struct('starttime',thisTpl.starttime,'session_date',thisTpl.session_date,'subject',thisTpl.subject);
+                    hasError = false;
                     for plg = plgsToAdd
                         try
                             make(ns.Plugin,plgKey,plg);
                         catch me
                             fprintf(2,'Failed to add plugin %s information\n (%s)',plg.name,me.message);
+                            hasError = true;
                         end
                     end
-                end
-
+                    if pv.defaultScalarElement && ~hasError && deleteDefaultScalarElement   
+                        % All plugins updated successfully for this experiment
+                        % Now we can remove the defaultscalar element
+                        del((ns.Plugin & key) & 'plugin_name="defaultScalarElement"');
+                    end
+                end              
             end
+            dj.config('safemode',currentSafeMode);
         end
 
         function addMissingFiles(tbl)
@@ -758,7 +786,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                         c  = ns.Experiment.load(file);
                     catch me
                         % Make sure that the experiment key is in the table
-                        
+
                         fprintf(2,'Failed to load %s. (%s).  Is NS_ROOT (%s) correct? \n',file,me.message,getenv('NS_ROOT'))
                         return;
                     end
@@ -778,13 +806,13 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             arguments
                 c (1,1)  % Can be a cic or a sibascic
             end
-            
+
             if isfield(c,'ptbVersion')
                 ptbVersion = c.ptbVersion.version;
             else
                 ptbVersion = 'unknown'; % Early versions did not store this
             end
-            
+
             if c.nrTrialsCompleted<1
                 % Cannot read some information in a file without trials..
                 % Just putting zeros.

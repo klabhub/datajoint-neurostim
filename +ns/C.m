@@ -491,8 +491,13 @@ classdef C < dj.Computed & dj.DJInstance
                             end
                         case "RASTER"
                             % Using an image to show the time course.
-                            grandMax = prctile(m(:),pv.prctileMax );
-                            grandMin = prctile(m(:),100-pv.prctileMax );
+                            if isreal(m)
+                                grandMax = prctile(m(:),pv.prctileMax );
+                                grandMin = prctile(m(:),100-pv.prctileMax );                               
+                            else
+                                grandMax = prctile(abs(m(:)),pv.prctileMax );
+                                grandMin = prctile(abs(m(:)),100-pv.prctileMax);                            
+                            end
                             nrX = numel(allX);
                             cmap = [hot(255);0 0 1];
                             I =[];
@@ -529,19 +534,24 @@ classdef C < dj.Computed & dj.DJInstance
                             if isnan(pv.prctileMax)
                                 [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
                             else
-                                % Scale each condition to the grandMax
-                                grandMax = prctile(m(:),pv.prctileMax );
-                                grandMin = prctile(m(:),100-pv.prctileMax );
-                                m = (m-grandMin)./(grandMax-grandMin);
-                                e = e./(grandMax-grandMin);
-
-                                % Add the conditionNr so that each m column has a min of
-                                % conditionNr and can be plotted on the same axis, with
-                                % conditions discplaced vertically from each other.
-                                m = m + repmat(1:nrConditions,[nrX 1]);
-                                [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
+                                % Scale each condition to the grandMax                                
+                                 if isreal(m)
+                                    grandMax = prctile(m(:),pv.prctileMax );
+                                    grandMin = prctile(m(:),100-pv.prctileMax );
+                                    m = (m-grandMin)./(grandMax-grandMin);
+                                    e = e./(grandMax-grandMin);
+                                     % Add the conditionNr so that each m column has a min of
+                                     % conditionNr and can be plotted on the same axis, with
+                                    % conditions discplaced vertically from each other.
+                                    m = m + repmat(1:nrConditions,[nrX 1]);                               
+                                    [h] = ploterr(allX,m,e,'linewidth',2,'ShadingAlpha',0.5);
+                                 else
+                                     % Vector plot
+                                    grandMax = prctile(abs(m(:)),pv.prctileMax );     
+                                    allX = seconds(allX);
+                                    [h] =quiver(allX,repmat(1:nrConditions,[nrX 1]),real(m),imag(m),grandMax);
+                                end
                                 hold on
-
                                 % Show "zero" line
                                 hh = plot(allX,repmat(1:nrConditions,[nrX 1]),'LineWidth',0.5);
                                 if ~isempty(properties(h))

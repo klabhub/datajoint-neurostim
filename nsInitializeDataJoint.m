@@ -4,7 +4,7 @@ function nsInitializeDataJoint(code,databaseName,packageName,pv)
 % and she wants to start a new project called 'alice_memory' with Matlab code
 % for the pipelin stored in u:\projects\memory\code, she uses:
 %
-%  nsInitializeDataJoint('u:\projects\memory\code','alice_memory','x:\data\')
+%  nsInitializeDataJoint('u:\projects\memory\code','alice_memory','ns')
 %  And then she runs
 %  nsScan('date','01-May-2022','schedule','m','readFileContents',true)
 % to scan files collected in May '22 and add them to the pipeline.
@@ -13,18 +13,18 @@ function nsInitializeDataJoint(code,databaseName,packageName,pv)
 % database.
 % To retrieve the data for a single Neurostim experiment (i.e. file), you
 % use a query to define the experiment :
-% For instance, this will return a struct array with the data for all
-% experiments for subject #12:
-% data = get(ns.Experiment & 'subject=12')
+% For instance, this will return a struct array with cic plugin parameters data for all
+% experiments for subject #12 (i.e. using the default plg="cic" behavior of ns.Experiment/get):
+% data = get(ns.Experiment & 'subject="12"')
 %
 % Alice can now add files to the u:\projects\memory\code\+ns that define
 % the analysis pipeline.
 %
-% If Alice also wants to analyze Calcium imaging data, she can add the Ca
+% If Alice also wants to analyze Calcium imaging data, she can add the sbx
 % package by calling
-% nsInitializeDataJoint('u:\projects\memory\code','alice_memory','','ca')
-% This will create the lookup tables from CA Element in the alice_memory
-% database/schema, and create a +ca folder in the /code folder where Alice
+% nsInitializeDataJoint('u:\projects\memory\code','alice_memory','','sbx')
+% This will create the tables from the SBX A Element in the alice_memory
+% database/schema, and create a +sbx folder in the /code folder where Alice
 % can add her own additions to the analysis pipeline.
 %
 % INPUT

@@ -70,7 +70,7 @@ classdef PluginParameter < dj.Part
                     % Single value: global property
                     % Easy: store only this value
                     type = 'Global';
-                    value =thisPrm.value;  
+                    value =thisPrm.value;
                     nsTime = thisPrm.time(end);
                     trial = 1;
                     time = -inf;
@@ -102,11 +102,11 @@ classdef PluginParameter < dj.Part
                 if iscellstr(value)  || ischar(value) || isstring(value) || isnumeric(value) || islogical(value)
                     if ischar(value)
                         uValue = value;
-                    elseif iscellstr(value) || isstring(value) 
+                    elseif iscellstr(value) || isstring(value)
                         uValue=  unique(value);
                         if isscalar(uValue) && iscellstr(value) %#ok<ISCLSTR>
-                                uValue= uValue{1}; % Get rid of cell                            
-                        end               
+                            uValue= uValue{1}; % Get rid of cell
+                        end
                         uValue = char(uValue);
                     elseif ismatrix(value)
                         uValue =unique(value);
@@ -123,6 +123,9 @@ classdef PluginParameter < dj.Part
                         % Really only one value
                         value = uValue;
                         type = 'Global';
+                        time = time(1);
+                        trial =trial(1);
+                        nsTime = nsTime(1);
                     end
                 end
 
@@ -131,7 +134,7 @@ classdef PluginParameter < dj.Part
                     value = true(size(value));
                 end
 
-                key(i).property_name = thisPrm.name;  
+                key(i).property_name = thisPrm.name;
                 key(i).property_value= value;
                 key(i).property_type = type;
                 key(i).property_time = time;
@@ -141,9 +144,6 @@ classdef PluginParameter < dj.Part
 
             encodeAndInsert(tbl,key);
         end
-
-
-
     end
 
 
@@ -175,85 +175,87 @@ classdef PluginParameter < dj.Part
         end
     end
 
-    methods (Access= public)
+    methods (Access= {?ns.Experiment, ?ns.Plugin})
 
-        function v = get(tbl,nwbRoot,plgName)
+        function G = get(tbl,pv)
+            % Retrieve parameter values in a format that is used by
+            % ns.Experiment/get() to return to the user
             arguments
                 tbl (1,1) ns.PluginParameter
-                nwbRoot   = []
-                plgName (1,:) char =''
+                pv.nwbRoot = []
+                pv.prm {mustBeText} = string.empty
+                pv.atTrialTime (1,1) double = NaN
+                pv.trial (1,:) double = []
             end
-            % Retrieve all properties in the table as a struct
-            % Used by ns.Experiment.get
-            % Returns a struct with one field per property.
-            % Properties are always lower casee
-            persistent warnedAlready
-            if isempty(warnedAlready);warnedAlready ={};end
-            %% First the Global consts.
-            [vals,names,nsTimes] = fetchn(tbl & 'property_type=''Global''' ,'property_value','property_name','property_nstime');
-            names= lower(names);
-            % Create the struct with name/value
-            glbl = cell(1,2*numel(names));
-            [glbl{1:2:end}] =deal(names{:});
-            [glbl{2:2:end}] = deal(vals{:});
-            v  = struct(glbl{:});
-            % And add the parmNsTime field for globals as well. Not usually
-            % needed, except for a 1 trial experiment (to define
-            % firstFrameNsTime for alignment)
-            names= strcat(names,'NsTime');
-            vals = nsTimes;
-            glbl = cell(1,2*numel(names));
-            [glbl{1:2:end}] =deal(names{:});
-            [glbl{2:2:end}] = deal(vals{:});
-            v= orderfields(mergestruct(v,struct(glbl{:})));
-            %% Now the parms that change
-            % Parameters - they do not change within a trial. The
-            % output struct will have a vector/cell with one value for
-            % each trial
 
-            % Events - these can happen at any time. The struct
-            % contains both the values and the times at which they
-            % occurred (e.g. v.X and v.XTime)
+            if ~exists(tbl);G=table;return;end
 
-            %Bytestream - can contain objects, coded as bytes.
-            % Decode here.
-            [vals,names,times,nsTimes,trials,parmTypes] = fetchn(tbl - 'property_type =''Global''' ,'property_value','property_name','property_time','property_nstime','property_trial','property_type');
-            names= lower(names);
-            for j=1:numel(names)
-                if any(cellfun(@(x) isfield(v,x),{names{j},[names{j} 'Trial'],[names{j} 'Time'],[names{j} 'NsTime']}))
-                    oldName = names{j};
-                    names{j} = [names{j} '2'];
-                    if ~ismember(oldName,warnedAlready) && ~strcmpi(oldName,"blockTrial")
-                        warnedAlready = cat(2,warnedAlready,{oldName});
-                        warnNoTrace('%s already defined; renamed to %s',oldName,names{j});
+            if ~isempty(pv.prm)
+                restriction  = sprintf('property_name ="%s"',pv.prm);
+                if ~exists(tbl &restriction)
+                    fprintf('The plugin does not have the property %s\n',pv.prm);
+                    G=table;
+                    return;
+                end
+                if (~isempty(pv.trial) || ~isnan(pv.atTrialTime))
+                    % A selection is in place; we'll need firstFrame from cic.
+                    restriction = [restriction  ' OR (plugin_name="cic" AND property_name="firstframe")'];
+                end
+                tbl = tbl & restriction;                
+            end
+
+            T = fetchtable(tbl ,'*');
+
+            % Determine whether there are plugins that are numbered
+            % versions (e.g. psybayes_1218748374)
+            % Rename those to psybayes1 if there is only one and psybayes1,
+            % psybayes2 if there are multiple occurrences.            
+            plgNames = T.plugin_name;
+            plgNamesMatch = regexp(plgNames,'(?<name>\w*)_[\d]+$','names');
+            if ~isempty(plgNamesMatch)
+            hasNumberSuffix = ~cellfun(@isempty,plgNamesMatch);
+            if any(hasNumberSuffix)
+                prefixes = regexp(plgNames(hasNumberSuffix), '^[^_]+', 'match', 'once');
+                grp = findgroups(T(hasNumberSuffix, ["starttime" "session_date" "subject"]));
+                occurrence = cell2mat(accumarray(grp, 1, [], @(x) { (1:numel(x))' }));                                        
+                plgNames(hasNumberSuffix) = lower(compose("%s%d", prefixes, occurrence));
+                T.plugin_name = plgNames;
+            end
+            end
+            % Group at the experiment level to collect the data from the
+            % pluginparameter table
+            [ix,G ] = findgroups(T(:,["subject" "session_date" "starttime"]));
+            S =splitapply(@(plg,name,value,time,nstime,trial,type) {ns.PluginParameter.nestedExperimentTable(plg,name,value,time,nstime,trial,type,pv)},T(:,["plugin_name" "property_name" "property_value" "property_time" "property_nstime" "property_trial" "property_type"]),ix);
+            % S will be a cell array of tables; unstack into columns of G
+            plgNames = unique(T.plugin_name);
+            nrPlgs =numel(plgNames);
+            for plg= 1:nrPlgs
+                if ~isempty(pv.prm) && nrPlgs==2 && plgNames(plg)=="cic" ;continue;end % If a .prm is requested S cab have an empty cic entry (to allow atTrialTime to work). Skip that.                  
+                G = addvars(G,cell(height(G),1),'NewVariableNames',plgNames(plg));
+                for g= 1:height(G)
+                    if ismember(plgNames(plg),S{g}.Properties.VariableNames)
+                        G{g,plgNames(plg)} = {S{g}.(plgNames(plg))};
                     end
-                    % This happes because block and
-                    % blockTrial are both cic properties. Unlikely to
-                    % happen anywhere else.
                 end
-                name = names{j};
-                if strcmpi(parmTypes(j),'ByteStream')
-                    v.(name) =getArrayFromByteStream(vals{j});
-                else
-                    v.(name) =vals{j};
-                end
-                v.([name 'Time']) = times{j};
-                v.([name 'NsTime']) = nsTimes{j};
-                v.([name 'Trial']) = trials{j};
             end
 
-            if ~isempty(nwbRoot)
+            if ~isempty(pv.nwbRoot)
+                % Only called for nwb export - one experiment/plugin at a time.
                 % Determine when cic was constructedby finding the first
-                % entry in nstime for the trial property.
+                % entry in nstime for the trial property. This defines time
+                % zero in NWB.
+                assert(nrPlgs==1,"More than one experiment in get for nwbRoot?");
                 tpl=fetch(ns.PluginParameter  & (ns.Experiment &tbl) & 'plugin_name="cic"' & 'property_name="trial"' ,'property_nstime');
                 timeZero  = tpl.property_nstime(1);
+                names =fetchn(tbl,'property_name');
+
                 for j=1:numel(names)
                     name =names{j};
-                    data= v.(name);
+                    data= G{1,plgNames}{1}.(name);
                     if ~(isnumeric(data) || islogical(data))
-                        fprintf('Skipping %s in %s (non numeric data)\n',name,plgName);
+                        fprintf('Skipping %s in %s (non numeric data)\n',name,plgNames);
                     else
-                        timestamps = v.([name 'NsTime']);
+                        timestamps = G{1,plgNames}{1}.([name 'NsTime']);
                         if isempty(timestamps)
                             timestamps =0; %Global property-pretend it was set at t=0.
                         else
@@ -262,9 +264,9 @@ classdef PluginParameter < dj.Part
                             timestamps =(timestamps-timeZero)/1000;
                         end
                         if size(data,1)== size(timestamps,1)
-                            description = sprintf('%s property in %s plugin %d entries',name,plgName,size(data,1));
+                            description = sprintf('%s property in %s plugin %d entries',name,plgNames,size(data,1));
                             ts =  types.core.TimeSeries('description',description, 'data',data','data_continuity','step','timestamps',timestamps,'data_unit','notspecified');
-                            nwbRoot.stimulus_presentation.set(sprintf('%s_%s',plgName ,name),ts);
+                            nwbRoot.stimulus_presentation.set(sprintf('%s_%s',plgNames ,name),ts);
                         else
                             fprintf('Skipping %s (mismatched timestamps)\n',name);
                         end
@@ -274,8 +276,183 @@ classdef PluginParameter < dj.Part
         end
     end
 
+    methods (Static)
+        function T = nestedExperimentTable(plg,name,value,time,nstime,trial,type,pv)
+            % This is called from get with splitapply, ensuring that all of
+            % the properties correspond to a single experiment. Here we
+            % convert these to a nested table format, with one column per
+            % plugin,
+            [ix,grp] = findgroups(plg); % Find the plugins for this expt.
+            S = splitapply(@(name,value,time,nstime,trial,type) {ns.PluginParameter.nestedPluginTable(name,value,time,nstime,trial,type)},name,value,time,nstime,trial,type,ix);
+            T= table(S{:},'VariableNames',cellstr(grp));
+            if ~isempty(pv.prm) && (~isnan(pv.atTrialTime) || ~isempty(pv.trial))
+                if isscalar(unique(plg))
+                    plg = "cic";
+                    if ~isfield(T.cic,pv.prm);return;end
+                else
+                    plg = setdiff(plg,"cic");
+                end
+                T.(plg) = ns.PluginParameter.attrialtime(T.(plg),pv.prm,T.cic.firstframe.data,pv.atTrialTime,pv.trial);
+            end
+            if ismember("cic",T.Properties.VariableNames)
+                if plg~="cic"
+                    T = removevars(T,"cic");
+                elseif ~isempty(pv.prm) && lower(pv.prm) ~="firstframe" && isfield(T.cic,'firstframe')
+                    T.cic = rmfield(T.cic,"firstframe");
+                end
+            end
+        end
+
+        function S = nestedPluginTable(name,value,time,nstime,trial,type)
+            % Called from splitapply in nestedExperimentTable to create a
+            % struct per plugin.
+
+            if ~iscell(value)
+                value= {value};
+            end
+            if ~iscell(trial)
+                trial = {trial};
+            end
+            if ~iscell(time)
+                time = {time};
+            end
+            if ~iscell(nstime )
+                nstime= {nstime};
+            end
+            for prm = 1:numel(name)
+                nm = lower(name(prm)); % Force lower case
+                if strcmpi(type(prm),'ByteStream')
+                    % Convert from bytestrem to matlab values for this parameter only
+                    value{prm} = getArrayFromByteStream(value{prm});
+                end
+                if iscellstr(value{prm}) || ischar(value{prm})
+                    thisValue = string(value{prm});
+                else
+                    thisValue = value{prm};
+                end
+                S.(nm) = struct('data',thisValue,'trialtime', time{prm},'trial',trial{prm},'clocktime',nstime{prm});
+            end
+        end
+
+        function props = attrialtime(props,propName,firstFrame,time,trial)
+            % This is called from nestedExperimentTable to deal with the "feature" that Neurostim
+            % stores only changes to a property, hence if a property did not change in
+            % trial n, it should have the value it got in trial n-1.
+            %
+            % INPUT
+            % props - struct with properties
+            % propName - The name of the property that should be returned.
+            % firstFrame -  the ns time of the first frame in each trial
+            % time - The time (relative to the trial start) at which the property
+            %           should be determined. Use Inf for 'at the end of the trial'.
+            % trial - a vector of trial numbers for which to return the information.
+            % Defaults to [], which means all trials.
+            %
+            % OUTPUT
+            % props = An updated struct, one for each requested trial.
+            %
+            % BK - Feb 2026.
+            arguments
+                props (1,1) struct
+                propName (1,1) string
+                firstFrame (1,:) double
+                time (1,1) double  = NaN % Select a time in the trial
+                trial (1,:) double =[]  % Select trials
+            end
+
+            propName = lower(propName); % All properties are lower case
+            nrTrials  = numel(firstFrame);
+            allEventValues = props.(propName).data;
+            
+            allEventTrials = props.(propName).trial;
+            allEventTimes  = props.(propName).trialtime;
+            allEventNsTimes  = props.(propName).clocktime;
+            if isscalar(allEventValues)
+                allEventValues= repmat(allEventValues,[numel(allEventTrials) 1]);
+            end
+            assert(~isempty(allEventTrials) && ~isempty(allEventTimes),"%s does not occur at a specific time or trial. Do not select trials or attrialtime",propName)
+            if isnan(time)
+                % No time selection (but a trial selection)
+                [keepTrial,loc] = ismember(allEventTrials,trial);
+                if iscell(allEventValues)
+                    thisValue = allEventValues{keepTrial};
+                else
+                    thisValue = allEventValues(keepTrial);
+                end
+                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc(keepTrial)),'clocktime',allEventNsTimes(keepTrial));
+            else % Time selection : 1 per trial (optionally followed by trial selection)
+                % Initialize with nan
+                data = cell(nrTrials,1);
+                eventTime = nan(nrTrials,1);
+                eventNsTime = nan(nrTrials,1);
+                [data{:}] = deal(NaN);
+                currentTrial =NaN;
+                
+                % Loop through all events (= events when the property changed value)
+                % For many events this could be made more efficient by skipping successive
+                % events in a given trial, but the find needed for this is probably slower
+                % than this loop over all events
+                for e=1:numel(allEventTrials)
+                    if ~isnan(currentTrial) && allEventTrials(e) > currentTrial+1
+                        % Fill in skipped trials with the currentValue
+                        trgTrials = currentTrial+1:allEventTrials(e)-1;
+                        [data{trgTrials}] =deal(currentValue);
+                        eventTime(trgTrials) = -inf; % Indicates that this value was set before the start of the trial
+                        eventNsTime(trgTrials) = currentNsTime;
+                    end
+                    % Next trial or same trial, update until atTrialTime reached.
+                    currentTrial = allEventTrials(e);
+                    currentTime = allEventTimes(e);
+                    currentNsTime = allEventNsTimes(e);
+                    if iscell(allEventValues)
+                        currentValue = allEventValues{e};
+                    else
+                        currentValue = allEventValues(e);
+                    end
+                    if currentTime <= time
+                        data{currentTrial} = currentValue;
+                        eventTime (currentTrial) = currentTime;
+                        eventNsTime(currentTrial) = currentNsTime;
+                    elseif isnan(eventTime(currentTrial))
+                        % The current event occurred after the atTrialTime and
+                        % there was no event in the current trial; use the value from the
+                        % previous trial
+                        if currentTrial >1
+                            data{currentTrial} = data{currentTrial-1};
+                            eventTime (currentTrial) = -inf;
+                            eventNsTime(currentTrial) = eventNsTime(currentTrial-1);
+                        end
+                    end
+                end
+                % Fill in to the end from the last value that was stored.
+                if currentTrial~=nrTrials
+                    [data{currentTrial+1:nrTrials}] =deal(currentValue);
+                    eventNsTime(currentTrial+1:nrTrials) = currentNsTime;
+                    eventTime(currentTrial+1:nrTrials)  =-inf;
+                end
+
+                if ~isempty(trial)                    
+                    keepTrial = ismember(1:nrTrials,trial);
+                else
+                    keepTrial = true(nrTrials,1);
+                end
+                trialsWithTheEvent = intersect(find(~isinf(eventNsTime)),find(keepTrial)); % Trials in which the event actually ocurred
+                props.(propName) = struct('data',{data(keepTrial)},'trialtime', eventTime(keepTrial),'trial',trialsWithTheEvent,'clocktime',eventNsTime(keepTrial));
+            end
+            % Try to convert to matrix
+            if iscell( props.(propName).data )
+                if all(cellfun(@numel, props.(propName).data )==1)
+                    props.(propName).data  = cell2mat( props.(propName).data );
+                end
+            elseif iscellstr(props.(propName).data)
+                props.(propName).data = string(props.(propName).data);
+            end
+        end
+    end
 
 end
+
+
 
 
 

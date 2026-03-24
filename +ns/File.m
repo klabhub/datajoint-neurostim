@@ -26,6 +26,29 @@ checksum = NULL : char(32) # MD5 Hash checksum
 classdef File < dj.Imported
 
     methods (Access = public)
+        function ff= open(tbl)
+            % Open a file in the corresponding system application.
+            % On Windows, uses winopen. On other platforms, uses a
+            % best-effort system call (open / xdg-open), or errors if
+            % unsupported.
+            arguments
+                tbl (1,1) ns.File {mustHaveRows(tbl,1)}
+            end
+            fname =fetch1(tbl,'filename');
+            ff = fullfile(folder(ns.Experiment &tbl),fname);
+            if ispc
+                winopen(ff);
+            elseif ismac
+                % macOS: use the 'open' command to open with default app
+                system(sprintf('open "%s"', ff));
+            elseif isunix
+                % Linux/Unix: use xdg-open to open with default app
+                system(sprintf('xdg-open "%s"', ff));
+            else
+                error('ns.File:open:UnsupportedPlatform', ...
+                    'Opening files is not supported on this platform.');
+            end
+        end
         function nwb(tbl,nwbRoot,pv)
             for tpl = fetch(tbl,'*')'
                 switch tpl.extension
@@ -91,7 +114,6 @@ classdef File < dj.Imported
                 out =T;
             end
         end
-
         function updateWithFiles(tbl,key,linkedFiles)
             % Usually called from makeTuples to add the standard files
             % named according to NS conventions, but can be called to add
@@ -150,9 +172,7 @@ classdef File < dj.Imported
                 end
             end
         end
-
-
-       function addMissingFiles(tbl,key)
+        function addMissingFiles(tbl,key)
             % For rerunning makeTuples to add files that were missed.
             % Called from ns.Experiment
             makeTuples(tbl,key)            
@@ -161,7 +181,6 @@ classdef File < dj.Imported
 
 
     methods (Access= protected)
-
         function makeTuples(tbl,key)
             % TODO handle p.Results.folderFun
 

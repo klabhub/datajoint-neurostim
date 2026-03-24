@@ -38,18 +38,18 @@ classdef Plugin < dj.Manual
                     blockNames = {plg.blocks(blockNr(stay)).name};
                     [blockNameTpl.property_value{stay}] =deal(blockNames{:});
                     insert(ns.PluginParameter,blockNameTpl);
-                elseif startsWith(plg.name,'psyBayes')
+                elseif startsWith(plg.name,'psyBayes','IgnoreCase',true)
                     % Bayesian adaptive staircase method.
                     % Add posterior estimates and store psy object
                     %
                     % Compute estimates and 75% threshold with HDR at 0.05
                     [m,sd,hdr,threshold,thresholdHdr]= posterior(plg,0.05);
                    addNew(ns.PluginParameter,key,'psy',plg.psy,'Global',[],[],[]);
-                   addNew(ns.PluginParameter,key,'posterior',m,'Global',[],[],[]);
-                   addNew(ns.PluginParameter,key,'posterior_stdev',sd,'Global',[],[],[]);
-                   addNew(ns.PluginParameter,key,'posterior_hdr',hdr,'Global',[],[],[]);
-                   addNew(ns.PluginParameter,key,'posterior_threshold',threshold,'Global',[],[],[]);
-                   addNew(ns.PluginParameter,key,'posterior_threshold_hdr',thresholdHdr,'Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior',m','Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_stdev',sd','Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_hdr',hdr','Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_threshold',threshold','Global',[],[],[]);
+                   addNew(ns.PluginParameter,key,'posterior_threshold_hdr',thresholdHdr','Global',[],[],[]);
 
                     % 2. More can be added here
                 end
@@ -74,6 +74,7 @@ classdef Plugin < dj.Manual
                         end
                         for prm = 1:height(T)
                             cmd = sprintf('fprintf(2,''%s'');%s = get(ns.Experiment & struct(''subject'',''%s'',''session_date'',''%s'',''starttime'',''%s''),''%s'',''prm'',''%s'',''what'',''data''%s)',plg.plugin_name,T.property_name(prm),T.subject(prm),T.session_date(prm),T.starttime(prm),T.plugin_name(prm),T.property_name(prm),extra);
+                            
                             line= [line ' ' sprintf('<a href="matlab:%s">%s</a>',cmd,T.property_name(prm))]; %#ok<AGROW>
                         end
                         disp(sprintf('\t\t%-10s: %s\t',tp, line)) %#ok<DSPSP>
@@ -92,7 +93,7 @@ classdef Plugin < dj.Manual
             end
             %Export to NWB format. Called from ns.Experiment/nwbExport only
             for plgTpl = fetch(tbl,'*')'
-                get(ns.PluginParameter&plgTpl,nwbRoot,plgTpl.plugin_name);
+                get(ns.PluginParameter&plgTpl,'nwbRoot',nwbRoot);
             end
         end
 

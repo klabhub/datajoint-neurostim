@@ -62,7 +62,7 @@ fit=NULL    : blob # Parameters of a user-defined fit.
 % For an example, see ns.directionTuning.m
 %
 % BK - Nov 2023
-classdef Tuning <dj.Computed
+classdef Tuning <dj.Computed & dj.DJInstance
     properties (Dependent)
         keySource
     end

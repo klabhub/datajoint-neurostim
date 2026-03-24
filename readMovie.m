@@ -32,15 +32,15 @@ channelInfo =struct('name',{'frame','intensity'}','nr',{1,2}');
 %% Map frames to nsTime 
 if exists(ns.Plugin & key & 'plugin_name=''camera''')
     % A movie captured by the neurostim camera plugin
-    prms = get(ns.Experiment & key,'camera');
-    withData= cellfun(@numel,prms.camera.firstvideoframe);
+    prms = get(ns.Experiment & key,"camera");
+    withData= cellfun(@numel,prms.camera.firstvideoframe.data);
     %% This code is for SaveDuringTrial mode : 
     % one trigger before the trial starts triggers collection of a fixed number of frames.
     % But the afterFrame callbacks do not always run (hence nans and
     % negative offsets) even when the movie contains a full set of frames.
     % The timing of frames is probably still fine (as long as no subframe
     % accuracy is expected).
-    offsets = cat(1,prms.camera.firstvideoframe{withData>0})';
+    offsets = cat(1,prms.camera.firstvideoframe.data{withData>0})';
     [nrFramesPerTrial,~] =size(offsets);
     out= offsets<=0 | isnan(offsets);
 
@@ -50,7 +50,7 @@ if exists(ns.Plugin & key & 'plugin_name=''camera''')
     fprintf('%.0f%% of frames have NaN offsets, z-score of the variation in frameduration is %.2f\n',100*mean(isnan(offsets),"all"),z)
     actualFrameRate = 1000./mFrameDuration;
     % Assuming a constant framerate 
-    time = prms.camera.firstvideoframeNsTime(withData>0)'+ (0:nrFramesPerTrial-1)'*mFrameDuration;
+    time = prms.camera.firstvideoframe.clocktime(withData>0)'+ (0:nrFramesPerTrial-1)'*mFrameDuration;
 else
     % Assume movie started with the first frame in the first trial
     error('No camera plugin found. Alignment to Neurostim clock not possible?');
