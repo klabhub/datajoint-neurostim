@@ -128,8 +128,7 @@ classdef PupilTracker < handle
                 experiment (1,1)
                 pv.endsWith (1,1) string = "_eye.mj2"
                 pv.overwrite (1,1) logical = false
-                pv.initialize (1,1) logical = false  % Open figure to initialize 
-                pv.track (1,1) logical =false % Run tracking (without visualization)
+                pv.initialize (1,1) logical = false  % Open figure to initialize                
             end
             if isa(experiment,"ns.Experiment")
                 % Extract files from datajoint experiment table
@@ -246,11 +245,7 @@ classdef PupilTracker < handle
             if pv.initialize
                 initialize(obj);
             end
-            if pv.track
-                track(obj);
-            end
         end
-
         function disp(obj)
             % DISP - Display a summary of the object.
             paramFiles = keys(obj.Parameters);
@@ -259,14 +254,12 @@ classdef PupilTracker < handle
                 fprintf('  [%d] %s\n', i, paramFiles{i});
             end
         end
-
         function delete(obj)
             % DELETE - Close the figure when the object is deleted.
             if ~isempty(obj.Figure)  && isgraphics(obj.Figure)
                 close(obj.Figure);
             end
         end
-
         function initialize(obj,pv)
             % INITIALIZE  Interactively set tracking parameters for all queued videos.
             %
@@ -806,13 +799,29 @@ classdef PupilTracker < handle
                     'MajorAxis', 'MinorAxis', 'Eccentricity', 'Orientation', ...
                     'BBox','Threshold','FitQuality', 'EllipseIR', 'BlobIR'};
                 obj.Results(videoFile) = resultTable;
-
-                writetable(resultTable, outputFile, 'FileType', 'text', 'Delimiter', '\t');
-                fprintf('    -> Saved data to: %s\n', outputFile);               
             end
 
+            obj.save();
             if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure), clf(obj.Figure); end
             disp('Batch processing complete!');
+        end
+
+        function save(obj)
+            % SAVE  Write all tracking results to _pupil.tsv files next to each video.
+            %
+            %   obj.save()
+            %
+            % For each entry in obj.Results, writes a tab-separated file whose
+            % path is derived by replacing '.mj2' with '_pupil.tsv' in the key.
+            %
+            % See also  sbx.PupilTracker.track, sbx.PupilTracker.read
+            videoFiles = keys(obj.Results);
+            for i = 1:numel(videoFiles)
+                videoFile = videoFiles{i};
+                outputFile = strrep(videoFile, '.mj2', '_pupil.tsv');
+                writetable(obj.Results(videoFile), outputFile, 'FileType', 'text', 'Delimiter', '\t');
+                fprintf('    -> Saved data to: %s\n', outputFile);
+            end
         end
 
         function read(obj)

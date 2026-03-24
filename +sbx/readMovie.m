@@ -122,7 +122,7 @@ elseif contains(filename,'_eye')
                     end
                     assert(exist(tsvFilename,"file"),"%s not found. Pupil tracking failed?")
             else
-                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true,track=true)">Click here to initialize pupil tracking </a>',filename,filename);                
+                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true)">Click here to initialize pupil tracking </a>',filename,filename);                
             end
             P =readtable(tsvFilename,filetype ="text");
             if isfield(parms,'variables')
