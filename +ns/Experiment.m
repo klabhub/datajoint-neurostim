@@ -626,6 +626,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             fprintf('Updating ns.Experiment with file contents from %d experiments...\n',count(tbl))
 
             currentSafeMode = dj.config('safemode');
+            safeModeCleanup = onCleanup(@() dj.config('safemode', currentSafeMode));
             dj.config('safemode',pv.safemode);
             for key=tbl.fetch('file')'
                 keyCntr=keyCntr+1;
