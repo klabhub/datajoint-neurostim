@@ -86,15 +86,26 @@ else
     fprintf('Too few trials for a clock fit. Assuming zero drift (almost certainly ok!).\n')
     clockParms = [1 trialIDTimeNeurostim(1) - trialIDTimeEyelink(1)];
 end
-% Convert eyelink sample time to neurostim time
-time  = polyval(clockParms,double(data.FSAMPLE.time))';
-nrSamples= numel(time);
-% Put the requested channels in signal
+
+%% When the recording is interrupted (by a drift correct or calibration)
+% samples are not store. data.FSAMPLE.time stores the correct time of each
+% sample, but for analysis we want to fill in missing values for missing
+% samples.
+
+eyelinkSampleTime = double(data.FSAMPLE.time);
+samplingRate = double(data.RECORDINGS(end).sample_rate);
+nrSamplesWithMissing= ceil((eyelinkSampleTime(end)-eyelinkSampleTime(1))*samplingRate/1000); % Pretend regular sampling from start to finish.
 nrChannels =numel(parms.channel);
-signal= nan(nrSamples,nrChannels);
+signal= nan(nrSamplesWithMissing,nrChannels);
+% Assign each sample to its correct place in the signal matrix. 
+sampleTargetIx = floor((eyelinkSampleTime-eyelinkSampleTime(1)).*(samplingRate/1000))+1;
 for i=1:nrChannels
-    signal(:,i) = data.FSAMPLE.(parms.channel{i})(parms.eye,:)';
+    signal(sampleTargetIx,i) = data.FSAMPLE.(parms.channel{i})(parms.eye,:)';
 end
+% Convert eyelink sample time to neurostim time  (if no missing samples,
+% this is the same as eyelinkSampleTime)
+eyelinkAllSampleTime = linspace(eyelinkSampleTime(1),eyelinkSampleTime(end),nrSamplesWithMissing);
+time  = polyval(clockParms,eyelinkAllSampleTime)'; % time in ms on the neurostim clock.
 
 %% Fill missing values ;
 isMissing = signal==MISSING;
@@ -103,28 +114,8 @@ if isfield(parms,'fillmissing') && any(isMissing,'all')
     fprintf('Filling missing %.1f%% of samples with %s \n' ,100*mean(isnan(signal),'all'),parms.fillmissing{1});
     signal = fillmissing(signal,parms.fillmissing{:});
 end
-%% Downsample
-if isfield(parms,'downsample')
-    R= ceil(data.RECORDINGS(1).sample_rate/parms.downsample);
-    if R>1
-        fprintf('Downsampling to %.0f Hz (decimate)...\n',parms.downsample);
-        tic
-        nrSamples = ceil(nrSamples/R);
-        tmp = nan(nrSamples,nrChannels);
-        for ch = 1:nrChannels
-            if ~all(isnan(signal(:,ch)))
-                % if fillmissing was successfull, then either all are NaN
-                % or none are Nan. If all are nan then the decimated signal
-                % should also be nan.
-                tmp(:,ch) =  decimate(signal(:,ch),R);
-            end
-        end
-        signal =tmp;
-        time = linspace(time(1),time(end),nrSamples)';
-        fprintf('Done in %d seconds.\n',round(toc));
-    end
-end
-if isfield(parms,'scale')
+%% Scaling pupil and xy - early attempt, probably not useful
+if isfield(parms,'scale') && parms.scale
     fprintf('Scaling raw pupil coordinates\n');
     % Raw pupil data (px py) are between -30e3 and + 30e3. We scale to this
     % to get position relative to the center (of the camera image), with
@@ -135,32 +126,25 @@ if isfield(parms,'scale')
     signal(:,ismember(parms.channel,{'px','py'})) = 0.5*signal(:,ismember(parms.channel,{'px','py'}))./XYSCALE;
     signal(:,ismember(parms.channel,{'pa'}))= signal(:,ismember(parms.channel,{'pa'}))./PUPILSCALE;
 end
+
+%% Generic preprocessing
+[signal,time] = prep.preprocess(signal,time/1000,parms);
+time = time*1000; % Convert back to ms.
+nrSamples = numel(time);
+
 % Information per channel
 channelInfo =struct('name',parms.channel,'nr',num2cell(1:nrChannels));
 % Overall recording info.
 recordingInfo= data.RECORDINGS(end);
 recordingInfo.header = data.HEADER;
 
-% Regular sampling so reduce time representation
+% Regular sampling: reduce time representation
 time = double([time(1) time(end) nrSamples]);
 % Reduce storage (ns.C.align converts back to double
 signal  = single(signal);
 
-%% Parse events to add as plugin parameter
+%% Add certain event types as events in an edf plugin
 trialStartTime = get(ns.Experiment & key,'cic','prm','firstframe','what','clocktime');
-% nrBlinks = numel(startBlink);
-% startBlinkTrial = nan(nrBlinks,1);
-% % Assign to trial
-% for b= 1:nrBlinks
-%     tmp = find(trialStartTime > startBlinkTime(b),1,'first');
-%     if isempty(tmp)
-%         startBlinkTrial(b)= nrTrials;
-%     else
-%         startBlinkTrial(b) =max(1,tmp-1);
-%     end
-% end
-% startBlinkTrialTime = startBlinkTime- trialStartTime(startBlinkTrial);
-% Create tpl and insert, pretending this is a regular plugin.
 plgTpl= fetch(ns.Experiment &key);
 plgTpl.plugin_name ="edf";
 if exists(ns.Plugin & plgTpl)
@@ -168,8 +152,6 @@ if exists(ns.Plugin & plgTpl)
     delQuick(ns.PluginParameter&plgTpl); % delquick does not cascade
     delQuick(ns.Plugin&plgTpl);
 end
-
-%% Add certain event types as events in the edf plugin
 % currently no edf data are added to the events.
 types = dictionary;
 types("startblink") =3; % from edf_data.h

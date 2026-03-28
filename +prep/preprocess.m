@@ -60,7 +60,7 @@ else
     badChannels   = [];
     removeBadChannels = false;
 end                
-samplingRate = 1./mode(diff(time));
+samplingRate = 1./(round(1000*mode(diff(time)))/1000);
 fn =string(fieldnames(parms))';
 
 for f=fn
@@ -94,8 +94,19 @@ for f=fn
                 % Subtract
                 signal = signal - base;
             end
+        case "medfilt"
+            if isfield(thisParms,'window') % Filter window in ms.
+                n = round(thisParms.window/1000*samplingRate);
+                signal = medfilt1(signal,n,options{:});                        
+            else
+                signal = medfilt1(signal,options{:});            
+            end
+
         case "resample"
-            [signal,time] =resample(signal, thisParms.frequency, samplingRate,options{:});            
+            [p,q] = rat(thisParms.frequency / samplingRate);
+            [signal] =resample(signal, p,q,options{:});    
+            nrSamples=size(signal,1);
+            time  =time(1)+(0:nrSamples-1)'/thisParms.frequency;
         case "zapline"
             assert(exist("clean_data_with_zapline_plus","file"),"Zapline requires an external toolbox. Get our fork at https://github.com/klabhub/zapline-plus.git and add it to your path")
             signal = reshape(signal,nrSamples*nrTrials,nrChannels);            
@@ -122,7 +133,13 @@ for f=fn
             % and applied with filtfilt
             fprintf('Applying filter ...')
             d = designfilt(options{:},'SampleRate',samplingRate);
+            isNaN = isnan(signal);
+            if any(isNaN(:))
+                fprintf(2,'\t Setting %d missing samples (%.2f %%) to zero\n',sum(isNaN,"all"),mean(isNaN(:)))
+            end
+            signal(isNaN) = 0;
             signal = filtfilt(d,signal);
+            signal(isNaN) =NaN;
         case "detrend"
             %% Detrending using the detrend function
             fprintf('Detrending (%d order)...',thisParms.order)
