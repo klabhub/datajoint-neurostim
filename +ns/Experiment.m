@@ -654,7 +654,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 pluginsToUpdate = ["cic" string({thisData.pluginOrder.name})];
                 if ~isempty(pv.plugin)
                     % Restrict to the plugins we want to update
-                    keep = any(startsWith(pluginsToUpdate, pv.plugin), 2);
+                    keep = startsWith(pluginsToUpdate, pv.plugin);
                     pluginsToUpdate = pluginsToUpdate(keep);
                     if isempty(pluginsToUpdate)
                         fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)                        

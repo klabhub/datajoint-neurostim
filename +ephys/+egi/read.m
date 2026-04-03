@@ -99,7 +99,7 @@ eventEgiTime  =num2cell(eventEgiTime );
 % Using NTPSync results in pretty much perfectly aligned clocks (no
 % drift). But we check anyway using the Begin Trial (bTRL) events.
 prms  = get(exp_tpl,{'cic','egi'});
-trialStartTimeNeurostim  = prms.cic.trialNsTime(2:end);%
+trialStartTimeNeurostim  = prms.cic.trial.clocktime(2:end);%
 trialStartTimeEgi = [EEG.event(strcmpi(eventCode,'BTRL')).egitime];
 % The number of trials should match
 assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
@@ -120,7 +120,7 @@ egiSampleTime = (0:nrSamples-1)/EEG.srate;
 neurostimTime = polyval(clockParms,egiSampleTime);
 % Now we have a time axis for the EGI data in Neurostim time
 % Keep only from the start of the first until the end of the last trial.
-stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptimeNsTime(end);
+stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptime.clocktime(end);
 channels = 1:nrChannels;
 
 %% Preprocess with EEGLab 
@@ -151,7 +151,7 @@ if isfield(parms,'eeglab')
                 % Update time
                 egiSampleTime = EEG.times/1000;
                 neurostimTime = polyval(clockParms,egiSampleTime);
-                stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptimeNsTime(end);
+                stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptime.clocktime(end);
             case 'zapline'
                 if isstruct(parms.eeglab.zapline)
                     zapParms = namedargs2cell(parms.eeglab.zapline);
@@ -311,6 +311,7 @@ else
     eventNsTime = polyval(clockParms,[EEG.event.egitime]);
     eventTrialTime = eventNsTime' - trialStartTimeNeurostim([EEG.event.trial]);
     eventCode = string(eventCode);
+    eventCode(eventCode=="") = "noname"; % Some events have no name. Fake a name to avoid later problems.
     uNames= unique(eventCode);
     nrNames= numel(uNames);
 
