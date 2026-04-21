@@ -492,6 +492,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 pv.asTable (1,1) logical = false
             end
             pv.what = lower(pv.what);
+            pv.prm  = lower(pv.prm);
             mustBeMember(pv.what,["data" "trialtime" "clocktime" "trial" "all"]);
 
             %% Construct the relvar
