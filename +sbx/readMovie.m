@@ -99,11 +99,12 @@ if contains(filename,'_ball')
     resultsFile = fullfile(fldr,resultsFile + "_" + parms.method + ".csv");
     if exist(resultsFile,'file')
         fromFile = true;
-        T = readtable(resultsFile);
-        signal = T.Variables;
-        if size(signal,1) ~=numel(time) 
-            fprintf('Saved Ball datado not match the samples in bin. Recomputing %s\n',resultsFile);
+        T = readtable(resultsFile);               
+        if height(T) ~=numel(time)  || ~all(ismember(["velocity" "quality"],T.Properties.VariableNames))
+            fprintf('Saved Ball data do not match the expected format. Recomputing %s\n',resultsFile);
             fromFile = false;
+        else        
+            signal = [T.velocity T.quality];
         end
     else
         fromFile =false;
