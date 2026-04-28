@@ -389,6 +389,12 @@ classdef PupilTracker < handle
                     uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'New Average', ...
                         'Units', 'normalized', 'Position', [0.01 0.01 0.15 0.05], ...
                         'Callback', @(~,~) sbx.PupilTracker.resampleAverageFrame(v, ax_eye, obj.MaxSampleFrames));
+                    setappdata(obj.Figure, 'skipFile', false);
+                    uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Skip File', ...
+                        'Units', 'normalized', 'Position', [0.17 0.01 0.15 0.05], ...
+                        'BackgroundColor', [0.6 0.6 0.1], 'ForegroundColor', 'white', ...
+                        'FontSize', 10, 'FontWeight', 'bold', ...
+                        'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'skipFile', true));
 
                     eyeRoi = drawellipse(ax_eye, 'Color', 'b', 'FaceAlpha', 0.15);
                     lEye = addlistener(eyeRoi, 'ROIClicked', @(~,evt) sbx.PupilTracker.roiConfirmIfDouble(obj.Figure, evt));
@@ -396,6 +402,11 @@ classdef PupilTracker < handle
                     delete(lEye);
                     if ~isempty(obj.Figure) && ~isgraphics(obj.Figure)
                         fprintf('  Skipped (figure closed): %s\n', currentFile);
+                        remove(obj.Parameters, currentFile);
+                        skippedFile = true; break;
+                    end
+                    if getappdata(obj.Figure, 'skipFile')
+                        fprintf('  Skipped (button): %s\n', currentFile);
                         remove(obj.Parameters, currentFile);
                         skippedFile = true; break;
                     end
