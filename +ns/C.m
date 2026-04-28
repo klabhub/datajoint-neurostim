@@ -1027,4 +1027,17 @@ classdef C < dj.Computed & dj.DJInstance
             end
         end
     end
+
+    methods (Static)
+        function t = timetable(o,pv)
+            arguments
+                o (1,1) dj.internal.GeneralRelvar
+                pv.name = 'Signal'
+                pv.fun = @(x)(x)
+            end
+            s = pv.fun([fetch(o,'signal').signal]);
+            c = (ns.C & proj(o));
+            t= timetable(milliseconds(c.time),s,'VariableNames',{pv.name});
+        end
+    end
 end

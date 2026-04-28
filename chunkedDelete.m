@@ -10,7 +10,8 @@ arguments
     extraRelvars cell = {} % Optional cell array of additional relvars (possibly cross-schema) to include.
     autoDetectFK (1,1) logical = true % When true, include external FK children discovered via INFORMATION_SCHEMA
 end
-
+wrnStatus = warning("query");
+warning("off",'DataJoint:longCondition')
 if ~exists(targetQuery)
     fprintf('Nothing to delete. \n');
     return;
@@ -108,6 +109,7 @@ for i = 1:length(list)
     end
 end
 disp('Resilient bottom-up deletion complete.');
+warning(wrnStatus)
 end
 
 

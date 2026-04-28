@@ -28,6 +28,8 @@ for exptTpl = tbl.fetch('*')'
     if exists(thisC)
         cTpl = fetch(thisC,'*');  % The entry in the C table
         cChannelTpl = fetch(ns.CChannel & ns.stripToPrimary(ns.CChannel,cTpl),'*'); % Struct array with continuous data, one struct per channel
+        velocity  = channelByName(cChannelTpl,'velocity');
+        quality = channelByName(cChannelTpl,'quality');
         hFig = figByName(exptName);
         hFig.Units= 'Normalized';
         clf;
@@ -36,7 +38,7 @@ for exptTpl = tbl.fetch('*')'
             switch upper(pv.mode)
                 case "MOVIE"
                     fprintf('Opening movie file...\n')
-                    movie = VideoReader(fullfile(fldr,cTpl.filename)); %#ok<TNMLP>
+                    movie = VideoReader(fullfile(fldr,cTpl.filename)); 
                     fprintf('done.\n Press Ctrl-C to stop, or close the window to move to the next movie in the table\n');
                     ax = axes('Position',[0 0 1 1]);
                     axis(ax,'off')
@@ -45,7 +47,7 @@ for exptTpl = tbl.fetch('*')'
                     axSpeed = axes(hFig,'Position',[0.75 0.05 pos(3:4)/5]);
                     xlabel(axSpeed,'Frame #','Color','y','FontWeight','Bold','FontSize',12);
                     ylabel(axSpeed,'Speed','Color','y','FontWeight','Bold','FontSize',12)
-                    speed =abs(cChannelTpl.velocity);
+                    speed =abs(velocity);
                     maxSpeed = max(eps,max(speed));
                     historyColormap = gray; % Show multiple trailing vectors as shades of grays
                     colormap gray
@@ -62,7 +64,7 @@ for exptTpl = tbl.fetch('*')'
                             fToKeep = frameCntr-pv.history:frameCntr;
                             fToKeep(fToKeep<1) =[];
                             nrF =numel(fToKeep);
-                            theta  = angle(cChannelTpl.velocity(fToKeep));
+                            theta  = angle(velocity(fToKeep));
                             rho   = speed(fToKeep);
                             h = polarplot(axPolar,[zeros(1,nrF);theta'],[zeros(1,nrF);rho']);
                             % Use shading such that the most recent frame
@@ -86,9 +88,9 @@ for exptTpl = tbl.fetch('*')'
 
 
                         %% Quality indicated by the circle in the polar plot. (red = bad, green is good)
-                        if ~isnan(cChannelTpl.quality(frameCntr))
+                        if ~isnan(quality(frameCntr))
                             hold(axPolar,"on")
-                            polarplot(axPolar,0,0,'.','MarkerSize',10,'Color',[max(0,1-cChannelTpl.quality(frameCntr)) min(1,cChannelTpl.quality(frameCntr)) 0])
+                            polarplot(axPolar,0,0,'.','MarkerSize',10,'Color',[max(0,1-quality(frameCntr)) min(1,quality(frameCntr)) 0])
                             hold(axPolar,"off")
                         else
                             polarplot(axPolar,0,0,'X','MarkerSize',10,'Color','r')
@@ -107,10 +109,10 @@ for exptTpl = tbl.fetch('*')'
                     % Starting point is always 0,0
                     % Time is shown as hsv color
                     % Speed is shown as marker size
-
-                    stay =~any(isnan(cChannelTpl.velocity),2);
-                    position  = cumsum(cChannelTpl.velocity(stay,:));
-                    speed  = 1+abs(cChannelTpl.velocity(stay,:));
+            
+                    stay =~any(isnan(velocity),2);
+                    position  = cumsum(velocity(stay,:));
+                    speed  = 1+abs(velocity(stay,:));
                     time= hsv(sum(stay)); % Show multiple trailing vectors as shades of grays
                     scatter(0,0,10,'*');
                     hold on
@@ -118,7 +120,7 @@ for exptTpl = tbl.fetch('*')'
                     xlabel 'X (pixels)';
                     ylabel 'Y (pixels)';
                     set(gca,'XLim',max(abs(xlim))*[-1 1],'ylim',max(abs(ylim))*[-1 1]);
-                    title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',exptTpl.subject, exptTpl.session_date,exptTpl.starttime,mean(cChannelTpl.quality,'omitnan'),mean(isnan(cChannelTpl.velocity))));
+                    title(sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',exptTpl.subject, exptTpl.session_date,exptTpl.starttime,mean(quality,'omitnan'),mean(isnan(velocity))));
                     colormap hsv
                     h = colorbar;
                     ylabel(h,'Time (norm)')
@@ -128,18 +130,18 @@ for exptTpl = tbl.fetch('*')'
                     T=tiledlayout(2,1,"TileSpacing","tight");
                     t =linspace(cTpl.time(1),cTpl.time(end),cTpl.time(3));
                     nexttile(T)
-                    plot(t,real(cChannelTpl.velocity));
+                    plot(t,real(velocity));
                     hold on
-                    plot(t,imag(cChannelTpl.velocity));
+                    plot(t,imag(velocity));
                     ylabel 'Speed (pixels/frame)'
                     legend('dx','dy')
                     nexttile(T)
-                    plot(t,exptTpl.quality);
+                    plot(t,quality);
                     ylabel 'Velocity Quality ([0 1])'
                     xlabel 'Time (s)'
                     ylim([0 1.1]);
                     legend('quality')
-                    title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',exptTpl.subject, exptTpl.session_date,exptTpl.starttime,mean(cChannelTpl.quality,'omitnan'),mean(isnan(cChannelTpl.velocity))));
+                    title(T,sprintf('#%s on %s@%s : mean quality= %.2f  NaN-Frac=%.2f',exptTpl.subject, exptTpl.session_date,exptTpl.starttime,mean(quality,'omitnan'),mean(isnan(velocity))));
                     linkaxes(T.Children,'x')
 
             end

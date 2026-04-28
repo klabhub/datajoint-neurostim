@@ -2,14 +2,14 @@ function [signal,time,channelInfo,recordingInfo] = readMovie(key,parms)
 % Read from a SBX movie files (_eye and _ball) to create an entry in ns.C
 % that stores the eye position and ball speed.
 %
-% The parms structures contain the preprocessing parameters 
-% 
+% The parms structures contain the preprocessing parameters
+%
 %% BALL:
 %   .method = 'xcorr' or 'phasecorr'
 %   .scaleFactor = By how much to scale down (imrresize) the movie.
 %   .minPixels = Scaling always leaves this number of pixels in width and
 %                   height of the movie.
-% 
+%
 %% EYE:
 %   .method = 'PhaseCode', 'TwoStage', 'dlcXXX'
 % For method = PhaseCode or TwoStage, we use imfindcircles:
@@ -80,7 +80,7 @@ fprintf('Z-score of the variation in frameduration is %.2f\n',z)
 actualFrameRate = 1000./mFrameDuration;
 recordingInfo = struct('nrFrames',movie.NumFrames,'videoFormat',movie.VideoFormat,'width',movie.Width,'height',movie.height,'framerate',actualFrameRate);
 
-SLACKFRAMES = 2; % Allow this many missing frames
+SLACKFRAMES = 30; % Allow this many missing frames
 nrMissing =(movie.NumFrames-nrTriggers);
 assert(abs(nrMissing)<=SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
 if nrMissing >0
@@ -95,18 +95,36 @@ end
 
 %% Analyze the movies using functions defined below
 if contains(filename,'_ball')
-    switch upper(parms.method)
-        case 'XCORR'
-            % cross correaltion
-            [velocity,quality] =sbxXcorr(movie,parms);
-        case 'PHASECORR'
-            % phase correlation
-            [velocity,quality] =sbxPhasecorr(movie,parms);
-        otherwise            
-            error('Unknown method %s ',parms.method);
+    [fldr,resultsFile] = fileparts(filename);
+    resultsFile = fullfile(fldr,resultsFile + "_" + parms.method + ".csv");
+    if exist(resultsFile,'file')
+        fromFile = true;
+        T = readtable(resultsFile);
+        signal = T.Variables;
+        if size(signal,1) ~=numel(time) 
+            fprintf('Saved Ball datado not match the samples in bin. Recomputing %s\n',resultsFile);
+            fromFile = false;
+        end
+    else
+        fromFile =false;
     end
-    % Prep for ns.C
-    signal = [velocity quality];
+    if ~fromFile
+        switch upper(parms.method)
+            case 'XCORR'
+                % cross correaltion
+                [velocity,quality] =sbxXcorr(movie,parms);
+            case 'PHASECORR'
+                % phase correlation
+                [velocity,quality] =sbxPhasecorr(movie,parms);
+            otherwise
+                error('Unknown method %s ',parms.method);
+        end
+        % Prep for ns.C
+        signal = [velocity quality];
+        % Save for later reads.
+        writetable(table(velocity,quality),resultsFile);
+        fprintf('Ball results saved to %s\n',resultsFile)
+    end
     channelInfo= struct('name',{'velocity','quality'},'nr',{1,2});
 elseif contains(filename,'_eye')
     switch upper(parms.method)
@@ -116,23 +134,23 @@ elseif contains(filename,'_eye')
             if exist(parmFilename,"file")
                 % Initialization parameters have been set (in the
                 % sbx.PupilTracker gui)
-                    if ~exist(tsvFilename,"file")
-                        % Tracking has not been completed yet. Do it now                    
-                        sbx.PupilTracker(parmFilename)
-                    end
-                    assert(exist(tsvFilename,"file"),"%s not found. Pupil tracking failed?")
+                if ~exist(tsvFilename,"file")
+                    % Tracking has not been completed yet. Do it now
+                    sbx.PupilTracker(parmFilename)
+                end
+                assert(exist(tsvFilename,"file"),"%s not found. Pupil tracking failed?")
             else
-                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true)">Click here to initialize pupil tracking </a>',filename,filename);                
+                error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true)">Click here to initialize pupil tracking </a>',filename,filename);
             end
             P =readtable(tsvFilename,filetype ="text");
             if isfield(parms,'variables')
                 keepVars = parms.variables;
                 varNames = keepVars;
-            else 
+            else
                 keepVars =  1:width(P);
                 varNames = P.Properties.VariableNames;
-            end                
-            signal = P{:,keepVars}; 
+            end
+            signal = P{:,keepVars};
             channelInfo= struct('name',varNames','nr',num2cell(1:size(signal,2))');
         case {'PHASECODE','TWOSTAGE'}
             % Pupil tracking, using imfindcircles
@@ -190,6 +208,8 @@ fprintf('Ball tracking phasecorr analysis (useGPU: %d)\n',useGPU);
 f=1;
 z1 = im2single(movie.readFrame);
 if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
+progressTic = tic;
+nextProgressPct = 5;
 
 % Determine the scaling.
 heightWidth  = round(parms.scaleFactor.*[h w]);
@@ -214,6 +234,17 @@ while movie.hasFrame
     % next frame
     f=f+1;
     z1=z2;
+
+    pctDone = 100*f/nrFrames;
+    if pctDone >= nextProgressPct || f==nrFrames
+        elapsedSec = toc(progressTic);
+        etaSec = max(elapsedSec*(nrFrames/f - 1),0);
+        etaH = floor(etaSec/3600);
+        etaM = floor(mod(etaSec,3600)/60);
+        etaS = floor(mod(etaSec,60));
+        fprintf('  %5.1f%% (%d/%d), ETA %02d:%02d:%02d\n',pctDone,f,nrFrames,etaH,etaM,etaS);
+        nextProgressPct = nextProgressPct + 5;
+    end
 end
 if useGPU
     velocity = gather(velocity);
@@ -244,6 +275,8 @@ fprintf('Ball tracking xcorr analysis (useGPU: %d)\n',useGPU);
 f=1;
 z1 = single(movie.readFrame);
 if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
+progressTic = tic;
+nextProgressPct = 5;
 
 % Determine the scaling.
 heightWidth  = round(parms.scaleFactor.*[h w]);
@@ -253,29 +286,40 @@ if any(heightWidth<parms.minPixels)
     heightWidth = round(parms.scaleFactor*[w h]);
 end
 z1 =imresize(z1,heightWidth);
+if useGPU; z1 = gpuArray(z1); end  % Transfer z1 to GPU once before the loop
+NFFT = 2.^nextpow2(2*heightWidth - 1);  % FFT size for full xcorr, computed once
 while movie.hasFrame
     z2 =  single(movie.readFrame);
     if ndims(z2)==3;z2=z2(:,:,1);end
     z2 =imresize(z2,heightWidth);
-    if useGPU
-        z1 = gpuArray(z1);
-        z2 = gpuArray(z2);
-    end
-    %% Find maximum xcorr
+    if useGPU; z2 = gpuArray(z2); end  % Only z2 needs transferring per frame
+    %% Find maximum xcorr via FFT (GPU-compatible, faster than xcorr2)
     %  Must substract the mean.
-    z1 = z1-mean(z1,"all","omitnan");
-    z2 = z2-mean(z2,"all","omitnan");
-    xc =xcorr2(z1,z2);
+    z1 = z1-mean(z1,"all");
+    z2 = z2-mean(z2,"all");
+    xc = real(ifft2(conj(fft2(z1,NFFT(1),NFFT(2))) .* fft2(z2,NFFT(1),NFFT(2))));
+    xc = fftshift(xc);
     [maxXC,ix] = max(xc(:));
-    scale=sum(((z1+z2)/2).^2,'all');
+    scale = sqrt(sum(z1.^2,'all') * sum(z2.^2,'all'));  % =1 if z1==z2 (shifted), by Cauchy-Schwarz
     quality(f) = maxXC./scale;
     [dy,dx]= ind2sub(size(xc),ix);
-    dy = dy-heightWidth(1);
-    dx = dx-heightWidth(2);
+    dy = dy-(floor(NFFT(1)/2)+1);  % after fftshift, zero-lag is at floor(NFFT/2)+1
+    dx = dx-(floor(NFFT(2)/2)+1);
     velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
     % next frame
     f=f+1;
     z1=z2;
+
+    pctDone = 100*f/nrFrames;
+    if pctDone >= nextProgressPct || f==nrFrames
+        elapsedSec = toc(progressTic);
+        etaSec = max(elapsedSec*(nrFrames/f - 1),0);
+        etaH = floor(etaSec/3600);
+        etaM = floor(mod(etaSec,3600)/60);
+        etaS = floor(mod(etaSec,60));
+        fprintf('  %5.1f%% (%d/%d), ETA %02d:%02d:%02d\n',pctDone,f,nrFrames,etaH,etaM,etaS);
+        nextProgressPct = nextProgressPct + 5;
+    end
 end
 if useGPU
     velocity = gather(velocity);
@@ -480,7 +524,7 @@ end
 
 
 
-function [x,y,a,quality] = postprocessPupilTracker(T,bodyparts) 
+function [x,y,a,quality] = postprocessPupilTracker(T,bodyparts)
 % Given a table from a csv file output created by a specific
 % DLC model that determins the left,
 % right, top, and bottom points of the pupil, determine the intersection of the line from top to
