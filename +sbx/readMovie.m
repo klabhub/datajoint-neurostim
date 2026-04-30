@@ -26,6 +26,35 @@ function [signal,time,channelInfo,recordingInfo] = readMovie(key,parms)
 %
 % See also sbxXcorr,sbxPhasecorr,sbxImfindcircles, sbxDlc in sbx.readMovie
 %
+%
+% NOTES
+% Scanbox triggers the acquisition of video frames from the Ball and Eye
+% camera. So, ideally, the movie files match the triggers recorded from the
+% microscope. There are some bugs, however, that mess this up.
+% 1. The ball camera is not explicitly set to stop free-running. Therefore
+% it acquires free-running at 30 Hz and triggered (at the 15.5 Hz acq
+% rate). This results in a doubling of the number of frames in the ball
+% movie. This is corrected by taking only every other frame from the movie.
+% 2. The disk-loggers of the two cameras are not flushed before stopping.
+% As a consequence, the TTLs generated during shutdown are lost. These
+% missing frames are substituted with NaN.
+%
+% Example : 2025\02\25\M007.rvs_REST.114648\M007.rvs_REST.114648_000_001
+% Ball camera: 10651 frames, 5749 TTLs
+% If the ball camera truly captures 2 frames per trigger:
+% 2 × 5749 = 11498
+% 2×5749=11498 expected, but only 10651 arrived.
+% Frames missing at end: 
+% 11498−10651=847
+% Time lost: 
+% 847/30 Hz = 28.2 s
+% Eye camera: 5319 frames, 5749 TTLs
+% 5749 − 5319 = 430 frames missing.
+% Time lost: 430 / 15  Hz ≈ 28. s
+% 
+% Based on this, alignment of the movies to the start of the triggers is
+% fine, and the triggers without frames can be filled with NaN.
+%
 % BK - Oct 2023
 arguments
     key % The key (ns.File and ns.CParm tuple)
@@ -37,7 +66,7 @@ fldr = folder(ns.Experiment &key);
 filename = fullfile(fldr,fetch1(ns.File &key,'filename'));
 tic
 movie = VideoReader(filename); %
-fprintf('Done in %d seconds.\n ',round(toc))
+fprintf('Movie read in %d seconds.\n ',round(toc))
 
 
 %% Map frames to nsTime
@@ -49,7 +78,8 @@ if exists(ns.PluginParameter & key & 'plugin_name=''mdaq''' & 'property_name=''l
     % Digital events have been created to represent laserOn triggers
     time = get(ns.Experiment &key,'mdaq','prm','laseron','what','clockTime');
 else
-    % Read the bin file
+    % Read the bin file to get the time of the scan triggers (which match
+    % the frame acquisition times).
     nsFile  = file(ns.Experiment& key);
     binFile =strrep(nsFile,'.mat','.bin');
     if exist(binFile,"file")
@@ -59,48 +89,39 @@ else
         T=  readBin(c.mdaq,file=binFile);
         fprintf('Done in %d seconds.\n ',round(toc))
         % Determine when the laser triggers occcured
-        time = T.nsTime([false; diff(T.laserOnDig)>0]);
-        if contains(filename,'_ball')
-            % (Ball triggers on both up and down)
-            time = [time; T.nsTime([false; diff(T.laserOnDig)<0])];
-            time = sort(time);
-        end
-        nrTriggers= numel(time);
+        time = T.nsTime([false; diff(T.laserOnDig)>0]);       
     else
         error('No mdaq .bin file found to process %s movie',filename);
     end
 end
-
+ 
 % Sanity checks
+nrTriggers= numel(time);
 dt = seconds(diff(time));
 mFrameDuration = mean(dt);
 sdFrameDuration  = std(dt);
 z = sdFrameDuration/mFrameDuration;
 fprintf('Z-score of the variation in frameduration is %.2f\n',z)
-actualFrameRate = 1000./mFrameDuration;
-recordingInfo = struct('nrFrames',movie.NumFrames,'videoFormat',movie.VideoFormat,'width',movie.Width,'height',movie.height,'framerate',actualFrameRate);
+actualFrameRate = 1/mFrameDuration;
 
-SLACKFRAMES = 30; % Allow this many missing frames
-nrMissing =(movie.NumFrames-nrTriggers);
-assert(abs(nrMissing)<=SLACKFRAMES,"Movie %s has %d frames, but %d triggers ",filename,movie.NumFrames,nrTriggers);
-if nrMissing >0
-    % Add triggers at the end
-    fprintf('Adding %d missing triggers at the end of the movie\n',nrMissing)
-    time = [time; time(end)+(1:nrMissing)*mFrameDuration];
-elseif nrMissing<0
-    % Cut triggers at the end.
-    fprintf('Cutting %d extra triggers at the end of the movie\n',-nrMissing)
-    time = time(1:movie.NumFrames);
+
+if contains(filename,'_ball')  &&  movie.NumFrame/nrTriggers >1.5
+    % See notes above; correct for the double sampling by Ball camera. 
+    framesToUse = 1:2:movie.NumFrames;
+else
+    framesToUse = 1:movie.NumFrames;
 end
+
 
 %% Analyze the movies using functions defined below
 if contains(filename,'_ball')
+    % First check a precomputed output file.
     [fldr,resultsFile] = fileparts(filename);
     resultsFile = fullfile(fldr,resultsFile + "_" + parms.method + ".csv");
     if exist(resultsFile,'file')
         fromFile = true;
-        T = readtable(resultsFile);               
-        if height(T) ~=numel(time)  || ~all(ismember(["velocity" "quality"],T.Properties.VariableNames))
+        T = readtable(resultsFile,filetype ="text",TreatAsMissing="NaN");               
+        if ~all(ismember(["velocity" "quality"],T.Properties.VariableNames))
             fprintf('Saved Ball data do not match the expected format. Recomputing %s\n',resultsFile);
             fromFile = false;
         else        
@@ -113,10 +134,10 @@ if contains(filename,'_ball')
         switch upper(parms.method)
             case 'XCORR'
                 % cross correaltion
-                [velocity,quality] =sbxXcorr(movie,parms);
+                [velocity,quality] =sbxXcorr(movie,parms,framesToUse);
             case 'PHASECORR'
                 % phase correlation
-                [velocity,quality] =sbxPhasecorr(movie,parms);
+                [velocity,quality] =sbxPhasecorr(movie,parms,framesToUse);
             otherwise
                 error('Unknown method %s ',parms.method);
         end
@@ -143,7 +164,7 @@ elseif contains(filename,'_eye')
             else
                 error('Pupil tracking for %s has not been initialized. Run sbx.PupilTracker first. \n<a href="matlab: sbx.PupilTracker(string(''%s''), initialize=true)">Click here to initialize pupil tracking </a>',filename,filename);
             end
-            P =readtable(tsvFilename,filetype ="text");
+            P =readtable(tsvFilename,filetype ="text",TreatAsMissing="NaN");
             if isfield(parms,'variables')
                 keepVars = parms.variables;
                 varNames = keepVars;
@@ -173,28 +194,51 @@ elseif contains(filename,'_eye')
 else
     error('Unknown SBX movie file %s',filename)
 end
+%% handle missing frames
+nrFrames = size(signal,1);
+nrTriggersWithoutFrames =(nrTriggers-nrFrames);
+if nrTriggersWithoutFrames>0
+    % This happens because scanbox does not flush the buffer (see above);
+    % these are frames missing at the end; supplement with NaN.   
+    if nrTriggersWithoutFrames > actualFrameRate
+        fprintf(2,'Movie %.1fs shorter than sbx imaging in %s  (known bug in scanbox can result in 30 s missing)\n',nrTriggersWithoutFrames*mFrameDuration,filename)
+    end
+    pad = nan(nrTriggersWithoutFrames,size(signal,2));
+    signal = [signal;pad];
+elseif nrTriggersWithoutFrames < 0
+    % The movie is longer than the imaging.  Remove the last few frames.
+    % Warn if more than a second of extra movie frames (very rare).
+    signal = signal(1:end+nrTriggersWithoutFrames,:);
+    if nrTriggersWithoutFrames < -actualFrameRate
+        fprintf(2,'Movie %.1fs longer than sbx imaging in %s\n',-nrTriggersWithoutFrames*mFrameDuration,filename)
+    end
+%else perfect match
+end
 
 
 
 %% Package to add to ns.C
+% Store recording info to do post-hoc QC.
+recordingInfo = struct('nrTriggers',nrTriggers,'nrFrames',nrFrames,'videoFormat',movie.VideoFormat,'width',movie.Width,'height',movie.height,'framerate',actualFrameRate,'timeMismatch',nrTriggersWithoutFrames*mFrameDuration);
 % Regular sampling:  reduce time representation
-time = [1000*seconds(time(1)) 1000*seconds(time(end)) movie.NumFrames];
+time = [1000*seconds(time(1)) 1000*seconds(time(end)) nrTriggers];
 % Reduce storage (ns.C.align converts back to double)
 signal  = single(signal);
 end
 
 
 %% Ball Movie Analysis functions
-function [velocity,quality] =sbxPhasecorr(movie,parms)
+function [velocity,quality] =sbxPhasecorr(movie,parms,framesToUse)
 % Use a phase correlation algorithm to determine the Ball velocity
 arguments
     movie (1,1) VideoReader
     parms (1,1) struct
+    framesToUse (1,:) = 1:movie.NumFrames
 end
 useGPU = canUseGPU;  % If a GPU is available we'll use it.
 
 w=movie.Width;h =movie.Height;
-nrFrames = movie.NumFrames;
+nrFrames = numel(framesToUse);
 
 %% Initialize output vars
 if useGPU
@@ -207,7 +251,7 @@ end
 
 fprintf('Ball tracking phasecorr analysis (useGPU: %d)\n',useGPU);
 f=1;
-z1 = im2single(movie.readFrame);
+z1 = im2single(movie.read(framesToUse(1)));
 if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
 progressTic = tic;
 nextProgressPct = 5;
@@ -220,8 +264,8 @@ if any(heightWidth<parms.minPixels)
     heightWidth = round(parms.scaleFactor*[w h]);
 end
 z1 =imresize(z1,heightWidth);
-while movie.hasFrame
-    z2 =  im2single(movie.readFrame);
+for fr= framesToUse(2:end)
+    z2 =  im2single(movie.read(fr));
     if ndims(z2)==3;z2=z2(:,:,1);end
     z2 =imresize(z2,heightWidth);
     if useGPU
@@ -253,16 +297,17 @@ if useGPU
 end
 end
 
-function [velocity,quality] =sbxXcorr(movie,parms)
+function [velocity,quality] =sbxXcorr(movie,parms,framesToUse)
 % Use cross-correlation to determine velocity,
 arguments
     movie (1,1) VideoReader
     parms (1,1) struct
+    framesToUse (1,:) double  = 1:movie.NumFrames
 end
 useGPU = canUseGPU;  % If a GPU is available we'll use it.
 
 w=movie.Width;h =movie.Height;
-nrFrames = movie.NumFrames;
+nrFrames = numel(framesToUse);
 %% Initialize output vars
 if useGPU
     velocity = nan(nrFrames,1,"gpuArray");
@@ -274,7 +319,7 @@ end
 
 fprintf('Ball tracking xcorr analysis (useGPU: %d)\n',useGPU);
 f=1;
-z1 = single(movie.readFrame);
+z1 = single(movie.read(framesToUse(1)));
 if ndims(z1)==3;z1=z1(:,:,1);end  % Images are gray scale but some have been saved with 3 planes of identical bits.
 progressTic = tic;
 nextProgressPct = 5;
@@ -289,8 +334,8 @@ end
 z1 =imresize(z1,heightWidth);
 if useGPU; z1 = gpuArray(z1); end  % Transfer z1 to GPU once before the loop
 NFFT = 2.^nextpow2(2*heightWidth - 1);  % FFT size for full xcorr, computed once
-while movie.hasFrame
-    z2 =  single(movie.readFrame);
+for fr = framesToUse(2:end)
+    z2 =  single(movie.read(fr));
     if ndims(z2)==3;z2=z2(:,:,1);end
     z2 =imresize(z2,heightWidth);
     if useGPU; z2 = gpuArray(z2); end  % Only z2 needs transferring per frame
@@ -309,8 +354,8 @@ while movie.hasFrame
     velocity(f) = dx  - 1i.*dy; % Reflect the motion of the mouse,not the ball
     % next frame
     f=f+1;
-    z1=z2;
 
+    z1=z2;
     pctDone = 100*f/nrFrames;
     if pctDone >= nextProgressPct || f==nrFrames
         elapsedSec = toc(progressTic);
