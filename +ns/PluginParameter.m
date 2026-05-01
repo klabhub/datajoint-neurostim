@@ -212,7 +212,7 @@ classdef PluginParameter < dj.Part
             % psybayes2 if there are multiple occurrences.            
             plgNames = T.plugin_name;
             plgNamesMatch = regexp(plgNames,'(?<name>\w*)_[\d]+$','names');
-            if numel(plgNames);plgNamesMatch = {plgNamesMatch};end
+            if isscalar(plgNames);plgNamesMatch = {plgNamesMatch};end
             if ~isempty(plgNamesMatch)
             hasNumberSuffix = ~cellfun(@isempty,plgNamesMatch);
             if any(hasNumberSuffix)
