@@ -208,58 +208,80 @@ classdef Tuning <dj.Computed & dj.DJInstance
             tic
             %% Retrieve sources
             parms = fetch1(ns.TuningParm &key,'parms');
-            conditions = fetch(ns.DimensionCondition & key,'trials','value');
+
+            persistent onsetCache
+            if isempty(onsetCache), onsetCache = containers.Map; end
+            cacheKey = sprintf('%s_%s_%s_%s', key.subject, key.session_date, key.starttime,parms.stimulus);
+            if ~isKey(onsetCache, cacheKey)
+                onsetCache(cacheKey) = get(ns.Experiment & key, parms.stimulus, 'prm','starttime','what','trialtime');
+            end
+            onset = onsetCache(cacheKey);
+
+            persistent conditionsCache
+            if isempty(conditionsCache), conditionsCache = containers.Map; end
+            cacheKey = sprintf('%s_%s_%s_%s', key.subject, key.session_date, key.starttime,key.dimension);
+            if ~isKey(conditionsCache, cacheKey)
+                conditionsCache(cacheKey) = fetch(ns.DimensionCondition & key, 'trials', 'value');
+            end
+            conditions = conditionsCache(cacheKey);              
             nrConditions= numel(conditions);
             assert(nrConditions>0,"No conditions in %s group",key.dimension)
             %% Find indepdent variable values from the name assigned to the condition (which is
             % pluginNane:parameterName:Value. Assuming these values are
-            % double..
-
-            onset = get(ns.Experiment & key,parms.stimulus,'prm','starttime','what','trialtime');
-            % Get the responses for all trials (some may not be part of this
-            % condition group)
-            T= align(ns.C & key,channel =key.channel, align=onset, start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation,crossTrial=true);
-            response = timetableToDouble(T(1:end-1,:));% Last row is nan
-            nrTrials = size(response,2);
+            % double.            
             xValue= [conditions.value];
-            if iscell(xValue)
-                xValue = [xValue{:}];
-            end
+            if iscell(xValue);xValue = [xValue{:}];end
             % Sort by x
             [xValue,ix] = sort(xValue);
             conditions =conditions(ix);
             trialsPerCondition = {conditions.trials};
-
+            nrTrialsPerCondition = cellfun(@numel,trialsPerCondition);     
+            allTrials = sort(cat(1,trialsPerCondition{:}));
+            nrTrials = numel(allTrials);
+            conditionIx = nan(1,nrTrials);
+            % Get the responses for all trials (some may not be part of this
+            % condition group)
+            T= align(ns.C & key,trial = allTrials, channel =key.channel, align=onset(allTrials), start=parms.start,stop=parms.stop,step=(parms.stop-parms.start),interpolation = parms.interpolation,crossTrial=true);
+            response = timetableToDouble(T(1:end-1,:));% Last row is nan
+            
             % Average
             tuningCurve = nan(nrConditions,1);
             tuningCurveSd = nan(nrConditions,1);
             mPerTrial= mean(response,1,"omitmissing");
-            for c =1:numel(conditions)                
-                tuningCurve(c) = mean(mPerTrial(trialsPerCondition{c}),[1 2],"omitnan");
-                tuningCurveSd(c) = std(mPerTrial(trialsPerCondition{c}),0,2,"omitnan");
+            for c =1:numel(conditions)
+                isThisCondition = ismember(allTrials,trialsPerCondition{c});
+                conditionIx(isThisCondition)  = c;
+                thisTrials = mPerTrial(isThisCondition);
+                tuningCurve(c) = mean(thisTrials,[1 2],"omitnan");
+                tuningCurveSd(c) = std(thisTrials,0,2,"omitnan");
             end
-            nrTrialsPerCondition = cellfun(@numel,trialsPerCondition);
-            [peak,ix] = max(tuningCurve);
+             [peak,ix] = max(tuningCurve);
             preferred = xValue(ix);
             m = mean(tuningCurve);
             mi = min(tuningCurve);
 
-            % Map trials to conditions to do anova.
-            conditionIx = nan(1,nrTrials);
-            for i=1:numel(conditions)
-                conditionIx(conditions(i).trials)=i;
-            end
-            stayTrials = ~isnan(conditionIx);
-            conditionIx(~stayTrials) = [];
-            pAnova = anovan(response(1,stayTrials),conditionIx','display','off');
+           
+            
+            % ANOVA on the non-parametric tuning curve             
+            validMask = ~isnan(response);
+            yv = response(validMask);
+            gv = conditionIx(validMask);
+            grandMean = mean(yv, 'omitnan');
+            groupMeans = accumarray(gv', yv', [], @mean);
+            nPerGroup  = accumarray(gv', ones(size(yv')));
+            ssBetween  = sum(nPerGroup .* (groupMeans - grandMean).^2);
+            ssWithin   = sum((yv' - groupMeans(gv')).^2);
+            k = numel(unique(gv));  n = numel(yv);
+            F = (ssBetween/(k-1)) / (ssWithin/(n-k));
+            pAnova = 1 - fcdf(F, k-1, n-k);           
             if isnan(pAnova);pAnova=1;end
 
             % Extract baseline (use only trials that are alos used for the
             % tuning).
-            [baselineT,~] = align(ns.C&key,channel=key.channel,align = onset,start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation,crossTrial =true);
+            [baselineT,~] = align(ns.C&key,trial = allTrials, channel=key.channel,align = onset(allTrials),start=parms.startBaseline,stop=parms.stopBaseline,step=(parms.stopBaseline-parms.startBaseline),interpolation = parms.interpolation,crossTrial =true);
             baselineResponse = timetableToDouble(baselineT(1,:)); % 2nd = last row = nan.
-            baseline = mean(baselineResponse(1,stayTrials),"all","omitmissing");
-            baselineStd = std(baselineResponse(1,stayTrials),0,"all","omitmissing");
+            baseline = mean(baselineResponse,"all","omitmissing");
+            baselineStd = std(baselineResponse,0,"all","omitmissing");
 
             % Combine results into a struct
             estimate = struct('peak',peak,...
@@ -276,15 +298,13 @@ classdef Tuning <dj.Computed & dj.DJInstance
                 'baselinesd',baselineStd);
 
             % If fun is specified; do a parametric fit using the specified function
-            if isfield(parms,'fun')
-                x = xValue(conditionIx);
-                y = response(:,stayTrials);                
-                estimate.fit = feval(parms.fun,x,y,parms,estimate);
+            if isfield(parms,'fun')                
+                estimate.fit = feval(parms.fun,xValue(conditionIx),response,parms,estimate);
             end
 
 
             %% Insert in table.
-            tpl = mergestruct(key, estimate);
+            tpl = mergestruct(key, estimate)
             insert(tbl,tpl);
 
         end
