@@ -677,7 +677,7 @@ classdef C < dj.Computed & dj.DJInstance
             end
             % Expt info.
             exptTpl = fetch(ns.Experiment & tbl,'nrtrials');
-            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime');
+            trialStartTime = get(ns.Experiment & tbl, 'cic','prm','firstframe','atTrialTime',inf,'what','clocktime')'; %[1 nrTrials];
             t = tbl.time; % Time in milliseconds
             timeStep = tbl.dt; % Time step in ms
             if pv.step==0
@@ -854,96 +854,138 @@ classdef C < dj.Computed & dj.DJInstance
                     error('align can be empty, a singleton, a vector with times for each trial in the experiment, or  a vector of times that matches the specified trials')
                 end
 
+                % Pre-filter trials where the align event did not occur
+                skipMask = isinf(alignTrialTime) | isnan(alignTrialTime);
+                if any(skipMask)
+                    fprintf('Align event did not occur in trial %d. Skipping trial.\n', trials{c}(skipMask));
+                end
+                validMask      = ~skipMask;
+                validTrialNrs  = trials{c}(validMask);         % [1 × nrValidTrials]
+                validAlignTime = alignTrialTime(validMask);    % [1 × nrValidTrials]
+                nrValidTrials  = numel(validTrialNrs);
+                alignNsTime    = trialStartTime(validTrialNrs) + validAlignTime; % [1 × nrValidTrials]
+                varNames       = "Trial" + string(validTrialNrs);
+
                 % Setup the new time axis for the results
                 newTimes = milliseconds(pv.start:pv.step:pv.stop)';
                 nrTimes  = numel(newTimes);
 
-                % Create a timetable with the activity per trial
-                nrTrials = numel(trials{c});
-                varNames = "Trial" + string(trials{c});
-                T =timetable('Size',[nrTimes nrTrials],'RowTimes',newTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
+                % Select path: vectorised interp1 (interpolation methods) or
+                % per-trial retime (aggregation methods: mean, sum, etc.)
+                interp1Methods = {'nearest','linear','spline','pchip','makima','next','previous'};
+                useInterp1     = any(strcmpi(pv.interpolation, interp1Methods));
 
-                if baselineOutput
-                    newBaselineTimes = milliseconds(pv.baseline(1):pv.step:pv.baseline(2))';
-                    nrBaselineTimes = numel(newBaselineTimes);
-                    B =timetable('Size',[nrBaselineTimes nrTrials],'RowTimes',newBaselineTimes,'VariableTypes',repmat("doublenan",[1 nrTrials]),'VariableNames',varNames);
-                end
-                % Loop over trials to collect the relevant samples
-                trialOut =false(1,nrTrials);
-                alignNsTime = nan(1,nrTrials);
-                for trCntr=1:nrTrials
-                    if isinf(alignTrialTime(trCntr)) || isnan(alignTrialTime(trCntr))
-                        fprintf('Align event did not occur in trial %d. Skipping trial.\n',trials{c}(trCntr))
-                        trialOut(trCntr) = true;
-                        continue;
-                    end
-                    thisTrial =trials{c}(trCntr);
-
-                    % Limits if crossTrial is allowed
-                    start =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.start;
-                    stop =  trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.stop;
-                    if doBaselineCorrection
-                        baseStart =trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.baseline(1);
-                        baseStop = trialStartTime(thisTrial) + alignTrialTime(trCntr)+pv.baseline(2);
-                    end
+                if useInterp1 && nrValidTrials > 0
+                    %% Vectorised path: one interp1 call covers all trials and channels
+                    % absQuery [nrTimes × nrValidTrials]: absolute NS time of each output point
+                    newTimes_ms = (pv.start:pv.step:pv.stop)';
+                    absQuery    = newTimes_ms + alignNsTime;   % broadcast
                     if ~pv.crossTrial
-                        start =  max(trialStartTime(thisTrial),start); % No samples before trialStartTime(thisTrial)
-                        if thisTrial<exptTpl.nrtrials
-                            stop = min(trialStartTime(thisTrial+1),stop); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                        trialLo = trialStartTime(validTrialNrs);
+                        nextIdx = min(validTrialNrs + 1, exptTpl.nrtrials);
+                        trialHi = trialStartTime(nextIdx);
+                        trialHi(validTrialNrs == exptTpl.nrtrials) = inf;
+                        absQuery(absQuery < trialLo | absQuery >= trialHi) = NaN;
+                    end
+                    % interp1 on full signal returns NaN for out-of-range/NaN query points
+                    flatResult = interp1(t, signal, absQuery(:), pv.interpolation, NaN);
+                    data = reshape(flatResult, nrTimes, nrValidTrials, nrChannels);
+                    % [nrTimes × nrValidTrials × nrChannels]
+
+                    if doBaselineCorrection
+                        baseTimes_ms = (pv.baseline(1):pv.step:pv.baseline(2))';
+                        nrBaseTimes  = numel(baseTimes_ms);
+                        absBaseQuery = baseTimes_ms + alignNsTime;
+                        if ~pv.crossTrial
+                            absBaseQuery(absBaseQuery < trialLo | absBaseQuery >= trialHi) = NaN;
                         end
+                        flatBase     = interp1(t, signal, absBaseQuery(:), pv.interpolation, NaN);
+                        baseData     = reshape(flatBase, nrBaseTimes, nrValidTrials, nrChannels);
+                        baselineMean = average(baseData, 1);   % [1 × nrValidTrials × nrChannels]
+                        data         = data - baselineMean;
+                        if baselineOutput
+                            newBaselineTimes = milliseconds(pv.baseline(1):pv.step:pv.baseline(2))';
+                            baseData_corr = baseData - baselineMean;
+                            baseCorrCell = squeeze(num2cell(permute(baseData_corr,[1 3 2]),[1 2]));
+                            B = timetable(newBaselineTimes, baseCorrCell{:}, 'VariableNames', varNames);
+                        end
+                    end
+
+                    % Assemble output timetable directly from the data array
+                    dataCell = squeeze(num2cell(permute(data,[1 3 2]),[1 2]));
+                    T = timetable(newTimes, dataCell{:}, 'VariableNames', varNames);
+
+                else
+                    %% Per-trial retime path (aggregation methods such as mean/sum, or empty)
+                    if baselineOutput
+                        newBaselineTimes = milliseconds(pv.baseline(1):pv.step:pv.baseline(2))';
+                        nrBaselineTimes  = numel(newBaselineTimes);
+                        if nrValidTrials > 0
+                            B = timetable('Size', [nrBaselineTimes nrValidTrials], 'RowTimes', newBaselineTimes, ...
+                                'VariableTypes', repmat("doublenan",[1 nrValidTrials]), 'VariableNames', varNames);
+                        else
+                            B = timetable('RowTimes', newBaselineTimes);
+                        end
+                    end
+                    if nrValidTrials > 0
+                        T = timetable('Size', [nrTimes nrValidTrials], 'RowTimes', newTimes, ...
+                            'VariableTypes', repmat("doublenan",[1 nrValidTrials]), 'VariableNames', varNames);
+                    else
+                        T = timetable('RowTimes', newTimes);
+                    end
+                    for trIdx = 1:nrValidTrials
+                        thisTrial = validTrialNrs(trIdx);
+                        start =  alignNsTime(trIdx) + pv.start;
+                        stop  =  alignNsTime(trIdx) + pv.stop;
                         if doBaselineCorrection
-                            baseStart  = max(trialStartTime(thisTrial),baseStart); % No samples before trialStartTime(thisTrial)
-                            if thisTrial<exptTpl.nrtrials
-                                baseStop  = min(trialStartTime(thisTrial+1),baseStop); % No sample after the start of next trial (last trial includes everything until the end of recording).
+                            baseStart = alignNsTime(trIdx) + pv.baseline(1);
+                            baseStop  = alignNsTime(trIdx) + pv.baseline(2);
+                        end
+                        if ~pv.crossTrial
+                            start = max(trialStartTime(thisTrial), start);
+                            if thisTrial < exptTpl.nrtrials
+                                stop = min(trialStartTime(thisTrial+1), stop);
+                            end
+                            if doBaselineCorrection
+                                baseStart = max(trialStartTime(thisTrial), baseStart);
+                                if thisTrial < exptTpl.nrtrials
+                                    baseStop = min(trialStartTime(thisTrial+1), baseStop);
+                                end
                             end
                         end
-                    end
-                    staySamples = t >= start & t < stop;
-
-                    % Unless the first stay sample is exactly at
-                    % trialstart, the first sample in the new table will be
-                    % NaN. To circumvent this, add one sample before (and
-                    % after) the range we identified.
-                    ixFirst = find(staySamples,1,'first');
-                    if ixFirst>1
-                        staySamples(ixFirst-1) =true;
-                    end
-                    ixLast= find(staySamples,1,'last');
-                    if ixLast<nrSamples
-                        staySamples(ixLast+1) =true;
-                    end
-                    alignNsTime(trCntr) = trialStartTime(thisTrial)+ alignTrialTime(trCntr);
-                    trialTime = t(staySamples)-alignNsTime(trCntr); %
-                    if doBaselineCorrection
-                        stayBaseline = t>=baseStart & t<baseStop;
-                        baseline = average(signal(stayBaseline,:),1);
-                        if baselineOutput
-                            baselineTime = t(stayBaseline)-alignNsTime(trCntr);
-                            thisT = timetable(milliseconds(baselineTime),signal(stayBaseline,:)-baseline);
-                            % Retime the baseline table to the new time axis. Never extrapolation
-                            thisT = retimeWithNan(thisT,newBaselineTimes,pv.interpolation,endValues= NaN,AnyNanIsNanSum  = pv.keepNan);
-                            B.(varNames(trCntr)) = table2array(thisT);
+                        staySamples = t >= start & t < stop;
+                        ixFirst = find(staySamples,1,'first');
+                        if ixFirst>1; staySamples(ixFirst-1) = true; end
+                        ixLast = find(staySamples,1,'last');
+                        if ixLast<nrSamples; staySamples(ixLast+1) = true; end
+                        trialTime = t(staySamples) - alignNsTime(trIdx);
+                        if doBaselineCorrection
+                            stayBaseline = t >= baseStart & t < baseStop;
+                            baseline = average(signal(stayBaseline,:), 1);
+                            if baselineOutput
+                                baselineTime = t(stayBaseline) - alignNsTime(trIdx);
+                                thisT = timetable(milliseconds(baselineTime), signal(stayBaseline,:)-baseline);
+                                thisT = retimeWithNan(thisT, newBaselineTimes, pv.interpolation, endValues=NaN, AnyNanIsNanSum=pv.keepNan);
+                                B.(varNames(trIdx)) = table2array(thisT);
+                            end
+                        else
+                            baseline = 0;
                         end
-                    else
-                        baseline  = 0;
+                        thisT = timetable(milliseconds(trialTime), signal(staySamples,:)-baseline);
+                        thisTRetimed = retimeWithNan(thisT, newTimes, pv.interpolation, endValues=NaN, AnyNanIsNanSum=pv.keepNan);
+                        T.(varNames(trIdx)) = table2array(thisTRetimed);
                     end
-                    thisT = timetable(milliseconds(trialTime),signal(staySamples,:)-baseline); % The table for this trial, at the original sampling rate.
-                    % Now retime the table to the new time axis. Never extrapolation
-                    thisTRetimed = retimeWithNan(thisT,newTimes,pv.interpolation,endValues =NaN,AnyNanIsNanSum = pv.keepNan);
-                    T.(varNames(trCntr)) = table2array(thisTRetimed);
                 end
-                T(:,trialOut) = [];
                 if baselineOutput
-                    B(:,trialOut) = [];
-                    B= addprop(B,"alignTime",repmat("variable",[1 1]));
-                    B.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
-                    bPerCondition{conditionNr} =B;
+                    B = addprop(B, "alignTime", repmat("variable",[1 1]));
+                    B.Properties.CustomProperties.alignTime = alignNsTime;
+                    bPerCondition{conditionNr} = B;
                 end
-                T= addprop(T,"alignTime","table");
-                T= addprop(T,"trials","table");
-                T.Properties.CustomProperties.alignTime = alignNsTime(~trialOut);
-                T.Properties.CustomProperties.trials = trials{c}(~trialOut);
-                tPerCondition{conditionNr} =T;
+                T = addprop(T, "alignTime", "table");
+                T = addprop(T, "trials", "table");
+                T.Properties.CustomProperties.alignTime = alignNsTime;
+                T.Properties.CustomProperties.trials = validTrialNrs;
+                tPerCondition{conditionNr} = T;
             end
 
 
