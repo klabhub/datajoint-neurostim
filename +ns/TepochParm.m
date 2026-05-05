@@ -5,13 +5,27 @@ etag : varchar(32) # which epochs to transform
 ---
 fun : varchar(32) # Function to do the transform (see ns.cache/compute)
 options: blob     # Options passed to the compute function
-window  = NULL  : tinyblob          # Start and stop time of the epoch.Defaults to entire epoch
-channels =NULL  : blob              # Channels to include. Defaults to all in the etag
-grouping = NULL :blob               # Grouping to use. Defaults to no grouping.          
-trial   = NULL : blob               # Trials to include. Defaults to all in the etag    
+window  = NULL  : tinyblob          # Start and stop time of the epoch. Defaults to entire epoch
+channels = NULL  : blob              # Channels to include. Defaults to all in the etag
+average = NULL :blob               # Things to avere over  one ore more of these ["trial" "channel"];           
+trials  = NULL : blob               # Trials to include. Defaults to all in the etag    
 %}
 
 
 classdef TepochParm < dj.Lookup & dj.DJInstance
+    methods 
+    function insert(tbl,tpl)
+        arguments
+            tbl (1,1) ns.TepochParm
+            tpl (:,1) struct
+        end
+
+    % TODO define insert to check valid values
+%               assert(isempty(parms.average) || all(ismember(parms.average,["trial" "channel"])),"Tepoch averaging must ...")
+
+        tpl = makeMymSafe(tpl);
+        insert@dj.Lookup(tbl,tpl);
+    end
+    end
 
 end

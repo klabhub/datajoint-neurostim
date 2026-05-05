@@ -137,12 +137,6 @@ classdef Epoch < dj.Computed & dj.DJInstance
             startTime(out) = [];
             nrTrials =numel(trials);
 
-            nrConditions = numel(conditionTpl);
-            condition = repmat("",nrTrials,1);
-            for c=1:nrConditions
-                condition(ismember(trials,conditionTpl(c).trials)) = conditionTpl(c).name;
-            end
-
             fprintf("\t Artifact detection complete after %s\n",toc);
 
             %% --- Submit to the server ---
@@ -160,7 +154,6 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % Create EpochChannel tuple that contains the data
             signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
             trial = num2cell(repmat(trials,nrChannels,1));
-            condition = cellstr(repmat(condition,nrChannels,1));
             onset = num2cell(repmat(startTime,nrChannels,1));
             channel  = num2cell(reshape(repmat(parmTpl.channels,nrTrials,1),nrTrials*nrChannels,1));
 
@@ -171,8 +164,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                     struct(signal =signal,...
                     trial = trial, ...
                     onset = onset,...
-                    channel = channel,...
-                    condition = condition));
+                    channel = channel));
 
                 chunkedInsert(ns.EpochChannel, tpl);
                 fprintf("\t Submission is complete after %s.\n",toc);

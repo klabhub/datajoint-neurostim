@@ -4,7 +4,6 @@
 channel : int       # Channel number
 trial : int         # Trial number 
 ---
-condition : varchar(128)  # Name of the condition to which this trial belongs
 onset : float             # Time of the align event relative to trial start
 signal : longblob         # C data for a single channel, single trial
 %}
@@ -18,13 +17,10 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
         samplingRate
     end
 
-    methods (Access=public)
-       
 
-    end
     methods (Access = protected)
         function [src]= getCacheQuery(o)            
-             src = o * ns.Epoch * ns.EpochParm * proj(ns.Experiment,'paradigm');
+             src = o * ns.Epoch * ns.EpochParm * proj(ns.Experiment,'paradigm') * proj(ns.DimensionTrial,'name->condition');
              src = proj(src,'time','align','signal','condition','paradigm');
         end
     end
