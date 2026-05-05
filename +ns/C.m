@@ -867,8 +867,8 @@ classdef C < dj.Computed & dj.DJInstance
                 varNames       = "Trial" + string(validTrialNrs);
 
                 % Setup the new time axis for the results
-                newTimes = milliseconds(pv.start:pv.step:pv.stop)';
-                nrTimes  = numel(newTimes);
+                Time = milliseconds(pv.start:pv.step:pv.stop)';
+                nrTimes  = numel(Time);
 
                 % Select path: vectorised interp1 (interpolation methods) or
                 % per-trial retime (aggregation methods: mean, sum, etc.)
@@ -913,7 +913,7 @@ classdef C < dj.Computed & dj.DJInstance
 
                     % Assemble output timetable directly from the data array
                     dataCell = squeeze(num2cell(permute(data,[1 3 2]),[1 2]));
-                    T = timetable(newTimes, dataCell{:}, 'VariableNames', varNames);
+                    T = timetable(Time, dataCell{:}, 'VariableNames', varNames);
 
                 else
                     %% Per-trial retime path (aggregation methods such as mean/sum, or empty)
@@ -928,10 +928,10 @@ classdef C < dj.Computed & dj.DJInstance
                         end
                     end
                     if nrValidTrials > 0
-                        T = timetable('Size', [nrTimes nrValidTrials], 'RowTimes', newTimes, ...
+                        T = timetable('Size', [nrTimes nrValidTrials], 'RowTimes', Time, ...
                             'VariableTypes', repmat("doublenan",[1 nrValidTrials]), 'VariableNames', varNames);
                     else
-                        T = timetable('RowTimes', newTimes);
+                        T = timetable('RowTimes', Time);
                     end
                     for trIdx = 1:nrValidTrials
                         thisTrial = validTrialNrs(trIdx);
@@ -972,7 +972,7 @@ classdef C < dj.Computed & dj.DJInstance
                             baseline = 0;
                         end
                         thisT = timetable(milliseconds(trialTime), signal(staySamples,:)-baseline);
-                        thisTRetimed = retimeWithNan(thisT, newTimes, pv.interpolation, endValues=NaN, AnyNanIsNanSum=pv.keepNan);
+                        thisTRetimed = retimeWithNan(thisT, Time, pv.interpolation, endValues=NaN, AnyNanIsNanSum=pv.keepNan);
                         T.(varNames(trIdx)) = table2array(thisTRetimed);
                     end
                 end
@@ -983,6 +983,7 @@ classdef C < dj.Computed & dj.DJInstance
                 end
                 T = addprop(T, "alignTime", "table");
                 T = addprop(T, "trials", "table");
+                
                 T.Properties.CustomProperties.alignTime = alignNsTime;
                 T.Properties.CustomProperties.trials = validTrialNrs;
                 tPerCondition{conditionNr} = T;
