@@ -237,13 +237,20 @@ classdef (Abstract) cache < handle
 
             %%  Average/group
             if ~(isscalar(pv.average) && pv.average=="")
+                if ismember("condition",pv.average) && ~ismember("trial",pv.average)
+                    pv.average = [pv.average "trial"];
+                end
                 grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
+                
                 [grp,G] = findgroups(restrictedT(:,grouping));
                 % Average per group
                 if fun=="msten"
-                    M = splitapply(@ns.cache.do_msten,restrictedT.(pv.y),grp);
-                    
+                    % Special case; caller asks for the mean only (and ste
+                    % and n)
+                    M = splitapply(@ns.cache.do_msten,restrictedT.(pv.y),grp);                    
                 else
+                    % Average signal then that will be processed by the fun
+                    % below.
                     if iscell(restrictedT{1,pv.y})
                         M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
                     else
@@ -251,8 +258,9 @@ classdef (Abstract) cache < handle
                     end
                 end
             else
+                % No averaging. Just put the signal into M
                 G = restrictedT;
-                M = restrictedT;
+                M = restrictedT.(pv.y);
             end
             nrGrps = height(M);
 
