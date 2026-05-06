@@ -20,7 +20,7 @@ classdef TempTepochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods (Access = protected)
         function src = getCacheQuery(o)
-            src = o*ns.Tepoch* proj(getCacheQuery(ns.EpochChannel & proj(o)),'paradigm','align');
+            src = o*ns.TempTepoch* proj(getCacheQuery(ns.EpochChannel & proj(o)),'time','paradigm','align','condition');
         end
     end
 
