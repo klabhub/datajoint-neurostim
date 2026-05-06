@@ -521,7 +521,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 missing = cellfun(@isempty,G.(p));
                 if any(missing)
                     fprintf(2,'These experiments did not use the %s plugin\n ',p);
-                    exptWithMissing = expt(missing,:)
+                    exptWithMissing = G(missing,:)
                 end
             end
 
