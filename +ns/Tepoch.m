@@ -10,7 +10,7 @@ independent : varchar(64)  #  The name of the independent variable - vector of s
 %
 % To use this table, define a TepochParm and run populate(ns.Tepoch).
 % 
-% See Also ns.TepochParm
+% See Also ns.TepochParm, ns.TepochChannel
 classdef Tepoch < dj.Computed & dj.DJInstance   
    
     methods (Access = protected)
@@ -21,25 +21,20 @@ classdef Tepoch < dj.Computed & dj.DJInstance
 
             % Restrict the epoch channels and trials if requested in the
             % parms
-            ecTbl = ns.EpochChannel & key;
+            ecTbl = (ns.EpochChannel & key);
             if ~isempty(parms.channels)
                  ecTbl = ecTbl & struct('channel',num2cell(parms.channels)); 
             end
-            if ~isempty(parms.trial)
+            if ~isempty(parms.trials)
                  ecTbl = ecTbl & struct('trial',num2cell(parms.trial)); 
             end            
-            % Group if requested
-            if isempty(parms.grouping)
-                parms.grouping = ["subject" "session_date" "starttime" "condition" "trial" "channel"];
-            end
-            % Restrict to a specific time window
             if isempty(parms.window)                
+                % Use the same window as the epoch
                 parms.window = fetch(ns.EpochParm & key,'window');                
             end
-
             % Compute - uses the ns.cache/compute function  (abstract
             % superclass).
-            [T,dv,idv] = compute(ecTbl,parms.fun,parms.options,grouping=parms.grouping,timeWindow=parms.window);
+            [T,dv,idv] = compute(ecTbl,parms.fun,parms.options,average=parms.average,timeWindow=parms.window);
                       
            % Insert in the table
            tpl = key;
@@ -47,6 +42,31 @@ classdef Tepoch < dj.Computed & dj.DJInstance
            tpl.dependent = dv;
            tpl.independent = idv;
            insert(tbl,tpl);
+          
+
+            if ismember("trial",parms.average)
+                % Trials were averaged out (per-condition average).
+                % Use a fake trial number that corresponds to the first
+                % trial in each condition
+                dimTrials = fetchtable(proj(ns.DimensionTrial & key,'name->condition'));
+                dimTrials = innerjoin(T,dimTrials);
+                G= groupsummary(dimTrials,"condition",{@min,@numel},"trial");
+                G=renamevars(G,["fun1_trial" "fun2_trial"],["trial" "count"]);
+                T = innerjoin(T,G,"Keys","condition","RightVariables",["trial" "count"]);
+                nrTrials = T.count;
+            else
+                nrTrials = ones(height(T),1);
+            end
+            
+            if ismember("channel",parms.average) 
+                % Channel was averaged out, replace by 0
+                T = addvars(T,zeros(height(T),1),'NewVariableNames','channel');
+                nrChannels = numel(unique([fetch(ecTbl,'channel').channel]))*ones(height(T),1);
+
+            else
+                nrChannels =ones(height(T),1);
+            end
+                                  
            y = T.(dv);
            if isnumeric(y)
                y = num2cell(y,2);
@@ -54,7 +74,9 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             tpl = mergestruct(key,...
                         struct('signal',y,...
                                 'channel',num2cell(T.channel),...
-                                'trial', num2cell(T.trial)));
+                                'trial', num2cell(T.trial),...
+                                'nrtrials',num2cell(nrTrials),...
+                                'nrchannels',num2cell(nrChannels)));
            insert(ns.TepochChannel,tpl)
 
         end

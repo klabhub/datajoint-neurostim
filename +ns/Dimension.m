@@ -311,11 +311,22 @@ classdef Dimension < dj.Manual & dj.DJInstance
                     tplC(c).value = table2cell(valTbl(c,:)); % Must store as cell for mym
                 end
                 %% Insert the condition tuples for this experiment as one transaction
+                % Expand trials blob into individual rows for DimensionTrial
+                tplT = struct([]);
+                for c=1:nrConditions
+                    trials = num2cell(tplC(c).trials);
+                    tpl = repmat(rmfield(tplC(c),{'trials','value'}),[numel(trials) 1]);
+                    [tpl.trial] = deal(trials{:});
+                        tplT = [tplT;tpl]; %#ok<AGROW>                    
+                end
                 C =dj.conn;
                 C.startTransaction
                 try
                     insert(ns.Dimension,tplD);
                     insert(ns.DimensionCondition,tplC);
+                    if ~isempty(tplT)
+                        insert(ns.DimensionTrial,tplT);
+                    end
                 catch me
                     C.cancelTransaction;
                     rethrow(me)
