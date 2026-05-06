@@ -1,48 +1,49 @@
 %{
 # Transformed Epoch - a computation applied to a (set of) epochs.
 -> ns.Epoch         # The epochs that were transformed
--> ns.TepochParm    # Parameters used for the transformation
+-> ns.TempTepochParm    # Parameters used for the transformation
+dependent : varchar(64)  # The name of the dependent variable(s) - vector of strings 
 ---
 x : blob            # The values of the independent variable
-dependent : varchar(64)  # The name of the dependent variable(s) - vector of strings 
 independent : varchar(64)  #  The name of the independent variable - vector of strings
 %}
-%
-% To use this table, define a TepochParm and run populate(ns.Tepoch).
-% 
-% See Also ns.TepochParm, ns.TepochChannel
-classdef Tepoch < dj.Computed & dj.DJInstance   
-   
+classdef TempTepoch < dj.Computed & dj.DJInstance
+
     methods (Access = protected)
         function makeTuples(tbl, key)
             % Apply a computation/transform to a collection of Epochs and
             % store as Tepoch.
-            parms = fetch(ns.TepochParm & key,'*');           
+            parms = fetch(ns.TempTepochParm & key,'*');
 
             % Restrict the epoch channels and trials if requested in the
             % parms
             ecTbl = (ns.EpochChannel & key);
             if ~isempty(parms.channels)
-                 ecTbl = ecTbl & struct('channel',num2cell(parms.channels)); 
+                ecTbl = ecTbl & struct('channel',num2cell(parms.channels));
             end
             if ~isempty(parms.trials)
-                 ecTbl = ecTbl & struct('trial',num2cell(parms.trial)); 
-            end            
-            if isempty(parms.window)                
+                ecTbl = ecTbl & struct('trial',num2cell(parms.trial));
+            end
+            if isempty(parms.window)
                 % Use the same window as the epoch
-                parms.window = fetch(ns.EpochParm & key,'window');                
+                parms.window = fetch(ns.EpochParm & key,'window');
             end
             % Compute - uses the ns.cache/compute function  (abstract
             % superclass).
-            [T,dv,idv] = compute(ecTbl,parms.fun,parms.options,average=parms.average,timeWindow=parms.window);
-                      
-           % Insert in the table
-           tpl = key;
-           tpl.x = T{1,idv}; % Store the first row only-all others are the same (see fill)
-           tpl.dependent = dv;
-           tpl.independent = idv;
-           insert(tbl,tpl);
-          
+            [T,dv,idv] = compute(ecTbl,parms.fun,average=parms.average,timeWindow=parms.window);
+
+            % Insert in the table
+            %%
+            x = table2cell(T(1,idv));
+            x = cat(2,x{:});
+            tpl = dj.struct.join(struct(independent = strjoin(idv,':'), x = x, dependent = cellstr(dv(:))),key);
+
+            % tpl = key;
+            % tpl.x = table2cell(T(1,idv)); % Store the first row only-all others are the same (see fill)
+            % tpl.dependent = dv;
+            % tpl.independent = strjoin(idv,':');
+            insert(tbl,tpl);
+
 
             if ismember("trial",parms.average)
                 % Trials were averaged out (per-condition average).
@@ -57,8 +58,8 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             else
                 nrTrials = ones(height(T),1);
             end
-            
-            if ismember("channel",parms.average) 
+
+            if ismember("channel",parms.average)
                 % Channel was averaged out, replace by 0
                 T = addvars(T,zeros(height(T),1),'NewVariableNames','channel');
                 nrChannels = numel(unique([fetch(ecTbl,'channel').channel]))*ones(height(T),1);
@@ -66,18 +67,16 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             else
                 nrChannels =ones(height(T),1);
             end
-                                  
-           y = T.(dv);
-           if isnumeric(y)
-               y = num2cell(y,2);
-           end
-            tpl = mergestruct(key,...
-                        struct('signal',y,...
-                                'channel',num2cell(T.channel),...
-                                'trial', num2cell(T.trial),...
-                                'nrtrials',num2cell(nrTrials),...
-                                'nrchannels',num2cell(nrChannels)));
-           insert(ns.TepochChannel,tpl)
+
+
+            dat_tbl = T(:,["channel", "trial", dv]);
+            dat_tbl.nrtrials = nrTrials;
+            dat_tbl.nrchannels = nrChannels;
+            dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'signal');
+            dat_tbl= convertvars(dat_tbl,'dependent', 'char');
+            dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
+
+            insert(ns.TempTepochChannel,dat_tpl)
 
         end
     end
