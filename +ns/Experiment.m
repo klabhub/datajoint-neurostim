@@ -533,28 +533,35 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 S = G.(plg);
                 S = [S{:}];
                 S = [S.(pv.prm)];
-                if ~ismember("all",pv.what)
-                        fields=  fieldnames(S);
-                        S= rmfield(S,setdiff(fields, pv.what));
-                        S= struct2table(S,AsArray=true);
-                        G = [G S];
+                if ismember("all",pv.what)
+                    pv.what = fieldnames(S);
                 end
+                fields=  fieldnames(S);
+                S= rmfield(S,setdiff(fields, pv.what));
+                S= struct2table(S,AsArray=true);
+                G = [G S];                
+                G = removevars(G,plg);
             end
 
             if pv.asTable
                 out =G;
-            elseif ~ismember("all",pv.what)
-                out = table2cell(G(:,pv.what));
-                if isscalar(pv.what)
-                    try
-                        % Try to make into array
-                        out = [out{:}];
-                catch
-                        %Ignore;
-                    end
-                end                  
             else
-                out =table2cell(G(:,plg));
+                %User wants a struct with for instance .data 
+                if isempty(pv.prm)
+                    % Multiple plugins/prms
+                    out = table2struct(G);
+                else
+                    % Single prm - these are cols in G; convert to struct
+                    out = table2struct(G(:,pv.what));
+                    if isscalar(pv.what)
+                        try
+                            out = out.(pv.what);
+                            % Try to make into array
+                        catch
+                            %Ignore;
+                        end
+                    end                  
+                end
             end
         end
 
