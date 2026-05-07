@@ -526,30 +526,35 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             end
 
             filename = G.file;
-            out = table2struct(G);
-            if ~isempty(pv.prm) && isscalar(plg)
-                [out(missing).(plg)] =deal(struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[])));
-                out  = [out.(plg)];
-                try
-                    % Try to make into array
-                    out = [out.(pv.prm)];
-                catch
-                    %Ignore;
-                end
+            if any(missing) && ~isempty(pv.prm) && isscalar(plg)
+                G{missing,plg}{1} =struct(pv.prm,struct('data',[],'trial',[],'trialtime',[],'clocktime',[]));
+            end
+            if ~isempty(pv.prm)
+                S = G.(plg);
+                S = [S{:}];
+                S = [S.(pv.prm)];
                 if ~ismember("all",pv.what)
-                    fields=  fieldnames(out);
-                    out = rmfield(out,setdiff(fields, pv.what));
-                    if isscalar(pv.what)
-                        if isscalar(out)
-                            out = out.(pv.what);
-                        else
-                            out = {out.(pv.what)};
-                        end
-                    end
+                        fields=  fieldnames(S);
+                        S= rmfield(S,setdiff(fields, pv.what));
+                        S= struct2table(S,AsArray=true);
+                        G = [G S];
                 end
             end
-            if pv.asTable && isstruct(out)
-                out = struct2table(out);
+
+            if pv.asTable
+                out =G;
+            elseif ~ismember("all",pv.what)
+                out = table2cell(G(:,pv.what));
+                if isscalar(pv.what)
+                    try
+                        % Try to make into array
+                        out = [out{:}];
+                catch
+                        %Ignore;
+                    end
+                end                  
+            else
+                out =table2cell(G(:,plg));
             end
         end
 
@@ -597,14 +602,14 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % THese experiments are opened and then updated with the
             % correct plugin information (assuming the plugin is on the
             % path now).
-            % 
+            %
             arguments
                 tbl ns.Experiment
                 nsData (1,:) = []
                 pv.newOnly (1,1) logical = true
                 pv.pedantic (1,1) logical = false
                 pv.plugin (1,:) string = string.empty
-                pv.defaultScalarElement (1,1) logical = false 
+                pv.defaultScalarElement (1,1) logical = false
                 pv.safemode (1,1) logical = true
             end
             tic;
@@ -658,17 +663,17 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                     keep = startsWith(pluginsToUpdate, pv.plugin);
                     pluginsToUpdate = pluginsToUpdate(keep);
                     if isempty(pluginsToUpdate)
-                        fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)                        
+                        fprintf('No plugins that starts with %s in %s. Skipping..\n.',pv.plugin,key.starttime)
                         continue;% Skip to the next file
                     end
-                elseif pv.defaultScalarElement  
+                elseif pv.defaultScalarElement
                     if ismember("defaultScalarElement",pluginsToUpdate)
                         fprintf(2, "Some plugins are not on the search path. \n");
-                        %Run this to find out what is missing: 
+                        %Run this to find out what is missing:
                         % matlab.desktop.editor.newDocument(thisData.expScript);
                         deleteDefaultScalarElement =false; %Dont delete so that we can fix this on the next run
                     else
-                        deleteDefaultScalarElement =true;       
+                        deleteDefaultScalarElement =true;
                     end
                     pluginsAlreadyInDJ  =fetchtable(ns.Plugin & key,'plugin_name');
                     pluginsToUpdate = setdiff(pluginsToUpdate,pluginsAlreadyInDJ.plugin_name);
@@ -720,12 +725,12 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                             hasError = true;
                         end
                     end
-                    if pv.defaultScalarElement && ~hasError && deleteDefaultScalarElement   
+                    if pv.defaultScalarElement && ~hasError && deleteDefaultScalarElement
                         % All plugins updated successfully for this experiment
                         % Now we can remove the defaultscalar element
                         del((ns.Plugin & key) & 'plugin_name="defaultScalarElement"');
                     end
-                end              
+                end
             end
             dj.config('safemode',currentSafeMode);
         end
@@ -842,5 +847,6 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             key =struct('starttime',c.startTimeStr,'session_date',char(datetime(c.date,'InputFormat','dd MMM yyyy','Format','yyyy-MM-dd')),'subject',c.subject);
             tpl  =mergestruct(key,tpl);
         end
+       
     end
 end
