@@ -374,7 +374,6 @@ classdef PupilTracker < handle
                     restartFile = false;
                     setappdata(obj.Figure, 'restartFile', false);
 
-                    fprintf('  Sampling %d frames...\n', obj.MaxSampleFrames);
                     framePool = sbx.PupilTracker.getFramePool(v, obj.MaxSampleFrames);
                     brightnessPerFrame = squeeze(mean(framePool,[1 2]));
                     keep = brightnessPerFrame > prctile(brightnessPerFrame,50);
@@ -782,11 +781,25 @@ classdef PupilTracker < handle
                 eyeMask = (((Xgrid - thisParameters.EyeX) * cos(theta) + (Ygrid - thisParameters.EyeY) * sin(theta)).^2 / a^2 + ...
                     ((Xgrid - thisParameters.EyeX) * sin(theta) - (Ygrid - thisParameters.EyeY) * cos(theta)).^2 / b^2) <= 1;
 
+                % Precompute eye outline for visualisation
+                if pv.visualize
+                    phi_eye_v = linspace(0, 2*pi, 50);
+                    R_eye_v   = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
+                    xy_eye_v  = R_eye_v * [a*cos(phi_eye_v); b*sin(phi_eye_v)];
+                end
+
                 progressStr = '';
+                figClosed = false;
 
                 for iFrame = 1:nFrames
                     frameNum = frameIndices(iFrame);
                     Frames(iFrame) = frameNum;
+                    %% Abort if figure was closed during preview
+                    if pv.visualize && (isempty(obj.Figure) || ~isgraphics(obj.Figure))
+                        fprintf('\n  Preview figure closed — stopping tracking for this file.\n');
+                        figClosed = true;
+                        break;
+                    end
                     %% Progress indicator
                     if mod(iFrame, 25) == 0 || iFrame == 1
                         pctFrames = 100 * iFrame / nFrames;
@@ -848,73 +861,41 @@ classdef PupilTracker < handle
                         end
                     end
 
+                    %% Visualise current frame
+                    if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
+                        ax_v = gca(obj.Figure);
+                        imshow(frame, 'Parent', ax_v, 'initialMagnification', 'fit');
+                        hold(ax_v, 'on');
+                        plot(ax_v, xy_eye_v(1,:) + thisParameters.EyeX, xy_eye_v(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
+                        if ~isnan(X(iFrame))
+                            plot(ax_v, X(iFrame), Y(iFrame), 'g+', 'MarkerSize', 8, 'LineWidth', 2);
+                            if ~isnan(MajorAxis(iFrame))
+                                phi_p = linspace(0, 2*pi, 50);
+                                ap = MajorAxis(iFrame)/2;  bp = MinorAxis(iFrame)/2;
+                                tp = pi * Orientation(iFrame) / 180;
+                                Rp = [cos(tp) sin(tp); -sin(tp) cos(tp)];
+                                xyp = Rp * [ap*cos(phi_p); bp*sin(phi_p)];
+                                plot(ax_v, xyp(1,:)+X(iFrame), xyp(2,:)+Y(iFrame), 'r-', 'LineWidth', 2);
+                            end
+                        end
+                        if ~isnan(BoundingBox(iFrame,1))
+                            rectangle(ax_v, 'Position', BoundingBox(iFrame,:), 'EdgeColor', 'g', 'LineWidth', 2);
+                        end
+                        if isnan(X(iFrame))
+                            title(ax_v, sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
+                        else
+                            title(ax_v, sprintf('Frame %d/%d | Area: %d | Fit: %.2f | EIR: %.2f | BIR: %.2f', ...
+                                frameNum, lastFrame, PupilArea(iFrame), FitQuality(iFrame), EllipseIR(iFrame), BlobIR(iFrame)), ...
+                                'Interpreter', 'none');
+                        end
+                        hold(ax_v, 'off');
+                        drawnow limitrate;
+                    end
+
                 end  % for iFrame
                 fprintf('\n');
 
-                %% Post-tracking preview — replay results after each completed file
-                if pv.visualize
-                    if isempty(obj.Figure) || ~isgraphics(obj.Figure)
-                        obj.Figure = figure('Name', sprintf('[%d/%d] Preview', vIdx, numVideos), ...
-                            'Tag', obj.FigureTag, 'Units', 'Normalized', 'Position', [0.25 0.25 0.5 0.5]);
-                    else
-                        figure(obj.Figure);
-                        clf(obj.Figure);
-                        obj.Figure.Name = sprintf('[%d/%d] Preview', vIdx, numVideos);
-                    end
-                    fprintf('  Preview: replaying tracking results. Close window or Ctrl+C to continue to next file.\n');
-                    phi_eye_v = linspace(0, 2*pi, 50);
-                    R_eye_v   = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
-                    xy_eye_v  = R_eye_v * [a*cos(phi_eye_v); b*sin(phi_eye_v)];
-                    % Open a fresh VideoReader so random access works regardless of
-                    % where the tracking loop left the read cursor.
-                    try
-                        vPreview = VideoReader(char(videoFile));
-                    catch
-                        vPreview = [];
-                    end
-                    try
-                        for iFrame = 1:nFrames
-                            if isempty(obj.Figure) || ~isgraphics(obj.Figure), break; end
-                            if isempty(vPreview), break; end
-                            frameNum = frameIndices(iFrame);
-                            try
-                                frame = read(vPreview, frameNum);
-                            catch
-                                continue;
-                            end
-                            if size(frame, 3) == 3, frame = rgb2gray(frame); end
-                            ax_v = gca(obj.Figure);
-                            imshow(frame, 'Parent', ax_v, 'initialMagnification', 'fit');
-                            hold(ax_v, 'on');
-                            plot(ax_v, xy_eye_v(1,:) + thisParameters.EyeX, xy_eye_v(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
-                            if ~isnan(X(iFrame))
-                                plot(ax_v, X(iFrame), Y(iFrame), 'g+', 'MarkerSize', 8, 'LineWidth', 2);
-                                if ~isnan(MajorAxis(iFrame))
-                                    phi_p = linspace(0, 2*pi, 50);
-                                    ap = MajorAxis(iFrame)/2;  bp = MinorAxis(iFrame)/2;
-                                    tp = pi * Orientation(iFrame) / 180;
-                                    Rp = [cos(tp) sin(tp); -sin(tp) cos(tp)];
-                                    xyp = Rp * [ap*cos(phi_p); bp*sin(phi_p)];
-                                    plot(ax_v, xyp(1,:)+X(iFrame), xyp(2,:)+Y(iFrame), 'r-', 'LineWidth', 2);
-                                end
-                            end
-                            if ~isnan(BoundingBox(iFrame,1))
-                                rectangle(ax_v, 'Position', BoundingBox(iFrame,:), 'EdgeColor', 'g', 'LineWidth', 2);
-                            end
-                            if isnan(X(iFrame))
-                                title(ax_v, sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
-                            else
-                                title(ax_v, sprintf('Frame %d/%d | Area: %d | Fit: %.2f | EIR: %.2f | BIR: %.2f', ...
-                                    frameNum, lastFrame, PupilArea(iFrame), FitQuality(iFrame), EllipseIR(iFrame), BlobIR(iFrame)), ...
-                                    'Interpreter', 'none');
-                            end
-                            hold(ax_v, 'off');
-                            drawnow limitrate;
-                        end
-                    catch
-                        fprintf('  Preview interrupted. Continuing to next file...\n');
-                    end
-                end
+                if figClosed, continue; end  % vIdx — skip saving, go to next file
 
                 % Store results in the map
                 idx = 1:nFrames;
