@@ -487,27 +487,35 @@ classdef PupilTracker < handle
                     end
                     drawnow;
 
-                    % Draw pupil ellipses one by one (Restart button goes back to eye selection)
+                    % Draw pupil ellipses one by one (Restart/Skip buttons above tile grid)
                     uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Restart', ...
                         'Units', 'normalized', 'Position', [0.84 0.01 0.15 0.05], ...
                         'BackgroundColor', [0.75 0.25 0.1], 'ForegroundColor', 'white', ...
                         'FontSize', 10, 'FontWeight', 'bold', ...
                         'Callback', @(~,~) sbx.PupilTracker.restartInitFile(obj.Figure));
+                    setappdata(obj.Figure, 'skipFile', false);
+                    uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Skip File', ...
+                        'Units', 'normalized', 'Position', [0.68 0.01 0.15 0.05], ...
+                        'BackgroundColor', [0.6 0.6 0.1], 'ForegroundColor', 'white', ...
+                        'FontSize', 10, 'FontWeight', 'bold', ...
+                        'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'skipFile', true));
                     skipFile  = false;
                     pupilRois = cell(obj.NrPupilImages, 1);
                     for t = 1:obj.NrPupilImages
                         pupilRois{t} = drawellipse(sampleAxes{t}, 'Color', 'r', 'FaceAlpha', 0.15);
                         % Check flags immediately after drawellipse's blocking draw phase.
-                        % If Restart was clicked while the user was drawing, uiresume could not
+                        % If Restart/Skip was clicked while the user was drawing, uiresume could not
                         % interrupt drawellipse's internal event loop — but setappdata still ran.
                         % Catching the flag here avoids proceeding to uiwait unnecessarily.
                         if ~isgraphics(obj.Figure), skipFile = true; break; end
                         if getappdata(obj.Figure, 'restartFile'), restartFile = true; break; end
+                        if getappdata(obj.Figure, 'skipFile'),    skipFile    = true; break; end
                         lPupil = addlistener(pupilRois{t}, 'ROIClicked', @(~,evt) sbx.PupilTracker.roiConfirmIfDouble(obj.Figure, evt));
                         uiwait(obj.Figure);
                         delete(lPupil);
                         if ~isgraphics(obj.Figure), skipFile = true; break; end
                         if getappdata(obj.Figure, 'restartFile'), restartFile = true; break; end
+                        if getappdata(obj.Figure, 'skipFile'),    skipFile    = true; break; end
                         pupilRois{t}.InteractionsAllowed = 'none';
                         title(sampleAxes{t}, sprintf('Rank %d/%d', quantPos(t), nPool), 'Color', 'w', 'FontSize', 7);
                     end
@@ -558,9 +566,6 @@ classdef PupilTracker < handle
                         'VariableNames', {'Threshold', 'Floor','StartX', 'StartY', 'Area',...
                         'EyeX', 'EyeY', 'EyeMajor', 'EyeMinor', 'EyeOrientation'});
 
-                    % Do not close the figure, just clear it for the next one
-                    clf(obj.Figure);
-
                     % Write parameters to a JSON file (store only filename, not full path)
                     paramStruct = table2struct(obj.Parameters(currentFile));
                     paramStruct.FileName = [fname ext];
@@ -573,10 +578,57 @@ classdef PupilTracker < handle
                         fclose(fid);
                         fprintf('  -> Saved parameters to: %s\n', jsonFileName);
                     end
+
+                    %% Per-file track dialog
+                    clf(obj.Figure);
+                    setappdata(obj.Figure, 'runTrack', false);
+                    setappdata(obj.Figure, 'runTrackPreview', false);
+                    setappdata(obj.Figure, 'nextFile', false);
+                    obj.Figure.Name = sprintf('[%d/%d] %s initialized', i, numel(paramFiles), [fname ext]);
+                    uicontrol(obj.Figure, 'Style', 'text', ...
+                        'String', sprintf('[%d/%d]  %s  — saved.', i, numel(paramFiles), [fname ext]), ...
+                        'Units', 'normalized', 'Position', [0.1 0.64 0.8 0.08], ...
+                        'FontSize', 11, 'HorizontalAlignment', 'center');
+                    uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Track with Preview', ...
+                        'Units', 'normalized', 'Position', [0.35 0.53 0.30 0.09], ...
+                        'BackgroundColor', [0.2 0.5 0.8], 'ForegroundColor', 'white', ...
+                        'FontSize', 12, 'FontWeight', 'bold', ...
+                        'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'runTrackPreview', true));
+                    uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Track', ...
+                        'Units', 'normalized', 'Position', [0.35 0.42 0.30 0.09], ...
+                        'BackgroundColor', [0.2 0.6 0.2], 'ForegroundColor', 'white', ...
+                        'FontSize', 12, 'FontWeight', 'bold', ...
+                        'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'runTrack', true));
+                    if i < numel(paramFiles)
+                        nextLabel = sprintf('Next File  (%d / %d)', i+1, numel(paramFiles));
+                    else
+                        nextLabel = 'Done';
+                    end
+                    uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', nextLabel, ...
+                        'Units', 'normalized', 'Position', [0.35 0.31 0.30 0.08], ...
+                        'FontSize', 11, ...
+                        'Callback', @(~,~) sbx.PupilTracker.resumeWithFlag(obj.Figure, 'nextFile', true));
+                    uiwait(obj.Figure);
+
+                    % Track this file only if requested
+                    doPreview = isgraphics(obj.Figure) && isappdata(obj.Figure, 'runTrackPreview') && getappdata(obj.Figure, 'runTrackPreview');
+                    doTrack   = isgraphics(obj.Figure) && isappdata(obj.Figure, 'runTrack')        && getappdata(obj.Figure, 'runTrack');
+                    if doPreview || doTrack
+                        savedParams    = obj.Parameters;
+                        obj.Parameters = containers.Map({currentFile}, {savedParams(currentFile)});
+                        obj.track(visualize=doPreview);
+                        obj.Parameters = savedParams;
+                    end
                 end  % while restartFile
                 if skippedFile, continue; end  % for i — skip to next file
             end
             disp('Finished collecting parameters. Run track() to generate a pupil tracking tsv file.');
+            % Ensure a figure exists for the completion dialog even when all files were
+            % already initialized and skipped (obj.Figure was never created in the loop).
+            if isempty(obj.Figure) || ~isgraphics(obj.Figure)
+                obj.Figure = figure('Name', 'Initialization complete', 'Tag', obj.FigureTag, ...
+                    'Units', 'normalized', 'Position', [0.05 0.05 0.9 0.9]);
+            end
             if isgraphics(obj.Figure)
                 setappdata(obj.Figure, 'runTrack', false);
                 setappdata(obj.Figure, 'runTrackPreview', false);
@@ -760,10 +812,6 @@ classdef PupilTracker < handle
                     cleanImage   = bwareaopen(imopen(imfill(binaryImage, 'holes'), se), round(thisParameters.Area * obj.MinAreaFrac));
 
 
-                    if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure)
-                        imshow(frame, 'Parent', gca(obj.Figure), 'initialMagnification', 'fit'); hold(gca(obj.Figure), 'on');
-                    end
-
                     %% Find an ellipes or
                     eyePixels  = double(frame(eyeMask));
                     meanEye    = mean(eyePixels);
@@ -800,38 +848,73 @@ classdef PupilTracker < handle
                         end
                     end
 
-                    if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure)
-                        phi_eye = linspace(0, 2*pi, 50);
-                        R_eye = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
-                        xy_eye = R_eye * [a*cos(phi_eye); b*sin(phi_eye)];
-                        plot(obj.Figure.CurrentAxes, xy_eye(1,:) + thisParameters.EyeX, xy_eye(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
-
-                        if ~isempty(stats_ellipse)
-                            plot(obj.Figure.CurrentAxes, bestEllipse.Centroid(1), bestEllipse.Centroid(2), 'g+', 'MarkerSize', 8, 'LineWidth', 2);
-                            phi_pupil = linspace(0, 2*pi, 50);
-                            a_pupil = bestEllipse.MajorAxisLength / 2;
-                            b_pupil = bestEllipse.MinorAxisLength / 2;
-                            theta_pupil = pi * bestEllipse.Orientation / 180;
-                            R_pupil = [cos(theta_pupil) sin(theta_pupil); -sin(theta_pupil) cos(theta_pupil)];
-                            xy_pupil = R_pupil * [a_pupil*cos(phi_pupil); b_pupil*sin(phi_pupil)];
-                            plot(obj.Figure.CurrentAxes, xy_pupil(1,:) + bestEllipse.Centroid(1), xy_pupil(2,:) + bestEllipse.Centroid(2), 'r-', 'LineWidth', 2);
-                        end
-
-                        if ~isempty(stats_blob)
-                            rectangle(obj.Figure.CurrentAxes, 'Position', bestBlob.BoundingBox, 'EdgeColor', 'g', 'LineWidth', 2);
-                        end
-
-                        if isempty(stats_blob) && isempty(stats_ellipse)
-                            imshow(frame, 'Parent', gca(obj.Figure), 'initialMagnification', 'fit');
-                            title(gca(obj.Figure), sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
-                        else
-                            title(gca(obj.Figure), sprintf('Frame %d | Area: %d | Fit: %.2f | EIR: %.2f | BIR: %.2f', frameNum, bestEllipse.Area, FitQuality(iFrame), EllipseIR(iFrame), BlobIR(iFrame)), 'Interpreter', 'none');
-                        end
-                        hold(gca(obj.Figure), 'off');
-                        drawnow limitrate;
-                    end
                 end  % for iFrame
                 fprintf('\n');
+
+                %% Post-tracking preview — replay results after each completed file
+                if pv.visualize
+                    if isempty(obj.Figure) || ~isgraphics(obj.Figure)
+                        obj.Figure = figure('Name', sprintf('[%d/%d] Preview', vIdx, numVideos), ...
+                            'Tag', obj.FigureTag, 'Units', 'Normalized', 'Position', [0.25 0.25 0.5 0.5]);
+                    else
+                        figure(obj.Figure);
+                        clf(obj.Figure);
+                        obj.Figure.Name = sprintf('[%d/%d] Preview', vIdx, numVideos);
+                    end
+                    fprintf('  Preview: replaying tracking results. Close window or Ctrl+C to continue to next file.\n');
+                    phi_eye_v = linspace(0, 2*pi, 50);
+                    R_eye_v   = [cos(-theta) sin(-theta); -sin(-theta) cos(-theta)];
+                    xy_eye_v  = R_eye_v * [a*cos(phi_eye_v); b*sin(phi_eye_v)];
+                    % Open a fresh VideoReader so random access works regardless of
+                    % where the tracking loop left the read cursor.
+                    try
+                        vPreview = VideoReader(char(videoFile));
+                    catch
+                        vPreview = [];
+                    end
+                    try
+                        for iFrame = 1:nFrames
+                            if isempty(obj.Figure) || ~isgraphics(obj.Figure), break; end
+                            if isempty(vPreview), break; end
+                            frameNum = frameIndices(iFrame);
+                            try
+                                frame = read(vPreview, frameNum);
+                            catch
+                                continue;
+                            end
+                            if size(frame, 3) == 3, frame = rgb2gray(frame); end
+                            ax_v = gca(obj.Figure);
+                            imshow(frame, 'Parent', ax_v, 'initialMagnification', 'fit');
+                            hold(ax_v, 'on');
+                            plot(ax_v, xy_eye_v(1,:) + thisParameters.EyeX, xy_eye_v(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
+                            if ~isnan(X(iFrame))
+                                plot(ax_v, X(iFrame), Y(iFrame), 'g+', 'MarkerSize', 8, 'LineWidth', 2);
+                                if ~isnan(MajorAxis(iFrame))
+                                    phi_p = linspace(0, 2*pi, 50);
+                                    ap = MajorAxis(iFrame)/2;  bp = MinorAxis(iFrame)/2;
+                                    tp = pi * Orientation(iFrame) / 180;
+                                    Rp = [cos(tp) sin(tp); -sin(tp) cos(tp)];
+                                    xyp = Rp * [ap*cos(phi_p); bp*sin(phi_p)];
+                                    plot(ax_v, xyp(1,:)+X(iFrame), xyp(2,:)+Y(iFrame), 'r-', 'LineWidth', 2);
+                                end
+                            end
+                            if ~isnan(BoundingBox(iFrame,1))
+                                rectangle(ax_v, 'Position', BoundingBox(iFrame,:), 'EdgeColor', 'g', 'LineWidth', 2);
+                            end
+                            if isnan(X(iFrame))
+                                title(ax_v, sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
+                            else
+                                title(ax_v, sprintf('Frame %d/%d | Area: %d | Fit: %.2f | EIR: %.2f | BIR: %.2f', ...
+                                    frameNum, lastFrame, PupilArea(iFrame), FitQuality(iFrame), EllipseIR(iFrame), BlobIR(iFrame)), ...
+                                    'Interpreter', 'none');
+                            end
+                            hold(ax_v, 'off');
+                            drawnow limitrate;
+                        end
+                    catch
+                        fprintf('  Preview interrupted. Continuing to next file...\n');
+                    end
+                end
 
                 % Store results in the map
                 idx = 1:nFrames;
