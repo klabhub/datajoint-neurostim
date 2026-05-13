@@ -446,9 +446,13 @@ classdef PluginParameter < dj.Part
                 props.(propName) = struct('data',{data(keepTrial)},'trialtime', eventTime(keepTrial),'trial',trialsWithTheEvent,'clocktime',eventNsTime(keepTrial));
             end
             % Try to convert to matrix
-            if iscell( props.(propName).data )
+            if iscell( props.(propName).data )                                    
                 if all(cellfun(@numel, props.(propName).data )==1)
-                    props.(propName).data  = cell2mat( props.(propName).data );
+                    if isnumeric(props.(propName).data{1})
+                        props.(propName).data  = cell2mat( props.(propName).data );
+                    elseif all(cellfun(@isstring,props.(propName).data))
+                        props.(propName).data = string(props.(propName).data);
+                    end
                 end
             elseif iscellstr(props.(propName).data)
                 props.(propName).data = string(props.(propName).data);

@@ -53,6 +53,7 @@ classdef (Abstract) cache < handle
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
                 pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
+                pv.figure = []  % Creates new figures if empty.
             end
 
             %% Fill the cache, then perform averaging per group
@@ -98,11 +99,15 @@ classdef (Abstract) cache < handle
                         % Add the legend string to the existing tile
                         legend(h,legStr);
                     end
-                    if mod(tileCntr,pv.tilesPerPage)==0
+                    if isempty(pv.figure)
+                    if mod(tileCntr,pv.tilesPerPage)==0 
                         if i>1 && pv.linkAxes
                             linkaxes(gcf().Children().Children())
                         end
                         figure;
+                    end
+                    else
+                        figure(pv.figure); % Add to existing
                     end
                     % Start a new tile with empty handles
                     nexttile;
