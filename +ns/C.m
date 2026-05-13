@@ -879,6 +879,9 @@ classdef C < dj.Computed & dj.DJInstance
                     %% Vectorised path: one interp1 call covers all trials and channels
                     % absQuery [nrTimes × nrValidTrials]: absolute NS time of each output point
                     newTimes_ms = (pv.start:pv.step:pv.stop)';
+                    %TODO : should alignNsTime be set to the nearest
+                    %sample to ensure every "trial" has the same number of
+                    %samples.
                     absQuery    = newTimes_ms + alignNsTime;   % broadcast
                     if ~pv.crossTrial
                         trialLo = trialStartTime(validTrialNrs);
