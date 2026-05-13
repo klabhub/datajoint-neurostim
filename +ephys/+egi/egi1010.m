@@ -87,19 +87,22 @@ T = cell2table({"C3"	59	1.029910
     "T10"	210	3.434444
     "P5"	86	0.500231},'VariableNames',{'Label','Channel','Distance'});
 
-
+% Case-insensitive dictionary
+T.Label = upper(T.Label);
+in = upper(in);
 D = dictionary(T.Label,T.Channel);
+R = dictionary(T.Channel,T.Label);
 if ~isempty(search)
     out = T.Channel(search(T.Label,in));
 elseif isempty(in)
     % Return the full dictionary
     out =D;
-elseif isnumeric(in) && all(ismember(in,T.Channel))
+elseif isnumeric(in) 
     % Lookup the corresponding 1020 Label
-    out = T.Label(ismember(in,T.Channel));
-elseif (isstring(in) || ischar(in) ) && all(ismember(string(in),T.Label))
+    out = R(in);
+elseif (isstring(in) || ischar(in) )
     % Reverse lookup - return the channel
-    out = T.Channel(ismember(upper(T.Label),upper(string(in))));
+    out = D(in);
 else
     in
     error('egi1020 needs either an empty input (returns the dictionary), a channel number (Returns the 1020 name) or a 1020 label (Returns the channel number)')
