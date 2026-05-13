@@ -4,7 +4,7 @@
 channel : int       # Channel number - can be zero to represent an average of channels
 trial : int         # Trial number - can represent the first trial in a set of trials with the same condition
 ---
-signal : longblob         # (Transformed) Data 
+y : longblob         # (Transformed) Data 
 nrtrials = 1 : int       # Number of trials (if averaged)
 nrchannels = 1 : int      # Number of channels (if averaged)
 %}

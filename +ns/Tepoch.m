@@ -2,10 +2,10 @@
 # Transformed Epoch - a computation applied to a (set of) epochs.
 -> ns.Epoch         # The epochs that were transformed
 -> ns.TepochParm    # Parameters used for the transformation
-dependent : varchar(64)  # The name of the dependent variable(s) - vector of strings 
+dependent : varchar(64)  # The name of the dependent variable(s)
 ---
 x : blob            # The values of the independent variable
-independent : varchar(64)  #  The name of the independent variable - vector of strings
+independent : varchar(64)  #  The name of the independent variable(s), if multiple, concatenated with ':' in order
 %}
 classdef Tepoch < dj.Computed & dj.DJInstance
 
@@ -38,10 +38,6 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             x = cat(2,x{:});
             tpl = dj.struct.join(struct(independent = strjoin(idv,':'), x = x, dependent = cellstr(dv(:))),key);
 
-            % tpl = key;
-            % tpl.x = table2cell(T(1,idv)); % Store the first row only-all others are the same (see fill)
-            % tpl.dependent = dv;
-            % tpl.independent = strjoin(idv,':');
             insert(tbl,tpl);
 
 
@@ -72,7 +68,7 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             dat_tbl = T(:,["channel", "trial", dv]);
             dat_tbl.nrtrials = nrTrials;
             dat_tbl.nrchannels = nrChannels;
-            dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'signal');
+            dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'y');
             dat_tbl= convertvars(dat_tbl,'dependent', 'char');
             dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
 
