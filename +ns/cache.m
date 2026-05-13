@@ -162,25 +162,38 @@ classdef (Abstract) cache < handle
 
         function [G,dv,idv] =  compute(o,fun,pv)
             % Compute derived measures from the EpochChannel table.
-            % fun - fft, psd, pmtm, snr, msten
-            %       fft - Uses fft() to compute amplitude, phase as a function of frequency
-            %        psd - Uses pspectrum to compute power spectral density as a function of frequency
-            %        pmtm - Uses multittaper pmtm to compute a spectrogram as a function of time and frequency
-            %
-            % options - Struct passed to the compute function - different
-            %           for each fun.
-            %       options.args is a cell array of postional arguments 
-            %       options.bla  = 5 will be  passed as 'bla',5 to the
-            %       function call.
-            %
-            %        fft - no options
-            % 
-            %        psd
-            %           
-            %       pmtm
-            %           To calculate with 2 TW product and at frequencies
-            %           1:80, use struct('args',{{2,1:80}})
-            %           The sampling frequency is added automatically.
+            % fun - struct with fields corresponding to one of the 
+            % functions listed below. Its values must be a cell array
+            % containing function arguments. First argument to these
+            % functions are always predetermined.
+            %   .fft:       Uses `fft()` to compute amplitude, phase as a function
+            %                   of frequency, does not accept arguments.
+            %   .pspectrum: Uses `pspectrum()` to compute power spectral
+            %                   density as a function of frequency
+            %   .pmtm:      Uses multittaper `pmtm()` to compute a
+            %                   spectrogram as a function of time and 
+            %                   frequency
+            %   .snr:       Calculate SNRs as a ratio between the power
+            %                  at a given frequency and the average power
+            %                  at its neighboring (noise) frequencies
+            %                  excluding immediate neighbors. 
+            %               Args:
+            %                  1. signal_range_halfwidth
+            %                  2. noise_range_halfwidth}
+            %               for a given frequency f_i, the noise power
+            %                  is the average power in the range of
+            %                   f_i + [1,-1].*noise_range_halfwidth
+            %                  excluding
+            %                   f_i + [1,-1].*signal_range_halfwidth
+            %                  where
+            %                   signal_range < noise_range
+            %   .peak:      Finds peak locations and magnitudes around 
+            %                   specific frequencies within a search window
+            %               Args:
+            %                   1. peak_freqs
+            %                   2. peak_search_range_halfwidth
+            %   .msten:     ####
+            %   .wavelet:   ####
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -268,8 +281,8 @@ classdef (Abstract) cache < handle
             %% Determine which function to compute
             % Map string to function handle and do error checking
             if isfield(fun,"msten")
-                error('Must adapt msten case for chained transform!')
-                dv = "mean";
+                % it outputs multiple dv
+                dv = ["mean", "ste", "n"];
                 idv = "time";
                 % Combine with G
                 G = [G M];
@@ -288,7 +301,7 @@ classdef (Abstract) cache < handle
                             funN = @(x) ns.cache.do_fft(x,o.samplingRate);
                             dv = ["amplitude" "phase"];
                             idv = "frequency";
-                        case "psd"
+                        case "pspectrum"
                             funN = @(x) ns.cache.do_psd(x,optionsN{:});
                             idv = "frequency";
                             dv = "power";
@@ -308,7 +321,8 @@ classdef (Abstract) cache < handle
                                 optionsN= struct('limits', [0.5 100],'fwhm',[2 0.2],'nfrex',40);
                             end
                             funN = @(x) ns.cache.do_wavelet(x,optionsN);
-                            idv = ["frequency" "time"];
+                            % do_wavelet() does not output time
+                            idv = ["frequency", "time"];
                             dv = "power";
                         case 'peak'
 
@@ -329,17 +343,15 @@ classdef (Abstract) cache < handle
                     % change M for the next iter
                     M = table2cell(G(:,dv));
                 end
-
-                        
             end
             % Combine with align/time/paradigm information. Note this
-                % assumes these are constant across the group (picking
-                % only the first here). fill() assures this is the case.
-                if pv.average ~=""
-                    P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
-                    P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
-                    G =innerjoin(G,P);
-                end
+            % assumes these are constant across the group (picking
+            % only the first here). fill() assures this is the case.
+            if pv.average ~=""
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
+                G =innerjoin(G,P);
+            end
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
         end
@@ -439,9 +451,9 @@ classdef (Abstract) cache < handle
         function v = do_msten(x)
             % Mean, standard error, and N
             X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing")', ...  % Mean
-                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
-                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
+            v = {mean(X,2,"omitmissing"), ...  % Mean
+                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing"))),...  % Standard error
+                sum(~isnan(X),2,"omitmissing")};  % Non-Nan N
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
         end
