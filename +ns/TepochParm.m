@@ -11,7 +11,7 @@ trials  = NULL : blob               # Trials to include. Defaults to all in the 
 %}
 
 
-classdef TempTepochParm < dj.Lookup & dj.DJInstance
+classdef TepochParm < dj.Lookup & dj.DJInstance
     methods 
     function insert(tbl,tpl)
         arguments

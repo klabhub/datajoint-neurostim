@@ -1,6 +1,6 @@
 %{
 # Transformed epoched data per channel and per trial.
--> ns.TempTepoch
+-> ns.Tepoch
 channel : int       # Channel number - can be zero to represent an average of channels
 trial : int         # Trial number - can represent the first trial in a set of trials with the same condition
 ---
@@ -8,9 +8,9 @@ signal : longblob         # (Transformed) Data
 nrtrials = 1 : int       # Number of trials (if averaged)
 nrchannels = 1 : int      # Number of channels (if averaged)
 %}
-classdef TempTepochChannel < dj.Part & dj.DJInstance & ns.cache    
+classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache    
     properties (SetAccess = protected)
-        master = ns.TempTepoch
+        master = ns.Tepoch
     end 
 
     properties (Dependent)
@@ -20,7 +20,7 @@ classdef TempTepochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods (Access = protected)
         function src = getCacheQuery(o)
-            src = o*ns.TempTepoch* proj(getCacheQuery(ns.EpochChannel & proj(o)),'time','paradigm','align','condition');
+            src = o*ns.Tepoch* proj(getCacheQuery(ns.EpochChannel & proj(o)),'time','paradigm','align','condition');
         end
     end
 

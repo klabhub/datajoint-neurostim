@@ -1,19 +1,19 @@
 %{
 # Transformed Epoch - a computation applied to a (set of) epochs.
 -> ns.Epoch         # The epochs that were transformed
--> ns.TempTepochParm    # Parameters used for the transformation
+-> ns.TepochParm    # Parameters used for the transformation
 dependent : varchar(64)  # The name of the dependent variable(s) - vector of strings 
 ---
 x : blob            # The values of the independent variable
 independent : varchar(64)  #  The name of the independent variable - vector of strings
 %}
-classdef TempTepoch < dj.Computed & dj.DJInstance
+classdef Tepoch < dj.Computed & dj.DJInstance
 
     methods (Access = protected)
         function makeTuples(tbl, key)
             % Apply a computation/transform to a collection of Epochs and
             % store as Tepoch.
-            parms = fetch(ns.TempTepochParm & key,'*');
+            parms = fetch(ns.TepochParm & key,'*');
 
             % Restrict the epoch channels and trials if requested in the
             % parms
@@ -76,7 +76,7 @@ classdef TempTepoch < dj.Computed & dj.DJInstance
             dat_tbl= convertvars(dat_tbl,'dependent', 'char');
             dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
 
-            insert(ns.TempTepochChannel,dat_tpl)
+            insert(ns.TepochChannel,dat_tpl)
 
         end
     end
