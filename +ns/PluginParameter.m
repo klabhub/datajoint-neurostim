@@ -331,6 +331,11 @@ classdef PluginParameter < dj.Part
                         value{prm} = bs;
                     end
                 end
+                if iscell(value{prm}) && numel(value{prm})>1 && isempty(value{prm}{1}) && iscellstr(value{prm}(2:end))
+                    % A cell string that starts empty ([]) and then has
+                    % char values = {[],'a','b'};
+                    value{prm}{1} = ''; % Replace with empty char to allow string conversion.
+                end
                 if iscellstr(value{prm}) || ischar(value{prm})
                     thisValue = string(value{prm});
                 else
