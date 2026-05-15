@@ -165,27 +165,40 @@ classdef (Abstract) cache < handle
             end
         end
 
-        function [G,dv,idv] =  compute(o,fun,options,pv)
+        function [G,dv,idv] =  compute(o,fun,pv)
             % Compute derived measures from the EpochChannel table.
-            % fun - fft, psd, pmtm, snr, msten
-            %       fft - Uses fft() to compute amplitude, phase as a function of frequency
-            %        psd - Uses pspectrum to compute power spectral density as a function of frequency
-            %        pmtm - Uses multittaper pmtm to compute a spectrogram as a function of time and frequency
-            %
-            % options - Struct passed to the compute function - different
-            %           for each fun.
-            %       options.args is a cell array of postional arguments 
-            %       options.bla  = 5 will be  passed as 'bla',5 to the
-            %       function call.
-            %
-            %        fft - no options
-            % 
-            %        psd
-            %           
-            %       pmtm
-            %           To calculate with 2 TW product and at frequencies
-            %           1:80, use struct('args',{{2,1:80}})
-            %           The sampling frequency is added automatically.
+            % fun - struct with fields corresponding to one of the 
+            % functions listed below. Its values must be a cell array
+            % containing function arguments. First argument to these
+            % functions are always predetermined.
+            %   .fft:       Uses `fft()` to compute amplitude, phase as a function
+            %                   of frequency, does not accept arguments.
+            %   .pspectrum: Uses `pspectrum()` to compute power spectral
+            %                   density as a function of frequency
+            %   .pmtm:      Uses multittaper `pmtm()` to compute a
+            %                   spectrogram as a function of time and 
+            %                   frequency
+            %   .snr:       Calculate SNRs as a ratio between the power
+            %                  at a given frequency and the average power
+            %                  at its neighboring (noise) frequencies
+            %                  excluding immediate neighbors. 
+            %               Args:
+            %                  1. signal_range_halfwidth
+            %                  2. noise_range_halfwidth}
+            %               for a given frequency f_i, the noise power
+            %                  is the average power in the range of
+            %                   f_i + [1,-1].*noise_range_halfwidth
+            %                  excluding
+            %                   f_i + [1,-1].*signal_range_halfwidth
+            %                  where
+            %                   signal_range < noise_range
+            %   .peak:      Finds peak locations and magnitudes around 
+            %                   specific frequencies within a search window
+            %               Args:
+            %                   1. peak_freqs
+            %                   2. peak_search_range_halfwidth
+            %   .msten:     ####
+            %   .wavelet:   ####
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -201,8 +214,7 @@ classdef (Abstract) cache < handle
             % idv - the name of the independent variable.
             arguments
                 o (1,1)
-                fun  (1,1) string {mustBeMember(fun,["fft" "psd" "pmtm" "snr" "msten" "wavelet"])}
-                options (1,:) struct = struct([]);  % Options for the fun
+                fun  (1,1) struct
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
@@ -211,6 +223,8 @@ classdef (Abstract) cache < handle
                 pv.y (1,1) string = o.dependent    % Column in .T to use as the dependent variable
             end
             fill(o);% Fill the cache
+            idv = pv.x;
+            dv = pv.y;
 
             %% Restrict the T by function input args and time window selection
             stay = true(height(o.T),1);
@@ -231,7 +245,7 @@ classdef (Abstract) cache < handle
                     t = linspace(t(1),t(2),t(3));
                 end
                 keep = do.ifwithin(t,pv.timeWindow/1000);
-                restrictedT(:,pv.y)= rowfun(@(x) {x(keep,:)},restrictedT(:,pv.y) ,'ExtractCellContents',true);
+                restrictedT(:,dv)= rowfun(@(x) {x(keep,:)},restrictedT(:,dv) ,'ExtractCellContents',true);
                 t= t(keep);
                 assert(~isempty(t),'No time points left in the analysis window ([%f %f])',pv.timeWindow(1),pv.timeWindow(2));
                 restrictedT.time = repmat([t(1) t(end) numel(t)],height(restrictedT),1);
@@ -249,93 +263,100 @@ classdef (Abstract) cache < handle
                 
                 [grp,G] = findgroups(restrictedT(:,grouping));
                 % Average per group
-                if fun=="msten"
+                if isfield(fun,"msten")
                     % Special case; caller asks for the mean only (and ste
                     % and n)
-                    M = splitapply(@ns.cache.do_msten,restrictedT.(pv.y),grp);                    
+                    M = splitapply(@ns.cache.do_msten,restrictedT.(dv),grp);                    
                 else
                     % Average signal then that will be processed by the fun
                     % below.
-                    if iscell(restrictedT{1,pv.y})
-                        M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(pv.y),grp);
+                    if iscell(restrictedT{1,dv})
+                        M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(dv),grp);
                     else
-                        M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(pv.y),grp);
+                        M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(dv),grp);
                     end
                 end
             else
                 % No averaging. Just put the signal into M
                 G = restrictedT;
-                M = restrictedT.(pv.y);
+                M = restrictedT.(dv);
             end
             nrGrps = height(M);
 
             %% Determine which function to compute
             % Map string to function handle and do error checking
-            if fun=="msten"
-                dv = "mean";
+            if isfield(fun,"msten")
+                % it outputs multiple dv
+                dv = ["mean", "ste", "n"];
                 idv = "time";
                 % Combine with G
                 G = [G M];
             else
-                switch fun
-                    case "fft"
-                        assert(isempty(options),"fft does not take any options")
-                        fun = @(x) ns.cache.do_fft(x,o.samplingRate);
-                        dv = ["amplitude" "phase"];
-                        idv = "frequency";
-                    case "psd"
-                        if isempty(options)
-                            opts ={};
-                        else
-                            opts = namedargs2cell(options);
-                        end
-                        fun = @(x) ns.cache.do_psd(x,o.samplingRate,opts{:});
-                        idv = "frequency";
-                        dv = "power";
-                    case "snr"
-                        fun = @(x) ns.cache.do_snr(x,o.samplingRate,options);
-                        idv = "frequency";
-                        dv = "power";
-                    case "pmtm"
-                        if ~isfield(options,"args")
-                            % Defaults
-                            args = {4,7}; % time-halfbandwidth product =4, averaging weights =7
-                        else
-                            args = options.args;
-                        end
-                        options = rmfield(options,'args');
-                        if isempty(options)
-                            options = {};
-                        else
-                            options = namedargs2cell(options); % The rest as parm/value pairs
-                        end
-                        fun = @(x) ns.cache.do_pmtm(x,args{:},o.samplingRate,options{:});
-                        idv = "frequency";
-                        dv = "power";
-                    case "wavelet"
-                        if isempty(options)
-                            options= struct('limits', [0.5 100],'fwhm',[2 0.2],'nfrex',40);
-                        end
-                        fun = @(x) ns.cache.do_wavelet(x,o.samplingRate,options.fwhm,options.nfrex,options.limits);
-                        idv = ["frequency" "time"];
-                        dv = "power";
-                    otherwise
-                        error('Unknown function %s', fun);
-                end
 
-                %% Apply the fun to the mean signal
-                results = splitapply(fun,M,(1:nrGrps)');
-                % Combine with G
-                G = [G results];               
+                transforms = fieldnames(fun);
+                n_transform = numel(transforms);
+
+                for iTrans = 1:n_transform
+                    transN = transforms{iTrans};
+                    optionsN = fun.(transN);
+                    m_arg_in = {M}; % input to splitapply
+                    switch transN
+                        case "fft"
+                            assert(isempty(optionsN),"fft does not take any options")
+                            funN = @(x) ns.cache.do_fft(x,o.samplingRate);
+                            dv = ["amplitude" "phase"];
+                            idv = "frequency";
+                        case "pspectrum"
+                            funN = @(x) ns.cache.do_psd(x,optionsN{:});
+                            idv = "frequency";
+                            dv = "power";
+                        case "snr"
+                            funN = @(varargin) ns.cache.do_snr(varargin{:},optionsN{:});
+                            m_arg_in{end+1} = G.(idv);
+                            idv = "frequency";
+                            dv = "snr";
+                        case "pmtm"
+                            funN = @(x) ns.cache.do_pmtm(x,optionsN{:});
+                            idv = "frequency";
+                            dv = "power";
+                        case "wavelet"
+
+                            % There is something wrong here
+                            if isempty(optionsN)
+                                optionsN= struct('limits', [0.5 100],'fwhm',[2 0.2],'nfrex',40);
+                            end
+                            funN = @(x) ns.cache.do_wavelet(x,optionsN);
+                            % do_wavelet() does not output time
+                            idv = ["frequency", "time"];
+                            dv = "power";
+                        case 'peak'
+
+                            funN = @(varargin) ns.cache.search_peaks(varargin{:}, optionsN{:});
+                            m_arg_in{end+1} = G.(idv); % frequency
+                            idv = "search_frequency";
+                            dv = ["peak_frequency","magnitude"];
+                        otherwise
+                            error('Unknown function %s', transN);
+                    end
+
+                    %% Apply the fun to the mean signal
+                    x = splitapply(funN,m_arg_in{:},(1:nrGrps)');
+                    % Combine with G, if G and x have common variable
+                    % names, x overwrites G
+                    G = ns.cache.horzcat_results_(G, x);
+
+                    % change M for the next iter
+                    M = table2cell(G(:,dv));
+                end
             end
             % Combine with align/time/paradigm information. Note this
-                % assumes these are constant across the group (picking
-                % only the first here). fill() assures this is the case.
-                if pv.average ~=""
-                    P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" pv.x "paradigm"]);
-                    P = renamevars(P,["fun1_align" "fun1_"+pv.x "fun1_paradigm"],["align" pv.x "paradigm"]);
-                    G =innerjoin(G,P);
-                end
+            % assumes these are constant across the group (picking
+            % only the first here). fill() assures this is the case.
+            if pv.average ~=""
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
+                G =innerjoin(G,P);
+            end
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
         end
@@ -373,7 +394,7 @@ classdef (Abstract) cache < handle
             amplitude = 2*abs(fftResult(idx,:,:)/sqrt(N));
             phase = angle(fftResult(idx,:,:));
             % Return as table with results as row vectors
-            v= table(amplitude(:)',phase(:)',freq(:)','VariableNames',{'amplitude','phase','frequency'});
+            v= table({amplitude},{phase},{freq},'VariableNames',{'amplitude','phase','frequency'});
         end
         function v = do_psd(signal, fs, varargin)
             % Power spectral density.
@@ -381,15 +402,19 @@ classdef (Abstract) cache < handle
             signal =cat(2,signal{:}); % Concatenate epochs
             signal = signal - mean(signal,1,"omitmissing");
             [power, freq] = pspectrum(signal, fs, varargin{:});
-            v= table(power(:)',freq(:)','VariableNames',{'power','frequency'});
+            v= table({power},{freq},'VariableNames',{'power','frequency'});
         end
         function v = do_pmtm(signal, varargin)
             % Multitaper power and frequency
             signal =cat(2,signal{:}); % Concatenate epochs
             signal(isinf(signal) | isnan(signal))=0;
             [power, freq] = pmtm(signal, varargin{:});
+            if isrow(freq) % make sure 1st dim is always frequency
+                freq = freq';
+                power = power';
+            end
             % Make table, force rows
-            v = table(power(:)',freq(:)','VariableNames',{'power','frequency'});
+            v = table({power},{freq(:)},'VariableNames',{'power','frequency'});
         end
         function v = do_wavelet(signal,fs, fwhm,nfrex,limits)
             % Code adapted from Cohen M. X. (2019). A better way to
@@ -426,19 +451,112 @@ classdef (Abstract) cache < handle
             end
             power = abs(spectrogram).^2;
             % Store power spectrogram and frequency
-            v = table({power},freq(:)','VariableNames',{'power','frequency'});
+            v = table({power},{freq},'VariableNames',{'power','frequency'});
         end
         function v = do_msten(x)
             % Mean, standard error, and N
             X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing")', ...  % Mean
-                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
-                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
+            v = {mean(X,2,"omitmissing"), ...  % Mean
+                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing"))),...  % Standard error
+                sum(~isnan(X),2,"omitmissing")};  % Non-Nan N
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
-        end      
+        end
+
+        function v = do_snr(signal, freqs, signal_range, noise_range)
+
+            arguments
+                signal (:,:)
+                freqs (:,1)
+                signal_range (1,1) double {mustBePositive}
+                noise_range (1,1) double {mustBePositive}
+            end
+
+            if iscell(signal)
+                signal = cat(2,signal{:});
+            end
+            if iscell(freqs)
+                freqs = cat(2,freqs{:});
+            end
+            assert(size(signal,1) == numel(freqs), "Signal and frequencies are of different length.");
+            df = uniquetol(diff(freqs),1e-6); % frequency step
+            assert(isscalar(df), "Frequencies are not regularly sampled.");
+
+            % create the kernel
+            half_width = floor(noise_range/df);
+            % must be even
+            if rem(half_width,2), half_width = half_width + 1; end
+            half_skip_width = floor(signal_range/df);
+            if rem(half_width,2), half_skip_width = half_skip_width + 1; end
+            kernel = ones(half_width,1);
+            kernel(1:half_skip_width) = 0;
+            kernel = [flip(kernel); 0; kernel];
+
+            isFq0 = freqs == 0; % 0 Hz is only the DC offset
+            signal(isFq0,:) = NaN; % DC offset should not be included in noise estimation
+            
+            noise = do.ndconv(signal, kernel, NaN)/sum(kernel); % conv is sum, make it mean
+            snr = signal./noise;
+
+            isPad = isnan(snr);
+
+            v = table({snr(~isPad)}, {freqs(~isPad)}, VariableNames={'snr', 'frequency'});
+
+        end
+
+        function v = search_peaks(signal, freqs, search_freqs, search_range)
+
+            arguments
+
+                signal (:,:)
+                freqs (:,:)
+                search_freqs (1,:) {mustBeNonnegative}
+                search_range (1,1) {mustBePositive}
+
+            end
+
+            if iscell(signal)
+                signal = cat(2,signal{:});
+            end
+            if iscell(freqs)
+                freqs = cat(2,freqs{:});
+            end
+
+            n_search_freq = numel(search_freqs);
+            n_ch = size(signal,2);
+            [search_freq, peak_freq, peak_amp] = deal(zeros(n_search_freq,n_ch));
+            for ii = 1:n_search_freq
+                
+                s_freqN = search_freqs(ii);
+                s_win = s_freqN + [-1, 1] .* search_range;
+                isFq = do.ifwithin(freqs, s_win);
+                iiFq = find(isFq);
+                [peak_amp(ii,:), iiPeak] = maxk(signal(isFq,:),1,1);
+
+                peak_freq(ii,:) = freqs(iiFq(iiPeak));               
+                search_freq(ii,:) = s_freqN;
+
+            end
+
+            v = table({search_freq}, {peak_freq}, {peak_amp}, VariableNames={'search_frequency', 'peak_frequency', 'magnitude'});
+        end
     end
 
+    methods (Static, Access = private)
+
+        function result = horzcat_results_(G, M)
+
+            % 1. Find overlapping names
+            overlap = intersect(G.Properties.VariableNames, M.Properties.VariableNames);
+
+            % 2. Remove them from G
+            G = removevars(G, overlap);
+
+            % 3. Horizontally concatenate
+            result = [G, M];
+        end
+
+    end
 
 
     methods (Access= protected)

@@ -3,8 +3,7 @@
 ttag : varchar(32)  # tag for this transformed epoch
 etag : varchar(32) # which epochs to transform 
 ---
-fun : varchar(32) # Function to do the transform (see ns.cache/compute)
-options: blob     # Options passed to the compute function
+fun : longblob # Function to do the transform (see ns.cache/compute)
 window  = NULL  : tinyblob          # Start and stop time of the epoch. Defaults to entire epoch
 channels = NULL  : blob              # Channels to include. Defaults to all in the etag
 average = NULL :blob               # Things to avere over  one ore more of these ["trial" "channel"];           
@@ -16,7 +15,7 @@ classdef TepochParm < dj.Lookup & dj.DJInstance
     methods 
     function insert(tbl,tpl)
         arguments
-            tbl (1,1) ns.TepochParm
+            tbl (1,1)
             tpl (:,1) struct
         end
 
