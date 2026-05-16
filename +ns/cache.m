@@ -68,10 +68,10 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,"msten",x=xName,y=yName,average= pv.average);            
+            G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average);            
             x = G{1,xName};
             if xName =="time" && numel(x) ==3
-                x = linspace(x(1),x(2),x(3));
+                x = linspace(x(1),x(2),x(3))';
             end
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
@@ -119,18 +119,18 @@ classdef (Abstract) cache < handle
                 if pv.raster~=""
                     % Show each condition in a separate tile
                     nrTrials= size(G.mean{i},1);
-                    imagesc(x,1:nrTrials, G.mean{i})
+                    imagesc(x,1:nrTrials, cell2mat(G.mean{i}')')
                     axis xy
-                    n = mean(G.n{i},"all");
+                    n = mean(cell2mat(G.n{i}'),"all");
                     ylabel ("")
                     titlePV= setdiff(["paradigm" rasterGrouping],"",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 else
-                    m = G.mean(i,:);
-                    ste = G.ste(i,:);
-                    n = mean(G.n(i,:));                    
+                    m = G.mean{i,:};
+                    ste = G.ste{i,:};
+                    n = mean(G.n{i,:});                    
                     h = [h plot(x,m)];                %#ok<AGROW>
-                    p = patch([x flip(x)],[m+ste flip(m-ste)],h(end).Color,FaceAlpha= 0.5);
+                    p = patch([x ;  flip(x)]',[m+ste ; flip(m-ste)]',h(end).Color,FaceAlpha= 0.5);
                     p.EdgeColor = h(end).Color;
                     plot(xlim,[0 0],'k');
                     ylabel 'EP (\muV)'
@@ -276,6 +276,13 @@ classdef (Abstract) cache < handle
                         M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(dv),grp);
                     end
                 end
+
+                % Combine with align/time/paradigm information. Note this
+                % assumes these are constant across the group (picking
+                % only the first here). fill() assures this is the case.
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
+                G =innerjoin(G,P);            
             else
                 % No averaging. Just put the signal into M
                 G = restrictedT;
@@ -348,14 +355,6 @@ classdef (Abstract) cache < handle
                     % change M for the next iter
                     M = table2cell(G(:,dv));
                 end
-            end
-            % Combine with align/time/paradigm information. Note this
-            % assumes these are constant across the group (picking
-            % only the first here). fill() assures this is the case.
-            if pv.average ~=""
-                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
-                G =innerjoin(G,P);
             end
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
