@@ -101,7 +101,7 @@ if startIdx <= 3
     fprintf('--- Phase 3: Recreate via DataJoint ---\n');
     % Flush DataJoint's schema cache so it re-reads table definitions
     % from MySQL rather than using the state from before the drops.
-    ns.Dimension.schema.reload(true);
+    ns.getSchema().reload(true);
     createViaDataJoint('ns.Dimension',          @() count(ns.Dimension));
     createViaDataJoint('ns.DimensionCondition', @() count(ns.DimensionCondition));
     createViaDataJoint('ns.DimensionTrial',     @() count(ns.DimensionTrial));
@@ -171,7 +171,7 @@ end
 % 2. Check that ns/dimension exists (may not exist if starting late)
 dimTbl = conn.query(sprintf([ ...
     'SELECT table_name FROM information_schema.tables ' ...
-    'WHERE table_schema = ''%s'' AND table_name = ''ns/dimension'''], db));
+    'WHERE table_schema = ''%s'' AND table_name LIKE ''ns/%%dimension'''], db));
 if isempty(dimTbl.table_name)
     fprintf('Pre-flight: ns/dimension not found — skipping coverage check.\n\n');
     return
