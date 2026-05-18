@@ -25,6 +25,7 @@ arguments
     pv.safeMode (1,1) logical =true
     pv.root (1,1) string = getenv("NS_ROOT")
     pv.populateFile (1,1) logical = true
+    pv.populateDimension (1,1) logical = true
     pv.dryrun (1,1) logical = false
     pv.cic = [] % A vector of cic objects. One per row of the experiment table.
     pv.newOnly (1,1) logical = true
@@ -77,6 +78,10 @@ if  ~pv.dryrun && ~isempty(newExpts)
     if pv.populateFile
         % Populate the File table (all files associated with this experiment)
         populate(ns.File, newExpts);
+    end
+    if pv.populateDimension
+        % Populate the Dimension table (all dimensions/conditions associated with this experiment)
+        populate(ns.Dimension, newExpts);
     end
 end
 % Restore setting

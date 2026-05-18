@@ -115,6 +115,7 @@ arguments
     pv.jsonOnly (1,1) logical = false
     pv.readFileContents (1,1) logical = false
     pv.populateFile (1,1) logical = true
+    pv.populateDimension (1,1) logical = true
     pv.cicOnly (1,1) logical = false
     pv.safeMode (1,1) logical = true
     pv.metaDefinitionTag (1,1) string = ""
@@ -637,6 +638,6 @@ if pv.addToDatajoint
         cic =[];
     end
     nsAddToDataJoint(tSubject,tSession,tExperiment,'cic',cic,'safeMode',pv.safeMode, ...
-        'root',pv.root,'populateFile',pv.populateFile, ...
+        'root',pv.root,'populateFile',pv.populateFile, 'populateDimension',pv.populateDimension,...
         'newOnly',pv.newOnly  && ~pv.jsonOnly);
 end
