@@ -93,7 +93,6 @@ classdef DimensionParm < dj.Lookup
                 pv.left (1,1) double = 0 % Reduce the names to this number of chars from the left. 0 means the full length
                 pv.nameValueOnly (1,1) = false  % Set to true to define condition names based o the prm values alone (and not their name).
                 pv.atTrialTime (1,1) = 0 % By default a dimension is defined by the parameter value at the start of the trial. Set this to Inf to use the value at the end of the trial (or any other trial time).
-                pv.useTable (1,1) = false % Set this to true of the plg argument is the name of a DJ table
                 opts.full (1,1) logical =false;
             end
 

@@ -33,7 +33,7 @@
 % See also ns.DimensionParm, ns.DimensionParmParadigm, ns.DimensionCondition,
 %          ns.Tuning
 classdef Dimension < dj.Computed & dj.DJInstance
-  
+
     methods (Access=public)
         function varargout = split(d,T,pv)
             % Split a table T into subtables  corresponding to the conditions in the dimension.
@@ -146,9 +146,9 @@ classdef Dimension < dj.Computed & dj.DJInstance
             values(rowOut,:)=[];
         end
 
-       
 
-       
+
+
     end
 
     methods (Access=protected)
@@ -162,7 +162,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
             parms = fetch1(ns.DimensionParm & key, 'parms');
             % Unpack parms
             plg          = cellstr(parms.plg);
-            prm          = cellstr(parms.prm);           
+            prm          = cellstr(parms.prm);
             nrPlg = numel(plg);
             nrPrm = numel(prm);
             assert(nrPlg==nrPrm, "Please specify one parameter per plugin")
@@ -172,7 +172,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
             else
                 fun = str2func(parms.fun);
             end
-            
+
             pvSEPARATOR = ":"; % Between parm and value
             ppSEPARATOR = "_"; % Between one parm and the next.
 
@@ -192,24 +192,19 @@ classdef Dimension < dj.Computed & dj.DJInstance
                         prefix = string(plg{i}(1:parms.left)) + pvSEPARATOR + string(prm{i}(1:parms.left)) + pvSEPARATOR;
                     end
                 end
-                if parms.useTable
-                    thisTbl = feval(plg{i});
-                    assert(ismember('trial', cat(2, thisTbl.primaryKey, thisTbl.nonKeyFields)), ...
-                        "The %s table must have a column called trial to use it in a dimension definition.", plg{i})
-                    [prmValues, prmTrials] = fetchn(thisTbl & key, prm{i}, 'trial', 'ORDER BY trial');
-                else
-                    ret = get(ns.Experiment & key, plg{i}, 'prm', prm{i}, 'atTrialTime', parms.atTrialTime, 'what', ["data" "trial"]);
-                    if isempty(ret)
-                        fprintf('Plugin %s not in use for %s on %s at %s; skipping dimension %s.\n', plg{i}, key.subject, key.session_date, key.starttime, key.dimension);
-                        return;
-                    end
-                    prmValues = ret.data;
-                    if isempty(ret.trial) && isscalar(unique(ret.data))
-                        prmTrials = (1:nrTrials)';
-                    else
-                        prmTrials = ret.trial;
-                    end
+
+                ret = get(ns.Experiment & key, plg{i}, 'prm', prm{i}, 'atTrialTime', parms.atTrialTime, 'what', ["data" "trial"]);
+                if isempty(ret)
+                    fprintf('Plugin %s not in use for %s on %s at %s; skipping dimension %s.\n', plg{i}, key.subject, key.session_date, key.starttime, key.dimension);
+                    return;
                 end
+                prmValues = ret.data;
+                if isempty(ret.trial) && isscalar(unique(ret.data))
+                    prmTrials = (1:nrTrials)';
+                else
+                    prmTrials = ret.trial;
+                end
+
                 if isempty(prmTrials) && isscalar(prmValues)
                     prmValues = repmat(prmValues, [numel(allTrials) 1]);
                 elseif isempty(prmValues) || numel(prmTrials) ~= numel(allTrials) || ~all(prmTrials == allTrials)
@@ -256,10 +251,10 @@ classdef Dimension < dj.Computed & dj.DJInstance
             [uValStr, ia, ic] = unique(valStr, 'rows');
             valTbl       = valTbl(ia, :);
             nrConditions = size(uValStr, 1);
-            %% Create tuples            
+            %% Create tuples
             tplC = repmat(key, [nrConditions 1]);
             for c = 1:nrConditions
-                tplC(c).name      = strjoin(uValStr(c, :), ppSEPARATOR);              
+                tplC(c).name      = strjoin(uValStr(c, :), ppSEPARATOR);
                 tplC(c).trials    = stayTrials(ic == c);
                 tplC(c).value     = table2cell(valTbl(c, :));
             end
@@ -274,7 +269,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
             end
             insert(self, key);
             tplC = makeMymSafe(tplC);
-            insert(ns.DimensionCondition, tplC);            
+            insert(ns.DimensionCondition, tplC);
             if ~isempty(tplT)
                 tplT = makeMymSafe(tplT);
                 insert(ns.DimensionTrial, tplT);
@@ -318,7 +313,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
 
             % Now your intersection matrix M is just matrix multiplication!
             M = double(membership) * double(membership)';
-            
+
             % Convert the matrix M to a table
             overlappingTrials= array2table(M, 'VariableNames', allUniqueDims, 'RowNames', allUniqueDims);
 
@@ -349,7 +344,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
 
         function tpl = defineParms(expt, plg, prm, name, pv)
             % newer (May 26) use of DimensionParm table.
-            % 
+            %
             % Pass the same arguments previously passed to ns.Dimension.define.
             % then add the return value to the ns.DimensionParm table.
             %
@@ -368,7 +363,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
                 pv.atTrialTime (1,1) = 0
                 pv.useTable (1,1) = false
             end
-
+            assert(~pv.useTable,"useTable is no longer supported in the DimensionParm design of dimensions.");
             % Derive unique paradigms from the supplied experiment table
             paradigm = string(unique(fetchn(proj(expt, 'paradigm'), 'paradigm')));
 
@@ -387,15 +382,14 @@ classdef Dimension < dj.Computed & dj.DJInstance
                 'exclude',      {pv.exclude}, ...
                 'left',         pv.left, ...
                 'nameValueOnly', pv.nameValueOnly, ...
-                'atTrialTime',  pv.atTrialTime, ...
-                'useTable',     pv.useTable);
+                'atTrialTime',  pv.atTrialTime);
 
             tpl = struct( ...
                 'dimension',   char(name), ...
                 'paradigm',    cellstr(paradigm), ...
                 'parms',       parms, ...
                 'description', char(pv.description));
-            
+
         end
     end
 end
