@@ -154,9 +154,14 @@ if isfield(parms,'eeglab')
                 stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptime.clocktime(end);
             case 'zapline'
                 if isstruct(parms.eeglab.zapline)
-                    zapParms = namedargs2cell(parms.eeglab.zapline);
+                    if ~isfield(parms.eeglab.zapline,'noisefreqs')
+                        % Oddly zapline does not look at line (50/60) noise
+                        % by default. Force that default here
+                        parms.eeglab.zapline.noisefreqs = 'line';
+                    end
+                    zapParms = namedargs2cell(parms.eeglab.zapline);                   
                 elseif islogical(parms.eeglab.zapline) && parms.eeglab.zapline
-                    zapParms = {};
+                    zapParms = {'noisefreqs','line'};
                 end
                 EEG = pop_zapline_plus(EEG, zapParms{:});
             case 'prep'
