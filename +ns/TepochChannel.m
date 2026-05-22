@@ -3,6 +3,7 @@
 -> ns.Tepoch
 channel : int       # Channel number - can be zero to represent an average of channels
 trial : int         # Trial number - can represent the first trial in a set of trials with the same condition
+group = 0 : int         # Group number, 0 if none - ns.Tepoch/groups contain mapping
 ---
 y : longblob         # (Transformed) Data 
 nrtrials = 1 : int       # Number of trials (if averaged)
