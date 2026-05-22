@@ -68,7 +68,7 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average);            
+            G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);            
             x = G{1,xName};
             if xName =="time" && numel(x) ==3
                 x = linspace(x(1),x(2),x(3))';

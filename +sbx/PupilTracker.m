@@ -130,6 +130,7 @@ classdef PupilTracker < handle
                 pv.overwrite (1,1) logical = false
                 pv.autoskip (1,1) logical  =false
                 pv.initialize (1,1) logical = false  % Open figure to initialize
+                pv.modal (1,1) logical = false % Block execution until initialization is complete
             end
             if isa(experiment,"ns.Experiment")
                 % Extract files from datajoint experiment table
@@ -178,21 +179,18 @@ classdef PupilTracker < handle
                         if pv.autoskip
                             skip(i) =true;
                         else
-                            fprintf('Parameter file(s) found:\n');
-                            disp(jsonFiles(i));
-                            response = input('Overwrite, Skip, or Read existing parameters? (o/s/r): ', 's');
-                            switch lower(response)
-                                case 'o'
-                                    % 'o': keep empty rows, initialize() will re-run interactively
+                            response = questdlg( ...
+                                sprintf('Parameter file already exists:\n%s\n\nWhat would you like to do?', jsonFiles(i)), ...
+                                'Existing Parameters', ...
+                                'Redo', 'Skip', 'Read', 'Read');
+                            if isempty(response), response = 'Skip'; end
+                            switch response
+                                case 'Overwrite'
                                     overwrite(i) = true;
-                                case 's'
-                                    % Entire file will be skipped
+                                case 'Skip'
                                     skip(i) = true;
-                                case 'r'
-                                    % Initialization will be read from json file.
+                                case 'Read'
                                     readJson(i) = true;
-                                otherwise
-                                    error('Invalid input. Please choose ''o'', ''s'', or ''r''.');
                             end
                         end
                     end
@@ -216,24 +214,21 @@ classdef PupilTracker < handle
                         if pv.autoskip
                             skip(i) = true;
                         else
-                            fprintf('\nWarning: output file(s) already exist:\n');
-                            disp(outputFiles(i));
-                            response = input('Overwrite, Skip, Read, or Cancel? (o/s/r/c): ', 's');
-                            switch lower(response)
-                                case 'o'
-                                    % Overwrite: The track method will overwrite
+                            response = questdlg( ...
+                                sprintf('Output file already exists:\n%s\n\nWhat would you like to do?', outputFiles(i)), ...
+                                'Existing Output', ...
+                                'Overwrite', 'Skip', 'Read', 'Skip');
+                            if isempty(response)
+                                % Dialog closed — treat as cancel
+                                error('Execution cancelled by user.');
+                            end
+                            switch response
+                                case 'Overwrite'
                                     overwrite(i) = true;
-                                case 's'
-                                    % Skip this file
-                                    skip(i)  =true;
-                                case 'r'
-                                    % Read later
+                                case 'Skip'
+                                    skip(i) = true;
+                                case 'Read'
                                     readTsv(i) = true;
-                                case 'c'
-                                    % Cancel: Throw an error and stop
-                                    error('Execution cancelled by user.');
-                                otherwise
-                                    error('Invalid input. Please choose ''o'', ''s'', ''r'', or ''c''.');
                             end
                         end
                     end
@@ -276,7 +271,7 @@ classdef PupilTracker < handle
             end
 
             if pv.initialize
-                initialize(obj);
+                initialize(obj,modal=pv.modal);
             end
         end
         function disp(obj)
@@ -334,6 +329,7 @@ classdef PupilTracker < handle
             arguments
                 obj
                 pv.overwrite (1,1) logical = false
+                pv.modal (1,1) logical = false
             end
 
             disp('Starting batch parameter initialization...');
@@ -359,12 +355,16 @@ classdef PupilTracker < handle
 
                 [~, fname, ext] = fileparts(currentFile);
                 obj.Figure = findobj('Type', 'figure', 'Tag', obj.FigureTag);
+              
                 if isempty(obj.Figure)
                     obj.Figure = figure('Name', [fname ext], 'Tag', obj.FigureTag, 'units', 'normalized', 'position', [0.05 0.05 0.9 0.9]);
                 else
                     figure(obj.Figure); % Bring to front
                     clf(obj.Figure);
                     obj.Figure.Name = [fname ext];
+                end
+                if pv.modal
+                    set(obj.Figure, 'WindowStyle', 'modal');
                 end
 
                 %% ---- Sample frames once (reused for both eye and pupil selection) ----
@@ -615,18 +615,36 @@ classdef PupilTracker < handle
                     if doPreview || doTrack
                         savedParams    = obj.Parameters;
                         obj.Parameters = containers.Map({currentFile}, {savedParams(currentFile)});
-                        obj.track(visualize=doPreview);
-                        obj.Parameters = savedParams;
+                        if doPreview
+                            obj.track(visualize=true, frameStep=10, save=false);
+                            obj.Parameters = savedParams;
+                            % Preview window was closed by the user — they are done; skip
+                            % remaining files and the completion menu.
+                            if isempty(obj.Figure) || ~isgraphics(obj.Figure)
+                                return;
+                            end
+                        else
+                            obj.track(visualize=false);
+                            obj.Parameters = savedParams;
+                        end
                     end
                 end  % while restartFile
                 if skippedFile, continue; end  % for i — skip to next file
             end
             disp('Finished collecting parameters. Run track() to generate a pupil tracking tsv file.');
+            % Only show the track menu if there are files with parameters ready to track.
+            if obj.Parameters.Count == 0
+                if ~isempty(obj.Figure) && isgraphics(obj.Figure), close(obj.Figure); end
+                return;
+            end
             % Ensure a figure exists for the completion dialog even when all files were
             % already initialized and skipped (obj.Figure was never created in the loop).
             if isempty(obj.Figure) || ~isgraphics(obj.Figure)
                 obj.Figure = figure('Name', 'Initialization complete', 'Tag', obj.FigureTag, ...
                     'Units', 'normalized', 'Position', [0.05 0.05 0.9 0.9]);
+                if pv.modal
+                    set(obj.Figure, 'WindowStyle', 'modal');
+                end
             end
             if isgraphics(obj.Figure)
                 setappdata(obj.Figure, 'runTrack', false);
@@ -654,7 +672,7 @@ classdef PupilTracker < handle
             end
             if ~isempty(obj.Figure) && isgraphics(obj.Figure) && ...
                     isappdata(obj.Figure, 'runTrackPreview') && getappdata(obj.Figure, 'runTrackPreview')
-                obj.track(visualize=true);
+                obj.track(visualize=true, frameStep=10, save=false);
             elseif ~isempty(obj.Figure)  && isgraphics(obj.Figure) && ...
                     isappdata(obj.Figure, 'runTrack') && getappdata(obj.Figure, 'runTrack')
                 close(obj.Figure);
@@ -699,6 +717,7 @@ classdef PupilTracker < handle
                 pv.visualize (1,1) logical = false  % Set to true to show the frames and the detected regions
                 pv.maxFrames (1,1) double = inf  % For quick debugging; process only up to maxFrames
                 pv.frameStep (1,1) double = 1    % Step size between processed frames (>1 fast-forwards)
+                pv.save (1,1) logical = true     % Set to false to skip writing results to disk
             end
 
             if obj.Parameters.Count == 0
@@ -727,6 +746,25 @@ classdef PupilTracker < handle
                     clf(obj.Figure);
                     obj.Figure.Name = 'Pupil Tracker Viewer';
                 end
+                % Create preview axes leaving space at the bottom for the scrubber
+                axes(obj.Figure, 'Position', [0 0.11 1 0.89], 'Tag', 'previewAxes');
+                % Position scrubber — use a Java JScrollBar so the thumb width is
+                % proportional to ~5% of the total range (easier to grab)
+                setappdata(obj.Figure, 'previewSeekFrame', 0);
+                jSB = javax.swing.JScrollBar(javax.swing.JScrollBar.HORIZONTAL);
+                jSB.setValues(1, 1, 1, 2);  % (value, extent, min, max) — updated per video
+                ws = warning('off', 'MATLAB:javacomponent:FunctionToBeRemoved');
+                [~, hScrubberCont] = javacomponent(jSB, [], obj.Figure);
+                warning(ws);
+                hScrubberCont.Units = 'normalized';
+                hScrubberCont.Position = [0.01 0.01 0.88 0.09];
+                hScrubberCont.Tag = 'previewScrubber';
+                setappdata(obj.Figure, 'previewJScrollBar', jSB);
+                set(handle(jSB, 'CallbackProperties'), 'AdjustmentValueChangedCallback', ...
+                    @(~,~) sbx.PupilTracker.seekToFrame(obj.Figure, jSB));
+                uicontrol(obj.Figure, 'Style', 'text', 'String', '0 / 0', ...
+                    'Units', 'normalized', 'Position', [0.90 0.01 0.09 0.10], ...
+                    'Tag', 'previewFrameLabel', 'HorizontalAlignment', 'center', 'FontSize', 9);
             end
 
             trackStart = tic; %#ok<NASGU>
@@ -746,29 +784,39 @@ classdef PupilTracker < handle
                     continue;
                 end
 
-                frameIndices = 1 : pv.frameStep : min(v.NumFrames, pv.maxFrames);
-                nFrames = numel(frameIndices);
-                lastFrame = frameIndices(end);
+                lastFrame = min(v.NumFrames, floor(pv.maxFrames));
                 videoStart = tic;
 
-                % Core Arrays
-                Frames = NaN(nFrames, 1);
-                X = NaN(nFrames, 1);
-                Y = NaN(nFrames, 1);
-                PupilArea = NaN(nFrames, 1);
-                ThresholdUsed = NaN(nFrames, 1);
+                % Update scrubber range for this video (thumb = ~5% of range)
+                if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
+                    jSB = getappdata(obj.Figure, 'previewJScrollBar');
+                    if ~isempty(jSB)
+                        ext = max(1, round(0.05 * max(lastFrame - 1, 1)));
+                        jSB.setValues(1, ext, 1, lastFrame - 1 + ext);
+                    end
+                    lbl = findobj(obj.Figure, 'Tag', 'previewFrameLabel');
+                    if ~isempty(lbl), lbl(1).String = sprintf('1 / %d', lastFrame); end
+                    setappdata(obj.Figure, 'previewSeekFrame', 0);
+                end
+
+                % Core Arrays (pre-allocated for worst case; trimmed after loop)
+                Frames = NaN(lastFrame, 1);
+                X = NaN(lastFrame, 1);
+                Y = NaN(lastFrame, 1);
+                PupilArea = NaN(lastFrame, 1);
+                ThresholdUsed = NaN(lastFrame, 1);
 
                 % Ellipse-specific Arrays
-                MajorAxis = NaN(nFrames, 1);
-                MinorAxis = NaN(nFrames, 1);
-                Eccentricity = NaN(nFrames, 1);
-                Orientation = NaN(nFrames, 1);
-                FitQuality = NaN(nFrames, 1);
-                EllipseIR = NaN(nFrames, 1);
-                BlobIR    = NaN(nFrames, 1);
+                MajorAxis = NaN(lastFrame, 1);
+                MinorAxis = NaN(lastFrame, 1);
+                Eccentricity = NaN(lastFrame, 1);
+                Orientation = NaN(lastFrame, 1);
+                FitQuality = NaN(lastFrame, 1);
+                EllipseIR = NaN(lastFrame, 1);
+                BlobIR    = NaN(lastFrame, 1);
 
                 % Blob-specific Arrays
-                BoundingBox = NaN(nFrames, 4);
+                BoundingBox = NaN(lastFrame, 4);
 
                 [Xgrid, Ygrid] = meshgrid(1:v.Width, 1:v.Height);
 
@@ -790,10 +838,21 @@ classdef PupilTracker < handle
 
                 progressStr = '';
                 figClosed = false;
+                iFrame = 0;
+                frameNum = 1;
 
-                for iFrame = 1:nFrames
-                    frameNum = frameIndices(iFrame);
+                while frameNum <= lastFrame
+                    iFrame = min(iFrame + 1, lastFrame);  % cap to avoid overflow on repeated seeks
                     Frames(iFrame) = frameNum;
+                    % Check whether the user dragged the scrubber to seek
+                    if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
+                        seekTo = getappdata(obj.Figure, 'previewSeekFrame');
+                        if seekTo > 0
+                            frameNum = seekTo;
+                            Frames(iFrame) = frameNum;
+                            setappdata(obj.Figure, 'previewSeekFrame', 0);
+                        end
+                    end
                     %% Abort if figure was closed during preview
                     if pv.visualize && (isempty(obj.Figure) || ~isgraphics(obj.Figure))
                         fprintf('\n  Preview figure closed — stopping tracking for this file.\n');
@@ -802,14 +861,14 @@ classdef PupilTracker < handle
                     end
                     %% Progress indicator
                     if mod(iFrame, 25) == 0 || iFrame == 1
-                        pctFrames = 100 * iFrame / nFrames;
-                        pctOverall = 100 * (vIdx - 1 + iFrame / nFrames) / numVideos;
+                        pctFrames  = 100 * frameNum / lastFrame;
+                        pctOverall = 100 * (vIdx - 1 + frameNum / lastFrame) / numVideos;
                         elapsedVideo = toc(videoStart);
                         fpsEst = iFrame / max(elapsedVideo, 0.001);
-                        etaSec = (nFrames - iFrame) / fpsEst + ...
-                            (numVideos - vIdx) * (nFrames / fpsEst);
+                        etaSec = (lastFrame - frameNum) / max(pv.frameStep, 1) / fpsEst + ...
+                            (numVideos - vIdx) * (lastFrame / fpsEst);
                         newMsg = sprintf('  [File %d/%d]  Frame: %d/%d (%.0f%%)  |  Overall: %.0f%%  |  ETA: %ds', ...
-                            vIdx, numVideos, frameNum,lastFrame , pctFrames, pctOverall, round(etaSec));
+                            vIdx, numVideos, frameNum, lastFrame, pctFrames, pctOverall, round(etaSec));
                         fprintf('%s%s', repmat('', 1, length(progressStr)), newMsg);
                         progressStr = newMsg;
                     end
@@ -863,7 +922,12 @@ classdef PupilTracker < handle
 
                     %% Visualise current frame
                     if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
-                        ax_v = gca(obj.Figure);
+                        ax_v = findobj(obj.Figure, 'Tag', 'previewAxes');
+                        if isempty(ax_v)
+                            ax_v = axes(obj.Figure, 'Position', [0 0.11 1 0.89], 'Tag', 'previewAxes');
+                        else
+                            ax_v = ax_v(1);
+                        end
                         imshow(frame, 'Parent', ax_v, 'initialMagnification', 'fit');
                         hold(ax_v, 'on');
                         plot(ax_v, xy_eye_v(1,:) + thisParameters.EyeX, xy_eye_v(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
@@ -889,10 +953,19 @@ classdef PupilTracker < handle
                                 'Interpreter', 'none');
                         end
                         hold(ax_v, 'off');
+                        % Update scrubber position and label
+                        jSB = getappdata(obj.Figure, 'previewJScrollBar');
+                        if ~isempty(jSB)
+                            jSB.setValue(max(1, min(frameNum, jSB.getMaximum() - jSB.getVisibleAmount())));
+                        end
+                        lbl = findobj(obj.Figure, 'Tag', 'previewFrameLabel');
+                        if ~isempty(lbl), lbl(1).String = sprintf('%d / %d', frameNum, lastFrame); end
                         drawnow limitrate;
                     end
 
-                end  % for iFrame
+                    frameNum = frameNum + pv.frameStep;
+                end  % while frameNum <= lastFrame
+                nFrames = iFrame;
                 fprintf('\n');
 
                 if figClosed, continue; end  % vIdx — skip saving, go to next file
@@ -909,8 +982,26 @@ classdef PupilTracker < handle
                 obj.Results(videoFile) = resultTable;
             end
 
-            obj.save();
-            if pv.visualize && ~isempty(obj.Figure)  && isgraphics(obj.Figure), clf(obj.Figure); end
+            if pv.save, obj.save(); end
+            if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
+                % Tracking finished — disable scrubber, show Close button in the preview window
+                jSB = getappdata(obj.Figure, 'previewJScrollBar');
+                if ~isempty(jSB), jSB.setEnabled(false); end
+                lbl = findobj(obj.Figure, 'Tag', 'previewFrameLabel');
+                if ~isempty(lbl), lbl(1).Visible = 'off'; end
+                uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Close', ...
+                    'Units', 'normalized', 'Position', [0.90 0.01 0.09 0.10], ...
+                    'FontSize', 10, 'FontWeight', 'bold', ...
+                    'Callback', @(~,~) close(obj.Figure));
+                ax_v = findobj(obj.Figure, 'Tag', 'previewAxes');
+                if ~isempty(ax_v)
+                    title(ax_v(1), 'Tracking complete — close window to continue', ...
+                        'Color', [0.2 0.6 0.2], 'FontSize', 11);
+                end
+                drawnow;
+                uiwait(obj.Figure);
+                if isgraphics(obj.Figure), close(obj.Figure); end
+            end
             disp('Batch processing complete!');
         end
 
@@ -1129,6 +1220,14 @@ classdef PupilTracker < handle
             [~, idx] = min(rankPos + rankArea + rankInt);
         end
 
+
+        function seekToFrame(fig, jSB)
+            % SEEKTOFRAME - Scrubber callback: store the requested frame so the
+            % tracking loop picks it up at the next iteration.
+            val = max(jSB.getMinimum(), ...
+                min(jSB.getValue(), jSB.getMaximum() - jSB.getVisibleAmount()));
+            setappdata(fig, 'previewSeekFrame', val);
+        end
 
         function img = getFramePool(v, n)
             % GETFRAMEPOOL - Sample n random frames from a VideoReader and

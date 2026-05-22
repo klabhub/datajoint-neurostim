@@ -19,7 +19,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
     methods %Set/Get
         function v = get.keySource(~)
-            % Restricted to Dimensions listed in EpocjParm
+            % Restricted to Dimensions listed in EpochParm
             % Fetch all TuningParm rows at once
             allParms = fetch(ns.EpochParm, 'etag', 'dimension','ctag');
 
@@ -66,7 +66,9 @@ classdef Epoch < dj.Computed & dj.DJInstance
             conditionTpl = fetch(ns.DimensionCondition&key,'trials');
             trialsInDimension = cat(1,conditionTpl.trials);
             alignTpl = get(ns.Experiment &key,parmTpl.align.plugin,prm=parmTpl.align.event,what=["trialtime" "data" "trial"],trial=trialsInDimension);
-
+            if isempty(alignTpl)
+                error('This experiment does not use the %s plugin',parmTpl.align.plugin);
+            end
             noSuchEvent = isinf(alignTpl.trialtime);
             if any(noSuchEvent)
                 fprintf('Removing %d trials in which the %s.%s event did not occur.\n',sum(noSuchEvent),parmTpl.align.plugin,parmTpl.align.event);
