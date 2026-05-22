@@ -280,12 +280,26 @@ classdef (Abstract) cache < handle
                 % Combine with align/time/paradigm information. Note this
                 % assumes these are constant across the group (picking
                 % only the first here). fill() assures this is the case.
-                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);                
                 P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
-                G =innerjoin(G,P);            
+
+                % add trial counts
+                nT = groupsummary(restrictedT, grouping, @(x) numel(unique(x)), "trial");
+                nT = renamevars(nT,"fun1_trial", "nrtrials");
+
+                % add channel counts
+                nCh = groupsummary(restrictedT, grouping, @(x) numel(unique(x)), "channel");
+                nCh = renamevars(nCh,"fun1_channel", "nrchannels");
+
+                G = innerjoin(G,P); 
+                G = innerjoin(G,nT); 
+                G = innerjoin(G,nCh); 
+                G = removevars(G, "GroupCount");
             else
                 % No averaging. Just put the signal into M
                 G = restrictedT;
+                G.nrtrials = ones(height(G),1);
+                G.nrchannels = ones(height(G),1);
                 M = restrictedT.(dv);
             end
             nrGrps = height(M);
