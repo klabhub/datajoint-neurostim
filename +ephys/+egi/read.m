@@ -130,7 +130,16 @@ channels = 1:nrChannels;
 if isfield(parms,'eeglab')
     fn = fieldnames(parms.eeglab);
     for f= 1:numel(fn)
-        switch fn{f}
+
+        % 1. Extract the base name by removing trailing digits (e.g., 'filt1' -> 'filt', 'prep' -> 'prep')
+        % this way same functions could be called several times (e.g.,
+        % filt1 => hicuoff; filt2 => locutoff
+        main_funN = regexprep(fn{f}, '\d+$', '');
+        
+        % 2. Extract the parameters for this specific step
+        parmsN = parms.eeglab.(fn{f});
+
+        switch main_funN
             case 'resample' 
                 if iscell(parms.eeglab.resample)
                     % Passed verbatim to pop_resample
@@ -140,10 +149,10 @@ if isfield(parms,'eeglab')
                     %   df         - anti-aliasing filter transition band width (pi rad /
                     %                sample) {default 0.2}
                     % fc and df are optional
-                    resampleParms = parms.eeglab.resample; 
-                elseif isnumeric(parms.eeglab.resample) && isscalar(parms.eeglab.resample)
+                    resampleParms = parmsN; 
+                elseif isnumeric(parmsN) && isscalar(parmsN)
                     % Only frequency specified. 
-                    resampleParms = {parms.eeglab.resample}; 
+                    resampleParms = {parmsN}; 
                 else
                     error('parms.eeglab.resample must be either a scalar double (frequency) or a cell array with frequency,fc, and df. see pop_resample');
                 end
@@ -153,9 +162,9 @@ if isfield(parms,'eeglab')
                 neurostimTime = polyval(clockParms,egiSampleTime);
                 stayTime = neurostimTime >= trialStartTimeNeurostim(1) & neurostimTime <= prms.cic.trialstoptime.clocktime(end);
             case 'zapline'
-                if isstruct(parms.eeglab.zapline)
-                    zapParms = namedargs2cell(parms.eeglab.zapline);
-                elseif islogical(parms.eeglab.zapline) && parms.eeglab.zapline
+                if isstruct(parmsN)
+                    zapParms = namedargs2cell(parmsN);
+                elseif islogical(parmsN) && parmsN
                     zapParms = {};
                 end
                 EEG = pop_zapline_plus(EEG, zapParms{:});
@@ -163,10 +172,10 @@ if isfield(parms,'eeglab')
                 % Use the PREP pipelin eegLab plugin for preprocessing
                 % All unspecified values will be taken from the PREP defaults, except the
                 % file paths (which we set to match the MFF file).
-                if isstruct(parms.eeglab.prep)
+                if isstruct(parmsN)
                     % The user specified parameters that differ from the PREP defaults
                     % using a structure with structure fields.
-                elseif islogical(parms.eeglab.prep) && parms.eeglab.prep
+                elseif islogical(parmsN) && parmsN
                     % User had parms.prep =true
                     % Use all PREP defaults
                     %{
@@ -224,27 +233,27 @@ if isfield(parms,'eeglab')
         parms.prep.postprocess.removeInterpolatedChannels = false;
         parms.prep.postprocess.cleanupReference = false;
                     %}
-                    parms.eeglab.prep =struct('report',struct);
+                    parmsN =struct('report',struct(reportMode = 'normal', publishOn = false));
                 end
                 % Only change the reporting file paths if they have not been
                 % specified already in the prep parms
                 fldr = folder(ns.Session & key);
-                if ~isfield(parms.eeglab.prep,'report')
-                    parms.eeglab.prep.report = struct('reportMode','normal');
+                if ~isfield(parmsN,'report')
+                    parmsN.report=struct(reportMode = 'normal', publishOn = false);
                 end
                 % Reporting does not work with an absolute file path due to some
                 % weirdness in the prep pipeline
                 % Temporarily cd
                 here= pwd;
                 cd(fldr)
-                if ~isfield(parms.eeglab.prep.report,'summaryFilePath')
-                    parms.eeglab.prep.report.summaryFilePath  = ['.' filesep 'prep_summary.html'];
+                if ~isfield(parmsN,'summaryFilePath')
+                    parmsN.report.summaryFilePath  = ['.' filesep, fn{f}, '_summary.html'];
                 end
-                if ~isfield(parms.eeglab.prep.report,'sessionFilePath')
-                    parms.eeglab.prep.report.sessionFilePath  =  ['.' filesep char(strrep(key.filename,'.mff','_prep.pdf'))];
+                if ~isfield(parmsN,'sessionFilePath')
+                    parmsN.report.sessionFilePath  =  ['.', filesep, strrep(key.filename,'.mff','_'), fn{f},'.pdf'];
                 end
                 try
-                    EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
+                    EEG = pop_prepPipeline(EEG, parmsN);
                 catch me
                     cd (here)
                     rethrow(me)
@@ -253,7 +262,18 @@ if isfield(parms,'eeglab')
                 channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';
                 cd (here)
             case 'filt'
-                EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filt.locutoff,'hicutoff',parms.eeglab.filt.hicutoff,'plotfreqz',0,'usefftfilt',true);
+                % Extract locutoff and hicutoff, defaulting to empty if not provided
+                % (Allows for distinct high-pass or low-pass filtering)
+                locut = [];
+                hicut = [];
+                if isfield(parmsN, 'locutoff') && ~isempty(parmsN.locutoff)
+                    locut = parmsN.locutoff;
+                end
+                if isfield(parmsN, 'hicutoff') && ~isempty(parmsN.hicutoff)
+                    hicut = parmsN.hicutoff;
+                end
+                
+                EEG = pop_eegfiltnew(EEG, 'locutoff', locut, 'hicutoff', hicut, 'plotfreqz', 0, 'usefftfilt', true);
             otherwise
                 error('Unknown eeglab preprocessing struct %s  \n',fn{f})
         end
