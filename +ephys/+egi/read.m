@@ -276,7 +276,7 @@ if isfield(parms,'eeglab')
     % Select a subset of results to store in the database. (the rest can
     % in principle be retrievd from the etcFile later).
     recordingInfo.etc.noiseDetection.version = etc.noiseDetection.version;
-    recordingInfo.etc.noiseDetection.interpolatedChannnelNumbers = etc.noiseDetection.interpolatedChannelNumbers;
+    recordingInfo.etc.noiseDetection.interpolatedChannelNumbers = etc.noiseDetection.interpolatedChannelNumbers;
     recordingInfo.etc.noiseDetection.removedChannelNumbers = etc.noiseDetection.removedChannelNumbers;
     % RecordingInfo stores information on the session and the preprocessing
     recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed    
