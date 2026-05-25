@@ -19,7 +19,7 @@ classdef badBy < dynamicprops
 
     methods
         function disp(self)
-            fprintf('BadBy (total: %d unique channels)\n',numel(self.all))
+            fprintf('BadBy (total: %d unique entries)\n',numel(self.all))
             for c=self.categories'
                 fprintf('\t %s: %d [%s ] \n',c,self.("n_" + c),strjoin(string(self.(c)),','))
             end
@@ -75,7 +75,7 @@ classdef badBy < dynamicprops
             if ~ischar(propName) && ~isstring(propName)
                 error('badBy:setProperty:InvalidPropertyNameType', 'Property name must be a character array or string.');
             end
-            originalPropName = char(propName);
+            originalPropName = deblank(char(propName));
             
             if strcmpi(originalPropName, 'parameters') || strcmpi(originalPropName, 'all') || ...
                startsWith(lower(originalPropName), 'n_badby') || strcmpi(originalPropName, 'badByDataNames')

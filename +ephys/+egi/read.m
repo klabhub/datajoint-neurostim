@@ -254,6 +254,14 @@ if isfield(parms,'eeglab')
                     cd (here)
                     rethrow(me)
                 end
+                % Strip large time-series fields from the PREP reference struct
+                % (referenceSignal, badSignalsUninterpolated, noisyStatistics*, etc.)
+                % before storing in the database. The fields used downstream
+                % (stillNoisyChannelNumbers, interpolatedChannelNumbers,
+                % originalChannelLabels) are unaffected.
+                if isfield(EEG.etc,'noiseDetection') && isfield(EEG.etc.noiseDetection,'reference')
+                    EEG.etc.noiseDetection.reference = cleanupReference(EEG.etc.noiseDetection.reference);
+                end
                 % Keep only the channels that are not marked as stillNoisy
                 channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';
                 cd (here)
