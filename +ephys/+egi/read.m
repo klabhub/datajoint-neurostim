@@ -278,6 +278,7 @@ if isfield(parms,'eeglab')
     recordingInfo.etc.noiseDetection.version = etc.noiseDetection.version;
     recordingInfo.etc.noiseDetection.interpolatedChannelNumbers = etc.noiseDetection.interpolatedChannelNumbers;
     recordingInfo.etc.noiseDetection.removedChannelNumbers = etc.noiseDetection.removedChannelNumbers;
+    recordingInfo.etc.noiseDetection.stillNoisyChannelNumbers = etc.noiseDetection.stillNoisyChannelNumbers;
     % RecordingInfo stores information on the session and the preprocessing
     recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed    
     % Channel info stores information per channel (only those that are kept).
