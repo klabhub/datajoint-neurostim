@@ -11,21 +11,26 @@ end
 
 T = fetchtable(tbl,'info');
 
-isPrep = rowfun(@(x)(isfield(x,'etc')),T,InputVariables="info",OutputFormat="uniform");
+ isPrep = rowfun(@(x)(isfield(x,'etc')),T,InputVariables="info",OutputFormat="uniform");
 if ~all(isPrep)
     fprintf(2,"Some of these ns.C entries do not have an info.etc field:\n");
     T(~isPrep,:);
 end
 
-I  = rowfun(@analyzeInfo,T(isPrep,:),InputVariables="info",OutputVariableNames=["nrInterpolated" "nrStillNoisy"]);
+I  = rowfun(@analyzeInfo,T(isPrep,:),InputVariables="info",OutputVariableNames=["nrInterpolated" "nrStillNoisy"],ErrorHandler=@errorFunc);
 T= [T(isPrep,:) I];
-
 
 end
 
+
 function [nrInterpolated, nrStillNoisy]= analyzeInfo(i)
-nrInterpolated = numel(i.etc.noiseDetection.interpolatedChannelNumbers);
-nrStillNoisy   = numel(i.etc.noiseDetection.stillNoisyChannelNumbers);
+    nrInterpolated = numel(i.etc.noiseDetection.interpolatedChannelNumbers);
+    nrStillNoisy   = numel(i.etc.noiseDetection.stillNoisyChannelNumbers);
+end
 
 
+function [A,B] = errorFunc(me,varargin)
+    warning(me.identifier,me.message);
+    A = NaN;
+    B = NaN;
 end
