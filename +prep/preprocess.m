@@ -45,7 +45,7 @@ if ismatrix(signal) % [samples channels]
 end
 [nrSamples,nrTrials,nrChannels] = size(signal);
 channels = 1:nrChannels;  
-result = struct('dummy',true);
+result = struct('badChannel',[]);
 
 if isfield(parms,'enable') && ~parms.enable
     % Return unchanged
@@ -204,10 +204,13 @@ end
 
 % If requested, remove the bad channels
 if removeBadChannels
+    result.badChannel= channels(badChannels);
+ 
     signal(:,:,badChannels) = [];
     channels(badChannels) =[];
 end
- 
+result.removeBadChannel = removeBadChannels;
+
 if nrTrials ==1
     % Back to original shape (remove singleton trial)
     signal = squeeze(signal);

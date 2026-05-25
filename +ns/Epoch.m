@@ -55,9 +55,55 @@ classdef Epoch < dj.Computed & dj.DJInstance
         function v = get.samplingRate(tbl)
             t = fetchn(tbl, 'time');
             v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);
-        end
+        end        
     end
 
+
+    methods
+        function T = attrition(tbl)
+            % Return a table that shows the attrition (i.e. how many trials
+            % and channels were discarded per epoch and why)
+            T=fetchtable(tbl,'art','plg');  % Get the structs that store the badBy info
+            nrEpochs = height(T);
+            % Count trials in the dimension for each epoch row
+            dimCounts = fetchtable(aggr(tbl, ns.DimensionTrial, 'count(*)->nrInDimension'), 'nrInDimension');
+            T = innerjoin(T,dimCounts);
+
+            % Count unique trials in EpochChannel for each epoch row
+            epochCounts = fetchtable(aggr(tbl, ns.EpochChannel, 'count(distinct trial)->nrInEpoch'), 'nrInEpoch');
+            T = innerjoin(T,epochCounts);
+
+
+            T = addvars(T,zeros(nrEpochs,1),zeros(nrEpochs,1),'NewVariableNames',{'badByArtifact','badByAlignTime'});
+
+            % For each epoch check why the trials were removed by
+            % inspecting the badBy fields of the art and plg structs.
+            for cntr = 1:nrEpochs
+                art = T.art(cntr);
+                if ~isempty(art)
+                    T.badByArtifact(cntr)= numel(art.all);
+                end
+                plg = T.plg(cntr);                
+                if ~isempty(plg)
+                    for c = string(plg.categories)'
+                        c=deblank(c);
+                        if ~ismember(c,T.Properties.VariableNames)
+                            T= addvars(T,zeros(nrEpochs,1),'NewVariableNames',c);
+                        end
+                        T.(c)(cntr)= numel(plg.(c));
+                    end
+                end                
+            end
+
+            nrTrialsRemoved = T.nrInDimension-T.nrInEpoch;
+            nrBadBy = sum(T{:,startsWith(T.Properties.VariableNames,'badBy')},2);
+            isMismatch = nrTrialsRemoved ~=nrBadBy;
+            if any(isMismatch)
+                fprintf(2,"Trial attrition counts do not match the badBy counts in: \n")
+                T(isMismatch,:);
+            end
+        end
+    end
 
     methods (Access = protected)
         function makeTuples(tbl, key)
@@ -72,9 +118,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
             noSuchEvent = isinf(alignTpl.trialtime);
             if any(noSuchEvent)
                 fprintf('Removing %d trials in which the %s.%s event did not occur.\n',sum(noSuchEvent),parmTpl.align.plugin,parmTpl.align.event);
+                badByAlignTrial = alignTpl.trial(noSuchEvent);
                 alignTpl.data(noSuchEvent) = [];
                 alignTpl.trial(noSuchEvent) =[];
                 alignTpl.trialtime(noSuchEvent) =[];
+            else
+                badByAlignTrial = [];
             end
 
             % Select trials based on behavior/plugin parameters
@@ -85,6 +134,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 alignTpl.data(outBasedOnPlg) = [];
                 alignTpl.trial(outBasedOnPlg) =[];
                 alignTpl.trialtime(outBasedOnPlg) =[];
+            end
+
+            if ~isempty(badByAlignTrial)
+                setProperty(badByPlg,'AlignTime',badByAlignTrial);
             end
 
             %  If an event occurs more than once, use the last.
