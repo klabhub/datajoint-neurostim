@@ -17,14 +17,13 @@ if ~all(isPrep)
     T(~isPrep,:);
 end
 
-I  = rowfun(@analyzeInfo,T(isPrep,:),InputVariables="info",OutputVariableNames=["nrChannels" "nrInterpolated" "nrStillNoisy"]);
+I  = rowfun(@analyzeInfo,T(isPrep,:),InputVariables="info",OutputVariableNames=["nrInterpolated" "nrStillNoisy"]);
 T= [T(isPrep,:) I];
 
 
 end
 
-function [nrChannels,nrInterpolated, nrStillNoisy]= analyzeInfo(i)
-nrChannels = size(i.etc.noiseDetection.originalChannelLabels,2);
+function [nrInterpolated, nrStillNoisy]= analyzeInfo(i)
 nrInterpolated = numel(i.etc.noiseDetection.interpolatedChannelNumbers);
 nrStillNoisy   = numel(i.etc.noiseDetection.stillNoisyChannelNumbers);
 

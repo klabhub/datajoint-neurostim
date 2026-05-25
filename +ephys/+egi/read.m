@@ -254,14 +254,6 @@ if isfield(parms,'eeglab')
                     cd (here)
                     rethrow(me)
                 end
-                % Strip large time-series fields from the PREP reference struct
-                % (referenceSignal, badSignalsUninterpolated, noisyStatistics*, etc.)
-                % before storing in the database. The fields used downstream
-                % (stillNoisyChannelNumbers, interpolatedChannelNumbers,
-                % originalChannelLabels) are unaffected.
-                if isfield(EEG.etc,'noiseDetection') && isfield(EEG.etc.noiseDetection,'reference')
-                    EEG.etc.noiseDetection.reference = cleanupReference(EEG.etc.noiseDetection.reference);
-                end
                 % Keep only the channels that are not marked as stillNoisy
                 channels = setdiff(1:nrChannels,EEG.etc.noiseDetection.stillNoisyChannelNumbers)';
                 cd (here)
@@ -273,10 +265,21 @@ if isfield(parms,'eeglab')
     end
     signal =EEG.data(channels,stayTime)';
     neurostimTime = neurostimTime(stayTime);
-
+    % The output in EEG.etc can be huge (the prepline for instance stores
+    % some of the raw data  in there). Save that to a file and keep only a
+    % few fields in the database.
+    etcFile = strrep(mffFilename,'.mff','_etc.mat');
+    etc = EEG.etc;
+    w = whos('etc');
+    fprintf('Saving %.1f MB preprocessing results to %s\n',w.bytes/1e6,etcFile);
+    save(etcFile,'etc')
+    % Select a subset of results to store in the database. (the rest can
+    % in principle be retrievd from the etcFile later).
+    recordingInfo.etc.noiseDetection.version = etc.noiseDetection.version;
+    recordingInfo.etc.noiseDetection.interpolatedChannnelNumbers = etc.noiseDetection.interpolatedChannelNumbers;
+    recordingInfo.etc.noiseDetection.removedChannelNumbers = etc.noiseDetection.removedChannelNumbers;
     % RecordingInfo stores information on the session and the preprocessing
-    recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed
-    recordingInfo.etc      = EEG.etc; % Preprocessing results
+    recordingInfo.chaninfo = EEG.chaninfo; % All channels - including removed    
     % Channel info stores information per channel (only those that are kept).
     channelInfo  = struct2table(EEG.chanlocs(channels));
     channelInfo  = addvars(channelInfo,channels,false(height(channelInfo),1),'NewVariableNames',{'nr','interpolated'});
