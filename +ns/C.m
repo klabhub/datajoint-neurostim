@@ -860,10 +860,10 @@ classdef C < dj.Computed & dj.DJInstance
                     fprintf('Align event did not occur in trial %d. Skipping trial.\n', trials{c}(skipMask));
                 end
                 validMask      = ~skipMask;
-                validTrialNrs  = trials{c}(validMask);         % [1 × nrValidTrials]
-                validAlignTime = alignTrialTime(validMask);    % [1 × nrValidTrials]
+                validTrialNrs  = trials{c}(validMask);         % [nrValidTrials x 1]
+                validAlignTime = alignTrialTime(validMask);    % [nrValidTrials x 1]
                 nrValidTrials  = numel(validTrialNrs);
-                alignNsTime    = trialStartTime(validTrialNrs) + validAlignTime; % [1 × nrValidTrials]
+                alignNsTime    = trialStartTime(validTrialNrs) + validAlignTime'; % [1 x nrValidTrials 
                 varNames       = "Trial" + string(validTrialNrs);
 
                 % Setup the new time axis for the results

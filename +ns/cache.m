@@ -14,7 +14,7 @@ classdef (Abstract) cache < handle
     %
     % BK - Dec 2025
     properties (Constant)
-        GROUPVARS = ["subject" "session_date" "starttime" "condition" "trial" "channel"];
+        GROUPVARS = ["subject" "session_date" "starttime" "paradigm" "condition" "trial" "channel"];
     end
     properties (GetAccess =public,SetAccess = protected)
         T (:,:) table  = table;  % The Matlab table that stores the data
@@ -150,10 +150,10 @@ classdef (Abstract) cache < handle
                     end
                     reference = find(matchG.condition ==pv.delta);
                     if ~isempty(reference)
-                        y = m - matchG.mean(reference,:);
-                        ste = ste +matchG.ste(reference,:);
+                        y = m - matchG.mean{reference,:};
+                        ste = ste +matchG.ste{reference,:};
                         h = [h plot(x,y)];                     %#ok<AGROW>
-                        p = patch([x flip(x)],[y+ste flip(y-ste)],h(end).Color,FaceAlpha= 0.5);
+                        p = patch([x;flip(x)]',[y+ste;flip(y-ste)]',h(end).Color,FaceAlpha= 0.5);
                         p.EdgeColor = h(end).Color;
                         legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
                     end
@@ -161,7 +161,9 @@ classdef (Abstract) cache < handle
             end
             if ~isempty(legStr); legend(h,legStr); end % For the last tile
             if pv.linkAxes
+                warning('off','MATLAB:linkaxes:RequireDataAxes')
                 linkaxes(gcf().Children().Children())
+                warning('on','MATLAB:linkaxes:RequireDataAxes')
             end
         end
 
@@ -280,8 +282,8 @@ classdef (Abstract) cache < handle
                 % Combine with align/time/paradigm information. Note this
                 % assumes these are constant across the group (picking
                 % only the first here). fill() assures this is the case.
-                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+idv "fun1_paradigm"],["align" idv "paradigm"]);
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv]);
+                P = renamevars(P,["fun1_align" "fun1_"+idv ],["align" idv ]);
                 G =innerjoin(G,P);            
             else
                 % No averaging. Just put the signal into M

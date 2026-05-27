@@ -88,7 +88,7 @@ else
 end
 
 %% When the recording is interrupted (by a drift correct or calibration)
-% samples are not store. data.FSAMPLE.time stores the correct time of each
+% samples are not stored. data.FSAMPLE.time stores the correct time of each
 % sample, but for analysis we want to fill in missing values for missing
 % samples.
 
@@ -128,7 +128,8 @@ if isfield(parms,'scale') && parms.scale
 end
 
 %% Generic preprocessing
-[signal,time] = prep.preprocess(signal,time/1000,parms);
+prepParms = rmfield(parms,["channel" "eye" "fillmissing" "scale"]);
+[signal,time] = prep.preprocess(signal,time/1000,prepParms);
 time = time*1000; % Convert back to ms.
 nrSamples = numel(time);
 
