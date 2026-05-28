@@ -4,6 +4,11 @@ function EEG  = preprocess(EEG,parms)
 % Fields of the parms.eeglab struct define the operations; they are
 % executed in the sequence that they are defined in the parms.eeglab
 % struct.
+% 
+% This called when populating hte ns.C table for an MFF file (from egi.read)
+% Note that in egi.read the etc substruct of the EEG dataset is saved to keep track of 
+% intermediate results outside the DJ database (And later inspection of
+% results).
 arguments
     EEG (1,1) struct
     parms (1,1) struct
@@ -32,10 +37,11 @@ for f= 1:numel(fn)
             % Find components where variance captured exceeds a threshold
             componentsToRemove = find(r> pv.rMin);
             fprintf('Components flagged for rejection: %s (r>=%.1f)\n', num2str(componentsToRemove'),min(r(componentsToRemove)));
-             % Remove ICA components
+            % Remove ICA components
             plotag = 0; keepcomp=0;
             EEG = pop_subcomp( EEG, componentsToRemove, plotag, keepcomp);
-
+            % Add something to etc. for later retrieval
+            EEG.etc.neurostim.icaeog = struct('r',r(componentsToRemove),'components',componentsToRemove);
         case 'icaeyetracker'
             assert(~isempty(EEG.icaact),"Run ICA before removing ICA components");
             pv = setDefaults(parms.eeglab,'icaeyetracker');
@@ -46,11 +52,11 @@ for f= 1:numel(fn)
             timesMs  = (-preSamp:postSamp) / EEG.srate * 1000;   % time axis (ms)
 
             EEG = ephys.eeglab.addEvents(EEG,pv.plugin,pv.events);
-            assert(ismember(pv.events, {EEG.event.type}),"No %s events found in this dataset.",strjoin(pv.events));
+            assert(any(ismember(pv.events, {EEG.event.type})),"No %s events found in this dataset.",strjoin(pv.events));
 
             nEventTypes = numel(pv.events);
             % Variance explained by each ICA component (% of total EEG variance)
-            
+
             nComp     = size(EEG.icaact, 1);
             varExplained = icaVarianceExplained(EEG);
 
@@ -86,54 +92,56 @@ for f= 1:numel(fn)
             mu_base = squeeze(mean(eta(:, baseWin, :), 2));   % [nComp x nEventTypes]
             sd_base = squeeze(std(eta(:, baseWin, :), 0, 2)); % [nComp x nEventTypes]
             mu_resp = squeeze(mean(eta(:, respWin, :), 2));   % [nComp x nEventTypes]
-
+            
             % z-score per component per event type
             zScore = (mu_resp - mu_base) ./ sd_base;          % [nComp x nEventTypes]
 
             % Remove component if any event crosses z-threshold and variance exceeds minimum.
             componentsToRemove = find(any(abs(zScore) > pv.minZ, 2) & (varExplained > pv.minVarPct))';
-            
-            fprintf('Components flagged for rejection: %s (Var=%.1f%%)\n', num2str(componentsToRemove'),sum(varExplained(componentsToRemove)));
 
-            % Baseline-correct ETA with event-specific baseline
+            % Add something to etc. for later retrieval
             eta_bc = eta - reshape(mu_base, [nComp 1 nEventTypes]);
+            EEG.etc.neurostim.icaeyetracker = struct('eta',eta_bc,'z',zScore,'var',varExplained,'components',componentsToRemove);
 
             if pv.plot
+                % Baseline-correct ETA with event-specific baseline               
                 if isempty(componentsToRemove)
                     fprintf('No ICA components met removal criteria; skipping ETA/topoplot removal plots.\n');
                 else
                     figure('Name','ETA of ICA components selected for removal');
                     tiledlayout('flow');
-                    for iComp = componentsToRemove
-                        nexttile;
-                        hold on;
-                        for iEvt = 1:nEventTypes
-                            plot(timesMs, eta_bc(iComp, :, iEvt), 'LineWidth', 1.2);
+
+                    nexttile;
+                    hold on;
+                    eventStyles =  {'-',':','-.'};
+                    for iEvt = 1:nEventTypes
+                        h = plot(timesMs, eta_bc(componentsToRemove, :, iEvt), 'LineWidth', 1.2,'LineStyle',eventStyles{iEvt});
+                        for iLine = 1:numel(h)
+                            h(iLine).DisplayName = sprintf('IC %d | %s', componentsToRemove(iLine), pv.events(iEvt));
                         end
-                        xline(0, '--k');
-                        title(sprintf('IC %d | max|z|=%.1f | var=%.1f%%', ...
-                            iComp, max(abs(zScore(iComp, :))), varExplained(iComp)));
-                        xlabel('Time (ms)');
-                        ylabel('Activation');
-                        legend(cellstr(pv.events), 'Location', 'best');
                     end
+                    h = xline(0, '--k');
+                    h.DisplayName = 'Event Start';
+                    xlabel('Time (ms)');
+                    ylabel('Activation');
+                    title 'Event Triggered Average (Baseline-Corrected)';
+
+                    legend('Location', 'best');
 
                     % Plot 2D scalp topographies of removed ICA components.
-                    figure('Name','Topoplots of ICA components selected for removal');
-                    tiledlayout('flow');
                     for iComp = componentsToRemove
                         nexttile;
                         topoplot(EEG.icawinv(:, iComp), EEG.chanlocs(EEG.icachansind), ...
                             'electrodes', 'off', 'maplimits', 'absmax');
-                        title(sprintf('IC %d | var=%.1f%%', iComp, varExplained(iComp)));
+                        title(sprintf('IC %d | var=%.1f%% | max|z|=%.2f', iComp, varExplained(iComp), max(abs(zScore(iComp, :)), [], 'omitnan')));
                     end
                 end
             end
             % Remove ICA components
+            fprintf('%d components removed: %s (Var=%.1f%%)\n', numel(componentsToRemove),strjoin(string(componentsToRemove),'/'),sum(varExplained(componentsToRemove)));
             plotag = 0; keepcomp=0;
             EEG = pop_subcomp( EEG, componentsToRemove, plotag, keepcomp);
-
-          
+            EEG.etc.ica
 
         case 'resample'
             if iscell(parms.eeglab.resample)
@@ -265,54 +273,9 @@ end
 end
 
 
-function o = setDefaults(prms,fld)
-arguments
-    prms (1,1) struct
-    fld (1,1) string
-end
-assert(isfield(prms,fld),'No %s field in the parms struct. Cannot continue.')
-
-userParms= prms.(fld);
-switch (fld)
-    case 'icaeog'
-        % Remove previously compute ICA components based on their
-        % correlation with a synthetic EOG signal (constructed by
-        % subtracting electrodes around the eye).
-        defParms.hEOG = {237,244}; % Electrodes defining the horizontal EOG
-        defParms.vEOG = {25,241}; % Vertical eog electrodes
-        defParms.rMin = 0.5; % IC with a Pearson correlation with hEOG or vEOG that is bigger than this will be removed.
-    case 'icaeyetracker'
-        % Remove previously compute ICA components based on eye tracking
-        % data
-        defParms.window   = 200; % Use 200 ms before and after the event
-        defParms.baseline = 100; % Use the first 100 ms of the window as the baseline
-        defParms.events = "startblink";
-        defParms.plugin = "edf";
-        defParms.minZ       = 5;     % Remove components with an ETA that has a z-score higher than this
-        defParms.minVarPct  = 1;  % Remove components only if they capture at least this amount of variance 
-        defParms.plot       = true;    % Plot ETA traces of components selected for removal
-
-
-    otherwise
-        error('No default settings for %s\n',fld);
-end
-
-userFn = string(fieldnames(userParms));
-defFn = string(fieldnames(defParms));
-extraneous = setdiff(userFn,defFn);
-assert(isempty(extraneous),'There are extraneous fields in the %s struct (%s)',fld,strjoin(extraneous,'/'));
-
-% Start with defaults, then overwrite the user-specified parms
-o = defParms;
-if ~isempty(userFn)
-    for f=userFn
-        o.(f) = userParms.(f);
-    end
-end
-end
-
-
 function   varExplainedPct = icaVarianceExplained(EEG)
+% Helper function to compute variance explained per IC.
+
 % Channels used for ICA
 X = EEG.data(EEG.icachansind, :);          % [nChan x nTime]
 
@@ -345,4 +308,52 @@ totalVar = sum(sum(X0.^2, 2) / (nTime - 1));
 % Percent variance explained per component
 varExplainedPct = 100 * varPerComp / totalVar;   % [nComp x 1]
 
+end
+
+
+
+function o = setDefaults(prms,fld)
+arguments
+    prms (1,1) struct
+    fld (1,1) string
+end
+assert(isfield(prms,fld),'No %s field in the parms struct. Cannot continue.')
+
+userParms= prms.(fld);
+switch (fld)
+    case 'icaeog'
+        % Remove previously compute ICA components based on their
+        % correlation with a synthetic EOG signal (constructed by
+        % subtracting electrodes around the eye).
+        defParms.hEOG = {237,244}; % Electrodes defining the horizontal EOG
+        defParms.vEOG = {25,241}; % Vertical eog electrodes
+        defParms.rMin = 0.5; % IC with a Pearson correlation with hEOG or vEOG that is bigger than this will be removed.
+    case 'icaeyetracker'
+        % Remove previously compute ICA components based on eye tracking
+        % data
+        defParms.window   = 200; % Use 200 ms before and after the event
+        defParms.baseline = 100; % Use the first 100 ms of the window as the baseline
+        defParms.events = "startblink";
+        defParms.plugin = "edf";
+        defParms.minZ       = 5;     % Remove components with an ETA that has a z-score higher than this
+        defParms.minVarPct  = 1;  % Remove components only if they capture at least this amount of variance
+        defParms.plot       = true;    % Plot ETA traces of components selected for removal
+
+
+    otherwise
+        error('No default settings for %s\n',fld);
+end
+
+userFn = string(fieldnames(userParms));
+defFn = string(fieldnames(defParms));
+extraneous = setdiff(userFn,defFn);
+assert(isempty(extraneous),'There are extraneous fields in the %s struct (%s)',fld,strjoin(extraneous,'/'));
+
+% Start with defaults, then overwrite the user-specified parms
+o = defParms;
+if ~isempty(userFn)
+    for f=userFn
+        o.(f) = userParms.(f);
+    end
+end
 end

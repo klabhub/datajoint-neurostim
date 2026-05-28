@@ -5,7 +5,7 @@ arguments
     tbl (1,1) 
     tpl (:,:) struct
 end
-
+tpl  = makeMymSafe(tpl);
 for i=1:numel(tpl)
     key = ns.stripToPrimary(tbl,tpl(i));
     if count(tbl&key)==0
