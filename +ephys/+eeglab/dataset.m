@@ -1,11 +1,14 @@
-function EEG = eeglabDataset(key,pv)
-% Function uses EEGLAB plugins (mffmatlabio and fieldtrip) to read egi MFF
+function EEG = dataset(key,pv)
+% Uses EEGLAB plugins (mffmatlabio and fieldtrip) to read egi MFF
 % files and returns an EEG struct. This is used to add EGI data to the
 % database (ephys.egi.read),
+% 
 % Neurostim adds the following fields
 % EEG.etc.neurostim.clockParms   - polyval(clockParms,EGI.time) -> converts EGI time to neurostim time
 % EEG.etc.neurostim.pluginparameter -  the events stored in the MFF file  packaged as a struct array for easy insertion into the pluginparameter table (used by ephys.egi.read_
 % EEG.etc.neurostim.expt = the Experiment tuple
+%
+% See also ephys.eeglab.addEvents, ephys.egi.read
 arguments
     key (1,1)
     pv.data (1,1) string % RAW, EMPTY, or a ctag
