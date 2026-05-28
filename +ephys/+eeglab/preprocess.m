@@ -23,6 +23,7 @@ for f= 1:numel(fn)
             % are passed as parm/value pairs to pop_runica.
             icaPV= namedargs2cell(parms.eeglab.ica);
             EEG = pop_runica(EEG,icaPV{:});
+            EEG.etc.neurostim.ica = struct('icawinv',EEG.icawinv,'icasphere',EEG.icasphere,'icaweights',EEG.icaweights,'icachansind',EEG.icachansind);
         case 'icaeog'
             % After running ICA, remove components based on EOG
             assert(~isempty(EEG.icaact),"Run ICA before removing ICA components");
@@ -109,6 +110,7 @@ for f= 1:numel(fn)
                     fprintf('No ICA components met removal criteria; skipping ETA/topoplot removal plots.\n');
                 else
                     figure('Name','ETA of ICA components selected for removal');
+                    clf
                     tiledlayout('flow');
 
                     nexttile;
@@ -135,14 +137,16 @@ for f= 1:numel(fn)
                             'electrodes', 'off', 'maplimits', 'absmax');
                         title(sprintf('IC %d | var=%.1f%% | max|z|=%.2f', iComp, varExplained(iComp), max(abs(zScore(iComp, :)), [], 'omitnan')));
                     end
+
+                    saveas(gcf, fullfile(EEG.filepath, strrep(EEG.filename,'.mff','_ica.pdf')));
+                    
                 end
             end
             % Remove ICA components
             fprintf('%d components removed: %s (Var=%.1f%%)\n', numel(componentsToRemove),strjoin(string(componentsToRemove),'/'),sum(varExplained(componentsToRemove)));
             plotag = 0; keepcomp=0;
             EEG = pop_subcomp( EEG, componentsToRemove, plotag, keepcomp);
-            EEG.etc.ica
-
+       
         case 'resample'
             if iscell(parms.eeglab.resample)
                 % Passed verbatim to pop_resample
@@ -352,8 +356,11 @@ assert(isempty(extraneous),'There are extraneous fields in the %s struct (%s)',f
 % Start with defaults, then overwrite the user-specified parms
 o = defParms;
 if ~isempty(userFn)
-    for f=userFn
+    for f=userFn(:)'
         o.(f) = userParms.(f);
+        if iscellstr(o.(f)) || ischar(o.(f)) %#ok<ISCLSTR>
+            o.(f) =  string(o.(f));
+        end
     end
 end
 end

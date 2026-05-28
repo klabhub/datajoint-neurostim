@@ -13,7 +13,7 @@ end
 
 assert(isfield(EEG.etc,'neurostim'),'This EEG struct does not contain the necessary neurostim information.')
 plgRel  =  ns.Plugin & EEG.etc.neurostim.expt  & struct('plugin_name',plg);
-assert(exists(plgRel),"The %s plugin could not be found in this experiment (%s)",plg,EEG.etc.neurostim.expt)
+assert(exists(plgRel),"The %s plugin could not be found in this experiment (%s@%sT%s)",plg,EEG.etc.neurostim.expt.subject,EEG.etc.neurostim.expt.session_date,EEG.etc.neurostim.expt.starttime);
 prmRel = ns.PluginParameter & plgRel & in('property_name',prm);
 if count(prmRel)==0
     fprintf(2,'No %s:%s events found.\n',plg,strjoin(prm,'/'));
@@ -33,5 +33,6 @@ else
         type{typeCntr} = p.property_name;
     end
     % Add the events to the EEG dataset
+    fprintf('Adding %d %s events from %s plugin to the EEG.event struct.\n',numel([egiLatency{:}]),strjoin(prm,'/'),plg)
     EEG = eeg_addnewevents(EEG, egiLatency, type);
 end
