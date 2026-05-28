@@ -10,16 +10,24 @@ function EEG = dataset(key,pv)
 %
 % See also ephys.eeglab.addEvents, ephys.egi.read
 arguments
-    key (1,1)
+    key (1,1)      % Experiment key or a keySource for the ns.C table
     pv.data (1,1) string % RAW, EMPTY, or a ctag
     pv.plg (1,:)  string  = string.empty % Plugin name 
     pv.prm (1,:) string   = string.empty % Event names
 end
 
-
-mffFile = fetch(ns.C & key & 'filename LIKE "%.mff"','filename');
-assert(~isempty(mffFile),"This experiment does not have an associated MFF file");
-mffFile = fullfile(folder(ns.Experiment &key),mffFile.filename);
+if ~isfield(key,'filename')
+    % Called with an Experiment key;  find the associated MFF file
+    if isfield(key,'ctag')
+        kk = rmfield(key,'ctag');
+    else
+        kk = key;
+    end
+    key = fetch(ns.C & kk & 'filename LIKE "%.mff"','filename');
+    assert(~isempty(key),"This experiment does not have an associated MFF file");
+end
+% 
+mffFile = fullfile(folder(ns.Experiment &key),key.filename);
 mffFile= strrep(mffFile,'\','/'); % Avoid fprintf errors
 assert(exist(mffFile),"MFF file %s does not exist.",mffFile); %#ok<EXIST>
 
