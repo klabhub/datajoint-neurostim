@@ -10,16 +10,19 @@ elseif isa(expt,'ns.Experiment')
 end
     
 cntr=0;
-etc = struct;
+
 files = (ns.File & 'extension=".mff"') &tbl;
 for key  = fetch(files,'filename')'     
     mffFile = fullfile(folder(ns.Experiment &key),key.filename);
     mffFile= strrep(mffFile,'\','/'); % Avoid fprintf errors
     etcFile = strrep(mffFile,'.mff','_etc.mat');
     if exist(etcFile,'file')
-        cntr= cntr+1;
-        etc(cntr) = load(etcFile,'etc');
+        if exist('etc','var')
+            etc = catstruct(1,etc, load(etcFile,'etc').etc);
+        else
+            etc =   load(etcFile,'etc').etc;
+        end
     else
-        fprintf("ETC file %s does not exist.",etcFile); 
+        fprintf("ETC file %s does not exist.\n",etcFile); 
     end
 end
