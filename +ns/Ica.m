@@ -37,6 +37,7 @@ classdef Ica < dj.Computed
             end
             tpl = fetch(tbl,'*');
             assert(~isempty(tpl),'No rows in ns.Ica to plot.');
+            warning('off','MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout');
             for i = 1:numel(tpl)
                 this = tpl(i);
                 expName = sprintf('%s @ %s %s | %s/%s',this.subject,this.session_date,this.starttime,this.ctag,this.itag);
@@ -44,15 +45,21 @@ classdef Ica < dj.Computed
                 clf
                 tiledlayout('flow')               
                 for c= pv.comp
+                    nexttile
                     chanlocs = [fetch(ns.CChannel & this,'channelinfo').channelinfo];
                     topoplot(this.winverse(:,pv.comp(c)),chanlocs,'verbose','off', 'electrodes','off',  'numcontour', 8);
-                    title ("#" + string(c) + " Var:" +  string(round(this.variance(c),1)) + "%")
+                    str = "#" + string(c) + " Var:" +  string(round(this.variance(c),1)) + "%";
+                    if ~isempty(this.label)
+                        [pct,ix]  = max(this.label.classifications(c,:));
+                        str= [str;  this.label.classes(ix) + ":" + string(round(100*pct,1)) + "%"]; %#ok<AGROW>
+                    end
+                    title (str)
                 end
                 sgtitle(expName)
             end
         end
     end
-    
+
     methods (Access=protected)
         function makeTuples(tbl,key)
 
