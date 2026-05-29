@@ -26,7 +26,11 @@ for t = 1:numel(tpl)
                     isStruct =cellfun(@isstruct,thisField);
                     tpl(t).(fn{f})(isStruct) =cellfun(@makeMymSafe,thisField(isStruct),'UniformOutput',false);
             case 'string'
-                     tpl(t).(fn{f})  = cellstr(thisField);
+                    if isscalar(thisField)
+                        tpl(t).(fn{f})  = char(thisField);
+                    else
+                         tpl(t).(fn{f})  = cellstr(thisField);
+                    end
             case 'function_handle'
                     tpl(t).(fn{f}) = func2str(thisField);
             otherwise

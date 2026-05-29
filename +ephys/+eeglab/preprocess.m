@@ -21,9 +21,19 @@ for f= 1:numel(fn)
         case 'ica'
             % Run ICA to identify components. The fields of the ica struct
             % are passed as parm/value pairs to pop_runica.
+           
+            if ~isfield(parms.eeglab.ica,'pca')
+                % The number of PCA components was not pre-specified.
+                % Set it to the rank of the data
+                nrSamplesToUse =min(3000,EEG.pnts); % Same as EEGLAB runica                
+                X = double(EEG.data(:,1:nrSamplesToUse) - mean(EEG.data(:,1:nrSamplesToUse),2));                
+                rnk =getrank(X);
+                if rnk<size(X,1)
+                    parms.eeglab.ica.pca = rnk;
+                end
+            end
             icaPV= namedargs2cell(parms.eeglab.ica);
             EEG = pop_runica(EEG,icaPV{:});
-            EEG.etc.neurostim.ica = struct('icawinv',EEG.icawinv,'icasphere',EEG.icasphere,'icaweights',EEG.icaweights,'icachansind',EEG.icachansind);
         case 'icaeog'
             % After running ICA, remove components based on EOG
             assert(~isempty(EEG.icaact),"Run ICA before removing ICA components");
@@ -363,4 +373,19 @@ if ~isempty(userFn)
         end
     end
 end
+end
+
+function tmprank2 = getrank(tmpdata)
+% From EEGLAB - the cov/eig path seems necessary    
+    tmprank = rank(tmpdata);
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %Here: alternate computation of the rank by Sven Hoffman
+    %tmprank = rank(tmpdata(:,1:min(3000, size(tmpdata,2)))); old code
+    covarianceMatrix = cov(tmpdata', 1);
+    [~, D] = eig (covarianceMatrix);
+    rankTolerance = 1e-7;
+    tmprank2=sum (diag (D) > rankTolerance);
+    if tmprank ~= tmprank2
+        tmprank2 = min(tmprank, tmprank2);
+    end
 end
