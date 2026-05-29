@@ -14,7 +14,8 @@ arguments
     pv.data (1,1) string % RAW, EMPTY, or a ctag
     pv.plg (1,:)  string  = string.empty % Plugin name 
     pv.prm (1,:) string   = string.empty % Event names
-end
+    pv.itag (1,1) string = "" % The ICA to load ("" is ok if there is only one in ns.Ica)
+end 
 
 if ismember(upper(pv.data),["RAW" "EMPTY"])    
     % Ignore ctag to determine ns.C key
@@ -89,6 +90,25 @@ switch pv.data
             EEG.srate  = round(cRel.samplingRate);
             EEG.xmin  =0;
             EEG.xmax = (EEG.pnts-1)/EEG.srate+EEG.xmin;
+
+            % Check if there are ICA results
+            if pv.itag ~=""
+                ica = ns.Ica & cRel & struct('itag',pv.itag);
+            else
+                % No itag specified - take what is there (errors if more
+                % than one).
+                ica = ns.Ica & cRel;
+                assert(count(ica)<2,"Multiple ICA matches. Specify one with pv.itag")
+            end
+            if exists(ica)
+                T =fetch(ica,'*');
+                EEG.icachansind = T.channels;
+                EEG.icasphere = T.sphere;
+                EEG.icaweights  =T.weights;
+                EEG.icawinv  = T.winverse;              
+                EEG.icaact = icaact(EEG.data,EEG.icaweights*EEG.icasphere,mean(EEG.data,2));
+            end
+            EEG = eeg_checkset(EEG);
         end        
  end
 

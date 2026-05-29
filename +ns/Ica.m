@@ -9,6 +9,7 @@ sphere   : longblob  # Sphering matrix
 weights  : longblob  # ICA weights (unmixing)
 channels : longblob  # Channels used for ICA
 variance : blob      # Variance explained per component.
+label    = NULL : blob # labels for the IC (iclabel)
 %}
 %
 % Currently implemented with EEGLAB
@@ -32,39 +33,26 @@ classdef Ica < dj.Computed
         function plot(tbl,pv)
             arguments
                 tbl (1,1) ns.Ica
-                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:4
-                pv.layout (1,2) double {mustBeInteger,mustBePositive}= [4 4]
+                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12                
             end
             tpl = fetch(tbl,'*');
-
             assert(~isempty(tpl),'No rows in ns.Ica to plot.');
             for i = 1:numel(tpl)
-                figure;
                 this = tpl(i);
-                nComp = size(this.winverse,2);
-                if isscalar(pv.comp)
-                    comps = 1:min(pv.comp,nComp);
-                else
-                    comps = pv.comp(pv.comp<=nComp);
+                expName = sprintf('%s @ %s %s | %s/%s',this.subject,this.session_date,this.starttime,this.ctag,this.itag);
+                figByName(expName);
+                clf
+                tiledlayout('flow')               
+                for c= pv.comp
+                    chanlocs = [fetch(ns.CChannel & this,'channelinfo').channelinfo];
+                    topoplot(this.winverse(:,pv.comp(c)),chanlocs,'verbose','off', 'electrodes','off',  'numcontour', 8);
+                    title ("#" + string(c) + " Var:" +  string(round(this.variance(c),1)) + "%")
                 end
-                assert(~isempty(comps), 'No requested components exist in this row (nComp=%d).', nComp);
-
-                chanlocs = [fetch(ns.CChannel & this,'channelinfo').channelinfo];
-
-                %   chanlocs = sanitizeChanlocs(chanlocs);
-
-                locFile = [tempname '.loc'];
-                writelocs(chanlocs,locFile,'filetype','loc','header','off');
-                pageTitle = sprintf('%s @ %s %s | %s/%s', ...
-                    this.subject,this.session_date,this.starttime,this.ctag,this.itag);
-                compmap(this.winverse,locFile,comps,pageTitle,pv.layout);
-
-                if exist(locFile,'file')
-                    delete(locFile);
-                end
+                sgtitle(expName)
             end
         end
     end
+    
     methods (Access=protected)
         function makeTuples(tbl,key)
 
@@ -76,7 +64,13 @@ classdef Ica < dj.Computed
             EEG = ephys.eeglab.preprocess(EEG,parms);
 
             varExplained = ns.Ica.varianceExplained(EEG);
-
+            if exist("iclabel.m","file")
+                % Determine labeling
+                EEG = iclabel(EEG,'default');
+                label = EEG.etc.ic_classification.ICLabel;
+            else
+                label =[];
+            end
 
             tpl = key;
             tpl.nrcomponents = size(EEG.icaweights,1);
@@ -85,6 +79,7 @@ classdef Ica < dj.Computed
             tpl.weights = EEG.icaweights;
             tpl.channels = EEG.icachansind;
             tpl.variance = varExplained;
+            tpl.label = label;
             insert(tbl,tpl);
         end
     end
