@@ -9,6 +9,6 @@ tpl  = makeMymSafe(tpl);
 for i=1:numel(tpl)
     key = ns.stripToPrimary(tbl,tpl(i));
     if count(tbl&key)==0
-        insert(tbl,tpl(i))
+        insert(tbl,tpl(i));
     end
 end

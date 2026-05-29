@@ -16,17 +16,14 @@ arguments
     pv.prm (1,:) string   = string.empty % Event names
 end
 
-if ~isfield(key,'filename')
-    % Called with an Experiment key;  find the associated MFF file
-    if isfield(key,'ctag')
-        kk = rmfield(key,'ctag');
-    else
-        kk = key;
-    end
-    key = fetch(ns.C & kk & 'filename LIKE "%.mff"','filename');
-    assert(~isempty(key),"This experiment does not have an associated MFF file");
+if ismember(upper(pv.data),["RAW" "EMPTY"])    
+    % Ignore ctag to determine ns.C key
+    key = fetch(ns.File & key & 'extension=".mff"','filename');
+else
+    key.ctag = pv.data;
+    key = fetch(ns.C & key & 'filename LIKE "%.mff"','filename');    
 end
-% 
+assert(~isempty(key),"This experiment does not have an associated MFF file");
 mffFile = fullfile(folder(ns.Experiment &key),key.filename);
 mffFile= strrep(mffFile,'\','/'); % Avoid fprintf errors
 assert(exist(mffFile),"MFF file %s does not exist.",mffFile); %#ok<EXIST>
@@ -37,13 +34,13 @@ switch pv.data
         % Call mff_import directly to read everything
         eegLabSave = 0 ; % Don't save in eeglab
         correctEvents = 0; %  Don't correct events with UTF chars/
-        fprintf("Using eeglab to read header and data from " +  mffFile + "...")
+        fprintf("Using eeglab to read header and data from " +  mffFile + "...\n")
         EEG = pop_mffimport(char(mffFile),{},eegLabSave,correctEvents);
         urSrate = EEG.srate;
     otherwise        
         % Adapted code from mff_import to avoid reading the signal
         % Some pieces (that we don't currently use) are missing
-        fprintf("Using eeglab to read header from " +  mffFile + "...")
+        fprintf("Using eeglab to read header from " +  mffFile + "...\n")
 
         %  Initialize an empty standard EEGLAB structure
         EEG = eeg_emptyset();
@@ -76,7 +73,7 @@ switch pv.data
         correctEvents=0;
         EEG.event      = mff_importevents(mffFile,begTime,EEG.srate,correctEvents);
         urSrate = EEG.srate;
-        if pv.data=="EMPTY" 
+        if upper(pv.data)=="EMPTY" 
            % Set the data to all-zero sparse to avoid erors on channel/time
             % selection
             EEG.data =sparse(EEG.nbchan,EEG.pnts);
@@ -84,7 +81,7 @@ switch pv.data
             %Get the data from a ctag
             cRel = ns.C & key & struct('ctag',pv.data);
             assert(exists(cRel),'No ns.C data with ctag %s found for this experiment.',pv.data);
-            fprintf("Retrieving preprocessed data from ns.C (ctag=%s)",pv.data)
+            fprintf("Retrieving preprocessed data from ns.C (ctag=%s)\n",pv.data)
             C = fetch(ns.CChannel &cRel,'channelinfo','signal');
             EEG.chanlocs = [C.channelinfo];
             EEG.data = [C.signal]';

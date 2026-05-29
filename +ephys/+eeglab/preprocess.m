@@ -20,10 +20,20 @@ for f= 1:numel(fn)
     switch fn{f}
         case 'ica'
             % Run ICA to identify components. The fields of the ica struct
-            % are passed as parm/value pairs to pop_runica.
+            % are passed as parm/value pairs to pop_runica.           
+            if ~isfield(parms.eeglab.ica,'pca')
+                % The number of PCA components was not pre-specified.
+                % Set it to the rank of the data. (Necessary for picard,
+                % runica does this in pop_runica)
+                nrSamplesToUse =min(3000,EEG.pnts); % Same as EEGLAB runica                
+                X = double(EEG.data(:,1:nrSamplesToUse) - mean(EEG.data(:,1:nrSamplesToUse),2));                
+                rnk =getrank(X);
+                if rnk<size(X,1)
+                    parms.eeglab.ica.pca = rnk;
+                end
+            end
             icaPV= namedargs2cell(parms.eeglab.ica);
             EEG = pop_runica(EEG,icaPV{:});
-            EEG.etc.neurostim.ica = struct('icawinv',EEG.icawinv,'icasphere',EEG.icasphere,'icaweights',EEG.icaweights,'icachansind',EEG.icachansind);
         case 'icaeog'
             % After running ICA, remove components based on EOG
             assert(~isempty(EEG.icaact),"Run ICA before removing ICA components");
@@ -277,42 +287,7 @@ end
 end
 
 
-function   varExplainedPct = icaVarianceExplained(EEG)
-% Helper function to compute variance explained per IC.
 
-% Channels used for ICA
-X = EEG.data(EEG.icachansind, :);          % [nChan x nTime]
-
-% ICA activations (sources)
-% Prefer EEG.icaact if already present; otherwise compute from weights/sphere
-if isfield(EEG, 'icaact') && ~isempty(EEG.icaact)
-    S = EEG.icaact;                         % [nComp x nTime]
-else
-    S = (EEG.icaweights * EEG.icasphere) * X;
-end
-
-% Mixing matrix
-A = EEG.icawinv;                            % [nChan x nComp]
-
-% Remove source means for variance calculations
-S0 = S - mean(S, 2);                        % [nComp x nTime]
-
-% Sensor-space variance contributed by each component:
-% var_i = sum over channels of var(a_i * s_i)
-%       = ||a_i||^2 * var(s_i)
-nTime = size(S0, 2);
-varS = sum(S0.^2, 2) / (nTime - 1);         % [nComp x 1]
-normA2 = sum(A.^2, 1)';                     % [nComp x 1]
-varPerComp = normA2 .* varS;                % [nComp x 1]
-
-% Total sensor variance of observed data (same channel set)
-X0 = X - mean(X, 2);
-totalVar = sum(sum(X0.^2, 2) / (nTime - 1));
-
-% Percent variance explained per component
-varExplainedPct = 100 * varPerComp / totalVar;   % [nComp x 1]
-
-end
 
 
 
@@ -363,4 +338,19 @@ if ~isempty(userFn)
         end
     end
 end
+end
+
+function tmprank2 = getrank(tmpdata)
+% From EEGLAB - the cov/eig path seems necessary    
+    tmprank = rank(tmpdata);
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %Here: alternate computation of the rank by Sven Hoffman
+    %tmprank = rank(tmpdata(:,1:min(3000, size(tmpdata,2)))); old code
+    covarianceMatrix = cov(tmpdata', 1);
+    [~, D] = eig (covarianceMatrix);
+    rankTolerance = 1e-7;
+    tmprank2=sum (diag (D) > rankTolerance);
+    if tmprank ~= tmprank2
+        tmprank2 = min(tmprank, tmprank2);
+    end
 end
