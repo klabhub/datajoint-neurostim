@@ -149,7 +149,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                     extra = EEG.etc.ic_classification.ICLabel.classifications; % The full probability matrix 
                     [~,ix] = max(extra,[],2);
                     q = {EEG.etc.ic_classification.ICLabel.classes(ix)}; % The highest probability class label
-                case 'REGRESS'
+                case 'SPEARMAN'
                     EEG =  ephys.eeglab.dataset(key, data=key.ctag,itag=key.itag);
                     c = ns.C & rmfield(key, ["ctag" "filename"]) & struct('ctag', parms.ctag);
                     tpl = fetch(c * ns.CChannel & struct('name', parms.channel), '*');

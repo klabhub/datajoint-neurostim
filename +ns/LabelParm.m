@@ -115,11 +115,11 @@ classdef LabelParm < dj.Lookup
                             '"baseline" must be a positive scalar (ms).');
                         assert(tpl.parms.baseline < tpl.parms.window, ...
                             '"baseline" must be shorter than "window".');
-                    case "regress"
+                    case "spearman"
                         assert(isfield(tpl.parms,"ctag"),...
-                            'regress method requires a "ctag" field specifying which ns.C data to use for regression.');
+                            'spearman method requires a "ctag" field specifying which ns.C data to use for regression.');
                         assert(isfield(tpl.parms,"channel"),...      
-                            'regress method requires a "channel" field specifying which channel in ns.C to use for regression.');                    
+                            'spearman method requires a "channel" field specifying which channel in ns.C to use for regression.');                    
 
                     otherwise
                         error('Unsupported labeling method: %s', tpl.parms.method);
