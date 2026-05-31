@@ -14,7 +14,7 @@ arguments
     pv.data (1,1) string % RAW, EMPTY, or a ctag
     pv.plg (1,:)  string  = string.empty % Plugin name 
     pv.prm (1,:) string   = string.empty % Event names
-    pv.itag (1,1) string = "" % The ICA to load ("" is ok if there is only one in ns.Ica)
+    pv.itag (1,1) string = "" % The ICA to load, identified by its itag. "" means no ICA will be loaded.
 end 
 
 if ismember(upper(pv.data),["RAW" "EMPTY"])    
@@ -94,19 +94,55 @@ switch pv.data
             % Check if there are ICA results
             if pv.itag ~=""
                 ica = ns.Ica & cRel & struct('itag',pv.itag);
-            else
-                % No itag specified - take what is there (errors if more
-                % than one).
-                ica = ns.Ica & cRel;
-                assert(count(ica)<2,"Multiple ICA matches. Specify one with pv.itag")
-            end
-            if exists(ica)
-                T =fetch(ica,'*');
-                EEG.icachansind = T.channels;
-                EEG.icasphere = T.sphere;
-                EEG.icaweights  =T.weights;
-                EEG.icawinv  = T.winverse;              
-                EEG.icaact = icaact(EEG.data,EEG.icaweights*EEG.icasphere,mean(EEG.data,2));
+                if exists(ica)
+                    icaKey = fetch(ica);
+                    w = ns.Ica.getWeights(icaKey);  % handles both session and per-exp ICA
+                    if ~isempty(w.chanlabels)
+                        % Session ICA: some channels may have been excluded
+                        % during the session ICA (bad in another experiment).
+                        % Find which channels are included vs excluded here.
+                        allLabels = {EEG.chanlocs.labels};
+                        [~, icachansind] = ismember(w.chanlabels, allLabels);
+                        icachansind = icachansind(icachansind > 0);
+                        assert(~isempty(icachansind), ...
+                            'None of the session ICA channels found in this experiment''s chanlocs.');
+
+                        EEG.icachansind = icachansind;
+                        EEG.icasphere   = w.sphere;
+                        EEG.icaweights  = w.weights;
+                        EEG.icawinv     = w.winverse;
+                        EEG.icaact = icaact(EEG.data(icachansind,:), ...
+                            EEG.icaweights * EEG.icasphere, mean(EEG.data(icachansind,:), 2));
+
+                        % Project excluded channels into ICA space via OLS so
+                        % that pop_subcomp can clean them too.
+                        % W_excl = D_excl * A' * inv(A * A')
+                        % where A = icaact  [nComps x nSamps]
+                        exclIdx = setdiff(1:EEG.nbchan, icachansind);
+                        if ~isempty(exclIdx)
+                            A  = EEG.icaact;                        % [nComps x nSamps]
+                            D  = EEG.data(exclIdx, :);              % [nExcl  x nSamps]
+                            % OLS: W_excl = D * A' / (A * A')
+                            W_excl = (D * A') / (A * A');           % [nExcl x nComps]
+                            % Augment icawinv with projected rows for excluded channels
+                            winv_aug = zeros(EEG.nbchan, size(EEG.icawinv, 2));
+                            winv_aug(icachansind, :) = EEG.icawinv;
+                            winv_aug(exclIdx,    :) = W_excl;
+                            EEG.icawinv     = winv_aug;
+                            % Extend icachansind to cover the full channel set
+                            EEG.icachansind = 1:EEG.nbchan;
+                        end
+                    else
+                        % Per-experiment ICA: indices stored directly
+                        EEG.icachansind = w.channels;
+                        EEG.icasphere   = w.sphere;
+                        EEG.icaweights  = w.weights;
+                        EEG.icawinv     = w.winverse;
+                        EEG.icaact = icaact(EEG.data, EEG.icaweights * EEG.icasphere, mean(EEG.data, 2));
+                    end
+                else
+                    fprintf("ICA with itag %s not found.\n",pv.itag);
+                end
             end
             EEG = eeg_checkset(EEG);
         end        

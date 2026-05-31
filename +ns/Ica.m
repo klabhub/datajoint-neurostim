@@ -3,55 +3,112 @@
 -> ns.C
 -> ns.IcaParm
 ---
-nrcomponents :  int  # Number of components
-winverse : longblob  # Inverse ICA weights (mixing matrix)
-sphere   : longblob  # Sphering matrix
-weights  : longblob  # ICA weights (unmixing)
+nrcomponents :  int       # Number of components
+winverse = NULL : longblob  # Inverse ICA weights (null for session-ICA; stored in ns.IcaSession)
+sphere   = NULL : longblob  # Sphering matrix (null for session-ICA; stored in ns.IcaSession)
+weights  = NULL : longblob  # ICA weights (null for session-ICA; stored in ns.IcaSession)
 channels : longblob  # Channels used for ICA
-variance : blob      # Variance explained per component.
-label    = NULL : blob # labels for the IC (iclabel)
+variance : blob      # Variance explained per component
 %}
 %
 % Currently implemented with EEGLAB
 %
-% See also ns.IcaParm, ephys.eeglab.preprocess
+% See also ns.IcaParm, ephys.eeglab.preprocess, ns.Label, ns.LabelParm
 %
 % BK - May 2026
-classdef Ica < dj.Computed
+classdef Ica < dj.Computed & dj.DJInstance
     properties (Dependent)
         keySource
     end
 
     methods
         function v = get.keySource(~)
-            % Restricted to ns.C tuples with the ctag specified in IcaParm
-            v = (ns.C * ns.CParm) * proj(ns.IcaParm,'itag','ctag');
+            % Per-experiment ICA: ns.C paired with non-session IcaParms.
+            v = (ns.C * ns.CParm) * proj(ns.IcaParm & 'session=0', 'itag', 'ctag');
+        end
+    end
+
+    methods (Static)
+        function src = getWeights(key)
+            % Fetch ICA weight matrices for a given ns.Ica key.
+            % For session-scoped ICA (IcaParm.session=true), the weights are
+            % stored once in ns.IcaSession and not duplicated in ns.Ica.
+            % For per-experiment ICA they are in ns.Ica itself.
+            % Returns a struct with fields: winverse, sphere, weights, channels.
+            isSession = fetch1(ns.IcaParm & key, 'session');
+            if isSession
+                sessionKey = struct('subject', key.subject, ...
+                                   'session_date', key.session_date, ...
+                                   'itag', key.itag);
+                src = fetch1(ns.IcaSession & sessionKey, ...
+                    'winverse', 'sphere', 'weights', 'chanlabels');
+                % chanlabels are channel label strings; caller must remap to
+                % per-experiment indices using ismember on EEG.chanlocs.
+            else
+                src = fetch1(ns.Ica & key, 'winverse', 'sphere', 'weights', 'channels');
+                src.chanlabels = [];  % not needed for per-exp ICA
+            end
         end
     end
 
     methods (Access=public)
+
+        
         function plot(tbl,pv)
             arguments
                 tbl (1,1) ns.Ica
-                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12                
+                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12 
+                pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components in the plot               
+                pv.find  = string.empty % Optional string to filter the components by their q in ns.Label. For instance, find="blink" will only plot components that have "blink" in their q field in ns.Label.
+                pv.tilesPerFigure (1,1) double = 24
             end
             tpl = fetch(tbl,'*');
             assert(~isempty(tpl),'No rows in ns.Ica to plot.');
-            warning('off','MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout');
+
+            
+            
             for i = 1:numel(tpl)
+                
                 this = tpl(i);
+                compsToPlot = pv.comp;
+                if ~isempty(pv.find)                    
+                    foundComps = find(ns.Label &this, pv.find);
+                    if isempty(foundComps)
+                        warning('No components found that match the find instruction. Plotting all components instead.');
+                    else
+                        compsToPlot = [foundComps.components{:}];                        
+                    end                
+                end
+                labels = fetch(ns.Label*ns.LabelParm & this & struct('ltag',cellstr(pv.labels)'),'q','extra','parms');
+                chanlocs = [fetch(ns.CChannel & this,'channelinfo').channelinfo];
                 expName = sprintf('%s @ %s %s | %s/%s',this.subject,this.session_date,this.starttime,this.ctag,this.itag);
-                figByName(expName);
-                clf
-                tiledlayout('flow')               
-                for c= pv.comp
+                w = ns.Ica.getWeights(this);  % fetch from IcaSession or Ica depending on scope
+                warning('off');%'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout');            
+                figCntr = 0;
+                cCntr = 0;
+                for c= compsToPlot(:)'
+                   
+                    if mod(cCntr,pv.tilesPerFigure)==0
+                        figCntr = figCntr+1;
+                        figByName(expName + "-" + string(figCntr));
+                        clf;
+                        tiledlayout('flow')               
+                    end
+                  cCntr= cCntr+1;
+            
                     nexttile
-                    chanlocs = [fetch(ns.CChannel & this,'channelinfo').channelinfo];
-                    topoplot(this.winverse(:,pv.comp(c)),chanlocs,'verbose','off', 'electrodes','off',  'numcontour', 8);
+                   
+                    topoplot(w.winverse(:,c),chanlocs,'verbose','off', 'electrodes','off',  'numcontour', 8);
                     str = "#" + string(c) + " Var:" +  string(round(this.variance(c),1)) + "%";
-                    if ~isempty(this.label)
-                        [pct,ix]  = max(this.label.classifications(c,:));
-                        str= [str;  this.label.classes(ix) + ":" + string(round(100*pct,1)) + "%"]; %#ok<AGROW>
+                    for l = 1:numel(labels)
+                        switch labels(l).parms.method
+                            case "iclabel"                            
+                            str= [str;  labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:),[],2))) + "%"]; %#ok<AGROW>
+                            case "eta"
+                            str = [str; labels(l).parms.plugin + ":" +  strjoin(string(labels(l).parms.events),"/") +  " z= " + string(round(labels(l).q(c),2))]; %#ok<AGROW>
+                            case "regress"
+                            str = [str; labels(l).parms.ctag+ ":" +  string(labels(l).parms.channel) +  " r= " + string(round(labels(l).q(c),2))]; %#ok<AGROW>
+                        end
                     end
                     title (str)
                 end
@@ -61,72 +118,52 @@ classdef Ica < dj.Computed
     end
 
     methods (Access=protected)
-        function makeTuples(tbl,key)
+        function makeTuples(tbl, key)
+            isSession = fetch1(ns.IcaParm & key, 'session');
 
-            icaParms = fetch1(ns.IcaParm & key,'parms');
-            % Get an EEG struct from ns.C using the ctag specified in IcaParm
-            EEG = ephys.eeglab.dataset(key,data=key.ctag);
-            % Use the parms from IcaParm to run ICA on the EEG struct, which will add the ICA fields to the struct. The parms should be a struct with a field 'eeglab' that contains a struct of parameters to pass to pop_runica. For example:
-            parms.eeglab.ica =  icaParms; % Match the field name expected by preprocess.m
-            EEG = ephys.eeglab.preprocess(EEG,parms);
-
-            varExplained = ns.Ica.varianceExplained(EEG);
-            if exist("iclabel.m","file")
-                % Determine labeling
-                EEG = iclabel(EEG,'default');
-                label = EEG.etc.ic_classification.ICLabel;
+            if isSession
+                % Weights are stored in ns.IcaSession — do not duplicate them here.
+                % Only store lightweight per-experiment metadata.
+                sessionKey = struct('subject', key.subject, ...
+                                   'session_date', key.session_date, ...
+                                   'itag', key.itag);
+                src = fetch1(ns.IcaSession & sessionKey, ...
+                    'nrcomponents', 'chanlabels', 'variance');
+                % Remap session channel labels to per-experiment indices
+                expChanlocs = fetch(ns.CChannel & key, 'channelinfo');
+                expLabels = {[expChanlocs.channelinfo].labels};
+                [~, chanIdx] = ismember(src.chanlabels, expLabels);
+                chanIdx = chanIdx(chanIdx > 0);
+                tpl = key;
+                tpl.nrcomponents = src.nrcomponents;
+                tpl.channels     = chanIdx;   % per-experiment indices for this row
+                tpl.variance     = src.variance;
+                % winverse, sphere, weights left NULL — use ns.Ica.getWeights(key)
             else
-                label =[];
-            end
+                % Per-experiment ICA
+                icaParms = fetch1(ns.IcaParm & key, 'parms');
+                EEG = ephys.eeglab.dataset(key, data=key.ctag, itag="");
+                if isfield(icaParms, 'filt')
+                    EEG = pop_eegfiltnew(EEG, 'hicutoff', icaParms.filt.hicutoff, ...
+                                              'locutoff',  icaParms.filt.locutoff);
+                    icaParms = rmfield(icaParms, 'filt');
+                end
+                parms.eeglab.ica = icaParms;
+                EEG = ephys.eeglab.preprocess(EEG, parms);
 
-            tpl = key;
-            tpl.nrcomponents = size(EEG.icaweights,1);
-            tpl.winverse = EEG.icawinv;
-            tpl.sphere = EEG.icasphere;
-            tpl.weights = EEG.icaweights;
-            tpl.channels = EEG.icachansind;
-            tpl.variance = varExplained;
-            tpl.label = label;
-            insert(tbl,tpl);
+                varExplained = ephys.eeglab.icaVarianceExplained(EEG);
+
+                tpl = key;
+                tpl.nrcomponents = size(EEG.icaweights, 1);
+                tpl.winverse     = EEG.icawinv;
+                tpl.sphere       = EEG.icasphere;
+                tpl.weights      = EEG.icaweights;
+                tpl.channels     = EEG.icachansind;
+                tpl.variance     = varExplained;
+            end
+            insert(tbl, tpl);
         end
     end
 
-    methods (Static)
-        function   varExplainedPct = varianceExplained(EEG)
-            % Helper function to compute variance explained per IC.
-
-            % Channels used for ICA
-            X = EEG.data(EEG.icachansind, :);          % [nChan x nTime]
-
-            % ICA activations (sources)
-            % Prefer EEG.icaact if already present; otherwise compute from weights/sphere
-            if isfield(EEG, 'icaact') && ~isempty(EEG.icaact)
-                S = EEG.icaact;                         % [nComp x nTime]
-            else
-                S = (EEG.icaweights * EEG.icasphere) * X;
-            end
-
-            % Mixing matrix
-            A = EEG.icawinv;                            % [nChan x nComp]
-
-            % Remove source means for variance calculations
-            S0 = S - mean(S, 2);                        % [nComp x nTime]
-
-            % Sensor-space variance contributed by each component:
-            % var_i = sum over channels of var(a_i * s_i)
-            %       = ||a_i||^2 * var(s_i)
-            nTime = size(S0, 2);
-            varS = sum(S0.^2, 2) / (nTime - 1);         % [nComp x 1]
-            normA2 = sum(A.^2, 1)';                     % [nComp x 1]
-            varPerComp = normA2 .* varS;                % [nComp x 1]
-
-            % Total sensor variance of observed data (same channel set)
-            X0 = X - mean(X, 2);
-            totalVar = sum(sum(X0.^2, 2) / (nTime - 1));
-
-            % Percent variance explained per component
-            varExplainedPct = 100 * varPerComp / totalVar;   % [nComp x 1]
-
-        end
-    end
+ 
 end
