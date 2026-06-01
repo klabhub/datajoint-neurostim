@@ -39,6 +39,62 @@ classdef IcaSession < dj.Computed & dj.DJInstance
         end
     end
 
+    methods (Access=public)
+
+        function plot(tbl, pv)
+            arguments
+                tbl (1,1) ns.IcaSession
+                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
+                pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components
+                pv.find = string.empty  % Optional string to filter components by their q in ns.Label
+                pv.tilesPerFigure (1,1) double = 24
+            end
+            tpl = fetch(tbl, '*');
+            assert(~isempty(tpl), 'No rows in ns.IcaSession to plot.');
+
+            for i = 1:numel(tpl)
+                this = tpl(i);
+                sessionKey = struct('subject', this.subject, 'session_date', this.session_date);
+
+                % Resolve channel locations: find any C experiment in session, filter to chanlabels.
+                cKey = fetch(ns.C * proj(ns.Experiment) & sessionKey & struct('ctag', this.ctag), 'LIMIT 1');
+                assert(~isempty(cKey), ...
+                    'No ns.C data found for session %s/%s ctag=%s.', ...
+                    this.subject, this.session_date, this.ctag);
+                allChanlocs = [fetch(ns.CChannel & cKey(1), 'channelinfo').channelinfo];
+                [~, idx] = ismember(this.chanlabels, {allChanlocs.labels});
+                chanlocs = allChanlocs(idx(idx > 0));
+
+                % Use any ns.Ica row for this session/itag to access labels
+                % (all per-experiment rows share the same decomposition).
+                icaRow = fetch(ns.Ica * proj(ns.Experiment) & sessionKey & struct('itag', this.itag), 'LIMIT 1');
+                if ~isempty(icaRow)
+                    labels = fetch(ns.Label * ns.LabelParm & icaRow(1) & struct('ltag', cellstr(pv.labels)'), 'q', 'extra', 'parms');
+                else
+                    labels = struct.empty;
+                end
+
+                compsToPlot = pv.comp;
+                if ~isempty(pv.find)
+                    if ~isempty(icaRow)
+                        foundComps = find(ns.Label & icaRow(1), pv.find);
+                        if isempty(foundComps)
+                            warning('No components found matching find instruction. Plotting all components instead.');
+                        else
+                            compsToPlot = [foundComps.components{:}];
+                        end
+                    else
+                        warning('Cannot filter by find: no ns.Ica/Label rows found for this session ICA.');
+                    end
+                end
+
+                expName = sprintf('%s @ %s | %s/%s', this.subject, this.session_date, this.ctag, this.itag);
+                ns.Ica.plotComponents(this.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure);
+            end
+        end
+
+    end
+
     methods (Access=protected)
         function makeTuples(tbl, key)
             % Load all EEG datasets for this session and ctag, concatenate,

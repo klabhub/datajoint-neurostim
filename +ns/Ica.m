@@ -24,7 +24,7 @@ classdef Ica < dj.Computed & dj.DJInstance
     methods
         function v = get.keySource(~)
             % Per-experiment ICA: ns.C paired with non-session IcaParms.
-            v = (ns.C * ns.CParm) * proj(ns.IcaParm & 'session=0', 'itag', 'ctag');
+            v = (ns.C * ns.CParm) * (ns.IcaParm & 'session=0');
         end
     end
 
@@ -40,79 +40,85 @@ classdef Ica < dj.Computed & dj.DJInstance
                 sessionKey = struct('subject', key.subject, ...
                                    'session_date', key.session_date, ...
                                    'itag', key.itag);
-                src = fetch1(ns.IcaSession & sessionKey, ...
+                src = fetch(ns.IcaSession & sessionKey, ...
                     'winverse', 'sphere', 'weights', 'chanlabels');
                 % chanlabels are channel label strings; caller must remap to
                 % per-experiment indices using ismember on EEG.chanlocs.
             else
-                src = fetch1(ns.Ica & key, 'winverse', 'sphere', 'weights', 'channels');
+                src = fetch(ns.Ica & key, 'winverse', 'sphere', 'weights', 'channels');
                 src.chanlabels = [];  % not needed for per-exp ICA
             end
+        end
+
+        function plotComponents(winverse, variance, chanlocs, labels, compsToPlot, expName, tilesPerFigure)
+            % Render ICA component topoplots in tiled figures.
+            % winverse      - [nChans x nComps] mixing matrix
+            % variance      - [1 x nComps] variance explained per component
+            % chanlocs      - EEGLAB chanlocs struct array
+            % labels        - struct array from fetch(ns.Label*ns.LabelParm,...)
+            %                 with fields q, extra, parms (may be empty)
+            % compsToPlot   - component indices to plot
+            % expName       - string used as figure/sgtitle name
+            % tilesPerFigure - number of tiles per figure
+            warning('off'); %'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout'
+            figCntr = 0;
+            cCntr   = 0;
+            for c = compsToPlot(:)'
+                if mod(cCntr, tilesPerFigure) == 0
+                    figCntr = figCntr + 1;
+                    figByName(expName + "-" + string(figCntr));
+                    clf;
+                    tiledlayout('flow');
+                end
+                cCntr = cCntr + 1;
+                nexttile
+                topoplot(winverse(:, c), chanlocs, 'verbose', 'off', 'electrodes', 'off', 'numcontour', 8);
+                str = "#" + string(c) + " Var:" + string(round(variance(c), 1)) + "%";
+                for l = 1:numel(labels)
+                    switch labels(l).parms.method
+                        case "iclabel"
+                            str = [str; labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:), [], 2))) + "%"]; %#ok<AGROW>
+                        case "eta"
+                            str = [str; labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/") + " z= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                        case "regress"
+                            str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                    end
+                end
+                title(str);
+            end
+            sgtitle(expName);
         end
     end
 
     methods (Access=public)
 
-        
-        function plot(tbl,pv)
+        function plot(tbl, pv)
             arguments
                 tbl (1,1) ns.Ica
-                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12 
-                pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components in the plot               
-                pv.find  = string.empty % Optional string to filter the components by their q in ns.Label. For instance, find="blink" will only plot components that have "blink" in their q field in ns.Label.
+                pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
+                pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components in the plot
+                pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
                 pv.tilesPerFigure (1,1) double = 24
             end
-            tpl = fetch(tbl,'*');
-            assert(~isempty(tpl),'No rows in ns.Ica to plot.');
+            tpl = fetch(tbl, '*');
+            assert(~isempty(tpl), 'No rows in ns.Ica to plot.');
 
-            
-            
             for i = 1:numel(tpl)
-                
                 this = tpl(i);
                 compsToPlot = pv.comp;
-                if ~isempty(pv.find)                    
-                    foundComps = find(ns.Label &this, pv.find);
+                if ~isempty(pv.find)
+                    foundComps = find(ns.Label & this, pv.find);
                     if isempty(foundComps)
                         warning('No components found that match the find instruction. Plotting all components instead.');
                     else
-                        compsToPlot = [foundComps.components{:}];                        
-                    end                
-                end
-                labels = fetch(ns.Label*ns.LabelParm & this & struct('ltag',cellstr(pv.labels)'),'q','extra','parms');
-                chanlocs = [fetch(ns.CChannel & this,'channelinfo').channelinfo];
-                expName = sprintf('%s @ %s %s | %s/%s',this.subject,this.session_date,this.starttime,this.ctag,this.itag);
-                w = ns.Ica.getWeights(this);  % fetch from IcaSession or Ica depending on scope
-                warning('off');%'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout');            
-                figCntr = 0;
-                cCntr = 0;
-                for c= compsToPlot(:)'
-                   
-                    if mod(cCntr,pv.tilesPerFigure)==0
-                        figCntr = figCntr+1;
-                        figByName(expName + "-" + string(figCntr));
-                        clf;
-                        tiledlayout('flow')               
+                        compsToPlot = [foundComps.components{:}];
                     end
-                  cCntr= cCntr+1;
-            
-                    nexttile
-                   
-                    topoplot(w.winverse(:,c),chanlocs,'verbose','off', 'electrodes','off',  'numcontour', 8);
-                    str = "#" + string(c) + " Var:" +  string(round(this.variance(c),1)) + "%";
-                    for l = 1:numel(labels)
-                        switch labels(l).parms.method
-                            case "iclabel"                            
-                            str= [str;  labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:),[],2))) + "%"]; %#ok<AGROW>
-                            case "eta"
-                            str = [str; labels(l).parms.plugin + ":" +  strjoin(string(labels(l).parms.events),"/") +  " z= " + string(round(labels(l).q(c),2))]; %#ok<AGROW>
-                            case "regress"
-                            str = [str; labels(l).parms.ctag+ ":" +  string(labels(l).parms.channel) +  " r= " + string(round(labels(l).q(c),2))]; %#ok<AGROW>
-                        end
-                    end
-                    title (str)
                 end
-                sgtitle(expName)
+                labels   = fetch(ns.Label*ns.LabelParm & this & struct('ltag', cellstr(pv.labels)'), 'q', 'extra', 'parms');
+                chanlocs = [fetch(ns.CChannel & this, 'channelinfo').channelinfo];
+                w        = ns.Ica.getWeights(this);
+                expName  = sprintf('%s @ %s %s | %s/%s', this.subject, this.session_date, this.starttime, this.ctag, this.itag);
+                ns.Ica.plotComponents(w.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure);
             end
         end
     end
@@ -131,7 +137,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                     'nrcomponents', 'chanlabels', 'variance');
                 % Remap session channel labels to per-experiment indices
                 expChanlocs = fetch(ns.CChannel & key, 'channelinfo');
-                expLabels = {[expChanlocs.channelinfo].labels};
+                %expLabels = {[expChanlocs.channelinfo].labels};
                 [~, chanIdx] = ismember(src.chanlabels, expLabels);
                 chanIdx = chanIdx(chanIdx > 0);
                 tpl = key;

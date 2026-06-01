@@ -93,11 +93,12 @@ switch pv.data
 
             % Check if there are ICA results
             if pv.itag ~=""
-                ica = ns.Ica & cRel & struct('itag',pv.itag);
-                if exists(ica)
-                    icaKey = fetch(ica);
+                    icaKey = key;
+                    icaKey.itag = pv.itag;
                     w = ns.Ica.getWeights(icaKey);  % handles both session and per-exp ICA
-                    if ~isempty(w.chanlabels)
+                    if isempty(w)
+                                       fprintf("ICA with itag %s not found.\n",pv.itag);
+                    elseif ~isempty(w.chanlabels)
                         % Session ICA: some channels may have been excluded
                         % during the session ICA (bad in another experiment).
                         % Find which channels are included vs excluded here.
@@ -112,7 +113,7 @@ switch pv.data
                         EEG.icaweights  = w.weights;
                         EEG.icawinv     = w.winverse;
                         EEG.icaact = icaact(EEG.data(icachansind,:), ...
-                            EEG.icaweights * EEG.icasphere, mean(EEG.data(icachansind,:), 2));
+                        EEG.icaweights * EEG.icasphere, mean(EEG.data(icachansind,:), 2));
 
                         % Project excluded channels into ICA space via OLS so
                         % that pop_subcomp can clean them too.
@@ -128,8 +129,16 @@ switch pv.data
                             winv_aug = zeros(EEG.nbchan, size(EEG.icawinv, 2));
                             winv_aug(icachansind, :) = EEG.icawinv;
                             winv_aug(exclIdx,    :) = W_excl;
-                            EEG.icawinv     = winv_aug;
-                            % Extend icachansind to cover the full channel set
+                            EEG.icawinv = winv_aug;
+                            % Fold sphere into weights and extend to all channels so that
+                            % eeg_checkset is satisfied: size(icaweights,2) == size(icasphere,2)
+                            %                            == numel(icachansind).
+                            % icaweights_aug * eye * data(1:nbchan,:) reproduces icaact
+                            % because the excluded-channel columns are zero.
+                            weights_aug = zeros(size(EEG.icaweights, 1), EEG.nbchan);
+                            weights_aug(:, icachansind) = EEG.icaweights * EEG.icasphere;
+                            EEG.icaweights  = weights_aug;
+                            EEG.icasphere   = eye(EEG.nbchan);
                             EEG.icachansind = 1:EEG.nbchan;
                         end
                     else
@@ -139,12 +148,9 @@ switch pv.data
                         EEG.icaweights  = w.weights;
                         EEG.icawinv     = w.winverse;
                         EEG.icaact = icaact(EEG.data, EEG.icaweights * EEG.icasphere, mean(EEG.data, 2));
-                    end
-                else
-                    fprintf("ICA with itag %s not found.\n",pv.itag);
-                end
+                    end                
             end
-            EEG = eeg_checkset(EEG);
+            EEG= eeg_checkset(EEG);
         end        
  end
 

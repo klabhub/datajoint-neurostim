@@ -13,7 +13,12 @@ end
 
 assert(isfield(EEG.etc,'neurostim'),'This EEG struct does not contain the necessary neurostim information.')
 plgRel  =  ns.Plugin & EEG.etc.neurostim.expt  & struct('plugin_name',plg);
-assert(exists(plgRel),"The %s plugin could not be found in this experiment (%s@%sT%s)",plg,EEG.etc.neurostim.expt.subject,EEG.etc.neurostim.expt.session_date,EEG.etc.neurostim.expt.starttime);
+if ~exists(plgRel)
+    fprintf("The %s plugin could not be found in this experiment (%s@%sT%s)\n",plg,EEG.etc.neurostim.expt.subject,EEG.etc.neurostim.expt.session_date,EEG.etc.neurostim.expt.starttime);
+    return;
+end
+
+
 prmRel = ns.PluginParameter & plgRel & in('property_name',prm);
 if count(prmRel)==0
     fprintf(2,'No %s:%s events found.\n',plg,strjoin(prm,'/'));

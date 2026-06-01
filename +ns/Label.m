@@ -45,8 +45,12 @@ classdef Label <  dj.Computed & dj.DJInstance
             %   - No rows in LabelParmParadigm → applies to all paradigms
             %   - Has rows in LabelParmParadigm → applies only to those paradigms
             %
-            % Base query: cross-product of Ica x LabelParm, with Experiment
-            % joined to expose the 'paradigm' attribute for filtering.
+            % Per-experiment ICA (IcaParm.session=0): cross-product of Ica x
+            % LabelParm filtered by paradigm, as before.
+            %
+            % Session ICA (IcaParm.session=1): gated on ns.LabelSession being
+            % populated so that DataJoint does not attempt per-experiment labels
+            % before the session-level labels exist.
             allParms = fetch(ns.LabelParm, 'ltag');
 
             if isempty(allParms)
@@ -71,7 +75,20 @@ classdef Label <  dj.Computed & dj.DJInstance
             end
 
             combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
-            v = (ns.Ica * proj(ns.Experiment, 'paradigm') * ns.LabelParm) & combinedWhere;
+
+            % Non-session ICA: paradigm-filtered (existing logic)
+            nonSessionPart = (ns.Ica * proj(ns.Experiment, 'paradigm') * ...
+                proj(ns.IcaParm & 'session=0') * ...
+                ns.LabelParm) & combinedWhere;
+
+            % Session ICA: one Label row per experiment, driven by LabelSession.
+            % The natural join on (subject, session_date, itag, ctag, ltag)
+            % produces one row per Ica entry once the session label exists.
+            sessionPart = ns.Ica * ...
+                proj(ns.IcaParm & 'session=1') * ...
+                proj(ns.LabelSession, 'ltag');
+
+            v = nonSessionPart + proj(sessionPart);
         end
     end
 
@@ -134,9 +151,22 @@ classdef Label <  dj.Computed & dj.DJInstance
             % ns.Ica and ns.LabelParm, as well as the 'paradigm' attribute
             % from ns.Experiment.
             %
-            % This function should compute the labels for the ICA components
-            % based on the parameters specified in LabelParm and insert a new
-            % tuple into Label with the results.
+            % For session-scoped ICA (IcaParm.session=1), labels are computed
+            % once for the whole session in ns.LabelSession.  makeTuples copies
+            % q/extra from that table rather than recomputing per experiment.
+
+            isSession = fetch1(ns.IcaParm & key, 'session');
+            if isSession
+                % Copy labels computed at the session level.
+                sessionKey = struct('subject',      key.subject, ...
+                                   'session_date', key.session_date, ...
+                                   'itag',         key.itag, ...
+                                   'ctag',         key.ctag, ...
+                                   'ltag',         key.ltag);
+                src = fetch1(ns.LabelSession & sessionKey, 'q', 'extra');
+                insert(tbl, mergestruct(key, src));
+                return;
+            end
 
             parms = fetch1(ns.LabelParm & key,'parms');
 
