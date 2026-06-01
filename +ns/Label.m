@@ -26,7 +26,7 @@ extra =NULL : longblob # method-specific extra data (e.g. ICLabel full class pro
 % the component activity at the time of the event compared to a baseline
 % period just before).The extra field stores the baseline corrected event
 % triggered averages for each component.
-% 
+%
 % See also ns.LabelParm
 %
 % BK - May 2026.
@@ -76,7 +76,7 @@ classdef Label <  dj.Computed & dj.DJInstance
 
             combinedWhere = ['(' strjoin(parmClauses, ' OR ') ')'];
 
-            % Non-session ICA: paradigm-filtered (existing logic)
+            % Non-session ICA: paradigm-filtered.
             nonSessionPart = (ns.Ica * proj(ns.Experiment, 'paradigm') * ...
                 proj(ns.IcaParm & 'session=0') * ...
                 ns.LabelParm) & combinedWhere;
@@ -88,7 +88,17 @@ classdef Label <  dj.Computed & dj.DJInstance
                 proj(ns.IcaParm & 'session=1') * ...
                 proj(ns.LabelSession, 'ltag');
 
-            v = nonSessionPart + proj(sessionPart);
+            % DataJoint MATLAB has no union (+) operator.  Instead, fetch
+            % both key sets and combine as a struct-array restriction on the
+            % base relation.
+            nonSessionKeys = fetch(nonSessionPart);   % returns Label PK fields only
+            sessionKeys    = fetch(sessionPart);       % returns Label PK fields only
+            allKeys = [nonSessionKeys; sessionKeys];
+            if isempty(allKeys)
+                v = ns.Ica * ns.LabelParm & 'FALSE';
+            else
+                v = ns.Ica * ns.LabelParm & allKeys;
+            end
         end
     end
 
@@ -98,11 +108,11 @@ classdef Label <  dj.Computed & dj.DJInstance
             % Find components matching a query string (for iclabel) or numeric threshold (for eta method).
             arguments
                 tbl (1,1) ns.Label
-                q (1,:) 
+                q (1,:)
             end
             T = fetchtable(tbl*ns.LabelParm,'*');
             T =addvars(T,cell(height(T),1),'NewVariableNames','components');
-            for tpl=1:height(T) 
+            for tpl=1:height(T)
                 if isstruct(T.parms)
                     method = T.parms(tpl).method;
                 else
@@ -123,123 +133,136 @@ classdef Label <  dj.Computed & dj.DJInstance
                         if ~isnumeric(q)
                             continue;
                         end
-                        comp = find(T.q{tpl} > q);  
+                        comp = find(T.q{tpl} > q);
                         if isempty(comp)
                             fprintf('No components with z>=%.2f .\n', q);
                         end
-                    otherwise 
+                    otherwise
                         error('No find implemented for labeling method: %s', T.parms{tpl}.method);
 
                 end
                 T{tpl,'components'} = {comp};
             end
-            
+
 
         end
-      
+
     end
 
 
 
 
-    methods (Access=protected)
-        function makeTuples(tbl,key)
-            % Populate Label for the given key (Ica, LabelParm) tuple.
-            % The makeTuples function will be called once for each key in
-            % keySource that does not already have a corresponding entry in
-            % Label. The key will include the identifying attributes of both
-            % ns.Ica and ns.LabelParm, as well as the 'paradigm' attribute
-            % from ns.Experiment.
+    methods (Static)
+        function [q, extra] = computeLabels(parms, EEGs, cKeys)
+            % Compute ICA component labels for one or more EEG datasets.
             %
-            % For session-scoped ICA (IcaParm.session=1), labels are computed
-            % once for the whole session in ns.LabelSession.  makeTuples copies
-            % q/extra from that table rather than recomputing per experiment.
+            % parms   - struct from ns.LabelParm.parms
+            % EEGs    - 1xN cell array of EEG structs (ICA loaded, icaact populated)
+            % cKeys   - N-element struct array of C keys, one per EEG.
+            %           Used by SPEARMAN to fetch the auxiliary channel signal.
+            %           Pass [] for ICLABEL and ETA.
+            %
+            % Returns q and extra with the same semantics as ns.Label.q / extra.
 
+            switch upper(parms.method)
+
+                case 'ICLABEL'
+                    % ICLabel depends only on component topographies (winverse),
+                    % which are session-invariant, so one EEG suffices.
+                    assert(exist('iclabel', 'file') == 2, ...
+                        'EEGLAB with iclabel function is required for method ''iclabel''.');
+                    EEG   = iclabel(EEGs{1});
+                    extra = EEG.etc.ic_classification.ICLabel.classifications;
+                    [~, ix] = max(extra, [], 2);
+                    q = {EEG.etc.ic_classification.ICLabel.classes(ix)};
+
+                case 'SPEARMAN'
+                    allAct    = [];
+                    allSignal = [];
+                    for i = 1:numel(EEGs)
+                        EEG = EEGs{i};
+                        % Strip fields that are not part of the C primary key
+                        % so the restriction works regardless of caller context.
+                        fieldsToStrip = intersect(fieldnames(cKeys(i)), {'ctag','filename','itag','ltag'});
+                        expKey = rmfield(cKeys(i), fieldsToStrip);
+                        c = ns.C & expKey & struct('ctag', parms.ctag);
+                        if ~exists(c)
+                            fprintf(2,"No %s data in %s@%sT%s\n",parms.ctag,expKey.subject,expKey.session_date,expKey.starttime)
+                        else
+                            tplC = fetch(c * ns.CChannel & struct('name', parms.channel), '*');
+                            eegSampleTime = polyval(EEG.etc.neurostim.clockParms, EEG.times/1000)';
+                            cSampleTime   = linspace(tplC.time(1), tplC.time(2), tplC.time(3))';
+                            cSignal       = interp1(cSampleTime, tplC.signal, eegSampleTime);
+                            cSignal(isnan(cSignal)) = tplC.min;
+                            allAct    = [allAct,    EEG.icaact]; %#ok<AGROW>
+                            allSignal = [allSignal; cSignal];    %#ok<AGROW>
+                        end
+                    end
+                    if isempty(allAct)
+                        q= [];
+                        extra = [];
+                    else
+                        [q, extra] = corr(allAct', allSignal, 'Type', 'Spearman');
+                    end
+
+                case 'ETA'
+                    parms.events = string(parms.events);
+                    EEG0     = EEGs{1};
+                    preSamp  = round(parms.window * EEG0.srate / 1000);
+                    postSamp = preSamp;
+                    nSamps   = preSamp + postSamp + 1;
+                    timesMs  = (-preSamp:postSamp) / EEG0.srate * 1000;
+                    nComps   = size(EEG0.icaact, 1);
+                    allEpochs = zeros(nComps, nSamps, 0);
+
+                    for i = 1:numel(EEGs)
+                        EEG = ephys.eeglab.addEvents(EEGs{i}, parms.plugin, parms.events);
+                        allEventTypes = erase(lower(string({EEG.event.type})), "'");
+                        keep      = ismember(allEventTypes, parms.events);
+                        latencies = round([EEG.event(keep).latency]);
+                        ok        = latencies > preSamp & latencies <= (EEG.pnts - postSamp);
+                        latencies = latencies(ok);
+                        if isempty(latencies), continue; end
+                        idx    = ((-preSamp:postSamp) + latencies(:))';
+                        epochs = reshape(EEG.icaact(:, idx), [nComps nSamps numel(latencies)]);
+                        allEpochs = cat(3, allEpochs, epochs);
+                    end
+
+                    if size(allEpochs, 3) == 0
+                        warning('ns:Label:noEvents', 'No %s events found.', strjoin(parms.events));
+                        q = []; extra = [];
+                    else
+                        baseWin = timesMs >= -parms.window & timesMs < -parms.window + parms.baseline;
+                        mu_base = mean(allEpochs(:, baseWin,  :), [2 3]);
+                        sd_base = std( allEpochs(:, baseWin,  :), 0, [2 3]);
+                        mu_resp = mean(allEpochs(:, ~baseWin, :), [2 3]);
+                        q       = (mu_resp - mu_base) ./ sd_base;
+                        extra   = mean(allEpochs, 3, 'omitmissing') - mu_base;
+                    end
+
+                otherwise
+                    error('Unknown labeling method: %s', parms.method);
+            end
+        end
+    end
+
+    methods (Access=protected)
+        function makeTuples(tbl, key)
+            % For session-scoped ICA, labels are computed once in ns.LabelSession;
+            % copy them here rather than recomputing per experiment.
             isSession = fetch1(ns.IcaParm & key, 'session');
             if isSession
-                % Copy labels computed at the session level.
-                sessionKey = struct('subject',      key.subject, ...
-                                   'session_date', key.session_date, ...
-                                   'itag',         key.itag, ...
-                                   'ctag',         key.ctag, ...
-                                   'ltag',         key.ltag);
+                sessionKey = struct('subject', key.subject, 'session_date', key.session_date, ...
+                    'itag', key.itag, 'ctag', key.ctag, 'ltag', key.ltag);
                 src = fetch1(ns.LabelSession & sessionKey, 'q', 'extra');
                 insert(tbl, mergestruct(key, src));
                 return;
             end
 
-            parms = fetch1(ns.LabelParm & key,'parms');
-
-            switch upper(parms.method)
-                case 'ICLABEL'
-                    % Check for eeglab and iclabel function
-                    assert(exist('iclabel', 'file') == 2, 'EEGLAB with iclabel function is required for method ''iclabel''.');
-                    EEG =  ephys.eeglab.dataset(key,data=key.ctag,itag=key.itag);
-                    EEG = iclabel(EEG);
-                    extra = EEG.etc.ic_classification.ICLabel.classifications; % The full probability matrix 
-                    [~,ix] = max(extra,[],2);
-                    q = {EEG.etc.ic_classification.ICLabel.classes(ix)}; % The highest probability class label
-                case 'SPEARMAN'
-                    EEG =  ephys.eeglab.dataset(key, data=key.ctag,itag=key.itag);
-                    c = ns.C & rmfield(key, ["ctag" "filename"]) & struct('ctag', parms.ctag);
-                    tpl = fetch(c * ns.CChannel & struct('name', parms.channel), '*');
-
-                    eegSampleTime = polyval(EEG.etc.neurostim.clockParms, EEG.times/1000)';
-                    cSampleTime   = linspace(tpl.time(1), tpl.time(2), tpl.time(3))';
-                    cSignal = interp1(cSampleTime, tpl.signal, eegSampleTime);
-
-                    % Remove samples where the signal is missing or an outlier
-                    cSignal(isnan(cSignal)) = tpl.min;
-
-                    % Spearman correlation: robust to non-Gaussian pupil distribution
-                    [q , extra] = corr(EEG.icaact', cSignal, 'Type', 'Spearman');
-                        
-                case 'ETA'
-                    parms.events = string(parms.events);
-                    EEG =  ephys.eeglab.dataset(key,data=key.ctag,itag=key.itag);
-                    preSamp  = round(parms.window  * EEG.srate / 1000);
-                    postSamp = round(parms.window* EEG.srate / 1000);
-                    nSamps   = preSamp + postSamp + 1;
-                    timesMs  = (-preSamp:postSamp) / EEG.srate * 1000;   % time axis (ms)
-
-                    EEG = ephys.eeglab.addEvents(EEG,parms.plugin,parms.events);
-                    if ~any(ismember(parms.events, {EEG.event.type}))
-                        warning("No %s events found in this dataset.", strjoin(parms.events));
-                        q = [];
-                        extra = [];
-                        
-                    else
-                   
-                    nComps     = size(EEG.icaact, 1);
-                    allEventTypes = erase(lower(string({EEG.event.type})), "'");                        
-                    keep = ismember(allEventTypes,parms.events);
-                    latencies = round([EEG.event(keep).latency]);                    
-                    ok = latencies > preSamp & latencies <= (EEG.pnts - postSamp);
-                    latencies = latencies(ok);
-                    nEvents = numel(latencies);
-                    idx =  ((-preSamp:postSamp) + latencies(:))';                    
-                    epochs = reshape(EEG.icaact(:,idx),[nComps nSamps nEvents]);
-                     
-                    % Baseline window: first few ms of the window
-                    baseWin = timesMs >= -parms.window & timesMs < -parms.window+parms.baseline;
-                    mu_base = mean(epochs(:, baseWin,:), [2 3]);   
-                    sd_base = std(epochs(:, baseWin,:), 0, [2 3]); 
-                    mu_resp = mean(epochs(:, ~baseWin,:), [2 3]);  
-
-                    % z-score per component per event type
-                    q = (mu_resp - mu_base) ./ sd_base;         
-
-                    % Baseline-corrected ETA: mean over events at each time point [nComps x nSamps]
-                    extra = mean(epochs, 3, "omitmissing") - mu_base;
-                    end
-                otherwise
-                    error('Unknown labeling method: %s', parms.method);
-            end
-
-            tpl = mergestruct(key,... 
-                            struct('q', q, 'extra', extra));
-            insert(tbl, tpl)
-
+            parms = fetch1(ns.LabelParm & key, 'parms');
+            EEG   = ephys.eeglab.dataset(key, data=key.ctag, itag=key.itag);
+            [q, extra] = ns.Label.computeLabels(parms, {EEG}, key);
+            insert(tbl, mergestruct(key, struct('q', q, 'extra', extra)));
         end
     end
 

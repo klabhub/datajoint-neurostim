@@ -28,67 +28,7 @@ classdef Ica < dj.Computed & dj.DJInstance
         end
     end
 
-    methods (Static)
-        function src = getWeights(key)
-            % Fetch ICA weight matrices for a given ns.Ica key.
-            % For session-scoped ICA (IcaParm.session=true), the weights are
-            % stored once in ns.IcaSession and not duplicated in ns.Ica.
-            % For per-experiment ICA they are in ns.Ica itself.
-            % Returns a struct with fields: winverse, sphere, weights, channels.
-            isSession = fetch1(ns.IcaParm & key, 'session');
-            if isSession
-                sessionKey = struct('subject', key.subject, ...
-                                   'session_date', key.session_date, ...
-                                   'itag', key.itag);
-                src = fetch(ns.IcaSession & sessionKey, ...
-                    'winverse', 'sphere', 'weights', 'chanlabels');
-                % chanlabels are channel label strings; caller must remap to
-                % per-experiment indices using ismember on EEG.chanlocs.
-            else
-                src = fetch(ns.Ica & key, 'winverse', 'sphere', 'weights', 'channels');
-                src.chanlabels = [];  % not needed for per-exp ICA
-            end
-        end
-
-        function plotComponents(winverse, variance, chanlocs, labels, compsToPlot, expName, tilesPerFigure)
-            % Render ICA component topoplots in tiled figures.
-            % winverse      - [nChans x nComps] mixing matrix
-            % variance      - [1 x nComps] variance explained per component
-            % chanlocs      - EEGLAB chanlocs struct array
-            % labels        - struct array from fetch(ns.Label*ns.LabelParm,...)
-            %                 with fields q, extra, parms (may be empty)
-            % compsToPlot   - component indices to plot
-            % expName       - string used as figure/sgtitle name
-            % tilesPerFigure - number of tiles per figure
-            warning('off'); %'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout'
-            figCntr = 0;
-            cCntr   = 0;
-            for c = compsToPlot(:)'
-                if mod(cCntr, tilesPerFigure) == 0
-                    figCntr = figCntr + 1;
-                    figByName(expName + "-" + string(figCntr));
-                    clf;
-                    tiledlayout('flow');
-                end
-                cCntr = cCntr + 1;
-                nexttile
-                topoplot(winverse(:, c), chanlocs, 'verbose', 'off', 'electrodes', 'off', 'numcontour', 8);
-                str = "#" + string(c) + " Var:" + string(round(variance(c), 1)) + "%";
-                for l = 1:numel(labels)
-                    switch labels(l).parms.method
-                        case "iclabel"
-                            str = [str; labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:), [], 2))) + "%"]; %#ok<AGROW>
-                        case "eta"
-                            str = [str; labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/") + " z= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
-                        case "regress"
-                            str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
-                    end
-                end
-                title(str);
-            end
-            sgtitle(expName);
-        end
-    end
+    
 
     methods (Access=public)
 
@@ -171,5 +111,66 @@ classdef Ica < dj.Computed & dj.DJInstance
         end
     end
 
+    methods (Static)
+        function src = getWeights(key)
+            % Fetch ICA weight matrices for a given ns.Ica key.
+            % For session-scoped ICA (IcaParm.session=true), the weights are
+            % stored once in ns.IcaSession and not duplicated in ns.Ica.
+            % For per-experiment ICA they are in ns.Ica itself.
+            % Returns a struct with fields: winverse, sphere, weights, channels.
+            isSession = fetch1(ns.IcaParm & key, 'session');
+            if isSession
+                sessionKey = struct('subject', key.subject, ...
+                                   'session_date', key.session_date, ...
+                                   'itag', key.itag);
+                src = fetch(ns.IcaSession & sessionKey, ...
+                    'winverse', 'sphere', 'weights', 'chanlabels');
+                % chanlabels are channel label strings; caller must remap to
+                % per-experiment indices using ismember on EEG.chanlocs.
+            else
+                src = fetch(ns.Ica & key, 'winverse', 'sphere', 'weights', 'channels');
+                src.chanlabels = [];  % not needed for per-exp ICA
+            end
+        end
+
+        function plotComponents(winverse, variance, chanlocs, labels, compsToPlot, expName, tilesPerFigure)
+            % Render ICA component topoplots in tiled figures.
+            % winverse      - [nChans x nComps] mixing matrix
+            % variance      - [1 x nComps] variance explained per component
+            % chanlocs      - EEGLAB chanlocs struct array
+            % labels        - struct array from fetch(ns.Label*ns.LabelParm,...)
+            %                 with fields q, extra, parms (may be empty)
+            % compsToPlot   - component indices to plot
+            % expName       - string used as figure/sgtitle name
+            % tilesPerFigure - number of tiles per figure
+            warning('off'); %'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout'
+            figCntr = 0;
+            cCntr   = 0;
+            for c = compsToPlot(:)'
+                if mod(cCntr, tilesPerFigure) == 0
+                    figCntr = figCntr + 1;
+                    figByName(expName + "-" + string(figCntr));
+                    clf;
+                    tiledlayout('flow');
+                end
+                cCntr = cCntr + 1;
+                nexttile
+                topoplot(winverse(:, c), chanlocs, 'verbose', 'off', 'electrodes', 'off', 'numcontour', 8);
+                str = "#" + string(c) + " Var:" + string(round(variance(c), 1)) + "%";
+                for l = 1:numel(labels)
+                    switch labels(l).parms.method
+                        case "iclabel"
+                            str = [str; labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:), [], 2))) + "%"]; %#ok<AGROW>
+                        case "eta"
+                            str = [str; labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/") + " z= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                        case "regress"
+                            str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                    end
+                end
+                title(str);
+            end
+            sgtitle(expName);
+        end
+    end
  
 end

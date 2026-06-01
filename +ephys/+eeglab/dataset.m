@@ -123,8 +123,9 @@ switch pv.data
                         if ~isempty(exclIdx)
                             A  = EEG.icaact;                        % [nComps x nSamps]
                             D  = EEG.data(exclIdx, :);              % [nExcl  x nSamps]
-                            % OLS: W_excl = D * A' / (A * A')
-                            W_excl = (D * A') / (A * A');           % [nExcl x nComps]
+                            % OLS via pseudo-inverse: handles rank-deficient icaact
+                            % (e.g. zeroed-out components after pop_subcomp).
+                            W_excl = (D * A') * pinv(A * A');       % [nExcl x nComps]
                             % Augment icawinv with projected rows for excluded channels
                             winv_aug = zeros(EEG.nbchan, size(EEG.icawinv, 2));
                             winv_aug(icachansind, :) = EEG.icawinv;

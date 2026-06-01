@@ -44,7 +44,7 @@ classdef LabelSession < dj.Computed & dj.DJInstance
             parms = fetch1(ns.LabelParm & key, 'parms');
 
             % All experiments in this session for the relevant ctag
-            sessionKey = struct('subject',      key.subject, ...
+            sessionKey = struct('subject', key.subject, ...
                                 'session_date', key.session_date, ...
                                 'ctag',         key.ctag);
             cKeys = fetch(ns.C * proj(ns.Experiment) & sessionKey);
@@ -52,79 +52,13 @@ classdef LabelSession < dj.Computed & dj.DJInstance
                 'No ns.C data found for ctag "%s" in session %s / %s.', ...
                 key.ctag, key.subject, string(key.session_date));
 
-            switch upper(parms.method)
-
-                case 'ICLABEL'
-                    % ICLabel depends only on topographies, which are
-                    % session-invariant.  Load one experiment.
-                    assert(exist('iclabel', 'file') == 2, ...
-                        'EEGLAB with iclabel is required for method ''iclabel''.');
-                    EEG   = ephys.eeglab.dataset(cKeys(1), data=key.ctag, itag=key.itag);
-                    EEG   = iclabel(EEG);
-                    extra = EEG.etc.ic_classification.ICLabel.classifications;
-                    [~, ix] = max(extra, [], 2);
-                    q = {EEG.etc.ic_classification.ICLabel.classes(ix)};
-
-                case 'SPEARMAN'
-                    % Concatenate ICA activations and the auxiliary signal
-                    % across all experiments in the session.
-                    allAct    = [];
-                    allSignal = [];
-                    for i = 1:numel(cKeys)
-                        EEG = ephys.eeglab.dataset(cKeys(i), data=key.ctag, itag=key.itag);
-                        c    = ns.C & rmfield(cKeys(i), ["ctag" "filename"]) & struct('ctag', parms.ctag);
-                        tplC = fetch(c * ns.CChannel & struct('name', parms.channel), '*');
-                        eegSampleTime = polyval(EEG.etc.neurostim.clockParms, EEG.times/1000)';
-                        cSampleTime   = linspace(tplC.time(1), tplC.time(2), tplC.time(3))';
-                        cSignal       = interp1(cSampleTime, tplC.signal, eegSampleTime);
-                        cSignal(isnan(cSignal)) = tplC.min;
-                        allAct    = [allAct,    EEG.icaact]; %#ok<AGROW>
-                        allSignal = [allSignal; cSignal];    %#ok<AGROW>
-                    end
-                    [q, extra] = corr(allAct', allSignal, 'Type', 'Spearman');
-
-                case 'ETA'
-                    parms.events = string(parms.events);
-                    EEG0     = ephys.eeglab.dataset(cKeys(1), data=key.ctag, itag=key.itag);
-                    preSamp  = round(parms.window * EEG0.srate / 1000);
-                    postSamp = preSamp;
-                    nSamps   = preSamp + postSamp + 1;
-                    timesMs  = (-preSamp:postSamp) / EEG0.srate * 1000;
-                    nComps   = size(EEG0.icaact, 1);
-                    allEpochs = zeros(nComps, nSamps, 0);
-
-                    for i = 1:numel(cKeys)
-                        EEG = ephys.eeglab.dataset(cKeys(i), data=key.ctag, itag=key.itag);
-                        EEG = ephys.eeglab.addEvents(EEG, parms.plugin, parms.events);
-                        allEventTypes = erase(lower(string({EEG.event.type})), "'");
-                        keep      = ismember(allEventTypes, parms.events);
-                        latencies = round([EEG.event(keep).latency]);
-                        ok        = latencies > preSamp & latencies <= (EEG.pnts - postSamp);
-                        latencies = latencies(ok);
-                        if isempty(latencies), continue; end
-                        idx    = ((-preSamp:postSamp) + latencies(:))';
-                        epochs = reshape(EEG.icaact(:, idx), [nComps nSamps numel(latencies)]);
-                        allEpochs = cat(3, allEpochs, epochs);
-                    end
-
-                    if size(allEpochs, 3) == 0
-                        warning('ns:LabelSession:noEvents', ...
-                            'No %s events found across session %s / %s.', ...
-                            strjoin(parms.events), key.subject, string(key.session_date));
-                        q = []; extra = [];
-                    else
-                        baseWin = timesMs >= -parms.window & timesMs < -parms.window + parms.baseline;
-                        mu_base = mean(allEpochs(:, baseWin,  :), [2 3]);
-                        sd_base = std( allEpochs(:, baseWin,  :), 0, [2 3]);
-                        mu_resp = mean(allEpochs(:, ~baseWin, :), [2 3]);
-                        q       = (mu_resp - mu_base) ./ sd_base;
-                        extra   = mean(allEpochs, 3, 'omitmissing') - mu_base;
-                    end
-
-                otherwise
-                    error('Unknown labeling method: %s', parms.method);
+            % Load all EEG datasets for this session, then delegate to the
+            % shared computation in ns.Label.computeLabels.
+            EEGs = cell(1, numel(cKeys));
+            for i = 1:numel(cKeys)
+                EEGs{i} = ephys.eeglab.dataset(cKeys(i), data=key.ctag, itag=key.itag);
             end
-
+            [q, extra] = ns.Label.computeLabels(parms, EEGs, cKeys);
             insert(tbl, mergestruct(key, struct('q', q, 'extra', extra)));
         end
     end
