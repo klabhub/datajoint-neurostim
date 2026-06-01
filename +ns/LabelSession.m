@@ -39,6 +39,18 @@ classdef LabelSession < dj.Computed & dj.DJInstance
         end
     end
 
+    methods (Access=public)
+        function T = find(tbl, q)
+            % Find components matching a query string (iclabel) or numeric threshold (eta/spearman).
+            % Delegates to ns.Label.findInTable so the logic is maintained in one place.
+            arguments
+                tbl (1,1) ns.LabelSession
+                q (1,:)
+            end
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), q);
+        end
+    end
+
     methods (Access=protected)
         function makeTuples(tbl, key)
             parms = fetch1(ns.LabelParm & key, 'parms');

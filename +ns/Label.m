@@ -104,15 +104,22 @@ classdef Label <  dj.Computed & dj.DJInstance
 
 
     methods (Access=public)
-        function T  = find(tbl,q)
+        function T = find(tbl, q)
             % Find components matching a query string (for iclabel) or numeric threshold (for eta method).
             arguments
                 tbl (1,1) ns.Label
                 q (1,:)
             end
-            T = fetchtable(tbl*ns.LabelParm,'*');
-            T =addvars(T,cell(height(T),1),'NewVariableNames','components');
-            for tpl=1:height(T)
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), q);
+        end
+    end
+
+    methods (Static)
+        function T = findInTable(T, q)
+            % Core find logic shared by ns.Label.find and ns.LabelSession.find.
+            % T must be a table with columns 'parms' and 'q' (from a *ns.LabelParm join).
+            T = addvars(T, cell(height(T), 1), 'NewVariableNames', 'components');
+            for tpl = 1:height(T)
                 if isstruct(T.parms)
                     method = T.parms(tpl).method;
                 else
@@ -120,16 +127,16 @@ classdef Label <  dj.Computed & dj.DJInstance
                 end
                 switch upper(method)
                     case 'ICLABEL'
-                        if ~iscellstr(q) && ~isstring(q) && ~ischar(q)
+                        if ~iscellstr(q) && ~isstring(q) && ~ischar(q) 
                             continue;
                         end
-                        comp = find(contains(T.q{tpl}, q,'IgnoreCase',true));
+                        comp = find(contains(T.q{tpl}, q, 'IgnoreCase', true));
                         if isempty(comp)
                             fprintf('No components matching "%s".\n', q);
                         else
                             fprintf('Components matching "%s": %s\n', q, strjoin(string(comp), ', '));
                         end
-                    case 'ETA'
+                    case {'ETA','SPEARMAN'}
                         if ~isnumeric(q)
                             continue;
                         end
@@ -138,15 +145,11 @@ classdef Label <  dj.Computed & dj.DJInstance
                             fprintf('No components with z>=%.2f .\n', q);
                         end
                     otherwise
-                        error('No find implemented for labeling method: %s', T.parms{tpl}.method);
-
+                        error('No find implemented for labeling method: %s', method);
                 end
-                T{tpl,'components'} = {comp};
+                T{tpl, 'components'} = {comp};
             end
-
-
         end
-
     end
 
 

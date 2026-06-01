@@ -45,7 +45,7 @@ classdef IcaSession < dj.Computed & dj.DJInstance
             arguments
                 tbl (1,1) ns.IcaSession
                 pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
-                pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components
+                pv.labels (1,:) string = "true"  % Which ns.Label ltag to use for labeling components. Defaults to all
                 pv.find = string.empty  % Optional string to filter components by their q in ns.Label
                 pv.tilesPerFigure (1,1) double = 24
             end
@@ -65,26 +65,21 @@ classdef IcaSession < dj.Computed & dj.DJInstance
                 [~, idx] = ismember(this.chanlabels, {allChanlocs.labels});
                 chanlocs = allChanlocs(idx(idx > 0));
 
-                % Use any ns.Ica row for this session/itag to access labels
-                % (all per-experiment rows share the same decomposition).
-                icaRow = fetch(ns.Ica * proj(ns.Experiment) & sessionKey & struct('itag', this.itag), 'LIMIT 1');
-                if ~isempty(icaRow)
-                    labels = fetch(ns.Label * ns.LabelParm & icaRow(1) & struct('ltag', cellstr(pv.labels)'), 'q', 'extra', 'parms');
-                else
-                    labels = struct.empty;
-                end
+                % Fetch labels from ns.LabelSession (computed once for the whole session).
+                
+                labels = fetch(ns.LabelSession * ns.LabelParm & this & struct('ltag', cellstr(pv.labels)'), 'q', 'extra', 'parms');
 
                 compsToPlot = pv.comp;
                 if ~isempty(pv.find)
-                    if ~isempty(icaRow)
-                        foundComps = find(ns.Label & icaRow(1), pv.find);
+                    if ~isempty(labels)
+                        foundComps = find(ns.LabelSession & this, pv.find);
                         if isempty(foundComps)
                             warning('No components found matching find instruction. Plotting all components instead.');
                         else
                             compsToPlot = [foundComps.components{:}];
                         end
                     else
-                        warning('Cannot filter by find: no ns.Ica/Label rows found for this session ICA.');
+                        warning('Cannot filter by find: no ns.LabelSession rows found for this session ICA.');
                     end
                 end
 
