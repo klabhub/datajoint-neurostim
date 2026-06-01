@@ -45,7 +45,7 @@ classdef IcaSession < dj.Computed & dj.DJInstance
             arguments
                 tbl (1,1) ns.IcaSession
                 pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
-                pv.labels (1,:) string = "true"  % Which ns.Label ltag to use for labeling components. Defaults to all
+                pv.labels (1,:) string = ""  % Which ns.Label ltag to use for labeling components. Defaults to all
                 pv.find = string.empty  % Optional string to filter components by their q in ns.Label
                 pv.tilesPerFigure (1,1) double = 24
             end
@@ -66,8 +66,11 @@ classdef IcaSession < dj.Computed & dj.DJInstance
                 chanlocs = allChanlocs(idx(idx > 0));
 
                 % Fetch labels from ns.LabelSession (computed once for the whole session).
-                
-                labels = fetch(ns.LabelSession * ns.LabelParm & this & struct('ltag', cellstr(pv.labels)'), 'q', 'extra', 'parms');
+                labelRelvar = ns.LabelSession * ns.LabelParm & this;
+                if pv.labels~=""
+                    labelRelvar = labelRelvar & struct('ltag', cellstr(pv.labels)');
+                end
+                labels = fetch(labelRelvar, 'q', 'extra', 'parms');
 
                 compsToPlot = pv.comp;
                 if ~isempty(pv.find)
