@@ -30,12 +30,36 @@ classdef IcaSession < dj.Computed & dj.DJInstance
 
     methods
         function v = get.keySource(~)
-            % All sessions that have at least one ns.C entry for the ctag
-            % specified in a session-scoped IcaParm.
+            % Sessions where ns.C is FULLY populated for the ctag specified
+            % in a session-scoped IcaParm.  A session is only eligible once
+            % every experiment that is in ns.C's keySource for that ctag
+            % actually has a populated ns.C row.
+
             sessionParms = proj(ns.IcaParm & 'session=1', 'itag', 'ctag');
-            % Join Session with Experiment->C to verify data exists for ctag
-            v = proj(ns.Session) * sessionParms ...
-                & proj(ns.C * proj(ns.Experiment), 'subject', 'session_date', 'ctag');
+            % Candidate sessions: at least one ns.C row exists for the ctag.
+            candidates = proj(ns.Session) * sessionParms ...
+                & proj(ns.C, 'subject', 'session_date', 'ctag');
+
+            if ~exists(candidates)
+                v = candidates & 'FALSE';
+                return;
+            end
+
+            % Single-query completeness check:
+            % Restrict ns.C's keySource to the candidate (session, ctag) pairs,
+            % then subtract what is already populated.  Any remaining rows identify
+            % sessions that still have unpopulated entries.
+            candSessionCtag = proj(candidates, 'subject', 'session_date', 'ctag');
+            missing = (ns.C().keySource & candSessionCtag) - (ns.C & candSessionCtag);
+
+            if exists(missing)
+                fprintf(2,'ns.C incomplete for the following sessions (sessions skipped for ICA):\n')
+                disp(ns.Session & missing )
+                % Exclude incomplete sessions from the keySource.
+                v = candidates - missing;
+            else
+                v = candidates;
+            end
         end
     end
 
@@ -101,12 +125,8 @@ classdef IcaSession < dj.Computed & dj.DJInstance
 
             icaParms = fetch1(ns.IcaParm & key, 'parms');
 
-            % Find all experiments in this session that have C data for ctag
-            sessionKey = rmfield(key, 'itag');
-            cKeys = fetch(ns.C * proj(ns.Experiment) & sessionKey & struct('ctag', key.ctag));
-            assert(~isempty(cKeys), ...
-                'No ns.C data found for ctag "%s" in session %s/%s.', ...
-                key.ctag, key.subject, key.session_date);
+            cKeys = fetch(ns.C & key & struct('ctag', key.ctag));
+
 
             % Load all datasets and find the intersection of surviving channel labels.
             % Experiments may have different bad channels removed during preprocessing,

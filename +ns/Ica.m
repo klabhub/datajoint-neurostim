@@ -144,32 +144,95 @@ classdef Ica < dj.Computed & dj.DJInstance
             % expName       - string used as figure/sgtitle name
             % tilesPerFigure - number of tiles per figure
             warning('off'); %'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout'
-            figCntr = 0;
-            cCntr   = 0;
+            figCntr    = 0;
+            cCntr      = 0;
+            currentFig = [];
+            figName    = "";
+            figTiles   = {};   % {compIdx, etaEntries} for every tile in the current figure
+
             for c = compsToPlot(:)'
                 if mod(cCntr, tilesPerFigure) == 0
-                    figCntr = figCntr + 1;
-                    figByName(expName + "-" + string(figCntr));
+                    % Finish previous figure: add ETA button if any tile had ETA data.
+                    if ~isempty(figTiles) && ~isempty(currentFig)
+                        ns.Ica.addEtaButton(currentFig, figTiles, figName);
+                    end
+                    figCntr    = figCntr + 1;
+                    figName    = expName + "-" + string(figCntr);
+                    currentFig = figByName(figName);
                     clf;
                     tiledlayout('flow');
+                    figTiles = {};
                 end
                 cCntr = cCntr + 1;
                 nexttile
                 topoplot(winverse(:, c), chanlocs, 'verbose', 'off', 'electrodes', 'off', 'numcontour', 8);
                 str = "#" + string(c) + " Var:" + string(round(variance(c), 1)) + "%";
+                etaEntries = {};
                 for l = 1:numel(labels)
                     switch labels(l).parms.method
                         case "iclabel"
                             str = [str; labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:), [], 2))) + "%"]; %#ok<AGROW>
                         case "eta"
                             str = [str; labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/") + " z= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
-                        case "regress"
+                            if ~isempty(labels(l).extra)
+                                nSamps = size(labels(l).extra, 2);
+                                tMs    = linspace(-labels(l).parms.window, labels(l).parms.window, nSamps);
+                                etaEntries{end+1} = struct( ...  %#ok<AGROW>
+                                    'timesMs', tMs, ...
+                                    'eta',     labels(l).extra(c, :), ...
+                                    'label',   labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/"));
+                            end
+                        case "spearman"
                             str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
                     end
                 end
                 title(str);
+                figTiles{end+1} = struct('compIdx', c, 'etaEntries', {etaEntries}); %#ok<AGROW>
+            end
+            % Finish the last figure.
+            if ~isempty(figTiles) && ~isempty(currentFig)
+                ns.Ica.addEtaButton(currentFig, figTiles, figName);
             end
             sgtitle(expName);
+        end
+
+        function addEtaButton(fig, figTiles, figName)
+            % Add an "ETA" button in the top-right corner of fig if any tile has ETA data.
+            hasEta = any(cellfun(@(t) ~isempty(t.etaEntries), figTiles));
+            if ~hasEta, return; end
+            uicontrol(fig, ...
+                'Style',    'pushbutton', ...
+                'String',   'ETA', ...
+                'Units',    'normalized', ...
+                'Position', [0.88 0.955 0.10 0.04], ...
+                'Callback', @(~,~) ns.Ica.showEtaFigure(figTiles, figName));
+        end
+
+        function showEtaFigure(figTiles, figName)
+            % Open (or refresh) a figure showing ETAs for every tile.
+            % Tiles with no ETA are left blank to preserve positional correspondence.
+            etaFig = figByName(figName + " eta");
+            clf(etaFig);
+            tiledlayout(etaFig, 'flow');
+            for i = 1:numel(figTiles)
+                d = figTiles{i};
+                nexttile;
+                if isempty(d.etaEntries)
+                    axis off;
+                    title("#" + string(d.compIdx));
+                else
+                    hold on;
+                    for j = 1:numel(d.etaEntries)
+                        e = d.etaEntries{j};
+                        plot(e.timesMs, e.eta, 'DisplayName', e.label);
+                    end
+                    xline(0, 'k--', 'HandleVisibility', 'off');
+                    xlabel('Time (ms)');
+                    if numel(d.etaEntries) > 1, legend; end
+                    title("#" + string(d.compIdx));
+                end
+            end
+            sgtitle(figName + " - ETA");
         end
     end
  
