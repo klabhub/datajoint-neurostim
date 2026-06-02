@@ -24,7 +24,7 @@ classdef Ica < dj.Computed & dj.DJInstance
     methods
         function v = get.keySource(~)
             % Per-experiment ICA: ns.C paired with non-session IcaParms.
-            v = (ns.C * ns.CParm) * (ns.IcaParm & 'session=0');
+            v = (ns.C * proj(ns.CParm)) * (ns.IcaParm & 'session=0');
         end
     end
 
