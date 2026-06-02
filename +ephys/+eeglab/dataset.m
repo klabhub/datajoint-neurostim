@@ -30,7 +30,7 @@ mffFile= strrep(mffFile,'\','/'); % Avoid fprintf errors
 assert(exist(mffFile),"MFF file %s does not exist.",mffFile); %#ok<EXIST>
 
 
-switch pv.data
+switch upper(pv.data)
     case "RAW"
         % Call mff_import directly to read everything
         eegLabSave = 0 ; % Don't save in eeglab

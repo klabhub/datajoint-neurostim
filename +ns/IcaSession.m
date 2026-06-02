@@ -72,6 +72,7 @@ classdef IcaSession < dj.Computed & dj.DJInstance
                 pv.labels (1,:) string = ""  % Which ns.Label ltag to use for labeling components. Defaults to all
                 pv.find = string.empty  % Optional string to filter components by their q in ns.Label
                 pv.tilesPerFigure (1,1) double = 24
+                pv.etaDisplay (1,1) string {mustBeMember(pv.etaDisplay, ["button", "inline", "none"])} = "button"
             end
             tpl = fetch(tbl, '*');
             assert(~isempty(tpl), 'No rows in ns.IcaSession to plot.');
@@ -111,7 +112,7 @@ classdef IcaSession < dj.Computed & dj.DJInstance
                 end
 
                 expName = sprintf('%s @ %s | %s/%s', this.subject, this.session_date, this.ctag, this.itag);
-                ns.Ica.plotComponents(this.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure);
+                ns.Ica.plotComponents(this.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure, pv.etaDisplay);
             end
         end
 

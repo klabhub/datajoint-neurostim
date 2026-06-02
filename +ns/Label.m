@@ -236,11 +236,13 @@ classdef Label <  dj.Computed & dj.DJInstance
                         q = []; extra = [];
                     else
                         baseWin = timesMs >= -parms.window & timesMs < -parms.window + parms.baseline;
-                        mu_base = mean(allEpochs(:, baseWin,  :), [2 3]);
-                        sd_base = std( allEpochs(:, baseWin,  :), 0, [2 3]);
-                        mu_resp = mean(allEpochs(:, ~baseWin, :), [2 3]);
-                        q       = (mu_resp - mu_base) ./ sd_base;
-                        extra   = mean(allEpochs, 3, 'omitmissing') - mu_base;
+                        
+                        mu_base = mean(allEpochs(:, baseWin,  :), 2);
+                        sd_base = std(allEpochs(:,baseWin,:),0,2);
+                        allEpochs = (allEpochs - mu_base)./sd_base;
+                        etaZ     =  mean(allEpochs, 3, 'omitmissing');
+                        q       = max(etaZ,[],2);
+                        extra   =etaZ; 
                     end
 
                 otherwise

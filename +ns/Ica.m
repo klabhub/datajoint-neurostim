@@ -39,6 +39,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                 pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components in the plot
                 pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
                 pv.tilesPerFigure (1,1) double = 24
+                pv.etaDisplay (1,1) string {mustBeMember(pv.etaDisplay, ["button", "inline", "none"])} = "button"
             end
             tpl = fetch(tbl, '*');
             assert(~isempty(tpl), 'No rows in ns.Ica to plot.');
@@ -58,7 +59,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                 chanlocs = [fetch(ns.CChannel & this, 'channelinfo').channelinfo];
                 w        = ns.Ica.getWeights(this);
                 expName  = sprintf('%s @ %s %s | %s/%s', this.subject, this.session_date, this.starttime, this.ctag, this.itag);
-                ns.Ica.plotComponents(w.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure);
+                ns.Ica.plotComponents(w.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure, pv.etaDisplay);
             end
         end
     end
@@ -133,7 +134,7 @@ classdef Ica < dj.Computed & dj.DJInstance
             end
         end
 
-        function plotComponents(winverse, variance, chanlocs, labels, compsToPlot, expName, tilesPerFigure)
+        function plotComponents(winverse, variance, chanlocs, labels, compsToPlot, expName, tilesPerFigure, etaDisplay)
             % Render ICA component topoplots in tiled figures.
             % winverse      - [nChans x nComps] mixing matrix
             % variance      - [1 x nComps] variance explained per component
@@ -143,17 +144,18 @@ classdef Ica < dj.Computed & dj.DJInstance
             % compsToPlot   - component indices to plot
             % expName       - string used as figure/sgtitle name
             % tilesPerFigure - number of tiles per figure
+            % etaDisplay    - "button" for separate ETA figure, "inline" for per-tile inset, "none" to suppress ETA traces
             warning('off'); %'MATLAB:handle_graphics:Layout:NoPositionSetInTiledChartLayout'
             figCntr    = 0;
             cCntr      = 0;
             currentFig = [];
             figName    = "";
-            figTiles   = {};   % {compIdx, etaEntries} for every tile in the current figure
+            figTiles   = {};   % {compIdx, etaEntries} for every component in the current figure
 
             for c = compsToPlot(:)'
                 if mod(cCntr, tilesPerFigure) == 0
                     % Finish previous figure: add ETA button if any tile had ETA data.
-                    if ~isempty(figTiles) && ~isempty(currentFig)
+                    if etaDisplay == "button" && ~isempty(figTiles) && ~isempty(currentFig)
                         ns.Ica.addEtaButton(currentFig, figTiles, figName);
                     end
                     figCntr    = figCntr + 1;
@@ -187,13 +189,40 @@ classdef Ica < dj.Computed & dj.DJInstance
                     end
                 end
                 title(str);
+                if etaDisplay == "inline"
+                    ns.Ica.addEtaTile(c, etaEntries);
+                end
                 figTiles{end+1} = struct('compIdx', c, 'etaEntries', {etaEntries}); %#ok<AGROW>
             end
             % Finish the last figure.
-            if ~isempty(figTiles) && ~isempty(currentFig)
+            if etaDisplay == "button" && ~isempty(figTiles) && ~isempty(currentFig)
                 ns.Ica.addEtaButton(currentFig, figTiles, figName);
             end
             sgtitle(expName);
+        end
+
+        function addEtaTile(compIdx, etaEntries)
+            nexttile
+            if isempty(etaEntries)
+                axis off;
+                title("#" + string(compIdx) + " ETA");
+                return;
+            end
+
+            hold on;
+            for j = 1:numel(etaEntries)
+                e = etaEntries{j};
+                plot(e.timesMs, e.eta, 'LineWidth', 1, 'DisplayName', e.label);
+            end
+            xline(0, 'k:');
+            hold off;
+            grid on;
+            box off;
+            xlabel('Time (ms)');
+            title("#" + string(compIdx) + " ETA");
+            if numel(etaEntries) > 1
+                legend('Location', 'best');
+            end
         end
 
         function addEtaButton(fig, figTiles, figName)
