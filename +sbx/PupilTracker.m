@@ -288,6 +288,16 @@ classdef PupilTracker < handle
                 close(obj.Figure);
             end
         end
+
+        function app = launchApp(obj, mode)
+            % LAUNCHAPP - Open the App Designer-style interface for this tracker.
+            arguments
+                obj
+                mode (1,1) string {mustBeMember(mode, ["initialize", "track"])} = "initialize"
+            end
+            app = sbx.PupilTrackerApp(obj, mode);
+        end
+
         function initialize(obj,pv)
             % INITIALIZE  Interactively set tracking parameters for all queued videos.
             %
