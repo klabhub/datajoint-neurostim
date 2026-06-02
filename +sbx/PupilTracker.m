@@ -746,8 +746,12 @@ classdef PupilTracker < handle
                     clf(obj.Figure);
                     obj.Figure.Name = 'Pupil Tracker Viewer';
                 end
-                % Create preview axes leaving space at the bottom for the scrubber
-                axes(obj.Figure, 'Position', [0 0.11 1 0.89], 'Tag', 'previewAxes');
+                % Create preview axes leaving space at the bottom for the scrubber and top for the title
+                axPreview = axes(obj.Figure, 'Position', [0 0.11 1 0.84], 'Tag', 'previewAxes');
+                setappdata(obj.Figure, 'previewAxesHandle', axPreview);
+                setappdata(obj.Figure, 'previewMode', 'tracking');
+                setappdata(obj.Figure, 'previewLastRenderedFrame', NaN);
+                setappdata(obj.Figure, 'previewIgnoreSeekCallback', false);
                 % Position scrubber — use a Java JScrollBar so the thumb width is
                 % proportional to ~5% of the total range (easier to grab)
                 setappdata(obj.Figure, 'previewSeekFrame', 0);
@@ -792,11 +796,14 @@ classdef PupilTracker < handle
                     jSB = getappdata(obj.Figure, 'previewJScrollBar');
                     if ~isempty(jSB)
                         ext = max(1, round(0.05 * max(lastFrame - 1, 1)));
+                        setappdata(obj.Figure, 'previewIgnoreSeekCallback', true);
                         jSB.setValues(1, ext, 1, lastFrame - 1 + ext);
+                        setappdata(obj.Figure, 'previewIgnoreSeekCallback', false);
                     end
                     lbl = findobj(obj.Figure, 'Tag', 'previewFrameLabel');
                     if ~isempty(lbl), lbl(1).String = sprintf('1 / %d', lastFrame); end
                     setappdata(obj.Figure, 'previewSeekFrame', 0);
+                    setappdata(obj.Figure, 'previewLastRenderedFrame', NaN);
                 end
 
                 % Core Arrays (pre-allocated for worst case; trimmed after loop)
@@ -922,12 +929,12 @@ classdef PupilTracker < handle
 
                     %% Visualise current frame
                     if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
-                        ax_v = findobj(obj.Figure, 'Tag', 'previewAxes');
-                        if isempty(ax_v)
-                            ax_v = axes(obj.Figure, 'Position', [0 0.11 1 0.89], 'Tag', 'previewAxes');
-                        else
-                            ax_v = ax_v(1);
+                        ax_v = getappdata(obj.Figure, 'previewAxesHandle');
+                        if isempty(ax_v) || ~isgraphics(ax_v)
+                            ax_v = axes(obj.Figure, 'Position', [0 0.11 1 0.84], 'Tag', 'previewAxes');
+                            setappdata(obj.Figure, 'previewAxesHandle', ax_v);
                         end
+                        hold(ax_v, 'off');  % ensure imshow clears the axes on every frame
                         imshow(frame, 'Parent', ax_v, 'initialMagnification', 'fit');
                         hold(ax_v, 'on');
                         plot(ax_v, xy_eye_v(1,:) + thisParameters.EyeX, xy_eye_v(2,:) + thisParameters.EyeY, 'b--', 'LineWidth', 1);
@@ -945,6 +952,7 @@ classdef PupilTracker < handle
                         if ~isnan(BoundingBox(iFrame,1))
                             rectangle(ax_v, 'Position', BoundingBox(iFrame,:), 'EdgeColor', 'g', 'LineWidth', 2);
                         end
+                        hold(ax_v, 'off');
                         if isnan(X(iFrame))
                             title(ax_v, sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
                         else
@@ -952,14 +960,16 @@ classdef PupilTracker < handle
                                 frameNum, lastFrame, PupilArea(iFrame), FitQuality(iFrame), EllipseIR(iFrame), BlobIR(iFrame)), ...
                                 'Interpreter', 'none');
                         end
-                        hold(ax_v, 'off');
                         % Update scrubber position and label
                         jSB = getappdata(obj.Figure, 'previewJScrollBar');
                         if ~isempty(jSB)
+                            setappdata(obj.Figure, 'previewIgnoreSeekCallback', true);
                             jSB.setValue(max(1, min(frameNum, jSB.getMaximum() - jSB.getVisibleAmount())));
+                            setappdata(obj.Figure, 'previewIgnoreSeekCallback', false);
                         end
                         lbl = findobj(obj.Figure, 'Tag', 'previewFrameLabel');
                         if ~isempty(lbl), lbl(1).String = sprintf('%d / %d', frameNum, lastFrame); end
+                        setappdata(obj.Figure, 'previewLastRenderedFrame', frameNum);
                         drawnow limitrate;
                     end
 
@@ -984,22 +994,35 @@ classdef PupilTracker < handle
 
             if pv.save, obj.save(); end
             if pv.visualize && ~isempty(obj.Figure) && isgraphics(obj.Figure)
-                % Tracking finished — disable scrubber, show Close button in the preview window
-                jSB = getappdata(obj.Figure, 'previewJScrollBar');
-                if ~isempty(jSB), jSB.setEnabled(false); end
-                lbl = findobj(obj.Figure, 'Tag', 'previewFrameLabel');
-                if ~isempty(lbl), lbl(1).Visible = 'off'; end
+                % Tracking finished — start a MATLAB timer to service the scrubber.
+                % Java-EDT callbacks (AdjustmentValueChanged) cannot reliably execute
+                % MATLAB graphics while the figure is blocked in uiwait.  Timers run on
+                % the MATLAB thread and work correctly during uiwait.
+                if exist('videoFile','var') && exist('resultTable','var')
+                    setappdata(obj.Figure, 'previewVideoFile',   videoFile);
+                    setappdata(obj.Figure, 'previewResultTable', resultTable);
+                    setappdata(obj.Figure, 'previewParams',      thisParameters);
+                    setappdata(obj.Figure, 'previewLastFrame',   lastFrame);
+                    setappdata(obj.Figure, 'previewEyeOutline',  xy_eye_v);
+                    setappdata(obj.Figure, 'previewMode',        'review');
+                    setappdata(obj.Figure, 'previewSeekFrame',   0);
+                end
+                reviewTimer = timer('ExecutionMode', 'fixedRate', 'Period', 0.15, ...
+                    'BusyMode', 'drop', ...
+                    'TimerFcn', @(~,~) sbx.PupilTracker.renderStoredFrame(obj.Figure));
+                start(reviewTimer);
                 uicontrol(obj.Figure, 'Style', 'pushbutton', 'String', 'Close', ...
                     'Units', 'normalized', 'Position', [0.90 0.01 0.09 0.10], ...
                     'FontSize', 10, 'FontWeight', 'bold', ...
-                    'Callback', @(~,~) close(obj.Figure));
-                ax_v = findobj(obj.Figure, 'Tag', 'previewAxes');
-                if ~isempty(ax_v)
-                    title(ax_v(1), 'Tracking complete — close window to continue', ...
+                    'Callback', @(~,~) sbx.PupilTracker.stopAndResume(obj.Figure, reviewTimer));
+                ax_v = getappdata(obj.Figure, 'previewAxesHandle');
+                if ~isempty(ax_v) && isgraphics(ax_v)
+                    title(ax_v, 'Tracking complete — scrub to review frames', ...
                         'Color', [0.2 0.6 0.2], 'FontSize', 11);
                 end
                 drawnow;
                 uiwait(obj.Figure);
+                if isvalid(reviewTimer), stop(reviewTimer); delete(reviewTimer); end
                 if isgraphics(obj.Figure), close(obj.Figure); end
             end
             disp('Batch processing complete!');
@@ -1224,9 +1247,103 @@ classdef PupilTracker < handle
         function seekToFrame(fig, jSB)
             % SEEKTOFRAME - Scrubber callback: store the requested frame so the
             % tracking loop picks it up at the next iteration.
+            if ~isgraphics(fig), return; end
+            if isappdata(fig, 'previewIgnoreSeekCallback') && getappdata(fig, 'previewIgnoreSeekCallback')
+                return;
+            end
             val = max(jSB.getMinimum(), ...
                 min(jSB.getValue(), jSB.getMaximum() - jSB.getVisibleAmount()));
             setappdata(fig, 'previewSeekFrame', val);
+        end
+
+        function renderStoredFrame(fig)
+            % RENDERSTOREDFRAME - Timer callback used after tracking is complete.
+            % Reads the current scrubber position and renders that frame with
+            % stored results once the file has finished processing.
+            if ~isgraphics(fig), return; end
+            if ~isappdata(fig, 'previewMode') || ~strcmp(getappdata(fig, 'previewMode'), 'review')
+                return;
+            end
+
+            jSB = getappdata(fig, 'previewJScrollBar');
+            if isempty(jSB), return; end
+            frameNum = max(jSB.getMinimum(), ...
+                min(jSB.getValue(), jSB.getMaximum() - jSB.getVisibleAmount()));
+            lastRendered = getappdata(fig, 'previewLastRenderedFrame');
+            if ~isempty(lastRendered) && isequal(lastRendered, frameNum)
+                return;
+            end
+
+            videoFile      = getappdata(fig, 'previewVideoFile');
+            resultTable    = getappdata(fig, 'previewResultTable');
+            thisParameters = getappdata(fig, 'previewParams');
+            xy_eye_v       = getappdata(fig, 'previewEyeOutline');
+            lastFrame      = getappdata(fig, 'previewLastFrame');
+            if isempty(videoFile) || isempty(resultTable), return; end
+
+            try
+                vr    = VideoReader(char(videoFile));
+                frame = read(vr, frameNum);
+            catch
+                return;
+            end
+            if size(frame,3) == 3, frame = rgb2gray(frame); end
+
+            % Find the result row whose Frame value is closest to frameNum
+            [~, rowIdx] = min(abs(resultTable.Frame - frameNum));
+            X_val     = resultTable.X(rowIdx);
+            Y_val     = resultTable.Y(rowIdx);
+            areaVal   = resultTable.Area(rowIdx);
+            majAx     = resultTable.MajorAxis(rowIdx);
+            minAx     = resultTable.MinorAxis(rowIdx);
+            orientVal = resultTable.Orientation(rowIdx);
+            bboxVal   = resultTable.BBox(rowIdx,:);
+            fitQ      = resultTable.FitQuality(rowIdx);
+            eirVal    = resultTable.EllipseIR(rowIdx);
+            birVal    = resultTable.BlobIR(rowIdx);
+
+            ax_v = getappdata(fig, 'previewAxesHandle');
+            if isempty(ax_v) || ~isgraphics(ax_v)
+                ax_v = axes(fig, 'Position', [0 0.11 1 0.84], 'Tag', 'previewAxes');
+                setappdata(fig, 'previewAxesHandle', ax_v);
+            end
+
+            hold(ax_v, 'off');  % ensure imshow clears the axes
+            imshow(frame, 'Parent', ax_v, 'InitialMagnification', 'fit');
+            hold(ax_v, 'on');
+            plot(ax_v, xy_eye_v(1,:) + thisParameters.EyeX, xy_eye_v(2,:) + thisParameters.EyeY, ...
+                'b--', 'LineWidth', 1);
+            if ~isnan(X_val)
+                plot(ax_v, X_val, Y_val, 'g+', 'MarkerSize', 8, 'LineWidth', 2);
+                if ~isnan(majAx)
+                    phi_p = linspace(0, 2*pi, 50);
+                    ap = majAx/2;  bp = minAx/2;
+                    tp = pi * orientVal / 180;
+                    Rp = [cos(tp) sin(tp); -sin(tp) cos(tp)];
+                    xyp = Rp * [ap*cos(phi_p); bp*sin(phi_p)];
+                    plot(ax_v, xyp(1,:)+X_val, xyp(2,:)+Y_val, 'r-', 'LineWidth', 2);
+                end
+            end
+            if ~isnan(bboxVal(1))
+                rectangle(ax_v, 'Position', bboxVal, 'EdgeColor', 'g', 'LineWidth', 2);
+            end
+            if isnan(X_val)
+                title(ax_v, sprintf('Frame %d | BLINK', frameNum), 'Color', 'r');
+            else
+                title(ax_v, sprintf('Frame %d/%d | Area: %d | Fit: %.2f | EIR: %.2f | BIR: %.2f', ...
+                    frameNum, lastFrame, areaVal, fitQ, eirVal, birVal), 'Interpreter', 'none');
+            end
+            lbl = findobj(fig, 'Tag', 'previewFrameLabel');
+            if ~isempty(lbl), lbl(1).String = sprintf('%d / %d', frameNum, lastFrame); end
+            setappdata(fig, 'previewLastRenderedFrame', frameNum);
+            drawnow;
+        end
+
+        function stopAndResume(fig, t)
+            % STOPANDRESUME - Close callback for the post-tracking review window.
+            % Stops the review timer and resumes uiwait so track() can return.
+            if isvalid(t), stop(t); delete(t); end
+            if isgraphics(fig), uiresume(fig); end
         end
 
         function img = getFramePool(v, n)
