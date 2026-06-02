@@ -140,9 +140,9 @@ classdef Label <  dj.Computed & dj.DJInstance
                         if ~isnumeric(q)
                             continue;
                         end
-                        comp = find(T.q{tpl} > q);
+                        comp = find(abs(T.q{tpl}) > q);
                         if isempty(comp)
-                            fprintf('No components with z>=%.2f .\n', q);
+                            fprintf('No components with |q|>=%.2f .\n', q);
                         end
                     otherwise
                         error('No find implemented for labeling method: %s', method);
@@ -241,7 +241,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                         sd_base = std(allEpochs(:,baseWin,:),0,2);
                         allEpochs = (allEpochs - mu_base)./sd_base;
                         etaZ     =  mean(allEpochs, 3, 'omitmissing');
-                        q       = max(etaZ,[],2);
+                        q       = max(abs(etaZ),[],2,'omitmissing');
                         extra   =etaZ; 
                     end
 

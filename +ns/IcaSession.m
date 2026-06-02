@@ -102,7 +102,8 @@ classdef IcaSession < dj.Computed & dj.DJInstance
                     if ~isempty(labels)
                         foundComps = find(ns.LabelSession & this, pv.find);
                         if isempty(foundComps)
-                            warning('No components found matching find instruction. Plotting all components instead.');
+                            warning('No components found matching find instruction.');
+                            continue;
                         else
                             compsToPlot = [foundComps.components{:}];
                         end

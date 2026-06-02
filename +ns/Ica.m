@@ -36,8 +36,8 @@ classdef Ica < dj.Computed & dj.DJInstance
             arguments
                 tbl (1,1) ns.Ica
                 pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
-                pv.labels (1,:) string = "iclabel"  % Which ns.Label ltag to use for labeling components in the plot
-                pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
+                 pv.labels (1,:) string = ""  % Which ns.Label ltag to use for labeling components. Defaults to all
+                   pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
                 pv.tilesPerFigure (1,1) double = 24
                 pv.etaDisplay (1,1) string {mustBeMember(pv.etaDisplay, ["button", "inline", "none"])} = "button"
             end
@@ -50,14 +50,20 @@ classdef Ica < dj.Computed & dj.DJInstance
                 if ~isempty(pv.find)
                     foundComps = find(ns.Label & this, pv.find);
                     if isempty(foundComps)
-                        warning('No components found that match the find instruction. Plotting all components instead.');
+                        warning('No components found that match the find instruction.');
+                        continue;
                     else
                         compsToPlot = [foundComps.components{:}];
                     end
                 end
-                labels   = fetch(ns.Label*ns.LabelParm & this & struct('ltag', cellstr(pv.labels)'), 'q', 'extra', 'parms');
+
+                labelRelvar = ns.Label * ns.LabelParm & this;
+                if pv.labels~=""
+                    labelRelvar = labelRelvar & struct('ltag', cellstr(pv.labels)');
+                end
+                labels = fetch(labelRelvar, 'q', 'extra', 'parms');                
                 chanlocs = [fetch(ns.CChannel & this, 'channelinfo').channelinfo];
-                w        = ns.Ica.getWeights(this);
+                w        = ns.Ica.getWeights(ns.stripToPrimary(ns.Ica,this));
                 expName  = sprintf('%s @ %s %s | %s/%s', this.subject, this.session_date, this.starttime, this.ctag, this.itag);
                 ns.Ica.plotComponents(w.winverse, this.variance, chanlocs, labels, compsToPlot, expName, pv.tilesPerFigure, pv.etaDisplay);
             end
