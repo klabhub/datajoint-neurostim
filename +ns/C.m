@@ -1,4 +1,4 @@
-%{
+    %{
 # Preprocessed continuous signals per channel 
 -> ns.File
 -> ns.CParm
@@ -661,6 +661,7 @@ classdef C < dj.Computed & dj.DJInstance
                 pv.align (1,:) double = []
                 pv.removeArtifacts (1,1) = true
                 pv.robust (1,1) logical = false
+                pv.ica (1,:) struct = struct.empty
             end
 
             doBaselineCorrection = ~any(isnan(pv.baseline));
@@ -774,7 +775,11 @@ classdef C < dj.Computed & dj.DJInstance
                 return;
             end
 
-
+            if ~isempty(pv.ica)
+                icaPv = namedargs2cell(pv.ica);
+                signal = ns.Ica.clean(signal,exptTpl,icaPv{:});
+            end
+ 
             %% Artifact removal
             if pv.removeArtifacts
                 % Correction that applies to all channels

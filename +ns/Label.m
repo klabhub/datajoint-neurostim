@@ -119,36 +119,41 @@ classdef Label <  dj.Computed & dj.DJInstance
             % Core find logic shared by ns.Label.find and ns.LabelSession.find.
             % T must be a table with columns 'parms' and 'q' (from a *ns.LabelParm join).
             T = addvars(T, cell(height(T), 1), 'NewVariableNames', 'components');
+            out = false(height(T),1);
             for tpl = 1:height(T)
                 if isstruct(T.parms)
                     method = T.parms(tpl).method;
                 else
                     method = T.parms{tpl}.method;
                 end
+                id = sprintf("%s@%sT%s",T.subject(tpl),T.session_date(tpl),T.starttime(tpl));
                 switch upper(method)
                     case 'ICLABEL'
-                        if ~iscellstr(q) && ~isstring(q) && ~ischar(q) 
+                        if ~iscellstr(q) && ~isstring(q) && ~ischar(q)
+                            out(tpl) =true;
                             continue;
                         end
                         comp = find(contains(T.q{tpl}, q, 'IgnoreCase', true));
                         if isempty(comp)
-                            fprintf('No components matching "%s".\n', q);
+                            fprintf('No components matching "%s" in %s.\n', q,id);
                         else
-                            fprintf('Components matching "%s": %s\n', q, strjoin(string(comp), ', '));
+                            fprintf('Components matching "%s" in %s: %s\n', q, id,strjoin(string(comp), ', '));
                         end
                     case {'ETA','SPEARMAN'}
                         if ~isnumeric(q)
+                            out(tpl) =true;
                             continue;
                         end
                         comp = find(abs(T.q{tpl}) > q);
                         if isempty(comp)
-                            fprintf('No components with |q|>=%.2f .\n', q);
+                            fprintf('No components with |q|>=%.2f in %s.\n', q,id);
                         end
                     otherwise
                         error('No find implemented for labeling method: %s', method);
                 end
                 T{tpl, 'components'} = {comp};
             end
+            T(out,:) = [];
         end
     end
 
@@ -230,19 +235,48 @@ classdef Label <  dj.Computed & dj.DJInstance
                         epochs = reshape(EEG.icaact(:, idx), [nComps nSamps numel(latencies)]);
                         allEpochs = cat(3, allEpochs, epochs);
                     end
-
-                    if size(allEpochs, 3) == 0
-                        warning('ns:Label:noEvents', 'No %s events found.', strjoin(parms.events));
+                    nEvents = size(allEpochs,3);
+                    if isfield(parms,'minNrEvents')
+                        minNrEvents = parms.minNrEvents;
+                    else
+                        minNrEvents = 10;
+                    end
+                    if nEvents < minNrEvents
+                        warning('ns:Label:nrEvents', 'Only %d %s events found. Skipping.', nEvents,strjoin(parms.events));
                         q = []; extra = [];
                     else
                         baseWin = timesMs >= -parms.window & timesMs < -parms.window + parms.baseline;
-                        
+                        % Determine whether there are timepoints that
+                        % differ significantly from the baseline by doing
+                        % consecutive t-test, followed by FDR correction for the number of components
+                        % and the number of timepoints. 
+                        % The q value is -log10(pCorrected). 1 means pCorrected = 0.05.
+                        % The extra is the event triggered average.
+
+                        % Baseline correction
                         mu_base = mean(allEpochs(:, baseWin,  :), 2);
-                        sd_base = std(allEpochs(:,baseWin,:),0,2);
-                        allEpochs = (allEpochs - mu_base)./sd_base;
-                        etaZ     =  mean(allEpochs, 3, 'omitmissing');
-                        q       = max(abs(etaZ),[],2,'omitmissing');
-                        extra   =etaZ; 
+                        allEpochs = (allEpochs - mu_base);
+                        extra=  mean(allEpochs, 3, 'omitmissing');
+
+                        % Test each baseline corrected component at each sample against 0 
+                        allEpochs = allEpochs(:,~baseWin,:);
+                        nSamps =sum(~baseWin);
+                        p = nan(nComps,nSamps);
+                        t = nan(nComps,nSamps);
+                        for c = 1:size(allEpochs,1)                            
+                                [~, p(c,:), ~, stats] = ttest(squeeze(allEpochs(c,:,:))', 0);
+                                t(c, :) = [stats.tstat];                            
+                        end
+                        % FDR correction at alpha=0.05
+                        alpha =1/(nComps+1);
+                        [pFdr] = fdr(p(:), alpha);                        
+                        [pMin,timePoint] = min(p,[],2);
+                        samples = reshape(allEpochs,[nComps*nSamps nEvents]);
+                        ix = sub2ind([nComps nSamps],(1:nComps)',timePoint);
+                        samples = reshape(samples(ix,:),[nComps nEvents]);
+                        q = abs(mean(samples,2,"omitmissing"))./std(samples,0,2,"omitmissing");
+                        q(pMin>pFdr) =0;
+                        
                     end
 
                 otherwise

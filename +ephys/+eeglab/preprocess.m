@@ -53,9 +53,7 @@ for f= 1:numel(fn)
             EEG = pop_subcomp( EEG, componentsToRemove, plotag, keepcomp);
             % Add something to etc. for later retrieval
             EEG.etc.neurostim.icaeog = struct('r',r(componentsToRemove),'components',componentsToRemove);
-        case 'icaeyetracker'
-           
-       
+        
         case 'resample'
             if iscell(parms.eeglab.resample)
                 % Passed verbatim to pop_resample

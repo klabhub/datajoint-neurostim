@@ -28,7 +28,7 @@ classdef Ica < dj.Computed & dj.DJInstance
         end
     end
 
-    
+
 
     methods (Access=public)
 
@@ -36,8 +36,8 @@ classdef Ica < dj.Computed & dj.DJInstance
             arguments
                 tbl (1,1) ns.Ica
                 pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
-                 pv.labels (1,:) string = ""  % Which ns.Label ltag to use for labeling components. Defaults to all
-                   pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
+                pv.labels (1,:) string = ""  % Which ns.Label ltag to use for labeling components. Defaults to all
+                pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
                 pv.tilesPerFigure (1,1) double = 24
                 pv.etaDisplay (1,1) string {mustBeMember(pv.etaDisplay, ["button", "inline", "none"])} = "button"
             end
@@ -46,22 +46,21 @@ classdef Ica < dj.Computed & dj.DJInstance
 
             for i = 1:numel(tpl)
                 this = tpl(i);
-                compsToPlot = pv.comp;
-                if ~isempty(pv.find)
-                    foundComps = find(ns.Label & this, pv.find);
-                    if isempty(foundComps)
-                        warning('No components found that match the find instruction.');
-                        continue;
-                    else
-                        compsToPlot = [foundComps.components{:}];
-                    end
-                end
-
-                labelRelvar = ns.Label * ns.LabelParm & this;
+                labelRelvar = ns.Label  & this;
                 if pv.labels~=""
                     labelRelvar = labelRelvar & struct('ltag', cellstr(pv.labels)');
                 end
-                labels = fetch(labelRelvar, 'q', 'extra', 'parms');                
+                compsToPlot = pv.comp;
+                if ~isempty(pv.find)
+                    foundComps = find(labelRelvar, pv.find);
+                    if isempty(foundComps)
+                        continue;
+                    else
+                        compsToPlot = cat(1,foundComps.components{:});
+                    end
+                end
+
+                labels = fetch(labelRelvar* ns.LabelParm, 'q', 'extra', 'parms');
                 chanlocs = [fetch(ns.CChannel & this, 'channelinfo').channelinfo];
                 w        = ns.Ica.getWeights(ns.stripToPrimary(ns.Ica,this));
                 expName  = sprintf('%s @ %s %s | %s/%s', this.subject, this.session_date, this.starttime, this.ctag, this.itag);
@@ -78,8 +77,8 @@ classdef Ica < dj.Computed & dj.DJInstance
                 % Weights are stored in ns.IcaSession — do not duplicate them here.
                 % Only store lightweight per-experiment metadata.
                 sessionKey = struct('subject', key.subject, ...
-                                   'session_date', key.session_date, ...
-                                   'itag', key.itag);
+                    'session_date', key.session_date, ...
+                    'itag', key.itag);
                 src = fetch1(ns.IcaSession & sessionKey, ...
                     'nrcomponents', 'chanlabels', 'variance');
                 % Remap session channel labels to per-experiment indices
@@ -98,7 +97,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                 EEG = ephys.eeglab.dataset(key, data=key.ctag, itag="");
                 if isfield(icaParms, 'filt')
                     EEG = pop_eegfiltnew(EEG, 'hicutoff', icaParms.filt.hicutoff, ...
-                                              'locutoff',  icaParms.filt.locutoff);
+                        'locutoff',  icaParms.filt.locutoff);
                     icaParms = rmfield(icaParms, 'filt');
                 end
                 parms.eeglab.ica = icaParms;
@@ -128,8 +127,8 @@ classdef Ica < dj.Computed & dj.DJInstance
             isSession = fetch1(ns.IcaParm & key, 'session');
             if isSession
                 sessionKey = struct('subject', key.subject, ...
-                                   'session_date', key.session_date, ...
-                                   'itag', key.itag);
+                    'session_date', key.session_date, ...
+                    'itag', key.itag);
                 src = fetch(ns.IcaSession & sessionKey, ...
                     'winverse', 'sphere', 'weights', 'chanlabels');
                 % chanlabels are channel label strings; caller must remap to
@@ -173,7 +172,10 @@ classdef Ica < dj.Computed & dj.DJInstance
                 end
                 cCntr = cCntr + 1;
                 nexttile
-                topoplot(winverse(:, c), chanlocs, 'verbose', 'off', 'electrodes', 'off', 'numcontour', 8);
+                % Use evalc to call topoplot to avoid the warnings that
+                % cannot be turned off (due to nexttile and scaling in
+                % topoplot).
+                [~, ~] = evalc("topoplot(winverse(:, c), chanlocs, 'verbose', 'off', 'electrodes', 'off', 'numcontour', 8)");
                 str = "#" + string(c) + " Var:" + string(round(variance(c), 1)) + "%";
                 etaEntries = {};
                 for l = 1:numel(labels)
@@ -181,17 +183,22 @@ classdef Ica < dj.Computed & dj.DJInstance
                         case "iclabel"
                             str = [str; labels(l).q{c} + ":" + string(round(100*max(labels(l).extra(c,:), [], 2))) + "%"]; %#ok<AGROW>
                         case "eta"
-                            str = [str; labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/") + " z= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
-                            if ~isempty(labels(l).extra)
-                                nSamps = size(labels(l).extra, 2);
-                                tMs    = linspace(-labels(l).parms.window, labels(l).parms.window, nSamps);
-                                etaEntries{end+1} = struct( ...  %#ok<AGROW>
-                                    'timesMs', tMs, ...
-                                    'eta',     labels(l).extra(c, :), ...
-                                    'label',   labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/"));
+                            if ~isempty(labels(l).q)
+                                str = [str; labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/") + " D= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+
+                                if ~isempty(labels(l).extra)
+                                    nSamps = size(labels(l).extra, 2);
+                                    tMs    = linspace(-labels(l).parms.window, labels(l).parms.window, nSamps);
+                                    etaEntries{end+1} = struct( ...  %#ok<AGROW>
+                                        'timesMs', tMs, ...
+                                        'eta',     labels(l).extra(c, :), ...
+                                        'label',   labels(l).parms.plugin + ":" + strjoin(string(labels(l).parms.events), "/"));
+                                end
                             end
                         case "spearman"
-                            str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                            if ~isempty(labels(l).q)
+                                str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                            end
                     end
                 end
                 title(str);
@@ -269,6 +276,51 @@ classdef Ica < dj.Computed & dj.DJInstance
             end
             sgtitle(figName + " - ETA");
         end
+
+        function signal = clean(signal,expt,pv)
+            arguments
+                signal (:,:) double
+                expt (1,1) struct
+                pv.itag (1,1) string
+                pv.ltag (1,1) string
+                pv.label (1,:) string = ""
+                pv.not (1,1) logical  =false
+                pv.threshold (1,1) double = 0.85
+            end
+
+            % ICA based preprocessing
+            icaRelVar = ns.Ica & (ns.Experiment &  expt) & struct('itag',pv.itag);
+            labelRelVar  = ns.Label & icaRelVar & struct('ltag',pv.ltag);
+            if ~exists(icaRelVar)
+                % Try a session level ICA
+                icaRelVar = ns.IcaSession & (ns.Session & (ns.Experiment &  expt)) & struct('itag',pv.itag);
+                labelRelVar  = ns.LabelSession & icaRelvar;
+            end
+            assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,expt.subject,expt.session_date,expt.starttime);
+            W = ns.Ica.getWeights(fetch(icaRelVar));
+            labels = fetch(labelRelVar*ns.LabelParm,'extra','parms');
+            switch upper(labels.parms.method)
+                case "ICLABEL"
+                    cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
+                    colsToInspect = ismember(upper(cols),upper(pv.label));
+                    probability=  sum(labels.extra(:,colsToInspect),2);
+                    if pv.not
+                        compsToRemove = probability <=  pv.threshold;
+                    else
+                        compsToRemove = probability >  pv.threshold;
+                    end
+                otherwise
+                    error('ICA clean method %s not implemented yet',labels.parms.method)
+            end
+            % Reconstruct the signal from these components.
+            Xica = signal(:, W.channels);
+            A = W.weights * W.sphere * Xica';
+            Xclean = Xica' - W.winverse(:, compsToRemove) * A(compsToRemove, :);
+            signal(:, W.channels) = Xclean';
+            varExplained = fetch1(icaRelVar,'variance');
+            fprintf('Removing %d components (%.0f%% variance) based on ICA %s\n',sum(compsToRemove),sum(varExplained(compsToRemove)),strjoin(pv.label,'/'));
+
+        end
     end
- 
+
 end

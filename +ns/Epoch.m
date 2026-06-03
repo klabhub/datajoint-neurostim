@@ -163,7 +163,13 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % occurred and the corresponding align times. These are not
             % stored ascending, but align resorts (and can remove trials
             % too if there are artifacts for instance)
-            [T,~,channelsWithData] = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+            if isfield(parmTpl.artparms,'ica')
+                icaParms = parmTpl.artparms.ica;
+                parmTpl.artparms = rmfield(parmTpl.artparms,'ica');
+            else
+                icaParms = struct.empty;
+            end
+            [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
             
             parmTpl.channels =channelsWithData(:)';
             % Extract the actual trials (in order of signal cols) that have
