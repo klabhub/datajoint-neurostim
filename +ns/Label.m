@@ -216,10 +216,11 @@ classdef Label <  dj.Computed & dj.DJInstance
                 case 'ETA'
                     parms.events = string(parms.events);
                     EEG0     = EEGs{1};
-                    preSamp  = round(parms.window * EEG0.srate / 1000);
-                    postSamp = preSamp;
-                    nSamps   = preSamp + postSamp + 1;
-                    timesMs  = (-preSamp:postSamp) / EEG0.srate * 1000;
+                    windowMs = double(parms.window(:)');
+                    baseMs   = double(parms.baseline(:)');
+                    sampleOffsets = round(windowMs(1) * EEG0.srate / 1000):round(windowMs(2) * EEG0.srate / 1000);
+                    nSamps   = numel(sampleOffsets);
+                    timesMs  = sampleOffsets / EEG0.srate * 1000;
                     nComps   = size(EEG0.icaact, 1);
                     allEpochs = zeros(nComps, nSamps, 0);
 
@@ -228,10 +229,10 @@ classdef Label <  dj.Computed & dj.DJInstance
                         allEventTypes = erase(lower(string({EEG.event.type})), "'");
                         keep      = ismember(allEventTypes, parms.events);
                         latencies = round([EEG.event(keep).latency]);
-                        ok        = latencies > preSamp & latencies <= (EEG.pnts - postSamp);
+                        ok        = (latencies + sampleOffsets(1)) >= 1 & (latencies + sampleOffsets(end)) <= EEG.pnts;
                         latencies = latencies(ok);
                         if isempty(latencies), continue; end
-                        idx    = ((-preSamp:postSamp) + latencies(:))';
+                        idx    = (sampleOffsets + latencies(:))';
                         epochs = reshape(EEG.icaact(:, idx), [nComps nSamps numel(latencies)]);
                         allEpochs = cat(3, allEpochs, epochs);
                     end
@@ -245,7 +246,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                         warning('ns:Label:nrEvents', 'Only %d %s events found. Skipping.', nEvents,strjoin(parms.events));
                         q = []; extra = [];
                     else
-                        baseWin = timesMs >= -parms.window & timesMs < -parms.window + parms.baseline;
+                        baseWin = timesMs >= baseMs(1) & timesMs <= baseMs(2);
                         % Determine whether there are timepoints that
                         % differ significantly from the baseline by doing
                         % consecutive t-test, followed by FDR correction for the number of components

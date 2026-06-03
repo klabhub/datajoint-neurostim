@@ -188,7 +188,7 @@ classdef Ica < dj.Computed & dj.DJInstance
 
                                 if ~isempty(labels(l).extra)
                                     nSamps = size(labels(l).extra, 2);
-                                    tMs    = linspace(-labels(l).parms.window, labels(l).parms.window, nSamps);
+                                    tMs    = linspace(labels(l).parms.window(1), labels(l).parms.window(2), nSamps);
                                     etaEntries{end+1} = struct( ...  %#ok<AGROW>
                                         'timesMs', tMs, ...
                                         'eta',     labels(l).extra(c, :), ...
@@ -294,7 +294,7 @@ classdef Ica < dj.Computed & dj.DJInstance
             if ~exists(icaRelVar)
                 % Try a session level ICA
                 icaRelVar = ns.IcaSession & (ns.Session & (ns.Experiment &  expt)) & struct('itag',pv.itag);
-                labelRelVar  = ns.LabelSession & icaRelvar;
+                labelRelVar  = ns.LabelSession & icaRelVar;
             end
             assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,expt.subject,expt.session_date,expt.starttime);
             W = ns.Ica.getWeights(fetch(icaRelVar));
