@@ -37,7 +37,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                 tbl (1,1) ns.Ica
                 pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
                 pv.labels (1,:) string = ""  % Which ns.Label ltag to use for labeling components. Defaults to all
-                pv.find  = string.empty % Optional string to filter components; e.g. find="blink"
+                pv.find  = struct.empty   % Optional struct to filter components; passed to ns.Label(Session).find()
                 pv.tilesPerFigure (1,1) double = 24
                 pv.etaDisplay (1,1) string {mustBeMember(pv.etaDisplay, ["button", "inline", "none"])} = "button"
             end
@@ -52,7 +52,8 @@ classdef Ica < dj.Computed & dj.DJInstance
                 end
                 compsToPlot = pv.comp;
                 if ~isempty(pv.find)
-                    foundComps = find(labelRelvar, pv.find);
+                    pvFind = namedargs2cell(pv.find);
+                    foundComps = find(labelRelvar, pvFind{:});
                     if isempty(foundComps)
                         continue;
                     else
@@ -199,6 +200,10 @@ classdef Ica < dj.Computed & dj.DJInstance
                             if ~isempty(labels(l).q)
                                 str = [str; labels(l).parms.ctag + ":" + string(labels(l).parms.channel) + " r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
                             end
+                        case "eog"
+                            if ~isempty(labels(l).q)
+                                str = [str; "EOG : r= " + string(round(labels(l).q(c), 2))]; %#ok<AGROW>
+                            end
                     end
                 end
                 title(str);
@@ -298,20 +303,9 @@ classdef Ica < dj.Computed & dj.DJInstance
             end
             assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,expt.subject,expt.session_date,expt.starttime);
             W = ns.Ica.getWeights(fetch(icaRelVar));
-            labels = fetch(labelRelVar*ns.LabelParm,'extra','parms');
-            switch upper(labels.parms.method)
-                case "ICLABEL"
-                    cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
-                    colsToInspect = ismember(upper(cols),upper(pv.label));
-                    probability=  sum(labels.extra(:,colsToInspect),2);
-                    if pv.not
-                        compsToRemove = probability <=  pv.threshold;
-                    else
-                        compsToRemove = probability >  pv.threshold;
-                    end
-                otherwise
-                    error('ICA clean method %s not implemented yet',labels.parms.method)
-            end
+            assert(exists(labelRelVar),"No Label found for %s in %s",pv.ltag,pv.itag);
+            T = find(labelRelVar,label = pv.label,threshold = pv.threshold);
+            compsToRemove = [T.components{:}];
             % Reconstruct the signal from these components.
             Xica = signal(:, W.channels);
             A = W.weights * W.sphere * Xica';

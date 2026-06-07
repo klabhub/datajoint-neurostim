@@ -102,22 +102,33 @@ classdef Label <  dj.Computed & dj.DJInstance
         end
     end
 
-
     methods (Access=public)
-        function T = find(tbl, q)
+        function T = find(tbl, pv)
             % Find components matching a query string (for iclabel) or numeric threshold (for eta method).
             arguments
                 tbl (1,1) ns.Label
-                q (1,:)
+                pv.label (1,:) string
+                pv.threshold (1,1) double = NaN
+                pv.fun (1,1) function_handle = @(x)(sum(x,2))
             end
-            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), q);
+            % Pass to static that is also used by LabelSession
+            pv = namedargs2cell(pv);
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), pv{:});
         end
     end
 
     methods (Static)
-        function T = findInTable(T, q)
+        function T = findInTable(T, pv)
+            arguments
+                T (:,:) table
+                % Inputs for ICLABEL based labels
+                pv.label (1,:) string                % Shared            
+                pv.fun (1,1) function_handle = @(x)(sum(x,2))
+                pv.threshold (1,1) double = NaN
+                
+            end
             % Core find logic shared by ns.Label.find and ns.LabelSession.find.
-            % T must be a table with columns 'parms' and 'q' (from a *ns.LabelParm join).
+            % T must be a table with columns 'parms'  'q' and 'extra' (from a *ns.LabelParm join).
             T = addvars(T, cell(height(T), 1), 'NewVariableNames', 'components');
             out = false(height(T),1);
             for tpl = 1:height(T)
@@ -129,25 +140,37 @@ classdef Label <  dj.Computed & dj.DJInstance
                 id = sprintf("%s@%sT%s",T.subject(tpl),T.session_date(tpl),T.starttime(tpl));
                 switch upper(method)
                     case 'ICLABEL'
-                        if ~iscellstr(q) && ~isstring(q) && ~ischar(q)
+                        if ~iscellstr(pv.label) && ~isstring(pv.label) && ~ischar(pv.label)
                             out(tpl) =true;
                             continue;
                         end
-                        comp = find(contains(T.q{tpl}, q, 'IgnoreCase', true));
-                        if isempty(comp)
-                            fprintf('No components matching "%s" in %s.\n', q,id);
+                        
+                        if isnan(pv.threshold)
+                            comp = find(contains(T.q{tpl}, pv.label, 'IgnoreCase', true));
                         else
-                            fprintf('Components matching "%s" in %s: %s\n', q, id,strjoin(string(comp), ', '));
+                            cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
+                            colsToInspect = ismember(upper(cols),upper(pv.label));
+                            probability=  pv.fun(T.extra{tpl}(:,colsToInspect));
+                            comp = find(probability > pv.threshold);
                         end
-                    case {'ETA','SPEARMAN'}
-                        if ~isnumeric(q)
+
+                        if isempty(comp)
+                            fprintf('No components matching "%s" in %s.\n', strjoin(pv.label,"/"),id);
+                        else
+                            fprintf('Components matching "%s" in %s: %s\n', strjoin(pv.label,"/"), id,strjoin(string(comp), ', '));
+                        end
+                    case {'ETA','SPEARMAN','EOG'}
+                        if ~isnumeric(pv.threshold) || isnan(pv.threshold)
                             out(tpl) =true;
                             continue;
-                        end
-                        comp = find(abs(T.q{tpl}) > q);
+                        end                        
+                        q = T{tpl,"q"};
+                        if iscell(q)&& isscalar(q);q =q{1};end
+                        comp = find(abs(q) > pv.threshold);
                         if isempty(comp)
-                            fprintf('No components with |q|>=%.2f in %s.\n', q,id);
+                            fprintf('No components with |d|>=%.2f in %s.\n', pv.threshold,id);
                         end
+                    
                     otherwise
                         error('No find implemented for labeling method: %s', method);
                 end
@@ -183,7 +206,66 @@ classdef Label <  dj.Computed & dj.DJInstance
                     extra = EEG.etc.ic_classification.ICLabel.classifications;
                     [~, ix] = max(extra, [], 2);
                     q = {EEG.etc.ic_classification.ICLabel.classes(ix)};
+                case 'EOG'
+                    % Use EOG to find eye-movement related components 
+                    %  The parms define the supra (.top), and suborbital
+                    %  channels (.bottom) and the left (.left) and .right
+                    %  canthi. 
+                    % These should be names of channels , not channel
+                    % nubmers. LabelParm/insert checks that.
+                   %  The algorithm averages the signals in top and bottom
+                   %  (if those channels are in the set, which they usually
+                   %  are) then determines the difference and correlates
+                   %  that with the ICA activations.  
+                   % q stores the absolute value of the correlation per
+                   % ICA component (maximum across horizontal and vertical EOG).
+                   % extra stores the value per experiment in a session (if
+                   % called from LabelSession, and then q is the average
+                   % across experiments. 
+                   %
+                   % ns.Epoch can use this to remove components that are
+                   % correlated with the EOG.
+                    extra = nan(numel(EEGs),size(EEGs{1}.icaact,1));
+                    
+                    for i = 1:numel(EEGs)
+                        % Loop over data sets in a session
+                        EEG = EEGs{i};
+                        % if the supraorbital channels are found in the
+                        % set, collect the average signal.
+                        isTop =  ismember({EEG.chanlocs.labels},parms.top);
+                        if any(isTop)
+                            EOG = mean(EEG.data(isTop, :),1,"omitmissing");
+                        else
+                            EOG = zeros(1,EEG.pnts);
+                        end
+                        % if there are suborbital channels, subtrac those
+                        isBottom =  ismember({EEG.chanlocs.labels},parms.bottom);
+                        if any(isBottom)
+                            EOG = EOG- mean(EEG.data(isBottom, :),1,"omitmissing");
+                        end
+                        % Determine the absolute value of the correolation
+                        % with the ICA activations
+                        r = abs(corr(EEG.icaact', EOG'));
 
+                        % Do the same for horizontal EOG
+                        isLeft =  ismember({EEG.chanlocs.labels},parms.left);
+                        if any(isLeft)
+                            EOG = mean(EEG.data(isLeft, :),1,"omitmissing");
+                        else 
+                            EOG = zeros(1,EEG.pnts);
+                        end
+                        isRight =  ismember({EEG.chanlocs.labels},parms.right);                        
+                        if any(isRight)
+                            EOG =  EOG - mean(EEG.data(isRight, :),1,"omitmissing");
+                        end                        
+                        % Store the maximum correlation (for left or right)
+                        % for each data set.
+                        extra(i,:)  = max(r, abs(corr(EEG.icaact', hEOG')))';                         
+                    end
+                    % Avearge over datasets
+                    q = mean(extra,1,"omitmissing");
+
+                    
                 case 'SPEARMAN'
                     allAct    = [];
                     allSignal = [];

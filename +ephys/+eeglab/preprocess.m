@@ -33,27 +33,7 @@ for f= 1:numel(fn)
                 end
             end
             icaPV= namedargs2cell(parms.eeglab.ica);
-            EEG = pop_runica(EEG,icaPV{:});
-        case 'icaeog'
-            % After running ICA, remove components based on EOG
-            assert(~isempty(EEG.icaact),"Run ICA before removing ICA components");
-            pv = setDefaults(parms.eeglab,'icaeog');
-            % 1. Create hEOG by subtracting electrodes around the eye Left Outer Canthus (244) from Right Outer Canthus (237)
-            hEOG = mean(EEG.data(pv.hEOG{1}, :),1,"omitmissing") - mean(EEG.data(pv.hEOG{2}, :),1,"omitmissing");
-            vEOG = mean(EEG.data(pv.vEOG{1}, :),1,"omitmissing") - mean(EEG.data(pv.vEOG{2}, :),1,"omitmissing");
-            % Calculate squared Pearson correlation coefficient
-            v = abs(corr(EEG.icaact', vEOG'));
-            h = abs(corr(EEG.icaact', hEOG'));
-            r = max(v,h);
-            % Find components where variance captured exceeds a threshold
-            componentsToRemove = find(r> pv.rMin);
-            fprintf('Components flagged for rejection: %s (r>=%.1f)\n', num2str(componentsToRemove'),min(r(componentsToRemove)));
-            % Remove ICA components
-            plotag = 0; keepcomp=0;
-            EEG = pop_subcomp( EEG, componentsToRemove, plotag, keepcomp);
-            % Add something to etc. for later retrieval
-            EEG.etc.neurostim.icaeog = struct('r',r(componentsToRemove),'components',componentsToRemove);
-        
+            EEG = pop_runica(EEG,icaPV{:});     
         case 'resample'
             if iscell(parms.eeglab.resample)
                 % Passed verbatim to pop_resample

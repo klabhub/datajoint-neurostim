@@ -124,7 +124,12 @@ classdef LabelParm < dj.Lookup
                             'spearman method requires a "ctag" field specifying which ns.C data to use for regression.');
                         assert(isfield(tpl.parms,"channel"),...      
                             'spearman method requires a "channel" field specifying which channel in ns.C to use for regression.');                    
-
+                    case "eog"
+                        assert(all(isfield(tpl.parms,["top" "bottom" "left" "right"])),"eog method requires a top, bottom, left, right field to define which channels capture the EOG")
+                        for fn = ["top" "bottom" "left" "right"]
+                            assert(isstring(tpl.parms.(fn)), fn +  "should define the names/labels of channels")
+                        end
+                        
                     otherwise
                         error('Unsupported labeling method: %s', tpl.parms.method);
                 end
