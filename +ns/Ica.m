@@ -33,6 +33,16 @@ classdef Ica < dj.Computed & dj.DJInstance
     methods (Access=public)
 
         function plot(tbl, pv)
+            % topoplots for ICA
+            %
+            % To select components, use a find struct (see ns.Label/find)
+            %  f.ltag= "iclabel" - search in Label with ltag iclabel
+            % Search components with specific labels:
+            %  f.value = ["Eye" "Muscle" "Other"]; 
+            % or search components where the probability for certain
+            % artifacts is above some threshold value:
+            % f.value = {["Eye" "Muscle" "Other"],0.8}; 
+            % plot(tbl,find = f)
             arguments
                 tbl (1,1) ns.Ica
                 pv.comp (1,:) double {mustBeInteger,mustBePositive} = 1:12
@@ -52,8 +62,11 @@ classdef Ica < dj.Computed & dj.DJInstance
                 end
                 compsToPlot = pv.comp;
                 if ~isempty(pv.find)
-                    pvFind = namedargs2cell(pv.find);
-                    foundComps = find(labelRelvar, pvFind{:});
+                    findLabelRelvar =  ns.Label  & this  & (ns.LabelParm & struct('ltag',pv.find.ltag));
+                    if ~isfield(pv.find,'op')
+                        pv.find.op = function_handle.empty;
+                    end
+                    foundComps = find(findLabelRelvar ,pv.find.value,op=pv.find.op);
                     if isempty(foundComps)
                         continue;
                     else

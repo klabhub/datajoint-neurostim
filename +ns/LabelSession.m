@@ -40,14 +40,19 @@ classdef LabelSession < dj.Computed & dj.DJInstance
     end
 
     methods (Access=public)
-        function T = find(tbl, q)
-            % Find components matching a query string (iclabel) or numeric threshold (eta/spearman).
+        function T = find(tbl,value,pv)
+            % Find components matching a query. See ns.Label.find for
+            % examples
             % Delegates to ns.Label.findInTable so the logic is maintained in one place.
             arguments
                 tbl (1,1) ns.LabelSession
-                q (1,:)
+               value  (1,:) % One or more values to look for
+                pv.op (1,:) function_handle= function_handle.empty  % Operator to use. Defaults to == for string and > for numeric                
+                pv.findExtra (1,1) logical =false 
             end
-            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), q);
+            % Pass to static that is also used by LabelSession
+            pv = namedargs2cell(pv);
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), value,pv{:});
         end
     end
 

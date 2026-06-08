@@ -103,34 +103,53 @@ classdef Label <  dj.Computed & dj.DJInstance
     end
 
     methods (Access=public)
-        function T = find(tbl, pv)
-            % Find components matching a query string (for iclabel) or numeric threshold (for eta method).
+        function T = find(tbl,value, pv)
+            % Find components matching a query 
+            % EXAMPLE:
+            % Find iclabel components that match the string
+            %  find(ns.Label &'ltag="ICLABEL"',"Eye")
+            % Find iclabel components that match any of the array of
+            % strings
+            %  find(ns.Label &'ltag="ICLABEL"',["Eye" "Muscle"])
+            % Find components from a set with probability above 0.5.
+            %  find(ns.Label &'ltag="ICLABEL"',{["Eye" "Heart" "muscle"],0.5})
+            % Find components where the sum of probabilities across artifacts is  above 0.5.
+            % find(ns.Label & &'ltag="ICLABEL"',{["Eye" "Heart" "muscle"],0.5},op = @(x,y) (gt(sum(x,2),y))
+            %
+            % Find a EOG component with a correlation (q) above 0.5
+            % find(ns.Label & 'ltag="EOG"',0.5)
             arguments
                 tbl (1,1) ns.Label
-                pv.label (1,:) string
-                pv.threshold (1,1) double = NaN
-                pv.fun (1,1) function_handle = @(x)(sum(x,2))
+                value  (1,:) % One or more values to look for
+                pv.op (1,:) function_handle= function_handle.empty  % Operator to use. Defaults to == for string and > for numeric                                
             end
             % Pass to static that is also used by LabelSession
             pv = namedargs2cell(pv);
-            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), pv{:});
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), value,pv{:});
         end
     end
 
     methods (Static)
-        function T = findInTable(T, pv)
+        function T = findInTable(T, value,pv)
             arguments
                 T (:,:) table
-                % Inputs for ICLABEL based labels
-                pv.label (1,:) string                % Shared            
-                pv.fun (1,1) function_handle = @(x)(sum(x,2))
-                pv.threshold (1,1) double = NaN
-                
+                value  (1,:) % One or more values to look for
+                pv.op (1,:) function_handle  =function_handle.empty  % Operator to use. Defaults to == for string and > for numeric
+                pv.findExtra (1,1) logical =false 
             end
+            isStringSearch = iscellstr(value) || isstring(value) || ischar(value);
+            if isempty(pv.op)
+                if isStringSearch
+                    pv.op = @(x,y)contains(x,y,'IgnoreCase',true);
+                else
+                    pv.op = @gt;
+                end
+            end
+          
+
             % Core find logic shared by ns.Label.find and ns.LabelSession.find.
             % T must be a table with columns 'parms'  'q' and 'extra' (from a *ns.LabelParm join).
             T = addvars(T, cell(height(T), 1), 'NewVariableNames', 'components');
-            out = false(height(T),1);
             for tpl = 1:height(T)
                 if isstruct(T.parms)
                     method = T.parms(tpl).method;
@@ -138,45 +157,50 @@ classdef Label <  dj.Computed & dj.DJInstance
                     method = T.parms{tpl}.method;
                 end
                 id = sprintf("%s@%sT%s",T.subject(tpl),T.session_date(tpl),T.starttime(tpl));
+                q = T{tpl,"q"};
+                if iscell(q)&& isscalar(q);q =q{1};end
+                extra = T{tpl,"extra"};
+                if iscell(extra)&& isscalar(extra);extra =extra{1};end
                 switch upper(method)
                     case 'ICLABEL'
-                        if ~iscellstr(pv.label) && ~isstring(pv.label) && ~ischar(pv.label)
-                            out(tpl) =true;
-                            continue;
-                        end
-                        
-                        if isnan(pv.threshold)
-                            comp = find(contains(T.q{tpl}, pv.label, 'IgnoreCase', true));
-                        else
+                        if iscell(value)
+                            % Looking for labels with a probability
                             cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
-                            colsToInspect = ismember(upper(cols),upper(pv.label));
-                            probability=  pv.fun(T.extra{tpl}(:,colsToInspect));
-                            comp = find(probability > pv.threshold);
-                        end
-
-                        if isempty(comp)
-                            fprintf('No components matching "%s" in %s.\n', strjoin(pv.label,"/"),id);
+                            colsToInspect = contains(cols,value{1},'IgnoreCase',true);
+                            probability= extra(:,colsToInspect);
+                            comp = find(any(pv.op(probability,value{2}),2));
                         else
-                            fprintf('Components matching "%s" in %s: %s\n', strjoin(pv.label,"/"), id,strjoin(string(comp), ', '));
+                            if isStringSearch
+                            % Looking for labels matching the value
+                            comp = find(pv.op(q,value));
+                            else
+                                comp = [];
+                            end
+                            
                         end
                     case {'ETA','SPEARMAN','EOG'}
-                        if ~isnumeric(pv.threshold) || isnan(pv.threshold)
-                            out(tpl) =true;
-                            continue;
-                        end                        
-                        q = T{tpl,"q"};
-                        if iscell(q)&& isscalar(q);q =q{1};end
-                        comp = find(abs(q) > pv.threshold);
-                        if isempty(comp)
-                            fprintf('No components with |d|>=%.2f in %s.\n', pv.threshold,id);
+                        if isStringSearch || iscell(value)
+                            comp = [];
+                        else                      
+                            comp = find(pv.op(q,value));
                         end
-                    
                     otherwise
                         error('No find implemented for labeling method: %s', method);
                 end
                 T{tpl, 'components'} = {comp};
+                
+                % Command line info:
+                if iscell(value)
+                    strValue = strjoin(value{1},'/') + "," + string(value{2});
+                else
+                    strValue = strjoin(string(value),'/');
+                end
+                if isempty(comp)
+                    fprintf('No components with %s(q,%s) in %s Label for %s.\n', func2str(pv.op),strValue,T{tpl,"ltag"},id);
+                else
+                    fprintf('Found %d components with %s(q,%s) in %s Label for %s.\n', numel(comp),func2str(pv.op),strValue,T{tpl,"ltag"},id);
+                end
             end
-            T(out,:) = [];
         end
     end
 
@@ -207,26 +231,26 @@ classdef Label <  dj.Computed & dj.DJInstance
                     [~, ix] = max(extra, [], 2);
                     q = {EEG.etc.ic_classification.ICLabel.classes(ix)};
                 case 'EOG'
-                    % Use EOG to find eye-movement related components 
+                    % Use EOG to find eye-movement related components
                     %  The parms define the supra (.top), and suborbital
                     %  channels (.bottom) and the left (.left) and .right
-                    %  canthi. 
+                    %  canthi.
                     % These should be names of channels , not channel
                     % nubmers. LabelParm/insert checks that.
-                   %  The algorithm averages the signals in top and bottom
-                   %  (if those channels are in the set, which they usually
-                   %  are) then determines the difference and correlates
-                   %  that with the ICA activations.  
-                   % q stores the absolute value of the correlation per
-                   % ICA component (maximum across horizontal and vertical EOG).
-                   % extra stores the value per experiment in a session (if
-                   % called from LabelSession, and then q is the average
-                   % across experiments. 
-                   %
-                   % ns.Epoch can use this to remove components that are
-                   % correlated with the EOG.
+                    %  The algorithm averages the signals in top and bottom
+                    %  (if those channels are in the set, which they usually
+                    %  are) then determines the difference and correlates
+                    %  that with the ICA activations.
+                    % q stores the absolute value of the correlation per
+                    % ICA component (maximum across horizontal and vertical EOG).
+                    % extra stores the value per experiment in a session (if
+                    % called from LabelSession, and then q is the average
+                    % across experiments.
+                    %
+                    % ns.Epoch can use this to remove components that are
+                    % correlated with the EOG.
                     extra = nan(numel(EEGs),size(EEGs{1}.icaact,1));
-                    
+
                     for i = 1:numel(EEGs)
                         % Loop over data sets in a session
                         EEG = EEGs{i};
@@ -251,21 +275,21 @@ classdef Label <  dj.Computed & dj.DJInstance
                         isLeft =  ismember({EEG.chanlocs.labels},parms.left);
                         if any(isLeft)
                             EOG = mean(EEG.data(isLeft, :),1,"omitmissing");
-                        else 
+                        else
                             EOG = zeros(1,EEG.pnts);
                         end
-                        isRight =  ismember({EEG.chanlocs.labels},parms.right);                        
+                        isRight =  ismember({EEG.chanlocs.labels},parms.right);
                         if any(isRight)
                             EOG =  EOG - mean(EEG.data(isRight, :),1,"omitmissing");
-                        end                        
+                        end
                         % Store the maximum correlation (for left or right)
                         % for each data set.
-                        extra(i,:)  = max(r, abs(corr(EEG.icaact', hEOG')))';                         
+                        extra(i,:)  = max(r, abs(corr(EEG.icaact', EOG')))';
                     end
                     % Avearge over datasets
                     q = mean(extra,1,"omitmissing");
 
-                    
+
                 case 'SPEARMAN'
                     allAct    = [];
                     allSignal = [];
@@ -332,7 +356,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                         % Determine whether there are timepoints that
                         % differ significantly from the baseline by doing
                         % consecutive t-test, followed by FDR correction for the number of components
-                        % and the number of timepoints. 
+                        % and the number of timepoints.
                         % The q value is -log10(pCorrected). 1 means pCorrected = 0.05.
                         % The extra is the event triggered average.
 
@@ -341,25 +365,25 @@ classdef Label <  dj.Computed & dj.DJInstance
                         allEpochs = (allEpochs - mu_base);
                         extra=  mean(allEpochs, 3, 'omitmissing');
 
-                        % Test each baseline corrected component at each sample against 0 
+                        % Test each baseline corrected component at each sample against 0
                         allEpochs = allEpochs(:,~baseWin,:);
                         nSamps =sum(~baseWin);
                         p = nan(nComps,nSamps);
                         t = nan(nComps,nSamps);
-                        for c = 1:size(allEpochs,1)                            
-                                [~, p(c,:), ~, stats] = ttest(squeeze(allEpochs(c,:,:))', 0);
-                                t(c, :) = [stats.tstat];                            
+                        for c = 1:size(allEpochs,1)
+                            [~, p(c,:), ~, stats] = ttest(squeeze(allEpochs(c,:,:))', 0);
+                            t(c, :) = [stats.tstat];
                         end
                         % FDR correction at alpha=0.05
                         alpha =1/(nComps+1);
-                        [pFdr] = fdr(p(:), alpha);                        
+                        [pFdr] = fdr(p(:), alpha);
                         [pMin,timePoint] = min(p,[],2);
                         samples = reshape(allEpochs,[nComps*nSamps nEvents]);
                         ix = sub2ind([nComps nSamps],(1:nComps)',timePoint);
                         samples = reshape(samples(ix,:),[nComps nEvents]);
                         q = abs(mean(samples,2,"omitmissing"))./std(samples,0,2,"omitmissing");
                         q(pMin>pFdr) =0;
-                        
+
                     end
 
                 otherwise

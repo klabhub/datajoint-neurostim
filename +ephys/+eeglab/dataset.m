@@ -189,8 +189,6 @@ trial =num2cell(trial);
 % Use the .latency field of the MFF.event, not the begintime (which can be
 % offset by a few hundred ms). .latency is in samples.
 eventEgiTime = ([EEG.event.latency]-1)/urSrate; % This is seconds since the start of the data in EGI
-eventEgiTime  =num2cell(eventEgiTime );
-[EEG.event.egitime] = deal(eventEgiTime {:});
 
 
 %% Read the properties of cic and the egi plugin for this experiment
@@ -199,12 +197,22 @@ eventEgiTime  =num2cell(eventEgiTime );
 % drift). But we check anyway using the Begin Trial (bTRL) events.
 prms  = get(ns.Experiment &key,{'cic','egi'});
 trialStartTimeNeurostim  = prms.cic.trial.clocktime(2:end);%
-trialStartTimeEgi = [EEG.event(strcmpi(eventCode,'BTRL')).egitime];
+trialStartTimeEgi = eventEgiTime(isBeginTrial);
+
 % The number of trials should match
 assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
 % Determine clock drift, and the offset between the first trial start event
 % in neurostim and in EGI.
+% Remove EEG data before the start of the first trial
+slack =1; % seconds 
+startEEGTime = trialStartTimeEgi(1) -slack;
 if numel(trialStartTimeNeurostim)>1
+    % Remove EEG after the last trial (plus estimated ITI) to avoid 
+    % potentially large transients at the end of the experiment.
+    stopEEGTime = trialStartTimeEgi(end)  + median(diff(trialStartTimeEgi)) + slack;
+    EEG  = pop_select(EEG,'time',[startEEGTime stopEEGTime ]);
+    trialStartTimeEgi = trialStartTimeEgi - startEEGTime;
+    % Linear mapping from EGI time (in s) to Neurostim time (in ms)
     EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
     fprintf(['Average Clock drift is ' num2str((EEG.etc.neurostim.clockParms(1)-1000)) ' ms/s and the offset is ' num2str(EEG.etc.neurostim.clockParms(2)) ' ms \n' ]);
 else
@@ -212,17 +220,27 @@ else
     % Assume that the trialStartTimeEgi and trialStartTimeNeurostim refer
     % to the same time and that there is no clock drift. The 1000 slope
     % takes the s from egi to ms used here.
-    EEG.etc.neurostim.clockParms = [1000 trialStartTimeNeurostim]; % Assming zero drift, zero offset
+    % Because the ITI follows the trial we have no good way of estimating
+    % its duration (end not logged), so in a 1 trial experiment we just
+    % keep all the data to the end.
+    EEG  = pop_select(EEG,'time',[startEEGTime EEG.smax]);
+    trialStartTimeEgi = trialStartTimeEgi - startEEGTime;
+    offset = (trialStartTimeNeurostim - trialStartTimeEgi*1000);
+    EEG.etc.neurostim.clockParms = [1000 offset]; % Assming zero drift
 end
-
+%%
 
 %% Package the events in a tpl that can be inserted into the DJ PluginParameter table
 isBoundary = strcmpi({EEG.event.type},'boundary');
-nsEvents = EEG.event(~isBoundary);
-eventNsTime = polyval(EEG.etc.neurostim.clockParms,[nsEvents.egitime]);
-eventTrial = [nsEvents.trial];
+if sum(isBoundary) <=2
+    EEG.event(isBoundary) =[];
+end
+
+eventEgiTime =([EEG.event.latency]-1)/urSrate; % This is seconds since the start of the data in EGI
+eventNsTime = polyval(EEG.etc.neurostim.clockParms,eventEgiTime);
+eventTrial = [EEG.event.trial];
 eventTrialTime = eventNsTime' - trialStartTimeNeurostim(eventTrial);
-eventCode = string({nsEvents.code});
+eventCode = string({EEG.event.code});
 uNames= unique(eventCode);
 nrNames= numel(uNames);
 
@@ -236,7 +254,7 @@ for nm = uNames
     prmTpl(nmCntr).property_time = eventTrialTime(stay);
     prmTpl(nmCntr).property_nstime=eventNsTime(stay);
     prmTpl(nmCntr).property_trial= eventTrial(stay);
-    prmTpl(nmCntr).property_value = nsEvents(stay);
+    prmTpl(nmCntr).property_value = EEG.event(stay);
 end
 EEG.etc.neurostim.pluginparameter = prmTpl;
 [EEG.filepath, name, ext] = fileparts(char(mffFile));

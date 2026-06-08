@@ -18,6 +18,28 @@ end
 fn = fieldnames(parms.eeglab);
 for f= 1:numel(fn)
     switch fn{f}
+        case 'cleanline'
+            % Use cleanline to remove power line noise
+            if isstruct(parms.eeglab.cleanline)
+                % The user specified parameters that differ from the
+                % defaults; pass those.
+                pv= namedargs2cell(parms.eeglab.cleanline);
+                EEG  = cleanline(EEG,pv{:});
+            elseif islogical(parms.eeglab.cleanline) && parms.eeglab.cleanline
+                % Use all defaults
+                EEG  = cleanline(EEG);                
+            end
+        case 'cleanartifacts'
+            % Use clean_artifacts in eeglab to clean artifacts.
+            if isstruct(parms.eeglab.cleanartifacts)
+                % The user specified parameters that differ from the
+                % defaults; pass those.
+                pv= namedargs2cell(parms.eeglab.cleanartifacts);
+                EEG  = clean_artifacts(EEG,pv{:});
+            elseif islogical(parms.eeglab.cleanartifacts) && parms.eeglab.cleanartifacts
+                % Use all defaults
+                EEG  = clean_artifacts(EEG);                
+            end
         case 'ica'
             % Run ICA to identify components. The fields of the ica struct
             % are passed as parm/value pairs to pop_runica.           
