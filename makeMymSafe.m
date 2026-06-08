@@ -19,23 +19,31 @@ for t = 1:numel(tpl)
         end
         switch class(thisField)
             case 'struct'
-                    tpl(t).(fn{f}) = makeMymSafe(thisField); % Recurse
+                tpl(t).(fn{f}) = makeMymSafe(thisField); % Recurse
             case 'cell'
-                    isStr  = cellfun(@isstring,thisField);
-                    tpl(t).(fn{f})(isStr) =cellfun(@char,thisField(isStr),'UniformOutput',false);
-                    isStruct =cellfun(@isstruct,thisField);
-                    tpl(t).(fn{f})(isStruct) =cellfun(@makeMymSafe,thisField(isStruct),'UniformOutput',false);
+                isStr  = cellfun(@isstring,thisField);
+                tpl(t).(fn{f})(isStr) =cellfun(@stringToChar,thisField(isStr),'UniformOutput',false);
+                isStruct =cellfun(@isstruct,thisField);
+                tpl(t).(fn{f})(isStruct) =cellfun(@makeMymSafe,thisField(isStruct),'UniformOutput',false);
             case 'string'
-                    if isscalar(thisField)
-                        tpl(t).(fn{f})  = char(thisField);
-                    else
-                         tpl(t).(fn{f})  = cellstr(thisField);
-                    end
+                if isscalar(thisField)
+                    tpl(t).(fn{f})  = char(thisField);
+                else
+                    tpl(t).(fn{f})  = cellstr(thisField);
+                end
             case 'function_handle'
-                    tpl(t).(fn{f}) = func2str(thisField);
+                tpl(t).(fn{f}) = func2str(thisField);
             otherwise
                 %Nothing to do
         end
     end
+end
+end
+
+function o = stringToChar(x)
+if isscalar(x)
+    o  = char(x);
+else
+    o = cellstr(x);
 end
 end

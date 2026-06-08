@@ -18,6 +18,17 @@ end
 fn = fieldnames(parms.eeglab);
 for f= 1:numel(fn)
     switch fn{f}
+        case 'reref'
+            % Average rereference
+             if isstruct(parms.eeglab.reref)
+                % The user specified parameters that differ from the
+                % defaults; pass those.
+                pv= namedargs2cell(parms.eeglab.reref);
+                EEG  = pop_reref(EEG,[],pv{:});
+             elseif islogical(parms.eeglab.reref) && parms.eeglab.reref
+                % Use all defaults
+                EEG  = pop_reref(EEG,[]);                
+            end
         case 'cleanline'
             % Use cleanline to remove power line noise
             if isstruct(parms.eeglab.cleanline)
@@ -72,6 +83,7 @@ for f= 1:numel(fn)
             else
                 error('parms.eeglab.resample must be either a scalar double (frequency) or a cell array with frequency,fc, and df. see pop_resample');
             end
+            assert(~isfield(EEG.etc, 'clean_sample_mask'),"Downsampling after clean_artifacts is not recommended (or would need some thought on which windows to remove/keep).");
             EEG = pop_resample(EEG, resampleParms{:});
         case 'zapline'
             if isstruct(parms.eeglab.zapline)

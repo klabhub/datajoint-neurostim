@@ -104,7 +104,7 @@ classdef Label <  dj.Computed & dj.DJInstance
 
     methods (Access=public)
         function T = find(tbl,value, pv)
-            % Find components matching a query 
+            % Find components matching a query
             % EXAMPLE:
             % Find iclabel components that match the string
             %  find(ns.Label &'ltag="ICLABEL"',"Eye")
@@ -120,8 +120,8 @@ classdef Label <  dj.Computed & dj.DJInstance
             % find(ns.Label & 'ltag="EOG"',0.5)
             arguments
                 tbl (1,1) ns.Label
-                value  (1,:) % One or more values to look for
-                pv.op (1,:) function_handle= function_handle.empty  % Operator to use. Defaults to == for string and > for numeric                                
+                value  (1,:) {mustBeA(value,["string" "double" "cell" "char"])}  % One or more values to look for
+                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to == for string and > for numeric
             end
             % Pass to static that is also used by LabelSession
             pv = namedargs2cell(pv);
@@ -133,11 +133,17 @@ classdef Label <  dj.Computed & dj.DJInstance
         function T = findInTable(T, value,pv)
             arguments
                 T (:,:) table
-                value  (1,:) % One or more values to look for
-                pv.op (1,:) function_handle  =function_handle.empty  % Operator to use. Defaults to == for string and > for numeric
-                pv.findExtra (1,1) logical =false 
+                value  (1,:) {mustBeA(value,["string" "double" "cell" "char"])} % One or more values to look for
+                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to == for string and > for numeric
+                pv.findExtra (1,1) logical =false
             end
-            isStringSearch = iscellstr(value) || isstring(value) || ischar(value);
+            if ischar(pv.op) || isstring(pv.op)
+                pv.op = str2func(pv.op);
+            end
+            if ischar(value)
+                value = string(value);
+            end
+            isStringSearch = iscellstr(value) || isstring(value);
             if isempty(pv.op)
                 if isStringSearch
                     pv.op = @(x,y)contains(x,y,'IgnoreCase',true);
@@ -145,7 +151,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                     pv.op = @gt;
                 end
             end
-          
+
 
             % Core find logic shared by ns.Label.find and ns.LabelSession.find.
             % T must be a table with columns 'parms'  'q' and 'extra' (from a *ns.LabelParm join).
@@ -166,34 +172,34 @@ classdef Label <  dj.Computed & dj.DJInstance
                         if iscell(value)
                             % Looking for labels with a probability
                             cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
-                            colsToInspect = contains(cols,value{1},'IgnoreCase',true);
+                            colsToInspect = contains(cols,string(value{1}),'IgnoreCase',true);
                             probability= extra(:,colsToInspect);
                             comp = find(any(pv.op(probability,value{2}),2));
                         else
                             if isStringSearch
-                            % Looking for labels matching the value
-                            comp = find(pv.op(q,value));
+                                % Looking for labels matching the value
+                                comp = find(pv.op(q,value));
                             else
                                 comp = [];
                             end
-                            
+
                         end
                     case {'ETA','SPEARMAN','EOG'}
                         if isStringSearch || iscell(value)
                             comp = [];
-                        else                      
+                        else
                             comp = find(pv.op(q,value));
                         end
                     otherwise
                         error('No find implemented for labeling method: %s', method);
                 end
                 T{tpl, 'components'} = {comp};
-                
+
                 % Command line info:
                 if iscell(value)
-                    strValue = strjoin(value{1},'/') + "," + string(value{2});
+                    strValue = strjoin(string(value{1}),'/') + "," + string(value{2});
                 else
-                    strValue = strjoin(string(value),'/');
+                    strValue = strjoin(string(deblank(value)),'/');
                 end
                 if isempty(comp)
                     fprintf('No components with %s(q,%s) in %s Label for %s.\n', func2str(pv.op),strValue,T{tpl,"ltag"},id);
@@ -226,7 +232,8 @@ classdef Label <  dj.Computed & dj.DJInstance
                     % which are session-invariant, so one EEG suffices.
                     assert(exist('iclabel', 'file') == 2, ...
                         'EEGLAB with iclabel function is required for method ''iclabel''.');
-                    EEG   = iclabel(EEGs{1});
+                    EEG = ephys.eeglab.removeNan(EEGs{1});
+                    EEG   = iclabel(EEG);
                     extra = EEG.etc.ic_classification.ICLabel.classifications;
                     [~, ix] = max(extra, [], 2);
                     q = {EEG.etc.ic_classification.ICLabel.classes(ix)};
@@ -269,7 +276,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                         end
                         % Determine the absolute value of the correolation
                         % with the ICA activations
-                        r = abs(corr(EEG.icaact', EOG'));
+                        r = abs(corr(EEG.icaact', EOG','type','Pearson','rows','pairwise'));
 
                         % Do the same for horizontal EOG
                         isLeft =  ismember({EEG.chanlocs.labels},parms.left);
@@ -284,7 +291,7 @@ classdef Label <  dj.Computed & dj.DJInstance
                         end
                         % Store the maximum correlation (for left or right)
                         % for each data set.
-                        extra(i,:)  = max(r, abs(corr(EEG.icaact', EOG')))';
+                        extra(i,:)  = max(r, abs(corr(EEG.icaact', EOG','type','Pearson','rows','pairwise')))';
                     end
                     % Avearge over datasets
                     q = mean(extra,1,"omitmissing");

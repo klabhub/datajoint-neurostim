@@ -775,9 +775,8 @@ classdef C < dj.Computed & dj.DJInstance
                 return;
             end
 
-            if ~isempty(pv.ica)
-                icaPv = namedargs2cell(pv.ica);
-                signal = ns.Ica.clean(signal,exptTpl,icaPv{:});
+            if ~isempty(pv.ica)                
+                  [signal,icaInfo] = ns.Ica.clean(signal,fetch(tbl),itag= pv.ica.itag,ltag=pv.ica.ltag,find = pv.ica.find);               
             end
  
             %% Artifact removal
@@ -1011,6 +1010,11 @@ classdef C < dj.Computed & dj.DJInstance
                     B = bPerCondition;
                 end
             end
+           if ~isempty(pv.ica)
+                T = addprop(T, "ica", "table");
+                T.Properties.CustomProperties.ica = icaInfo;
+           end
+           
         end
     end
 

@@ -46,8 +46,8 @@ classdef LabelSession < dj.Computed & dj.DJInstance
             % Delegates to ns.Label.findInTable so the logic is maintained in one place.
             arguments
                 tbl (1,1) ns.LabelSession
-               value  (1,:) % One or more values to look for
-                pv.op (1,:) function_handle= function_handle.empty  % Operator to use. Defaults to == for string and > for numeric                
+                value  (1,:)  {mustBeA(value,["string" "double"])} % One or more values to look for
+                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to == for string and > for numeric                
                 pv.findExtra (1,1) logical =false 
             end
             % Pass to static that is also used by LabelSession

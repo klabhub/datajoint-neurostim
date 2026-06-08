@@ -301,7 +301,7 @@ function avg_abs_correlation = calculate_single_epoch_correlation(single_epoch_d
     end
 
     % Calculate correlation matrix (channels are rows, so transpose)
-    corr_matrix = corr(single_epoch_data'); % corr works on columns
+    corr_matrix = corr(single_epoch_data','type','Pearson','rows','pairwise'); % corr works on columns
 
     % Extract unique off-diagonal absolute correlation values
     mask = triu(true(size(corr_matrix)), 1); % Upper triangle, excluding diagonal

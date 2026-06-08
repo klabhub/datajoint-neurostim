@@ -115,6 +115,10 @@ classdef Ica < dj.Computed & dj.DJInstance
                     icaParms = rmfield(icaParms, 'filt');
                 end
                 parms.eeglab.ica = icaParms;
+                % ns.C stores full data lenght with NaN for artifact
+                % windows if clean_rawdata has been used. Remove those
+                % windows for ICA.
+                EEG = ephys.eeglab.removeNan(EEG);
                 EEG = ephys.eeglab.preprocess(EEG, parms);
 
                 varExplained = ephys.eeglab.icaVarianceExplained(EEG);
@@ -295,29 +299,31 @@ classdef Ica < dj.Computed & dj.DJInstance
             sgtitle(figName + " - ETA");
         end
 
-        function signal = clean(signal,expt,pv)
+        function [signal,info] = clean(signal,cTpl,pv)
             arguments
                 signal (:,:) double
-                expt (1,1) struct
+                cTpl (1,1) struct
                 pv.itag (1,1) string
                 pv.ltag (1,1) string
-                pv.label (1,:) string = ""
-                pv.not (1,1) logical  =false
-                pv.threshold (1,1) double = 0.85
+                pv.find (1,1) struct= struct.empty
             end
 
             % ICA based preprocessing
-            icaRelVar = ns.Ica & (ns.Experiment &  expt) & struct('itag',pv.itag);
+            icaRelVar = ns.Ica & (ns.C & cTpl) & struct('itag',pv.itag);
             labelRelVar  = ns.Label & icaRelVar & struct('ltag',pv.ltag);
             if ~exists(icaRelVar)
                 % Try a session level ICA
-                icaRelVar = ns.IcaSession & (ns.Session & (ns.Experiment &  expt)) & struct('itag',pv.itag);
+                icaRelVar = ns.IcaSession & (ns.Session & (ns.C &  cTpl)) & struct('itag',pv.itag);
                 labelRelVar  = ns.LabelSession & icaRelVar;
             end
-            assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,expt.subject,expt.session_date,expt.starttime);
+            assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
             W = ns.Ica.getWeights(fetch(icaRelVar));
             assert(exists(labelRelVar),"No Label found for %s in %s",pv.ltag,pv.itag);
-            T = find(labelRelVar,label = pv.label,threshold = pv.threshold);
+            findLabelRelvar =  ns.Label  & icaRelVar  & (ns.LabelParm & struct('ltag',pv.ltag));
+            if ~isfield(pv.find,'op')
+                pv.find.op = function_handle.empty;
+            end
+            T = find(findLabelRelvar ,pv.find.value,op=pv.find.op);              
             compsToRemove = [T.components{:}];
             % Reconstruct the signal from these components.
             Xica = signal(:, W.channels);
@@ -325,8 +331,9 @@ classdef Ica < dj.Computed & dj.DJInstance
             Xclean = Xica' - W.winverse(:, compsToRemove) * A(compsToRemove, :);
             signal(:, W.channels) = Xclean';
             varExplained = fetch1(icaRelVar,'variance');
-            fprintf('Removing %d components (%.0f%% variance) based on ICA %s\n',sum(compsToRemove),sum(varExplained(compsToRemove)),strjoin(pv.label,'/'));
-
+            info.nrComponents= numel(compsToRemove);
+            info.variance = sum(varExplained(compsToRemove));
+            fprintf('Removed %d components (%.0f%% variance) based on ICA %s\n',info.nrComponents,info.variance,pv.itag);    
         end
     end
 

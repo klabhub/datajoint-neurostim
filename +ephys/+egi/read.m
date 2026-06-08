@@ -23,7 +23,7 @@ function  [signal,neurostimTime,channelInfo,recordingInfo] = read(key,parms)
 %           Set this to true to use all default parameters, or set it to a
 %           struct with fieldnames that match the PREP parameters to use
 %           different settings.
-% parms.eeglab.filtfilt  - Filtering with pop_eegfiltnew. Must be a struct
+% parms.eeglab.filt  - Filtering with pop_eegfiltnew. Must be a struct
 %                           with fields that match eegfiltnew input
 %                           parameters.
 %
@@ -86,9 +86,22 @@ if isfield(etc,'noiseDetection')
 end
 
 
-neurostimTime = polyval(EEG.etc.neurostim.clockParms, EEG.times/1000);
+% Extract the full time course with NaN for the regions that may have been 
+% excluded.
+if isfield(EEG.etc,'clean_sample_mask')
+    mask = EEG.etc.clean_sample_mask;
+    signal = NaN(EEG.nbchan, length(mask));
+    signal(:, mask) = EEG.data;
+    egiTime = (0:size(signal,2)-1)/EEG.srate; % time in seconds
+else
+    signal = EEG.data;
+    egiTime =EEG.times/1000; % Time in seconds if all time windows were retained.
+end
+signal = single(signal'); % Save space on the DJ Server
+neurostimTime = polyval(EEG.etc.neurostim.clockParms, egiTime);
 neurostimTime = [neurostimTime(1) neurostimTime(end) numel(neurostimTime)];
-signal = single(EEG.data'); % Save space on the DJ Server
+
+
 recordingInfo = makeMymSafe(recordingInfo);
 channelInfo = makeMymSafe(table2struct(channelInfo));
 
