@@ -33,9 +33,35 @@ classdef Preprocessed < dj.Computed
     methods
         function v = get.keySource(tbl) %#ok<MANU>
             % Restrict to sessions that have analyzeable experiments with
-            % sbx files.
+            % sbx files.            
             analyzeExpt = analyze(ns.Experiment & (ns.File & 'extension=".sbx"') ,strict=false);
-            v = (ns.Session & analyzeExpt)*sbx.PreprocessedParm;
+            baseSessions = ns.Session & analyzeExpt;
+
+            % Restrict against the strain(s) listed in the parms.            
+            parms = fetch(sbx.PreprocessedParm,'*');
+            allKeys = struct([]);
+            for prm = parms'
+                sessionsThisParm = baseSessions;
+                if isfield(prm.parms,'strain')
+                    strain = string(prm.parms.strain);
+                    strain = strain(strlength(strain)>0);
+                    if ~isempty(strain)
+                        strainWhere = arrayfun(@(s) sprintf('meta_value LIKE "%%%s%%"',char(s)), ...
+                            strain,'UniformOutput',false);
+                        sessionsThisParm = sessionsThisParm & proj(ns.SubjectMeta & ...
+                            'meta_name="strain"' & ['(' strjoin(strainWhere,' OR ') ')'], ...
+                            'subject');
+                    end
+                end
+                allKeys = [allKeys; fetch(sessionsThisParm * ...
+                    (sbx.PreprocessedParm & struct('prep',prm.prep)))]; %#ok<AGROW>
+            end
+
+            if isempty(allKeys)
+                v = baseSessions * (sbx.PreprocessedParm & 'FALSE');
+            else
+                v = (baseSessions * sbx.PreprocessedParm) & allKeys;
+            end
         end
 
         function v =  get.ops(tbl)
