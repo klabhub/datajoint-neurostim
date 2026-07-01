@@ -10,7 +10,7 @@ art   : blob            # Struct with information on artifact removal (.artparms
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
 classdef Epoch < dj.Computed & dj.DJInstance
-   
+
     properties (Dependent)
         time
         samplingRate
@@ -55,7 +55,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
         function v = get.samplingRate(tbl)
             t = fetchn(tbl, 'time');
             v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);
-        end        
+        end
     end
 
 
@@ -74,28 +74,33 @@ classdef Epoch < dj.Computed & dj.DJInstance
             T = innerjoin(T,epochCounts);
 
 
-            T = addvars(T,zeros(nrEpochs,1),zeros(nrEpochs,1),'NewVariableNames',{'badByArtifact','badByAlignTime'});
+            T = addvars(T,zeros(nrEpochs,1),zeros(nrEpochs,1),zeros(nrEpochs,1),zeros(nrEpochs,1),'NewVariableNames',{'badByArtifact','badByAlignTime','icaNr','icaVar'});
 
             % For each epoch check why the trials were removed by
             % inspecting the badBy fields of the art and plg structs.
             for cntr = 1:nrEpochs
                 art = T.art(cntr);
                 if ~isempty(art)
-                    T.badByArtifact(cntr)= numel(art.all);
+                    T.badByArtifact(cntr)= numel(art.badBy.all);
+                    if ~isempty(art.ica)
+                        T.icaNr(cntr)  =art.ica.nrComponents;
+                        T.icaVar(cntr)  =art.ica.variance;
+                    end
                 end
-                plg = T.plg(cntr);                
+                plg = T.plg(cntr);
+                if iscell(plg) & isscalar(plg); plg=plg{1};end
                 if ~isempty(plg)
                     for c = string(plg.categories)'
-                        c=deblank(c);
+                        c=deblank(c); %#ok<FXSET>
                         if ~ismember(c,T.Properties.VariableNames)
                             T= addvars(T,zeros(nrEpochs,1),'NewVariableNames',c);
                         end
                         T.(c)(cntr)= numel(plg.(c));
                     end
-                end                
+                end
             end
 
-            nrTrialsRemoved = T.nrInDimension-T.nrInEpoch;
+            nrTrialsRemoved =double(T.nrInDimension-T.nrInEpoch);
             nrBadBy = sum(T{:,startsWith(T.Properties.VariableNames,'badBy')},2);
             isMismatch = nrTrialsRemoved ~=nrBadBy;
             if any(isMismatch)
@@ -145,12 +150,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
             %  This has the same effect
             allTrials = flip(alignTpl.trial);
             allTrialTimes = flip(alignTpl.trialtime);
-            [trials,ia] = unique(allTrials,'stable'); 
+            [trials,ia] = unique(allTrials,'stable');
             if numel(trials) < numel(allTrials)
                 fprintf('The %s event in %s occurs more than once (%d times). Using the last occurrence.\n', parmTpl.align.event,parmTpl.align.plugin,numel(alignTpl.trial) - numel(trials));
             end
             startTime = allTrialTimes(ia);
-                       
+
             C = ns.C & key;
             if isempty(parmTpl.channels)
                 % Use all channels by default
@@ -163,14 +168,20 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % occurred and the corresponding align times. These are not
             % stored ascending, but align resorts (and can remove trials
             % too if there are artifacts for instance)
-            [T,~,channelsWithData] = align(ns.C & key,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
-            
+            if isfield(parmTpl.artparms,'ica')
+                icaParms = parmTpl.artparms.ica;
+                parmTpl.artparms = rmfield(parmTpl.artparms,'ica');
+            else
+                icaParms = struct.empty;
+            end
+            [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+
             parmTpl.channels =channelsWithData(:)';
             % Extract the actual trials (in order of signal cols) that have
             % been extracted
-            trials = T.Properties.CustomProperties.trials'; 
+            trials = T.Properties.CustomProperties.trials';
             startTime = T.Properties.CustomProperties.alignTime';
-            
+
             fprintf("\t Segmenting is complete after %s\n",toc);
 
             %% --- Preprocess epochs ---
@@ -197,10 +208,15 @@ classdef Epoch < dj.Computed & dj.DJInstance
             %% --- Submit to the server ---
             tic;
             fprintf("Submitting epochs to the server\n");
+            if isprop(T,'ica')
+                art = struct('ica',T.Properties.CustomProperties.ica,'badBy',badByArt);
+            else
+                art = struct('ica',[],'badBy',badByArt);
+            end
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
                 prep = prepResults,...
-                art =badByArt, ...
+                art =art, ...
                 plg = badByPlg));
             % Insert to Epoch table
             epoch_tpl = makeMymSafe(epoch_tpl);
