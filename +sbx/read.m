@@ -25,9 +25,12 @@ if ~exists(ks&key)
     fprintf('No files to analyze in this session\n');
     return;
 end
-if ~exists(sbx.Preprocessed & key & struct('prep', parms.prep))
+preps = sbx.Preprocessed & key & in('prep', parms.prep);
+if count(preps)==0
     % The session has not been preprocessed. Do that first.
-    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',parms.prep,key.session_date,key.subject,parms.prep);
+    error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',strjoin(cellstr(parms.prep),'/'),key.session_date,key.subject,strjoin(cellstr(parms.prep),'/'));
+elseif count(preps)>1
+    error('Multiple preprocessed sets for %s in session %s for subject %s. Multi layer and multiple preprocessng variants not yet implemented.',strjoin(cellstr(parms.prep),'/'),key.session_date,key.subject);
 end
 
 % Read the npy results from the suite2p folder and store them in
@@ -38,10 +41,6 @@ end
 
 %% Read the .npy or .mat Output
 %TODO handle multidepth sessions. 
-preps  =sbx.Preprocessed & key & struct('prep',parms.prep);
-if count(preps)>1
-    error('Multilayer not implemented yet');
-end
 fldr= fullfile(folder(ns.Experiment & key),fetch1(preps,'folder'));
 planes = dir(fullfile(fldr,'plane*'));
 setupPython("matlab");
@@ -86,7 +85,7 @@ end
 
 if isfield(parms,'restrict')
     % Restrict with a query on sbx.PreprocessedRoi
-    keepRoi = [fetch((sbx.PreprocessedRoi & parms.restrict ) & key ,'roi').roi];
+    keepRoi = [fetch((sbx.PreprocessedRoi & parms.restrict ) & preps ,'roi').roi];
     signal = signal(:,keepRoi);
     rois    = keepRoi;
 end

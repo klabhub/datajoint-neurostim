@@ -3,7 +3,7 @@ function parms = mlspikeDefaults(publication,indicator,fineTuned)
 %  Convenience function to setup parms struct with defaults
 %  from the literature. 
 %
-% SEE ALSO sbx.mlspike, Mlcalibration
+% SEE ALSO sbx.mlspike
 
 arguments
     publication (1,1) string
