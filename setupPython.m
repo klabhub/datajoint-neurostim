@@ -24,7 +24,7 @@ end
 
 envLoaded = extractAfter(pv.Home,'envs/');
 if envLoaded ~=env
-    % Change of environemtn
+    % Change of environment
     if pv.Status == "Loaded"  && pv.ExecutionMode =="OutOfProcess"
         terminate(pyenv);  % Terminate the old
         pv= pyenv;

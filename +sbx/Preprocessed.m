@@ -43,6 +43,8 @@ classdef Preprocessed < dj.Computed
             for prm = parms'
                 sessionsThisParm = baseSessions;
                 if isfield(prm.parms,'strain')
+                    % If the parms lists strains, restrict to those only
+                    % Otherwise, apply to any strain.
                     strain = string(prm.parms.strain);
                     strain = strain(strlength(strain)>0);
                     if ~isempty(strain)
@@ -416,7 +418,7 @@ classdef Preprocessed < dj.Computed
             sessionPath=unique(folder(ns.Experiment & key));
             parms = fetch1(sbx.PreprocessedParm & key,'parms');
             if ~isfield(parms,'zslack')
-                parms.zslack = 2; % sbx files with a dZ less than this are segmented as one.
+                parms.zslack = 25; % sbx files with a dZ less than this are segmented as one.
             end
             % Set the output folder to be
             % subject.suite2p.preprocessing

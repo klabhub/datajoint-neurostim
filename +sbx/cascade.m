@@ -7,6 +7,13 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % Nat Neurosci 24, 1324–1337 (2021).
 % https://doi.org/10.1038/s41593-021-00895-5
 %
+% Environment Variables:
+% NS_PYTHON -  The program that starts python in a Conda/Mamba
+% environment. This program will be called to activate the 'cascade'
+% environment.
+% NS_CASCADE  - The folder that contains the Cascade git repository.
+%
+%
 % SETUP
 % % 1. Install micromamba (or miniconda, miniforge, but micromamba seems to work
 %   better on HPC)
@@ -16,6 +23,13 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % micromamba create -n cascade -c defaults --strict-channel-priority
 %   python=3.7 "tensorflow=2.3.*" "keras=2.3.1"   "h5py<3" "numpy<1.20"
 %   "scipy<1.6" matplotlib seaborn ruamel.yaml spyder
+%
+%  or, to use the Torch version
+%  (https://github.com/PTRRupprecht/CascadeTorch)
+% micromambae create  -n cascade
+% micromamba activate cascade
+% cd into the CascadeTorch repo folder
+% pip install .
 %
 % 3.  Set your NS_PYTHON environment variable to the executable that can run
 % python in an enviroment.  For instance '~/miniforge3/bin/conda' or
@@ -74,8 +88,8 @@ arguments
 end
 
 %% Prepare to run
-prep = fetch(sbx.Preprocessed & key & struct('prep', parms.prep),'*');
-assert(isscalar(prep),'%d preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',numel(prep),parms.prep,key.session_date,key.subject,parms.prep);
+prep = fetch(sbx.Preprocessed & key & in('prep', parms.prep),'*');
+assert(isscalar(prep),'%d preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',numel(prep),strjoin(parms.prep,'/'),key.session_date,key.subject,strjoin(parms.prep,'/'));
 warning('off','backtrace');
 assert(all(isfield(parms,["model" "baseline" "sigma" "window" "count"])),'cascade parameters incomplete.');
 if ~isfield(parms,'neuropilFactor')
@@ -105,29 +119,58 @@ if isempty(pythonRunner)
 end
 assert(exist(pythonRunner,"file"),"Set the NS_PYTHON environment variable to a conda/mamba/micromamba executable (not found at  %s)",pythonRunner);
 
+%% Determine which Cascade model to use.
+models = getCascadeModels(cascadeFolder);
+modelRates= regexp(models,'(?<rate>\d+)Hz','names');
+modelRates= cellfun(@(x) str2double(x.rate),modelRates);
+assert(~isempty(modelRates),'Could not look up model sampling rate');
 rate  = (prep.framerate/prep.nrplanes); % Match dt to framerate
-if contains(parms.model,"?Hz")
-    % Find the model with the closest matching frequency (mainly intended to adjust
-    % for two plane recordings that have an effective sampling rate that
-    % is half the 15Hz of the microscope)
-    models = getCascadeModels(cascadeFolder);
-    match = regexp(models,strrep(parms.model,'?Hz','(?<rate>\d+)Hz'),'names');
-    availableRate= cellfun(@(x) str2double(x.rate),match(~cellfun(@isempty,match)));
-    assert(~isempty(availableRate),'No matching Cascade models for %s',parms.model);
-    [~,ix] =min(abs(rate-availableRate));
-    parms.model = strrep(parms.model,'?',num2str(availableRate(ix)));
-end
-
-match = regexp(parms.model,'_(?<rate>\d+)Hz','names');
-assert(~isempty(match),'Cannot extract sampling rate from model name %s',parms.model)
-modelRate =str2double(match.rate);
-ratio = modelRate/rate;
+% Find the model with the closest matching frequency (mainly intended to adjust
+% for two plane recordings that have an effective sampling rate that
+% is half the 15Hz of the microscope)
+[~,ix] =min(abs(rate-modelRates));
+closestRate = modelRates(ix);
+ratio = closestRate/rate;
 if ratio >2 || ratio < .5
-    warning('Large mismatch between sampling rate %.2f and Cascade model %.2f',rate,modelRate);
+    warning('Large mismatch between sampling rate %.2f and the closest Cascade model %.2f',rate,closestRate);
 end
-
-
-
+if parms.model =="auto"
+    % Auto-detect Cascade parameters based on strains
+    strain = (ns.SubjectMeta & 'meta_name="strain"' & key);
+    assert(count(strain)==1,'Unknown strain for subject %s',key.subject);
+    strain  = lower(fetch1(strain,'meta_value'));
+    isExc = contains(strain,["camkii", "camk2" "L4"]);
+    isInh =  contains(strain,["pv" "sst" "vip"]);
+    assert(isExc|isInh,"Cannot match strain %s to EXC or INH",strain);
+    if contains(strain,'ai163')
+        if isfield(parms,'smoothing')
+            smoothing  =string(parms.smoothing);
+        else
+            smoothing = "200"; % This worked best for KLab with gcamp6s.
+        end
+        %Gcamp6s;
+        model = sprintf("GLOBAL_EXC_%sHz_smoothing%sms",string(closestRate),smoothing); % These perform well even on INH
+    elseif  contains(strain,'gcamp8m')
+         if isfield(parms,'smoothing')
+            smoothing  =string(parms.smoothing);
+        else
+            smoothing = "100"; 
+        end
+        if isExc
+            model = sprintf("GC8m_EXC_%sHz_smoothing%sms_high_noise",string(closestRate),smoothing);
+        elseif isInh
+            model = sprintf("GC8+_INH_%sHz_smoothing%sms_high_noise",string(closestRate),smoothing);
+        end
+    else
+        error('Could not determine the calcium indicator from the strain (%s)',strain);
+    end
+    fprintf('Auto-detected Cascade model %s\n',model);
+elseif contains(parms.model,"?Hz")
+    model = strrep(parms.model,'?',num2str(closestRate));    
+else
+    model = parms.model; % Use as is
+end
+assert(ismember(model,models),"The requested Cascade model (%s) could not be found.");
 
 %% Construct the python command.
 cfd = fileparts(mfilename('fullpath'));
@@ -352,6 +395,7 @@ for i = 1:length(lines)
         modelNames{end+1} = modelName; %#ok<AGROW>
     end
 end
+modelNames(strcmpi(modelNames,'Info'))= [];
 end
 
 
