@@ -89,7 +89,7 @@ end
 
 %% Prepare to run
 prep = fetch(sbx.Preprocessed & key & in('prep', parms.prep),'*');
-assert(isscalar(prep),'%d preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',numel(prep),strjoin(parms.prep,'/'),key.session_date,key.subject,strjoin(parms.prep,'/'));
+assert(isscalar(prep),'%d preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',numel(prep),strjoin({parms.prep},'/'),key.session_date,key.subject,strjoin({parms.prep},'/'));
 warning('off','backtrace');
 assert(all(isfield(parms,["model" "baseline" "sigma" "window" "count"])),'cascade parameters incomplete.');
 if ~isfield(parms,'neuropilFactor')
