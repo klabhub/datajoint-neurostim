@@ -514,7 +514,11 @@ classdef Preprocessed < dj.Computed
                             end
                             planeSubFolder = sprintf('plane%d',plane);
                             opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
-                            outFiles = fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,{'iscell.npy','F.npy','Fneu.npy','spks.npy'});
+                            requiredFiles = {'iscell.npy','F.npy','Fneu.npy'};
+                            if isfield(parms,'spikedetect') && parms.spikedetect ==true    
+                                requiredFiles{end+1} = 'spks.npy';
+                            end
+                            outFiles = fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,requiredFiles);
                             prepComplete = exist(opsFile,"file");
                             for of =1:numel(outFiles)
                                 prepComplete = prepComplete & exist(outFiles(of),'file');

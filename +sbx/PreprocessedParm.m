@@ -13,8 +13,7 @@ parms       : longblob          # struct containing all parameters used by packa
 %                       'strain',{'Ai163','L4'}   % Limit to strain names that contain one of these chars
 %                       'ops',struct(...
 %                       'fs',15.5, ...    % Framerate on ScanBox/Neurolabware TPI
-%                      'tau',1.3,... % Recommended for Gcamp6s
-%                      deconvolution (ignored if no deconvolution is done).
+%                      'tau',1.3,... % Recommended for Gcamp6s deconvolution (ignored if no deconvolution is done).
 %                       'delete_bin',true, ...   
 %                       'use_builtin_classifier',true,... % Use the built-in classifier
 %                        'look_one_level_down',true)));% Scanbox 3 makes subsub folders
