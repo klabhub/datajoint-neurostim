@@ -236,6 +236,8 @@ for pl=0:prep.nrplanes-1
                     fprintf('Python terminated unexpectedly. Retrying...')
                     terminate(pyenv);
                     [signal,channelInfo]= runCascade(roi,roiOffset,parms,prep,planeFolder,cascadeResultsFilename,cmd,tmpDffFile,keepFrameIx);
+                else
+                    rethrow(me)
                 end
             end
             fprintf('Completed cascade inference on %d rois. \n',size(signal,2));
