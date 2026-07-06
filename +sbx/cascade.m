@@ -165,12 +165,13 @@ if parms.model =="auto"
         error('Could not determine the calcium indicator from the strain (%s)',strain);
     end
     fprintf('Auto-detected Cascade model %s\n',model);
+    parms.model = model;
 elseif contains(parms.model,"?Hz")
-    model = strrep(parms.model,'?',num2str(closestRate));    
+    parms.model = strrep(parms.model,'?',num2str(closestRate));    
 else
-    model = parms.model; % Use as is
+    %parms.model = parms.model; % Use as is
 end
-assert(ismember(model,models),"The requested Cascade model (%s) could not be found.");
+assert(ismember(parms.model,models),"The requested Cascade model (%s) could not be found.");
 
 %% Construct the python command.
 cfd = fileparts(mfilename('fullpath'));
@@ -377,10 +378,11 @@ end
 function modelNames = getCascadeModels(cascadePath)
 % Read available CASCADE models from YAML file
 
-filePath = fullfile(cascadePath,'Pretrained_models','available_models.yaml');
+filePath = fullfile(cascadePath,'Pretrained_models','available_models*.yaml');
+f  = dir(filePath); % Needed to use both original tensorflow and newer torch cascade
 
 % Read file
-fileID = fopen(filePath, 'r');
+fileID = fopen(fullfile(f.folder,f.name), 'r');
 fileText = fread(fileID, '*char')';
 fclose(fileID);
 
