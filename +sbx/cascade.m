@@ -149,7 +149,7 @@ if parms.model =="auto"
             smoothing = "200"; % This worked best for KLab with gcamp6s.
         end
         %Gcamp6s;
-        model = sprintf("GLOBAL_EXC_%sHz_smoothing%sms",string(closestRate),smoothing); % These perform well even on INH
+        parms.model = sprintf("Global_EXC_%sHz_smoothing%sms",string(closestRate),smoothing); % These perform well even on INH
     elseif  contains(strain,'gcamp8m')
          if isfield(parms,'smoothing')
             smoothing  =string(parms.smoothing);
@@ -157,21 +157,21 @@ if parms.model =="auto"
             smoothing = "100"; 
         end
         if isExc
-            model = sprintf("GC8m_EXC_%sHz_smoothing%sms_high_noise",string(closestRate),smoothing);
+            parms.model = sprintf("GC8m_EXC_%sHz_smoothing%sms_high_noise",string(closestRate),smoothing);
         elseif isInh
-            model = sprintf("GC8+_INH_%sHz_smoothing%sms_high_noise",string(closestRate),smoothing);
+            parms.model = sprintf("GC8+_INH_%sHz_smoothing%sms_high_noise",string(closestRate),smoothing);
         end
     else
         error('Could not determine the calcium indicator from the strain (%s)',strain);
     end
-    fprintf('Auto-detected Cascade model %s\n',model);
-    parms.model = model;
+    fprintf('Auto-detected Cascade model %s\n',parms.model);   
 elseif contains(parms.model,"?Hz")
     parms.model = strrep(parms.model,'?',num2str(closestRate));    
 else
     %parms.model = parms.model; % Use as is
 end
-assert(ismember(parms.model,models),"The requested Cascade model (%s) could not be found.");
+modelExists = ismember(parms.model,models) || exist(fullfile(cascadeFolder,"Pretrained_models",parms.model),"dir");
+assert(modelExists,"The requested Cascade model (%s) could not be found.",parms.model);
 
 %% Construct the python command.
 cfd = fileparts(mfilename('fullpath'));
