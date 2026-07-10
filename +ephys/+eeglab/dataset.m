@@ -223,7 +223,7 @@ else
     % Because the ITI follows the trial we have no good way of estimating
     % its duration (end not logged), so in a 1 trial experiment we just
     % keep all the data to the end.
-    EEG  = pop_select(EEG,'time',[startEEGTime EEG.smax]);
+    EEG  = pop_select(EEG,'time',[startEEGTime EEG.xmax]);
     trialStartTimeEgi = trialStartTimeEgi - startEEGTime;
     offset = (trialStartTimeNeurostim - trialStartTimeEgi*1000);
     EEG.etc.neurostim.clockParms = [1000 offset]; % Assming zero drift
