@@ -97,7 +97,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                     'nrcomponents', 'chanlabels', 'variance');
                 % Remap session channel labels to per-experiment indices
                 expChanlocs = fetch(ns.CChannel & key, 'channelinfo');
-                %expLabels = {[expChanlocs.channelinfo].labels};
+                expLabels = {expChanlocs.channelinfo.labels};
                 [~, chanIdx] = ismember(src.chanlabels, expLabels);
                 chanIdx = chanIdx(chanIdx > 0);
                 tpl = key;
