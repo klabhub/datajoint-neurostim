@@ -24,7 +24,7 @@ end
 
 envLoaded = extractAfter(pv.Home,'envs/');
 if envLoaded ~=env
-    % Change of environemtn
+    % Change of environment
     if pv.Status == "Loaded"  && pv.ExecutionMode =="OutOfProcess"
         terminate(pyenv);  % Terminate the old
         pv= pyenv;
@@ -54,12 +54,14 @@ end
 
 % Check the outcome
 pv =pyenv();
-envLoaded = extractAfter(pv.Home,['envs' +filesep]);
-if envLoaded ~= env
+envLoaded = extractAfter(pv.Home,"envs" +filesep);
+if ismissing(envLoaded) 
+    fprintf(2,'No conda environment %s. Hoping for the best.\n',env);
+elseif envLoaded ~= env
     fprintf(2,'conda environment %s could not be loaded, instead we have %s. Hoping for the best.\n',env,envLoaded);
 end
 
-if isunix
+if isunix 
     % Crashing without this
     pyenv('ExecutionMode','OutOfProcess');
 end
@@ -70,3 +72,5 @@ else
     fprintf('Python setup successful (Exe: %s Ver:%s)\n',pv.Executable,pv.Version)
 end
 ok = pv.Version ~="";
+
+

@@ -42,19 +42,24 @@ end
 if ischar(pv.restrict) || isstring(pv.restrict)
     pv.restrict= {pv.restrict};
 end
-if numel(pv.restrict)>0
-    % Restrictions - each must be a string
+if isscalar(pv.restrict) && contains(pv.restrict,'&')
+    % If the restriction contains an & we interpret it as something that
+    % needs to be evaluated first.  (e.g., ns.Experiment &
+    % 'paradigm="bla"')    
+    %Create the command that will be evaluated on the cluster.
+    cmd = sprintf("parpopulate(%s,%s)",tbl.className,pv.restrict{1});
+    pv.restrict= eval(pv.restrict{1});% For local use only (getting the keysource below)
+elseif isempty(pv.restrict)
+        % Unrestricted populate
+    cmd = sprintf("parpopulate(%s)",tbl.className);
+else % More than one restriction, each must be a string
     assert(all(cellfun(@ischar,pv.restrict)),'Each element of the restriction must be a char')
     restriction = ['''' strjoin(pv.restrict,''',''') ''''];
     cmd = sprintf("parpopulate(%s,%s)",tbl.className,restriction);
-else
-    % Unrestricted populate
-    cmd = sprintf("parpopulate(%s)",tbl.className);
 end
 % Construct a name for this expression (has to be a valid script name in
 % matlab)
 exp = sprintf("parpop_%s",strrep(tbl.className,'.','_'));
-
 keysource =(tbl.getKeySource & pv.restrict) -tbl;
 
 if exists(keysource) &&  pv.clearJobStatus~=""

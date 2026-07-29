@@ -62,8 +62,9 @@ classdef File < dj.Imported
         function out = checkExists(tbl,pv)
             arguments
                 tbl (1,1) ns.File
-                pv.bytes (1,1) logical = false
-                pv.checksum (1,1) logical = false
+                pv.bytes (1,1) logical = false  % Set to true to compare file sizes (not very reliable  )
+                pv.checksum (1,1) logical = false  %Set to true to compare checkum (slow)
+                pv.folderExtensions (1,:) string = [".mff" ".gpsr"]  % Specify which extensions are actually folders, not files
             end
 
             % Check whether files exist on the current file system
@@ -81,11 +82,15 @@ classdef File < dj.Imported
                 T =addvars(T,false(nrFiles,1),'NewVariableNames','checksumOK');
             end
             fCntr=0;
-            for f = tbl.fetch('bytes','checksum')'
+            for f = tbl.fetch('bytes','checksum','extension')'
                 fCntr =fCntr+1;
                 fldr = folder(ns.Experiment &f);                
-                full = fullfile(fldr,f.filename);                
-                T.exists(fCntr)= exist(full,"file")==2;
+                full = fullfile(fldr,f.filename);      
+                if ismember(lower(f.extension),lower(pv.folderExtensions))
+                    T.exists(fCntr)= exist(full,"dir")==7;                    
+                else
+                    T.exists(fCntr)= exist(full,"file")==2;
+                end
                 if T.exists(fCntr)
                     % File exists
                     if pv.bytes
