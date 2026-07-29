@@ -94,7 +94,9 @@ classdef Ica < dj.Computed & dj.DJInstance
                     'session_date', key.session_date, ...
                     'itag', key.itag, ...
                     'ctag', key.ctag);
-                    'nrcomponents', 'chanlabels', 'variance');
+
+                src = fetch1(ns.IcaSession & sessionKey, ...
+                        'nrcomponents', 'chanlabels', 'variance');
                 % Remap session channel labels to per-experiment indices
                 expChanlocs = fetch(ns.CChannel & key, 'channelinfo');
                 expLabels = {expChanlocs.channelinfo.labels};
@@ -146,9 +148,10 @@ classdef Ica < dj.Computed & dj.DJInstance
             if isSession
                 sessionKey = struct('subject', key.subject, ...
                     'session_date', key.session_date, ...
-                    'itag', key.itag);
-                src = fetch(ns.IcaSession & sessionKey, ...
+                    'itag', key.itag,'ctag',key.ctag);
+                src = fetch1(ns.IcaSession & sessionKey, ...
                     'winverse', 'sphere', 'weights', 'chanlabels');
+                src.channels = fetch1(ns.Ica & key, 'channels');
                 % chanlabels are channel label strings; caller must remap to
                 % per-experiment indices using ismember on EEG.chanlocs.
             else
