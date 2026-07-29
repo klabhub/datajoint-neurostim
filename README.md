@@ -28,9 +28,9 @@ root = 'the root folder containing your neurostim data files. This folder has ye
 ```
 That will create a database called 'mytest' on the MySQL server and give you access to the basic tables for Neurostim files (Subject, Session, Experiment,Plugin,etc.) in the `+ns` package. 
 ### Scanbox
-The `+sbx` package sets up additional tables for two-photon imaging data collected with the ScanBox software (Neurolabware.com). 
-The preprocessing uses various Python packges (E.g. [suite2p] (https://github.com/MouseLand/suite2p#readme)and [Cascade](https://github.com/PTRRupprecht/CascadeTorch) package )
-These Python packages are run  "OutOfProcess" to avoid conflicts with Matlab libraries. 
+The `+sbx` package sets up additional tables for two-photon imaging data collected with the ScanBox software (Neurolabware.com).
+The preprocessing uses various Python packages (e.g. [suite2p](https://github.com/MouseLand/suite2p#readme) and [Cascade](https://github.com/PTRRupprecht/CascadeTorch)).
+These Python packages are run "OutOfProcess" to avoid conflicts with Matlab libraries.
 
 1. Follow the instructions from suite2p or cascade to install the Python packages in their own conda/mamba environment. 
 1. Use an environment variable to specify 
