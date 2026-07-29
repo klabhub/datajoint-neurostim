@@ -317,9 +317,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                 labelRelVar  = ns.LabelSession & icaRelVar & struct('ltag',pv.ltag);
             assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
             W = ns.Ica.getWeights(fetch(icaRelVar));
-            assert(exists(labelRelVar),"No Label found for %s in %s",pv.ltag,pv.itag);
-            findLabelRelvar =  ns.Label  & icaRelVar  & (ns.LabelParm & struct('ltag',pv.ltag));
-            if ~isfield(pv.find,'op')
+            findLabelRelvar =  labelRelVar  & (ns.LabelParm & struct('ltag',pv.ltag));
                 pv.find.op = function_handle.empty;
             end
             T = find(findLabelRelvar ,pv.find.value,op=pv.find.op);              
