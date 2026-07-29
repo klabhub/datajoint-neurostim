@@ -314,8 +314,7 @@ classdef Ica < dj.Computed & dj.DJInstance
             if ~exists(icaRelVar)
                 % Try a session level ICA
                 icaRelVar = ns.IcaSession & (ns.Session & (ns.C &  cTpl)) & struct('itag',pv.itag);
-                labelRelVar  = ns.LabelSession & icaRelVar;
-            end
+                labelRelVar  = ns.LabelSession & icaRelVar & struct('ltag',pv.ltag);
             assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
             W = ns.Ica.getWeights(fetch(icaRelVar));
             assert(exists(labelRelVar),"No Label found for %s in %s",pv.ltag,pv.itag);
