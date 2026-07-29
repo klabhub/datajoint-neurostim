@@ -10,7 +10,7 @@ To read more about DataJoint, how to setup a DataJoint SQL server, see <https://
 After completing the DataJoint installation, make sure that you can connect to your server by typing
 `dj.conn` on the Matlab command prompt. This should return some information on the connection to your server(e.g., the host computer running the MySQL server and the user name). You should only proceed to the following steps once `dj.conn` works.
 
-1. Clone this reposiory to a folder on your machine (`'c:\github\datajoint-neurostim'`). 
+1. Clone this repository to a folder on your machine (`'c:\github\datajoint-neurostim'`).
     This includes a submodule that is a fork of the datajoint-matlab toolbox that has additional features. 
 1. Add it to your matlab path:
 ```matlab 
