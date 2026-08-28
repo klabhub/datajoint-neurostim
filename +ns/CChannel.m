@@ -15,8 +15,19 @@ channelinfo = NULL : longblob # Information on this preprocessed channel
 %}
 %
 % See also ns.C
-classdef CChannel < dj.Part
+classdef CChannel < dj.Part & dj.DJInstance %& ns.PartSubsetter
      properties (SetAccess = protected)
         master = ns.C  
      end 
+
+     properties (Dependent)
+         channels
+     end
+
+
+         %% GET-SET Methods
+         function v = get.channels(self)
+             v = self.unique('channel');
+         end
+
 end

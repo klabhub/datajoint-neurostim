@@ -89,15 +89,20 @@ classdef C < dj.Computed & dj.DJInstance
         keySource    % Keysource depends on the CParm; see get.keySource
 
         channels     % Channels associated with each row of the C table.
+        artifacts    % artifact table from Prep Pipeline
         samplingRate % Sampling rate for each row of the C table (in Hz)
         time         % Neurostim time in milliseconds at which C and Channel have data
         dt           % Time between samples (mode of all diffs), in milliseconds.
     end
 
+    properties (Hidden)
+        artifacts_ = []% cached artifacts table for on demand calling
+    end
 
     methods   % Set/Get functions
         function v = get.channels(tbl)
-            v = fetchn(ns.CChannel & tbl, 'channel');
+            ccTbl = ns.CChannel & tbl;
+            v = ccTbl.channels;
         end
 
         function t =get.time(tbl)
@@ -127,6 +132,15 @@ classdef C < dj.Computed & dj.DJInstance
             end
         end
 
+        function art = get.artifacts(self)
+
+            if isempty(self.artifacts_)
+                self.set_artifacts_;        
+            end
+            art = self.artifacts_;
+            
+        end
+        
         function v = get.keySource(~)
             % Restricted to files with the extenstion specified in CParm
             % and the include/exclude specs in CParm.
@@ -181,6 +195,7 @@ classdef C < dj.Computed & dj.DJInstance
     end
 
     methods (Access=public)
+
         function [time,trial,value] = eventTrialTime(tbl,pv)
             arguments
                 tbl (1,1) ns.C
@@ -1071,6 +1086,78 @@ classdef C < dj.Computed & dj.DJInstance
                 fprintf("No channels included for ");
                 key %#ok<NOPRT>
             end
+        end
+
+        function set_artifacts_(self)
+            % gets channel artifact info for prep pipeline
+            % if not prep pipeline, returns empty table
+            c_tbl = fetchtable(self,'info');
+
+            %% empty artifact table
+            keys = {'channel', 'flag', 'interpolated'};
+            types= {'double', 'cell', 'logical'};
+            empty_art = table(Size = [0, numel(keys)], VariableTypes = types, VariableNames = keys);
+            %% loop over the rows
+            art = rowfun(@get_bads, c_tbl, "InputVariables",6, OutputVariableNames='artifact');
+            function bads = get_bads(inf)
+                try
+                    arts = inf.etc.noiseDetection.reference.badChannels;
+                    bads = inf.etc.noiseDetection.reference.noisyStatistics.noisyChannels;
+                    
+                    art_labels = fieldnames(arts); % same as bads
+                    art_labels = art_labels(startsWith(art_labels, 'badChannelsFrom'));
+                    interp_ch = inf.etc.noiseDetection.interpolatedChannelNumbers;
+                    bad_ch = inf.etc.noiseDetection.stillNoisyChannelNumbers;
+                    
+                    flags = cell(numel(interp_ch) + numel(bad_ch),1);
+                    ch = [interp_ch(:); bad_ch(:)];
+                    interpCh = false(size(ch));
+                    interpCh(1:numel(interp_ch)) = true;
+                    % labels
+                    for iArt = 1:numel(art_labels)
+                        artN = art_labels{iArt};
+                        if ~isempty(arts.(artN))
+
+                            chArtN = ismember(ch,arts.(artN));
+                            chBadN = ismember(ch,bads.(artN));
+                            flags(chArtN | chBadN) = {artN};
+
+                        end
+                    end
+                    bads = {sortrows(table(ch(:), flags(:), interpCh(:), VariableNames={'channel', 'flag', 'interpolated'}), 'channel')};
+                catch 'MATLAB:nonExistentField';
+                    bads = empty_art;
+                end
+            end           
+            
+            % combine with ns.C keys
+            art = [removevars(c_tbl, 'info'), art];
+            
+            % 1. Count how many rows are inside each nested table
+            numRows = cellfun(@height, art.artifact);
+            art(numRows==0,:) = [];
+            if isempty(art) 
+                % return empty table
+                art = do.empty_like(art);
+                return; 
+            else
+                numRows = numRows(numRows>0);
+            end
+            % 2. Generate repeating row indices for the parent table
+            rowIdx = repelem((1:height(art))', numRows);
+
+            % 3. Duplicate the parent table rows and remove the old nested cell array
+            art_expanded = art(rowIdx, :);
+            art_expanded.artifact = [];
+
+            % 4. Vertically concatenate all the nested tables into one continuous table
+            unnested_artifacts = vertcat(art.artifact{:});
+
+            % 5. Combine the expanded parent table with the newly unnested columns
+            art = [art_expanded, unnested_artifacts];
+
+            self.artifacts_ = art;
+
         end
     end
 
