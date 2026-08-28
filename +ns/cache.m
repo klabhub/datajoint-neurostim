@@ -513,7 +513,7 @@ classdef (Abstract) cache < handle
             % similar to geometric mean
             signal = log10(signal); 
             noise = do.ndconv(signal, kernel, NaN)/sum(kernel); % conv is sum, make it mean
-            snr = signal - noise; % in log scale division becomes subtraction
+            snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
             isPad = isnan(snr);
 
