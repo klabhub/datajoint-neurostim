@@ -27,9 +27,9 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods      
         function ch = get.channels(self)
-            ch = fetch(self, 'channel');
-            ch = unique([ch(:).channel]');
+            ch = self.unique('channel');
         end        
+
         function v = get.samplingRate(self)
             e = ns.Epoch & self;
             v = uniquetol(e.samplingRate, 0.01);
