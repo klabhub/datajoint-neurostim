@@ -507,9 +507,13 @@ classdef (Abstract) cache < handle
 
             isFq0 = freqs == 0; % 0 Hz is only the DC offset
             signal(isFq0,:) = NaN; % DC offset should not be included in noise estimation
-            
+            % make signal log scale
+            % noise is computed as mean instead of geomean that is more
+            % appropriate for amplitudes. Log scaled signal mean acts
+            % similar to geometric mean
+            signal = log10(signal); 
             noise = do.ndconv(signal, kernel, NaN)/sum(kernel); % conv is sum, make it mean
-            snr = signal./noise;
+            snr = signal - noise; % in log scale division becomes subtraction
 
             isPad = isnan(snr);
 
