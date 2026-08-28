@@ -14,21 +14,47 @@ classdef Tepoch < dj.Computed & dj.DJInstance
         keySource = ns.TepochParm * (ns.Epoch & ns.EpochChannel)
     end
     methods (Access = protected)
-        function makeTuples(tbl, key)
+        function makeTuples(self, key)
             % Apply a computation/transform to a collection of Epochs and
             % store as Tepoch.
+            % if provided an averaging function, it must output groups
+            % struct with following fields
+            %   .id (n_rows, n_groups) (group number)
+            %   .name (1, n_groups) (label for the group)
+            %   .(ns.EpochChannel key) (n_rows, n_groups) NaN if the
+            %   corresponding group is not relevant to the variable
             parms = fetch(ns.TepochParm & key,'*');
 
             % --- Select trials, conditions, and/or channels ---
-            % TBD
-            % --- Average by groups ---      
+            % in the future, only use subset() by adding query terms in
+            % front of the subset queue
             eTbl = ns.Epoch & key;
-            if isnan(parms.average)
-                ecTbl = ns.EpochChannel & eTbl;
-            else
-                if ischar(parms.average), parms.average = {parms.average}; end
-                [ecTbl, avg_groups] = find_groups_to_average_(tbl, key, parms.average{:});
+            ecTbl = ns.EpochChannel & eTbl;
+            % if ~isempty(parms.channels)
+            % 
+            %     ecTbl = ecTbl.query('channel', parms.channels);
+            % 
+            % end
+            % 
+            % if ~isempty(parms.trials)
+            % 
+            %     ecTbl = ecTbl.query('trial', parms.trials);
+            % 
+            % end
+
+            if ~isempty(parms.conditions)
+                % TBD
             end
+            % --- Average by groups ---      
+            % TBD
+            % if ischar(parms.average), parms.average = {parms.average}; end
+            % [ecTbl, avg_groups] = find_groups_to_average_(self, key, parms.average{:});
+            % if isempty(parms.average) || isnan(parms.average)
+            %     ecTbl = ns.EpochChannel & eTbl;
+            % else
+            %     if ischar(parms.average), parms.average = {parms.average}; end
+            %     [ecTbl, avg_groups] = find_groups_to_average_(tbl, key, parms.average{:});
+            % end
             % Restrict the epoch channels and trials if requested in the
             % parms
             if isempty(parms.window)
@@ -36,48 +62,50 @@ classdef Tepoch < dj.Computed & dj.DJInstance
                 parms.window = fetch(ns.EpochParm & key,'window');
             end
 
+            [T,dv,idv] = compute(ecTbl,parms.fun, average="", timeWindow=parms.window);
             % Export groups
-            gru_id = avg_groups.id;
-            gru = rmfield(avg_groups, {'id','name'}); % must leave only the grouping variables
-            gru_by = fieldnames(gru);
-            compute_args = namedargs2cell(gru);
-            n_gru = numel(gru_id);
-            T = [];
-            for iGru = 1:n_gru
-
-                compute_argsN = compute_args;
-                compute_argsN{2:2:end} = compute_argsN{2:2:end}{iGru};                
-
-                % Compute - uses the ns.cache/compute function  (abstract
-                % superclass).
-                [tblN,dv,idv] = compute(ecTbl,parms.fun, compute_argsN{:}, average=gru_by, timeWindow=parms.window);
-                
-                % insert back the group variables (1st trial/channel)
-                gru_col =  compute_argsN;
-                gru_col{2:2:end} = gru_col{2:2:end}(1);
-                gru_col = repelem(struct2table(struct(gru_col{:})), height(tblN),1);
-                tblN.group = repelem(gru_id(iGru),height(tblN),1);
-                tblN = [tblN, gru_col];
-                T = [T; tblN];
-
-                % I doubt if this work for a general case
-
-            end           
+            % gru_id = avg_groups.id;
+            % gru = rmfield(avg_groups, {'id','name'}); % must leave only the grouping variables
+            % gru_by = fieldnames(gru);
+            % compute_args = namedargs2cell(gru);
+            % n_gru = numel(gru_id);
+            % T = [];
+            % for iGru = 1:n_gru
+            % 
+            %     compute_argsN = compute_args;
+            %     compute_argsN{2:2:end} = compute_argsN{2:2:end}{iGru};                
+            % 
+            %     % Compute - uses the ns.cache/compute function  (abstract
+            %     % superclass).
+            %     [tblN,dv,idv] = compute(ecTbl,parms.fun, compute_argsN{:}, average=gru_by, timeWindow=parms.window);
+            % 
+            %     % insert back the group variables (1st trial/channel)
+            %     gru_col =  compute_argsN;
+            %     gru_col{2:2:end} = gru_col{2:2:end}(1);
+            %     gru_col = repelem(struct2table(struct(gru_col{:})), height(tblN),1);
+            %     tblN.group = repelem(gru_id(iGru),height(tblN),1);
+            %     tblN = [tblN, gru_col];
+            %     T = [T; tblN];
+            % 
+            % end           
            
             % Insert in the table
             %%
             x = table2cell(T(1,idv));
             x = cat(2,x{:});
-            tpl = dj.struct.join(struct(independent = strjoin(idv,':'), x = x, dependent = cellstr(dv(:)), groups=avg_groups),key);
+            tpl = dj.struct.join(struct(independent = strjoin(idv,':'), ...
+                x = x, dependent = cellstr(dv(:))),...%, groups=avg_groups),
+                key);
 
-            insert(tbl,tpl);            
+            insert(self,tpl);            
 
-            dat_tbl = T(:,["channel", "trial", dv, "group", "nrtrials", "nrchannels"]);
+            % dat_tbl = T(:,["channel", "trial", dv, "group", "nrtrials", "nrchannels"]);
+            dat_tbl = T(:,["channel", "trial", dv]);
             dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'y');
             dat_tbl= convertvars(dat_tbl,'dependent', 'char');
             dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
 
-            insert(ns.TepochChannel,dat_tpl)
+            chunkedInsert(ns.TepochChannel,dat_tpl)
 
         end
     end
@@ -112,6 +140,11 @@ while ii <= n_arg
         case {'trial','channel','condition'}
             
             disp('TBD.');
+
+        case '' % no averaging
+
+            ecTbl = ns.EpochChannel & (ns.Epoch & key);
+            groups = struct(name = '', id = 1);
 
         otherwise % custom function
 
