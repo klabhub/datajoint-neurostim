@@ -476,13 +476,13 @@ classdef (Abstract) cache < handle
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
         end
 
-        function v = do_snr(signal, freqs, signal_range, noise_range)
+        function v = do_snr(signal, freqs, signal_halfwidth, noise_halfwidth)
 
             arguments
                 signal (:,:)
                 freqs (:,1)
-                signal_range (1,1) double {mustBePositive}
-                noise_range (1,1) double {mustBePositive}
+                signal_halfwidth (1,1) double {mustBePositive}
+                noise_halfwidth (1,1) double {mustBePositive}
             end
 
             if iscell(signal)
@@ -496,10 +496,10 @@ classdef (Abstract) cache < handle
             assert(isscalar(df), "Frequencies are not regularly sampled.");
 
             % create the kernel
-            half_width = floor(noise_range/df);
+            half_width = floor(noise_halfwidth/df);
             % must be even
             if rem(half_width,2), half_width = half_width + 1; end
-            half_skip_width = floor(signal_range/df);
+            half_skip_width = floor(signal_halfwidth/df);
             if rem(half_width,2), half_skip_width = half_skip_width + 1; end
             kernel = ones(half_width,1);
             kernel(1:half_skip_width) = 0;
@@ -517,14 +517,14 @@ classdef (Abstract) cache < handle
 
         end
 
-        function v = search_peaks(signal, freqs, search_freqs, search_range)
+        function v = search_peaks(signal, freqs, search_freqs, search_range_halfwidth)
 
             arguments
 
                 signal (:,:)
                 freqs (:,:)
                 search_freqs (1,:) {mustBeNonnegative}
-                search_range (1,1) {mustBePositive}
+                search_range_halfwidth (1,1) {mustBePositive}
 
             end
 
@@ -541,7 +541,7 @@ classdef (Abstract) cache < handle
             for ii = 1:n_search_freq
                 
                 s_freqN = search_freqs(ii);
-                s_win = s_freqN + [-1, 1] .* search_range;
+                s_win = s_freqN + [-1, 1] .* search_range_halfwidth;
                 isFq = do.ifwithin(freqs, s_win);
                 iiFq = find(isFq);
                 [peak_amp(ii,:), iiPeak] = maxk(signal(isFq,:),1,1);
