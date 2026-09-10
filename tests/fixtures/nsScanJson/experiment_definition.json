@@ -1,0 +1,7 @@
+{
+  "Locked": "1",
+  "Fields": {
+    "taskVersion": {"Description": "Task version"},
+    "analyze": {"Description": "Whether to analyze this experiment"}
+  }
+}
