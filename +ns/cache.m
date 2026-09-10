@@ -502,7 +502,7 @@ classdef (Abstract) cache < handle
             % must be even
             if rem(half_width,2), half_width = half_width + 1; end
             half_skip_width = floor(signal_halfwidth/df);
-            if rem(half_width,2), half_skip_width = half_skip_width + 1; end
+            if rem(half_skip_width,2), half_skip_width = half_skip_width + 1; end
             kernel = ones(half_width,1);
             kernel(1:half_skip_width) = 0;
             kernel = [flip(kernel); 0; kernel];
