@@ -18,7 +18,7 @@ behavioral intent; generated code-coverage reports provide execution details.
 | `ns.Dimension` / parts | `TestDataJointPipeline.m` | DataJoint integration test | Plugin-driven conditions and trial expansion | Multiple dimensions and restrictions |
 | `ns.Epoch` / `ns.EpochChannel` | `TestDataJointPipeline.m` | DataJoint integration test | Alignment, epoch window, channel rows, extracted signal, key source | Artifact/plugin attrition edge cases |
 | `chunkedDelete` | `TestDataJointPipeline.m` | DataJoint integration test | Batched deletion of EpochChannel rows and preservation of the master Epoch row | External FK discovery, reconnect/retry path, confirmation prompt |
-| `ns.Tepoch` / `ns.TepochChannel` | — | Not currently tested | Intentionally deferred while `Tepoch` changes are pending | All transformation, averaging, window, and trial/channel restriction behavior |
+| `ns.Tepoch` / `ns.TepochChannel` | `TestDataJointPipeline.m` | DataJoint integration test | FFT transformation with `average={}`, per-trial/per-channel output, dependent/independent metadata, and unaveraged row counts | Channel/trial/condition averaging, restrictions, alternate transforms, and window edge cases |
 
 ## Running tests
 

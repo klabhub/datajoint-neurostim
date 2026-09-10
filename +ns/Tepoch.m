@@ -102,9 +102,8 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             % dat_tbl = T(:,["channel", "trial", dv, "group", "nrtrials", "nrchannels"]);
             dat_tbl = T(:,["channel", "trial", dv]);
             dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'y');
-            dat_tbl= convertvars(dat_tbl,'dependent', 'char');
             dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
-
+            dat_tpl = makeMymSafe(dat_tpl);
             chunkedInsert(ns.TepochChannel,dat_tpl)
 
         end

@@ -38,7 +38,7 @@ classdef TestDataJointPipeline < matlab.unittest.TestCase
                 testCase.assumeTrue(false,['Cannot create isolated DataJoint test database: ' ME.message]);
                 return
             end
-            addpath(testCase.projectRoot); setenv('NS_ROOT',testCase.dataRoot);
+            addpath(testCase.projectRoot); clear ns.getSchema; setenv('NS_ROOT',testCase.dataRoot);
             testCase.report('seeding synthetic subject/session/experiment metadata');
             testCase.seedFixture();
             testCase.report('populating prerequisites for EpochParm validation');
@@ -86,10 +86,67 @@ classdef TestDataJointPipeline < matlab.unittest.TestCase
             epochTable = ns.Epoch; testCase.verifyEqual(count(epochTable.keySource & key),1);
             testCase.report('epochKeySourceRequiresDimensionConditions: complete');
         end
+        function tepochIsPopulatedWithoutAveraging(testCase)
+            testCase.report('tepochIsPopulatedWithoutAveraging: starting');
+            key = testCase.experimentKey();
+            tepochKey = mergestruct(key,struct('ttag','syntheticTepoch'));
+            testCase.report('ensuring ns.Epoch and ns.EpochChannel are populated');
+            populate(ns.Epoch & key);
+
+            if count(ns.EpochChannel & key)==0
+                testCase.report('recreating epoch part rows after a prior destructive test');
+                previousSafeMode = dj.config('safemode');
+                restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
+                dj.config('safemode',false);
+                delete(ns.Epoch & key);
+                populate(ns.Epoch & key);
+            end
+
+            testCase.report('replacing epoch signals with a known one-cycle sinusoid');
+            sinusoid = sin(2*pi*(0:4)'/5);
+            sourceRows = fetch(ns.EpochChannel & key,'subject','session_date','starttime','ctag','dimension','etag','filename','paradigm','channel','trial');
+            for iRow = 1:numel(sourceRows)
+                update(ns.EpochChannel & sourceRows(iRow),'signal',sinusoid);
+            end
+            testCase.report('inserting an FFT TepochParm with averaging disabled');
+            insert(ns.TepochParm,struct('ttag','syntheticTepoch','etag','syntheticEpoch', ...
+                'fun',struct('fft',{{}}),'window',[-2 2], ...
+                'channels',[1 2],'trials',{{1 2 3}},'conditions',{{}},'average',{{}}));
+
+            testCase.report('populating ns.Tepoch without channel/trial averaging');
+            populate(ns.Tepoch & tepochKey);
+            tepoch = ns.Tepoch & tepochKey;
+            testCase.verifyEqual(count(tepoch),2);
+            testCase.verifyEqual(sort(string(fetchn(tepoch,'dependent'))),["amplitude";"phase"]);
+            testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','independent'),'frequency');
+            testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','x'),[0 250 500]);
+
+            testCase.report('checking one transformed row per source trial/channel');
+            tc = ns.TepochChannel & tepochKey;
+            testCase.verifyEqual(count(tc),12);
+            testCase.verifyEqual(sort(tc.channels),[1;2]);
+            testCase.verifyEqual(sort(fetchn(tc,'trial')),repelem((1:3)',4));
+            testCase.verifyEqual(unique(fetchn(tc,'nrtrials')),1);
+            testCase.verifyEqual(unique(fetchn(tc,'nrchannels')),1);
+            amplitude = fetch1(tc & 'dependent="amplitude"' & 'trial=2' & 'channel=1','y');
+            testCase.verifyEqual(amplitude,[0;sqrt(5);0],'AbsTol',1e-10);
+            phase = fetch1(tc & 'dependent="phase"' & 'trial=2' & 'channel=1','y');
+            testCase.verifyEqual(phase(2),-pi/2,'AbsTol',1e-10);
+            testCase.verifySize(amplitude,[3 1]);
+            testCase.report('tepochIsPopulatedWithoutAveraging: complete');
+        end
         function chunkedDeleteRemovesPartRowsInBatches(testCase)
             testCase.report('chunkedDeleteRemovesPartRowsInBatches: starting');
             key = testCase.experimentKey();
             testCase.report('ensuring ns.Epoch and ns.EpochChannel are populated');
+            populate(ns.Epoch & key);
+            if count(ns.Tepoch & key)>0
+                testCase.report('removing Tepoch rows before deleting source EpochChannel rows');
+                previousSafeMode = dj.config('safemode');
+                restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
+                dj.config('safemode',false);
+                delete(ns.Tepoch & key);
+            end
             populate(ns.Epoch & key);
             before = count(ns.EpochChannel & key);
             testCase.verifyEqual(before,6);

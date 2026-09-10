@@ -84,9 +84,9 @@ for i=1:numel(packageName)
     end
 
     %% Create the getSchema function - use databaseName/packageName to setup different schemas for each package.
-    gs= 'function obj = getSchema\n persistent OBJ \n if isempty(OBJ) \n     OBJ = dj.Schema(dj.conn,''%s'', ''%s/%s'');\n end\n obj = OBJ;\n end \n';
+    gs= 'function obj = getSchema\n persistent OBJ \n if isempty(OBJ) || ~strcmp(OBJ.dbname, ''%s'') \n     OBJ = dj.Schema(dj.conn,''%s'', ''%s/%s'');\n end\n obj = OBJ;\n end \n';
     fid = fopen(fullfile(code,"+" + packageName{i},'getSchema.m'),"w");
-    fprintf(fid,gs,packageName{i},databaseName,packageName{i});
+    fprintf(fid,gs,databaseName,packageName{i},databaseName,packageName{i});
     fclose(fid);
     switch (packageName{i})
         case 'ns'          
