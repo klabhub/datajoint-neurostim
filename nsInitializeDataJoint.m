@@ -47,9 +47,9 @@ function nsInitializeDataJoint(code,databaseName,packageName,pv)
 %  BK - April 2022
 
 arguments
-    code {mustBeText} 
+    code (1,1) string 
     databaseName {mustBeText}    
-    packageName {mustBeText} = {'ns'}
+    packageName {mustBeText} = {"ns"}
     pv.dataRoot {mustBeText} = getenv('NS_ROOT');
 end
 % Make sure the database name begins with a lower case letter
@@ -61,6 +61,8 @@ if ~exist(code,'dir')
 end
 if ~iscell(packageName)
     packageName  = {packageName};
+else
+    packageName = cellfun(@string,packageName);
 end
 
 %% Add the schema and utilities (dj*)
@@ -76,14 +78,14 @@ query(dj.conn, sprintf('CREATE DATABASE IF NOT EXISTS `%s`',databaseName))
 
 for i=1:numel(packageName)
     %% Create a package folder in the project to extend the schema
-    packageDir =fullfile(code,['+' packageName{i}]);
+    packageDir =fullfile(code,"+" +  packageName{i});
     if ~exist(packageDir,"dir")
         mkdir(packageDir);
     end
 
     %% Create the getSchema function - use databaseName/packageName to setup different schemas for each package.
     gs= 'function obj = getSchema\n persistent OBJ \n if isempty(OBJ) \n     OBJ = dj.Schema(dj.conn,''%s'', ''%s/%s'');\n end\n obj = OBJ;\n end \n';
-    fid = fopen(fullfile(code,['+' packageName{i}],'getSchema.m'),"w");
+    fid = fopen(fullfile(code,"+" + packageName{i},'getSchema.m'),"w");
     fprintf(fid,gs,packageName{i},databaseName,packageName{i});
     fclose(fid);
     switch (packageName{i})

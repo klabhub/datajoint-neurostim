@@ -2,6 +2,8 @@ function chunkedDelete(targetQuery, batchSize, extraRelvars, autoDetectFK)
 % To avoid long server locks, delete rows in tables in batches.
 % This will first scan the query tree, and then delete rows from the bottom
 % up to avoid long table locks.
+% Batch size is adjusted per table from estimated row size when metadata is
+% available, and falls back to the provided row-count batchSize otherwise.
 % If dj.congif('safeMode') =1 the function asks for confirmation (once, after showing
 % the deletion plan)/
 arguments
@@ -40,17 +42,32 @@ if autoDetectFK
     list = unique([list, extChildren], 'stable');
 end
 
+referenceRowBytes = NaN;
+if ~isempty(descBase)
+    referenceRowBytes = estimateRowBytes(feval(descBase{1}).fullTableName);
+end
+
 list = flip(list);
+
+targetBytesPerDelete = resolveDeleteByteTarget(batchSize, referenceRowBytes);
+maxUnchunkedBytes = resolveMaxUnchunkedDeleteBytes();
 
 
 totalTuples = 0;
-summary = cell(length(list), 2);
+summary = cell(length(list), 6);
 for i = 1:length(list)
     tableObj = feval(list{i});
     toDelete = tableObj & targetQuery.proj();
     c = count(toDelete);
+    [rowBytes, adaptiveBatchSize] = estimateDeleteBatchSize(tableObj, batchSize, targetBytesPerDelete);
+    isLeafTable = isLeafDeleteTable(tableObj, autoDetectFK);
+    useSingleShotDelete = isLeafTable && shouldDeleteInSingleShot(c, rowBytes, maxUnchunkedBytes);
     summary{i, 1} = list{i};
     summary{i, 2} = c;
+    summary{i, 3} = rowBytes;
+    summary{i, 4} = adaptiveBatchSize;
+    summary{i, 5} = isLeafTable;
+    summary{i, 6} = useSingleShotDelete;
     totalTuples = totalTuples + c;
 end
 
@@ -59,7 +76,17 @@ end
 fprintf('\n--- DELETE PLAN (Bottom-Up) ---\n');
 for i = 1:size(summary, 1)
     if summary{i, 2} > 0
-        fprintf('%8d tuples from %s\n', summary{i, 2}, summary{i, 1});
+        modeLabel = 'chunked';
+        if summary{i, 6}
+            modeLabel = 'single-shot leaf';
+        end
+        if isnan(summary{i, 3})
+            fprintf('%8d tuples from %s (%s, batch %d, row size unavailable)\n', ...
+                summary{i, 2}, summary{i, 1}, modeLabel, summary{i, 4});
+        else
+            fprintf('%8d tuples from %s (%s, batch %d, %.1f KB/row)\n', ...
+                summary{i, 2}, summary{i, 1}, modeLabel, summary{i, 4}, summary{i, 3}/1024);
+        end
     end
 end
 
@@ -79,18 +106,31 @@ for i = 1:length(list)
     numTuples = count(toDelete);
     if numTuples == 0; continue; end
 
-    fprintf('\nProcessing %s...\n', tableName);
+    adaptiveBatchSize = summary{i, 4};
+    useSingleShotDelete = summary{i, 6};
+
+    if useSingleShotDelete
+        fprintf('\nProcessing %s with single-shot delete...\n', tableName);
+    else
+        fprintf('\nProcessing %s with batch size %d...\n', tableName, adaptiveBatchSize);
+    end
     keys = fetch(toDelete); % Fetch keys into MATLAB RAM
+
+    if useSingleShotDelete
+        delQuick(tableObj & keys);
+        fprintf('  Deleted %d/%d\n', numTuples, numTuples);
+        continue;
+    end
 
     j = 1;
     while j <= numTuples
-        endIdx = min(j + batchSize - 1, numTuples);
+        endIdx = min(j + adaptiveBatchSize - 1, numTuples);
         currentBatch = keys(j:endIdx);
 
         try
             delQuick(tableObj & currentBatch); % Commit-per-batch
             fprintf('  Deleted %d/%d\n', endIdx, numTuples);
-            j = j + batchSize; % Advance only on success
+            j = j + adaptiveBatchSize; % Advance only on success
         catch ME
             if contains(ME.message, 'gone away') || contains(ME.message, 'Lost connection')
                 fprintf('\n[CONNECTION LOST] Attempting to reconnect...\n');
@@ -110,6 +150,164 @@ for i = 1:length(list)
 end
 disp('Resilient bottom-up deletion complete.');
 warning(wrnStatus)
+end
+
+
+function bytesPerDelete = resolveDeleteByteTarget(fallbackBatchSize, referenceRowBytes)
+% Keep a roughly constant amount of table data per delete batch.
+
+    bytesPerDelete = getenv("NS_BYTESPERDELETE");
+    if isempty(bytesPerDelete)
+        if ~isnan(referenceRowBytes) && referenceRowBytes > 0
+            bytesPerDelete = fallbackBatchSize * referenceRowBytes;
+        else
+            bytesPerDelete = fallbackBatchSize * 8192;
+        end
+        return;
+    end
+
+    bytesPerDelete = str2double(bytesPerDelete);
+    if isnan(bytesPerDelete) || bytesPerDelete <= 0
+        error('NS_BYTESPERDELETE must be a positive numeric value.');
+    end
+end
+
+
+function maxUnchunkedBytes = resolveMaxUnchunkedDeleteBytes()
+% Limit when a leaf table may be deleted in a single statement.
+
+    maxUnchunkedBytes = getenv("NS_MAXUNCHUNKEDDELETE");
+    if isempty(maxUnchunkedBytes)
+        maxUnchunkedBytes = 50e6;
+        return;
+    end
+
+    maxUnchunkedBytes = str2double(maxUnchunkedBytes);
+    if isnan(maxUnchunkedBytes) || maxUnchunkedBytes <= 0
+        error('NS_MAXUNCHUNKEDDELETE must be a positive numeric value.');
+    end
+end
+
+
+function [rowBytes, adaptiveBatchSize] = estimateDeleteBatchSize(tableObj, fallbackBatchSize, targetBytesPerDelete)
+% Use INFORMATION_SCHEMA estimates when possible, otherwise keep the input batch size.
+
+    rowBytes = estimateRowBytes(tableObj.fullTableName);
+    if isnan(rowBytes) || rowBytes <= 0
+        adaptiveBatchSize = fallbackBatchSize;
+        return;
+    end
+
+    adaptiveBatchSize = max(1, floor(targetBytesPerDelete / rowBytes));
+end
+
+
+function tf = shouldDeleteInSingleShot(numTuples, rowBytes, maxUnchunkedBytes)
+% Only unchunk leaf deletes when the estimated payload is small.
+
+    tf = ~isnan(rowBytes) && rowBytes > 0 && (numTuples * rowBytes) <= maxUnchunkedBytes;
+end
+
+
+function tf = isLeafDeleteTable(tableObj, includeExternalChildren)
+% A leaf delete table has no dependent child tables.
+
+    directChildren = normalizeTableNameList(tableObj.children());
+    if includeExternalChildren
+        externalChildren = normalizeTableNameList(discoverDirectExternalChildren(tableObj.fullTableName));
+        directChildren = unique([directChildren, externalChildren], 'stable');
+    end
+    tf = isempty(directChildren);
+end
+
+
+function names = normalizeTableNameList(names)
+% Convert table-name outputs to a row cell array for safe concatenation.
+
+    if isempty(names)
+        names = {};
+    elseif ischar(names)
+        names = {names};
+    elseif isstring(names)
+        names = cellstr(names);
+    end
+
+    names = reshape(names, 1, []);
+end
+
+
+function rowBytes = estimateRowBytes(fullTableName)
+% Estimate bytes per stored row using table metadata.
+
+    rowBytes = NaN;
+    [schemaName, tableName] = splitFullTableName(fullTableName);
+    sql = sprintf([ ...
+        'SELECT AVG_ROW_LENGTH, DATA_LENGTH, TABLE_ROWS ' ...
+        'FROM INFORMATION_SCHEMA.TABLES ' ...
+        'WHERE TABLE_SCHEMA = ''%s'' AND TABLE_NAME = ''%s'''], ...
+        schemaName, tableName);
+
+    try
+        res = dj.conn().query(sql);
+    catch
+        return;
+    end
+
+    if isempty(res)
+        return;
+    end
+
+    if isfield(res, 'AVG_ROW_LENGTH') && ~isempty(res.AVG_ROW_LENGTH) && ~isnan(res.AVG_ROW_LENGTH)
+        rowBytes = double(res.AVG_ROW_LENGTH);
+        if rowBytes > 0
+            return;
+        end
+    end
+
+    if isfield(res, 'DATA_LENGTH') && isfield(res, 'TABLE_ROWS') && ...
+            ~isempty(res.TABLE_ROWS) && res.TABLE_ROWS > 0 && ...
+            ~isempty(res.DATA_LENGTH) && ~isnan(res.DATA_LENGTH)
+        rowBytes = double(res.DATA_LENGTH) / double(res.TABLE_ROWS);
+    end
+end
+
+
+function [schemaName, tableName] = splitFullTableName(fullTableName)
+% Convert `schema`.`table` into unquoted names for INFORMATION_SCHEMA.
+
+    parts = regexp(fullTableName, '^`([^`]+)`\.`([^`]+)`$', 'tokens', 'once');
+    if isempty(parts)
+        error('Could not parse table name %s.', fullTableName);
+    end
+
+    schemaName = parts{1};
+    tableName = parts{2};
+end
+
+
+function childTables = discoverDirectExternalChildren(fullTableName)
+% Query INFORMATION_SCHEMA for direct FK children across all schemas.
+
+    childTables = {};
+    [schemaName, tableName] = splitFullTableName(fullTableName);
+    sql = sprintf([ ...
+        'SELECT CONCAT(''`'',TABLE_SCHEMA,''`.'',''`'',TABLE_NAME,''`'') AS child ' ...
+        'FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE ' ...
+        'WHERE REFERENCED_TABLE_SCHEMA = ''%s'' ' ...
+        'AND REFERENCED_TABLE_NAME = ''%s'''], ...
+        schemaName, tableName);
+
+    try
+        res = dj.conn().query(sql);
+    catch
+        return;
+    end
+
+    if isempty(res) || ~isfield(res, 'child')
+        return;
+    end
+
+    childTables = unique(res.child, 'stable');
 end
 
 

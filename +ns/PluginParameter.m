@@ -384,13 +384,13 @@ classdef PluginParameter < dj.Part
             assert(~isempty(allEventTrials) && ~isempty(allEventTimes),"%s does not occur at a specific time or trial. Do not select trials or attrialtime",propName)
             if isnan(time)
                 % No time selection (but a trial selection)
-                [keepTrial,loc] = ismember(allEventTrials,trial);
+                [keepTrial] = ismember(allEventTrials,trial);
                 if iscell(allEventValues)
                     thisValue = allEventValues{keepTrial};
                 else
                     thisValue = allEventValues(keepTrial);
                 end
-                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(loc(keepTrial)),'clocktime',allEventNsTimes(keepTrial));
+                props.(propName) = struct('data',thisValue,'trialtime', allEventTimes(keepTrial),'trial',allEventTrials(keepTrial),'clocktime',allEventNsTimes(keepTrial));
             else % Time selection : 1 per trial (optionally followed by trial selection)
                 % Initialize with nan
                 data = cell(nrTrials,1);

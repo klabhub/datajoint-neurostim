@@ -1,4 +1,4 @@
-%{
+    %{
 # Preprocessed continuous signals per channel 
 -> ns.File
 -> ns.CParm
@@ -676,6 +676,7 @@ classdef C < dj.Computed & dj.DJInstance
                 pv.align (1,:) double = []
                 pv.removeArtifacts (1,1) = true
                 pv.robust (1,1) logical = false
+                pv.ica (1,:) struct = struct.empty
             end
 
             doBaselineCorrection = ~any(isnan(pv.baseline));
@@ -789,7 +790,10 @@ classdef C < dj.Computed & dj.DJInstance
                 return;
             end
 
-
+            if ~isempty(pv.ica)                
+                  [signal,icaInfo] = ns.Ica.clean(signal,fetch(tbl),itag= pv.ica.itag,ltag=pv.ica.ltag,find = pv.ica.find);               
+            end
+ 
             %% Artifact removal
             if pv.removeArtifacts
                 % Correction that applies to all channels
@@ -875,10 +879,10 @@ classdef C < dj.Computed & dj.DJInstance
                     fprintf('Align event did not occur in trial %d. Skipping trial.\n', trials{c}(skipMask));
                 end
                 validMask      = ~skipMask;
-                validTrialNrs  = trials{c}(validMask);         % [1 × nrValidTrials]
-                validAlignTime = alignTrialTime(validMask);    % [1 × nrValidTrials]
+                validTrialNrs  = trials{c}(validMask);         % [nrValidTrials x 1]
+                validAlignTime = alignTrialTime(validMask);    % [nrValidTrials x 1]
                 nrValidTrials  = numel(validTrialNrs);
-                alignNsTime    = trialStartTime(validTrialNrs) + validAlignTime; % [1 × nrValidTrials]
+                alignNsTime    = trialStartTime(validTrialNrs) + validAlignTime(:)'; % [1 x nrValidTrials 
                 varNames       = "Trial" + string(validTrialNrs);
 
                 % Setup the new time axis for the results
@@ -1021,6 +1025,11 @@ classdef C < dj.Computed & dj.DJInstance
                     B = bPerCondition;
                 end
             end
+           if ~isempty(pv.ica)
+                T = addprop(T, "ica", "table");
+                T.Properties.CustomProperties.ica = icaInfo;
+           end
+           
         end
     end
 
