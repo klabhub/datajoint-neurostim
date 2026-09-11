@@ -4,13 +4,37 @@ classdef (Abstract) cache < handle
     % derived measures (e.g. a spectrum from a signal), average in
     % different ways (across trials or channels, or subjects), or visualize
     % raw or computed data.
+    %
     % This cache class prevents multiple round trips to the server to fetch
     % the data. Instead, the data are fetched once and stored internally in
     % a Matlab table (.T) that also tracks the various primary keys of each
     % row in the DJ table.
     %
-    % EXAMPLE
+    %  The instructions for the computation are provided as a struct
+    %  that combines the function (fft, pspectrum,etc) and the (optional) 
+    %  input arguments. Each of the fields of the struct specifies one
+    %  operation; they are executed in order. 
+    % 
+    % fun.fft = {};  % FFT uses no input arguments.
+    % fun.pspectrum= {any of the parameter value pairs that pspectrum accepts}
+    % 
+    % EXAMPLES
+    % Determine the power spectral density between 0.5 and 50 Hz of a set of epochs 
+    %  e=ns.EpochChannel 
+    %  fun.pspectrum = {'FrequencyLimits',[0.25 50]}
+    %  G = compute(e,fun)
+    %  clf;for g= 1:height(G),plot(G.frequency{g},G.power{g});hold on;end;legend(G.condition)
     %
+    % Determine a wavelet spectrum using FWHM  method.
+    %fun.wavelet = {'nfrex',100,'FrequencyLimits',[0.5 50]} 
+    %  G = compute(e,fun)
+    %  imagesc(G.time{1},G.frequency{1},G.power{1})
+    %
+    % NOTE 
+    % pmtm is finicky with its inputs and requires the specification of the
+    % sampling rate. (Work in progress)
+    % fun.pmtm = {4,256,250} will use a time-halfbandwidth product of 4,
+    % with a 256 sample FFT, and 250 samples/s.
     %
     % BK - Dec 2025
     properties (Constant)
@@ -171,15 +195,18 @@ classdef (Abstract) cache < handle
             % Compute derived measures from the EpochChannel table.
             % fun - struct with fields corresponding to one of the 
             % functions listed below. Its values must be a cell array
-            % containing function arguments. First argument to these
-            % functions are always predetermined.
+            % containing function arguments; these values are passed to the 
+            % functions verbatim. 
             %   .fft:       Uses `fft()` to compute amplitude, phase as a function
             %                   of frequency, does not accept arguments.
+            %                   Sampling rate is determined automatically.
             %   .pspectrum: Uses `pspectrum()` to compute power spectral
             %                   density as a function of frequency
+            %                   Sampling rate is determined automatically.
             %   .pmtm:      Uses multittaper `pmtm()` to compute a
             %                   spectrogram as a function of time and 
-            %                   frequency
+            %                   frequency.  
+            %
             %   .snr:       Calculate SNRs as a ratio between the power
             %                  at a given frequency and the average power
             %                  at its neighboring (noise) frequencies
@@ -199,8 +226,13 @@ classdef (Abstract) cache < handle
             %               Args:
             %                   1. peak_freqs
             %                   2. peak_search_range_halfwidth
-            %   .msten:     ####
-            %   .wavelet:   ####
+            %   .msten:     Mean,standard error, and N (used by the ns.EpochChannel/plot function)
+            %   .wavelet:   Wavelet analysis using the FWHM approach.
+            %               Sampling rate is supplied automatically. The
+            %               input args are parameter value pairs that
+            %               specify the number of frequencies ('nfrex'), the
+            %               frequencylimits ('FrequencyLimits') and the fwhm at
+            %               the lowest and highest frequency ('fwhm') .
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -333,27 +365,22 @@ classdef (Abstract) cache < handle
                             funN = @(x) ns.cache.do_psd(x,o.samplingRate,optionsN{:});
                             idv = "frequency";
                             dv = "power";
-                        case "snr"
-                            funN = @(varargin) ns.cache.do_snr(varargin{:},optionsN{:});
-                            m_arg_in{end+1} = G.(idv);
-                            idv = "frequency";
-                            dv = "snr";
                         case "pmtm"
                             funN = @(x) ns.cache.do_pmtm(x,optionsN{:});
                             idv = "frequency";
                             dv = "power";
-                        case "wavelet"
-
-                            % There is something wrong here
-                            if isempty(optionsN)
-                                optionsN= struct('limits', [0.5 100],'fwhm',[2 0.2],'nfrex',40);
-                            end
-                            funN = @(x) ns.cache.do_wavelet(x,optionsN);
+                        case "wavelet"                         
+                            funN = @(x) ns.cache.do_wavelet(x,o.samplingRate,optionsN{:});
                             % do_wavelet() does not output time
-                            idv = ["frequency", "time"];
+                            idv = "frequency";
                             dv = "power";
+                        %% Cases below take G (the result of previous computation) as their input
+                        case "snr"
+                            funN = @(varargin) ns.cache.do_snr(varargin{:},optionsN{:});
+                            m_arg_in{end+1} = G.(idv); 
+                            idv = "frequency";
+                            dv = "snr";                        
                         case 'peak'
-
                             funN = @(varargin) ns.cache.search_peaks(varargin{:}, optionsN{:});
                             m_arg_in{end+1} = G.(idv); % frequency
                             idv = "search_frequency";
@@ -368,7 +395,7 @@ classdef (Abstract) cache < handle
                     % names, x overwrites G
                     G = ns.cache.horzcat_results_(G, x);
 
-                    % change M for the next iter
+                    % change M for the next computatoin
                     M = table2cell(G(:,dv));
                 end
             end
@@ -419,10 +446,10 @@ classdef (Abstract) cache < handle
             [power, freq] = pspectrum(signal, fs, varargin{:});
             v= table({power},{freq},'VariableNames',{'power','frequency'});
         end
-        function v = do_pmtm(signal, varargin)
+        function v = do_pmtm(signal,varargin)
             % Multitaper power and frequency
             signal =cat(2,signal{:}); % Concatenate epochs
-            signal(isinf(signal) | isnan(signal))=0;
+            signal(isinf(signal) | isnan(signal))=0;           
             [power, freq] = pmtm(signal, varargin{:});
             if isrow(freq) % make sure 1st dim is always frequency
                 freq = freq';
@@ -431,16 +458,24 @@ classdef (Abstract) cache < handle
             % Make table, force rows
             v = table({power},{freq(:)},'VariableNames',{'power','frequency'});
         end
-        function v = do_wavelet(signal,fs, fwhm,nfrex,limits)
+        function v = do_wavelet(signal,fs, pv)
+            arguments
+                signal cell
+                fs (1,1) double
+                pv.nfrex (1,1) double = 40
+                pv.fwhm (1,2) double = [2 0.2]
+                pv.limits (1,2) double =[0.5 100]
+            end
             % Code adapted from Cohen M. X. (2019). A better way to
             % define and describe Morlet wavelets for time-frequency
             % analysis. NeuroImage, 199, 81-86.
             % https://doi.org/10.1016/j.neuroimage.2019.05.048
             signal =cat(2,signal{:}); % Concatenate epochs
             nrSamples= size(signal,1);
+            time = (0:nrSamples-1)/fs;
             % time-frequency parameters
-            freq  = linspace(limits(1),limits(2),nfrex)';
-            fwhm = linspace(fwhm(1),fwhm(2),nfrex)'; % variable fwhm
+            freq  = linspace(pv.limits(1),pv.limits(2),pv.nfrex)';
+            fwhm = linspace(pv.fwhm(1),pv.fwhm(2),pv.nfrex)'; % variable fwhm
             assert(all(fwhm.*freq>=1),"The FWHM is too small (should have more than one cycle per window)");
 
             % setup wavelet and convolution parameters
@@ -449,7 +484,7 @@ classdef (Abstract) cache < handle
             nConv = nrSamples + length(wavet) - 1;
 
             % initialize time-frequency matrix
-            spectrogram = zeros(nfrex,nrSamples);
+            spectrogram = zeros(pv.nfrex,nrSamples);
 
             % spectrum of data - for convolution with wavelets
             dataX = fft(signal,nConv);
@@ -466,7 +501,7 @@ classdef (Abstract) cache < handle
             end
             power = abs(spectrogram).^2;
             % Store power spectrogram and frequency
-            v = table({power},{freq},'VariableNames',{'power','frequency'});
+            v = table({power},{freq},{time},'VariableNames',{'power','frequency','time'});
         end
         function v = do_msten(x)
             % Mean, standard error, and N
