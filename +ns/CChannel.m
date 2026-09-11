@@ -28,8 +28,7 @@ classdef CChannel < dj.Part & dj.DJInstance %& ns.PartSubsetter
      methods
          %% GET-SET Methods
          function v = get.channels(self)
-             ch = fetch(self, 'channel');
-             v = unique([ch(:).channel]');
+             v = self.unique('channel');
          end
      end
 
