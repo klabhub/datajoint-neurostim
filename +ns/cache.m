@@ -330,7 +330,7 @@ classdef (Abstract) cache < handle
                             dv = ["amplitude" "phase"];
                             idv = "frequency";
                         case "pspectrum"
-                            funN = @(x) ns.cache.do_psd(x,optionsN{:});
+                            funN = @(x) ns.cache.do_psd(x,o.samplingRate,optionsN{:});
                             idv = "frequency";
                             dv = "power";
                         case "snr"

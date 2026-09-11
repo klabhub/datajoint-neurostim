@@ -41,7 +41,10 @@ function [signal,time,result,channels] = preprocess(signal,time,parms,key)
 % parms.detrend  = {1,'Continuous', true};
     
 if ismatrix(signal) % [samples channels]
+    inputIsMatrix= true;
     signal = permute(signal,[1 3 2]); % Add singleton trial dimension
+else
+    inputIsMatrix= false;
 end
 [nrSamples,nrTrials,nrChannels] = size(signal);
 channels = 1:nrChannels;  
@@ -211,7 +214,7 @@ if removeBadChannels
 end
 result.removeBadChannel = removeBadChannels;
 
-if nrTrials ==1
+if inputIsMatrix
     % Back to original shape (remove singleton trial)
     signal = squeeze(signal);
 end
