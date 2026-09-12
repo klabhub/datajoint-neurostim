@@ -14,29 +14,26 @@ classdef (Abstract) cache < handle
     %  that combines the function (fft, pspectrum,etc) and the (optional) 
     %  input arguments. Each of the fields of the struct specifies one
     %  operation; they are executed in order. 
-    % 
+    % SEE ns.cachce/compute for examples
+    %
+    % FFT
     % fun.fft = {};  % FFT uses no input arguments.
+    % PSPECTRUM
     % fun.pspectrum= {any of the parameter value pairs that pspectrum accepts}
     % 
     % EXAMPLES
     % Determine the power spectral density between 0.5 and 50 Hz of a set of epochs 
     %  e=ns.EpochChannel 
+    % plot(e)  ; % Plots epoch time courses averaged acros trials & channels.
+    % Compute the power spectrum with pspectrum
     %  fun.pspectrum = {'FrequencyLimits',[0.25 50]}
     %  G = compute(e,fun)
+    % Plot the results (per condition)   
     %  clf;for g= 1:height(G),plot(G.frequency{g},G.power{g});hold on;end;legend(G.condition)
     %
-    % Determine a wavelet spectrum using FWHM  method.
-    %fun.wavelet = {'nfrex',100,'FrequencyLimits',[0.5 50]} 
-    %  G = compute(e,fun)
-    %  imagesc(G.time{1},G.frequency{1},G.power{1})
-    %
-    % NOTE 
-    % pmtm is finicky with its inputs and requires the specification of the
-    % sampling rate. (Work in progress)
-    % fun.pmtm = {4,256,250} will use a time-halfbandwidth product of 4,
-    % with a 256 sample FFT, and 250 samples/s.
     %
     % BK - Dec 2025
+    % MO - 2026
     properties (Constant)
         GROUPVARS = ["subject" "session_date" "starttime" "paradigm" "condition" "trial" "channel"];
     end
@@ -200,39 +197,73 @@ classdef (Abstract) cache < handle
             %   .fft:       Uses `fft()` to compute amplitude, phase as a function
             %                   of frequency, does not accept arguments.
             %                   Sampling rate is determined automatically.
+            %                EXAMPLE: fun.fft = {}
             %   .pspectrum: Uses `pspectrum()` to compute power spectral
             %                   density as a function of frequency
             %                   Sampling rate is determined automatically.
+            %               EXAAMPLE : fun.pspectrum = {'FrequencyLimits',[0 50]}
             %   .pmtm:      Uses multittaper `pmtm()` to compute a
             %                   spectrogram as a function of time and 
             %                   frequency.  
-            %
-            %   .snr:       Calculate SNRs as a ratio between the power
-            %                  at a given frequency and the average power
-            %                  at its neighboring (noise) frequencies
-            %                  excluding immediate neighbors. 
-            %               Args:
-            %                  1. signal_range_halfwidth
-            %                  2. noise_range_halfwidth}
-            %               for a given frequency f_i, the noise power
-            %                  is the average power in the range of
-            %                   f_i + [1,-1].*noise_range_halfwidth
-            %                  excluding
-            %                   f_i + [1,-1].*signal_range_halfwidth
-            %                  where
-            %                   signal_range < noise_range
-            %   .peak:      Finds peak locations and magnitudes around 
-            %                   specific frequencies within a search window
-            %               Args:
-            %                   1. peak_freqs
-            %                   2. peak_search_range_halfwidth
+            %               pmtm is finicky with its inputs and requires the specification of the
+            %               sampling rate. (Work in progress)
+            %               EXAMPLE fun.pmtm = {4,256,250} 
+            %                   will use a time-halfbandwidth product of 4,
+            %                   with a 256 sample FFT, and 250 samples/s
+            %                   assumed sampling rate.   
             %   .msten:     Mean,standard error, and N (used by the ns.EpochChannel/plot function)
-            %   .wavelet:   Wavelet analysis using the FWHM approach.
+            %               EXAMPLE fun.msten = {};
+            %   .wavelet:   Wavelet spectrogram using the FWHM approach.
             %               Sampling rate is supplied automatically. The
             %               input args are parameter value pairs that
             %               specify the number of frequencies ('nfrex'), the
             %               frequencylimits ('FrequencyLimits') and the fwhm at
             %               the lowest and highest frequency ('fwhm') .
+            %               EXAMPLE:
+            %               fun.wavelet = {'nfrex',40,'fwhm',[2 0.2],'FrequencyLimits',[0.5 50]};
+            %
+            %   .snr:       Calculate SNRs as a ratio between the power
+            %                  at a given frequency and the average power
+            %                  at its neighboring (noise) frequencies
+            %                  excluding immediate neighbors. 
+            %               Args: signalHalfWidth (hz)
+            %                       noiseHalfWidth (hz)
+            %
+            %               for a given frequency f_i, the noise power
+            %                  is the average power in the range of
+            %                   f_i + [1,-1].*noiseHalfwidth
+            %                  excluding
+            %                   f_i + [1,-1].*signalHalfwidth
+            %               signalHalfWdith must be smaller than
+            %               noiseHalfWidth and the signalHalfWidth must be
+            %               bigger than the frequency resolution of the
+            %               spectral analysis.
+            %
+            %               Note that this compute fun needs others to
+            %               work properly, for instance:
+            %                   fun.pspectrum = {'FrequencyLimits',[0 50]};
+            %                   fun.snr       = {1,2};
+            %               This will first compute the power spectrum and
+            %               then the snr for all the frequencies in that
+            %               spectrum. With pmtm this can be finetuned to only
+            %               compute the power at specific frequencies of
+            %               interest:
+            %                   fun.pmtm = {4,1:24,250}; % compute power at 2,6,10, 24 Hz.
+            %                   fun.snr       = {2,4};    
+            %               Or you can compute the snr at all frequencies
+            %               and then find the peaks in the snr that are
+            %               close to a set of frequencies of interest:
+            %                   fun.pspectrum   = {'FrequncyLimits',[0 50]}; 
+            %                   fun.snr       = {1,2};    % Determine snr
+            %                   fun.peak   = {[2 6 10 24],1} % Find peak
+            %                   snr within 1 Hz from 2,6, 10,24 Hz.
+            %            
+            %             
+            %   .peak:      Finds peak locations and magnitudes around 
+            %                   specific frequencies within a search window
+            %               Args:
+            %                   1. peak_freqs
+            %                   2. peak_search_range_halfwidth
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -374,10 +405,13 @@ classdef (Abstract) cache < handle
                             % do_wavelet() does not output time
                             idv = "frequency";
                             dv = "power";
+                        case "snrtmp"
+                            % First compute the spectru
                         %% Cases below take G (the result of previous computation) as their input
                         case "snr"
+                            % allow frex to be specified directly;if ismember('frex',optionsN)
                             funN = @(varargin) ns.cache.do_snr(varargin{:},optionsN{:});
-                            m_arg_in{end+1} = G.(idv); 
+                            m_arg_in{end+1} = G.(idv); % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
                             idv = "frequency";
                             dv = "snr";                        
                         case 'peak'
@@ -512,9 +546,7 @@ classdef (Abstract) cache < handle
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
         end
-
         function v = do_snr(signal, freqs, signal_halfwidth, noise_halfwidth)
-
             arguments
                 signal (:,:)
                 freqs (:,1)
@@ -531,7 +563,8 @@ classdef (Abstract) cache < handle
             assert(size(signal,1) == numel(freqs), "Signal and frequencies are of different length.");
             df = uniquetol(diff(freqs),1e-6); % frequency step
             assert(isscalar(df), "Frequencies are not regularly sampled.");
-
+            assert(signal_halfwidth<noise_halfwidth,"Signal half width must be smaller than the noise half width");
+            assert(signal_halfwidth>df,"Signal half width must be larger than the frequency spacing");
             % create the kernel
             half_width = floor(noise_halfwidth/df);
             % must be even
@@ -549,24 +582,20 @@ classdef (Abstract) cache < handle
             % appropriate for amplitudes. Log scaled signal mean acts
             % similar to geometric mean
             signal = log10(signal); 
-            noise = do.ndconv(signal, kernel, NaN)/sum(kernel); % conv is sum, make it mean
+            % Todo: THIS USED TO HAVE nan AS THIRD INPUT. wHY?
+            noise = do.ndconv(signal, kernel)/sum(kernel); % conv is sum, make it mean
             snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
-            isPad = isnan(snr);
-
-            v = table({snr(~isPad)}, {freqs(~isPad)}, VariableNames={'snr', 'frequency'});
+            v = table({snr}, {freqs}, VariableNames={'snr', 'frequency'});
 
         end
 
         function v = search_peaks(signal, freqs, search_freqs, search_range_halfwidth)
-
             arguments
-
                 signal (:,:)
                 freqs (:,:)
                 search_freqs (1,:) {mustBeNonnegative}
                 search_range_halfwidth (1,1) {mustBePositive}
-
             end
 
             if iscell(signal)
