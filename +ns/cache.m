@@ -248,7 +248,7 @@ classdef (Abstract) cache < handle
             %               spectrum. With pmtm this can be finetuned to only
             %               compute the power at specific frequencies of
             %               interest:
-            %                   fun.pmtm = {4,1:24,250}; % compute power at 2,6,10, 24 Hz.
+            %                   fun.pmtm = {4,1:24,250}; % compute power at 1:24 Hz
             %                   fun.snr       = {2,4};    
             %               Or you can compute the snr at all frequencies
             %               and then find the peaks in the snr that are
@@ -284,8 +284,8 @@ classdef (Abstract) cache < handle
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
                 pv.average (1,:) string {mustBeMember(pv.average,["" "subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
-                pv.x (1,1) string = o.independent  % Which  column in .T to use on the horizontal axis
-                pv.y (1,1) string = o.dependent    % Column in .T to use as the dependent variable
+                pv.x (1,1) string = o.independent  % Name of the independent variable
+                pv.y (1,1) string = o.dependent    % Name of the dependent variable
             end
             fill(o);% Fill the cache
             idv = pv.x;
@@ -302,6 +302,9 @@ classdef (Abstract) cache < handle
                 stay = stay  & ismember(o.T.trial,pv.trial);
             end
             restrictedT = o.T(stay,:);
+            if isempty(restrictedT)
+                error('No data in this table');
+            end
             if any(isfinite(pv.timeWindow))
                 assert(ismember("time",o.T.Properties.VariableNames),"timeWindow restriction can only be used on a cache with a time column.")
                 % Crop to the timeWindow for this operation.
@@ -314,9 +317,6 @@ classdef (Abstract) cache < handle
                 t= t(keep);
                 assert(~isempty(t),'No time points left in the analysis window ([%f %f])',pv.timeWindow(1),pv.timeWindow(2));
                 restrictedT.time = repmat([t(1) t(end) numel(t)],height(restrictedT),1);
-            end
-            if isempty(restrictedT)
-                error('No data in this table');
             end
 
             %%  Average/group
@@ -377,11 +377,10 @@ classdef (Abstract) cache < handle
                 idv = "time";
                 % Combine with G
                 G = [G M];
-            else
-
+            else                
                 transforms = fieldnames(fun);
                 n_transform = numel(transforms);
-
+                fprintf('Applying %d transforms (%s) to %d elements\n',n_transform,strjoin(transforms,"/"),size(M,1))
                 for iTrans = 1:n_transform
                     transN = transforms{iTrans};
                     optionsN = fun.(transN);
@@ -404,19 +403,18 @@ classdef (Abstract) cache < handle
                             funN = @(x) ns.cache.do_wavelet(x,o.samplingRate,optionsN{:});
                             % do_wavelet() does not output time
                             idv = "frequency";
-                            dv = "power";
-                        case "snrtmp"
-                            % First compute the spectru
+                            dv = "power";                        
                         %% Cases below take G (the result of previous computation) as their input
                         case "snr"
-                            % allow frex to be specified directly;if ismember('frex',optionsN)
+                            assert(n_transform>1,"snr cannot run on its own; fun needs a spectral power estimate.");                           
                             funN = @(varargin) ns.cache.do_snr(varargin{:},optionsN{:});
-                            m_arg_in{end+1} = G.(idv); % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
+                            m_arg_in{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
                             idv = "frequency";
                             dv = "snr";                        
                         case 'peak'
+                            assert(n_transform>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
                             funN = @(varargin) ns.cache.search_peaks(varargin{:}, optionsN{:});
-                            m_arg_in{end+1} = G.(idv); % frequency
+                            m_arg_in{end+1} = G.(idv); %#ok<AGROW> % frequency
                             idv = "search_frequency";
                             dv = ["peak_frequency","magnitude"];
                         otherwise
@@ -429,7 +427,7 @@ classdef (Abstract) cache < handle
                     % names, x overwrites G
                     G = ns.cache.horzcat_results_(G, x);
 
-                    % change M for the next computatoin
+                    % change M for the next computation
                     M = table2cell(G(:,dv));
                 end
             end
@@ -589,7 +587,6 @@ classdef (Abstract) cache < handle
             v = table({snr}, {freqs}, VariableNames={'snr', 'frequency'});
 
         end
-
         function v = search_peaks(signal, freqs, search_freqs, search_range_halfwidth)
             arguments
                 signal (:,:)
