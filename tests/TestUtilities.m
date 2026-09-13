@@ -79,5 +79,23 @@ classdef TestUtilities < matlab.unittest.TestCase
 
             testCase.verifyEqual(output.value(1), 1);
         end
+
+        function fftAcceptsNamedOptions(testCase)
+            signal = {sin(2*pi*(0:4)'/5)};
+            result = ns.cache.do_fft(signal,1000,n=8);
+
+            testCase.verifyEqual(result.frequency{1},(0:4)*1000/8);
+            testCase.verifySize(result.amplitude{1},[5 1]);
+        end
+
+        function pspectrumAcceptsNamedOptions(testCase)
+            signal = {sin(2*pi*(0:7)'/8)};
+            result = ns.cache.do_psd(signal,1000,FrequencyLimits=[0 250], ...
+                Leakage=1,TwoSided=false);
+
+            testCase.verifyEqual(result.frequency{1}(1),0);
+            testCase.verifyLessThanOrEqual(result.frequency{1}(end),250);
+            testCase.verifySize(result.power{1},size(result.frequency{1}));
+        end
     end
 end

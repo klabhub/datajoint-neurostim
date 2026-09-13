@@ -10,23 +10,19 @@ classdef (Abstract) cache < handle
     % a Matlab table (.T) that also tracks the various primary keys of each
     % row in the DJ table.
     %
-    %  The instructions for the computation are provided as a struct
+    %  The instructions for a computation are provided as a struct
     %  that combines the function (fft, pspectrum,etc) and the (optional) 
     %  input arguments. Each of the fields of the struct specifies one
     %  operation; they are executed in order. 
+    %
     % SEE ns.cachce/compute for examples
     %
-    % FFT
-    % fun.fft = {};  % FFT uses no input arguments.
-    % PSPECTRUM
-    % fun.pspectrum= {any of the parameter value pairs that pspectrum accepts}
-    % 
     % EXAMPLES
     % Determine the power spectral density between 0.5 and 50 Hz of a set of epochs 
     %  e=ns.EpochChannel 
-    % plot(e)  ; % Plots epoch time courses averaged acros trials & channels.
+    %  plot(e)  ; % Plots epoch time courses averaged acros trials & channels.
     % Compute the power spectrum with pspectrum
-    %  fun.pspectrum = {'FrequencyLimits',[0.25 50]}
+    %  fun.pspectrum = struct('FrequencyLimits',[0.5 50])
     %  G = compute(e,fun)
     % Plot the results (per condition)   
     %  clf;for g= 1:height(G),plot(G.frequency{g},G.power{g});hold on;end;legend(G.condition)
@@ -191,43 +187,45 @@ classdef (Abstract) cache < handle
         function [G,dv,idv] =  compute(o,fun,pv)
             % Compute derived measures from the EpochChannel table.
             % fun - struct with fields corresponding to one of the 
-            % functions listed below. Its values must be a cell array
-            % containing function arguments; these values are passed to the 
-            % functions verbatim. 
+            % functions listed below. FFT and pspectrum take a struct
+            % containing named options; all spectral functions use this
+            % struct-based option format.
             %   .fft:       Uses `fft()` to compute amplitude, phase as a function
-            %                   of frequency, does not accept arguments.
+            %                   of frequency. Supports the named `n` option.
             %                   Sampling rate is determined automatically.
-            %                EXAMPLE: fun.fft = {}
+            %                EXAMPLE: fun.fft = struct('n',128)
             %   .pspectrum: Uses `pspectrum()` to compute power spectral
             %                   density as a function of frequency
             %                   Sampling rate is determined automatically.
-            %               EXAAMPLE : fun.pspectrum = {'FrequencyLimits',[0 50]}
-            %   .pmtm:      Uses multittaper `pmtm()` to compute a
-            %                   spectrogram as a function of time and 
-            %                   frequency.  
-            %               pmtm is finicky with its inputs and requires the specification of the
-            %               sampling rate. (Work in progress)
-            %               EXAMPLE fun.pmtm = {4,256,250} 
-            %                   will use a time-halfbandwidth product of 4,
-            %                   with a 256 sample FFT, and 250 samples/s
-            %                   assumed sampling rate.   
+            %               EXAMPLE : fun.pspectrum = struct('FrequencyLimits',[0 50])
+            %   .pmtm:      Uses the multitaper pmtm function. Options are
+            %               supplied as a struct with these fields:
+            %               tapertype: 'slepian' (default) or 'sine'
+            %               nw:        4 (default) or a positive scalar
+            %               m:         7 (default), an integer scalar, or vector
+            %               nfft:      [] (default) or an integer
+            %               fs:        sample rate, a positive scalar
+            %               f:         frequencies, a vector
+            %               EXAMPLE:
+            %               fun.pmtm = struct('nw',4,'nfft',256,'fs',250);
             %   .msten:     Mean,standard error, and N (used by the ns.EpochChannel/plot function)
             %               EXAMPLE fun.msten = {};
             %   .wavelet:   Wavelet spectrogram using the FWHM approach.
             %               Sampling rate is supplied automatically. The
-            %               input args are parameter value pairs that
-            %               specify the number of frequencies ('nfrex'), the
-            %               frequencylimits ('FrequencyLimits') and the fwhm at
-            %               the lowest and highest frequency ('fwhm') .
+            %               options are supplied as a struct. Its fields
+            %               specify the number of frequencies ('nfrex'),
+            %               frequency limits ('limits'), and the FWHM at
+            %               the lowest and highest frequencies ('fwhm').
             %               EXAMPLE:
-            %               fun.wavelet = {'nfrex',40,'fwhm',[2 0.2],'FrequencyLimits',[0.5 50]};
+            %               fun.wavelet = struct('nfrex',40,'fwhm',[2 0.2], ...
+            %                   'limits',[0.5 50]);
             %
             %   .snr:       Calculate SNRs as a ratio between the power
             %                  at a given frequency and the average power
             %                  at its neighboring (noise) frequencies
             %                  excluding immediate neighbors. 
-            %               Args: signalHalfWidth (hz)
-            %                       noiseHalfWidth (hz)
+            %               Options are supplied as a struct with fields
+            %               signalHalfWidth and noiseHalfWidth, both in Hz.
             %
             %               for a given frequency f_i, the noise power
             %                  is the average power in the range of
@@ -242,28 +240,32 @@ classdef (Abstract) cache < handle
             %               Note that this compute fun needs others to
             %               work properly, for instance:
             %                   fun.pspectrum = {'FrequencyLimits',[0 50]};
-            %                   fun.snr       = {1,2};
+            %                   fun.snr = struct('signalHalfWidth',1, ...
+            %                       'noiseHalfWidth',2);
             %               This will first compute the power spectrum and
             %               then the snr for all the frequencies in that
             %               spectrum. With pmtm this can be finetuned to only
             %               compute the power at specific frequencies of
             %               interest:
             %                   fun.pmtm = {4,1:24,250}; % compute power at 1:24 Hz
-            %                   fun.snr       = {2,4};    
+            %                   fun.snr = struct('signalHalfWidth',2, ...
+            %                       'noiseHalfWidth',4);
             %               Or you can compute the snr at all frequencies
             %               and then find the peaks in the snr that are
             %               close to a set of frequencies of interest:
             %                   fun.pspectrum   = {'FrequncyLimits',[0 50]}; 
-            %                   fun.snr       = {1,2};    % Determine snr
-            %                   fun.peak   = {[2 6 10 24],1} % Find peak
+            %                   fun.snr = struct('signalHalfWidth',1, ...
+            %                       'noiseHalfWidth',2); % Determine SNR
+            %                   fun.peak = struct('searchFrequencies', ...
+            %                       [2 6 10 24], 'searchRangeHalfWidth',1);
             %                   snr within 1 Hz from 2,6, 10,24 Hz.
             %            
             %             
-            %   .peak:      Finds peak locations and magnitudes around 
-            %                   specific frequencies within a search window
-            %               Args:
-            %                   1. peak_freqs
-            %                   2. peak_search_range_halfwidth
+            %   .peak:      Finds peak locations and magnitudes around
+            %                   specific frequencies within a search window.
+            %               Options are supplied as a struct with fields
+            %               searchFrequencies and searchRangeHalfWidth.
+            %
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -377,52 +379,56 @@ classdef (Abstract) cache < handle
                 idv = "time";
                 % Combine with G
                 G = [G M];
-            else                
-                transforms = fieldnames(fun);
-                n_transform = numel(transforms);
-                fprintf('Applying %d transforms (%s) to %d elements\n',n_transform,strjoin(transforms,"/"),size(M,1))
-                for iTrans = 1:n_transform
-                    transN = transforms{iTrans};
-                    optionsN = fun.(transN);
-                    m_arg_in = {M}; % input to splitapply
-                    switch transN
+            else
+                % Compute one or more functions
+                funs = fieldnames(fun);
+                nrFuns = numel(funs);
+                fprintf('Applying %d functions (%s) to %d elements\n',nrFuns,strjoin(funs,"/"),size(M,1))
+                for f = 1:nrFuns
+                    thisFun = funs{f};
+                    if isstruct(fun.(thisFun))
+                        thisOptions = namedargs2cell(fun.(thisFun));
+                    else
+                        thisOptions = {};
+                    end
+                    data = {M}; % input to the function called by splitapply
+                    switch thisFun
                         case "fft"
-                            assert(isempty(optionsN),"fft does not take any options")
-                            funN = @(x) ns.cache.do_fft(x,o.samplingRate);
+                            funN = @(x) ns.cache.do_fft(x,o.samplingRate,thisOptions{:});
                             dv = ["amplitude" "phase"];
                             idv = "frequency";
                         case "pspectrum"
-                            funN = @(x) ns.cache.do_psd(x,o.samplingRate,optionsN{:});
+                            funN = @(x) ns.cache.do_pspectrum(x,o.samplingRate,thisOptions{:});
                             idv = "frequency";
                             dv = "power";
                         case "pmtm"
-                            funN = @(x) ns.cache.do_pmtm(x,optionsN{:});
+                            funN = @(x) ns.cache.do_pmtm(x,'fs',o.samplingRate,thisOptions{:});
                             idv = "frequency";
                             dv = "power";
                         case "wavelet"                         
-                            funN = @(x) ns.cache.do_wavelet(x,o.samplingRate,optionsN{:});
+                            funN = @(x) ns.cache.do_wavelet(x,o.samplingRate,thisOptions{:});
                             % do_wavelet() does not output time
                             idv = "frequency";
                             dv = "power";                        
                         %% Cases below take G (the result of previous computation) as their input
                         case "snr"
-                            assert(n_transform>1,"snr cannot run on its own; fun needs a spectral power estimate.");                           
-                            funN = @(varargin) ns.cache.do_snr(varargin{:},optionsN{:});
-                            m_arg_in{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
+                            assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
+                            funN = @(varargin) ns.cache.do_snr(varargin{:},thisOptions{:});
+                            data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
                             idv = "frequency";
                             dv = "snr";                        
                         case 'peak'
-                            assert(n_transform>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
-                            funN = @(varargin) ns.cache.search_peaks(varargin{:}, optionsN{:});
-                            m_arg_in{end+1} = G.(idv); %#ok<AGROW> % frequency
-                            idv = "search_frequency";
-                            dv = ["peak_frequency","magnitude"];
+                            assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
+                            funN = @(varargin) ns.cache.do_search_peaks(varargin{:}, thisOptions{:});
+                            data{end+1} = G.(idv); %#ok<AGROW> % frequency
+                            idv = "searchFrequency";
+                            dv = ["peakFrequency","magnitude"];
                         otherwise
-                            error('Unknown function %s', transN);
+                            error('Unknown function %s', thisFun);
                     end
 
                     %% Apply the fun to the mean signal
-                    x = splitapply(funN,m_arg_in{:},(1:nrGrps)');
+                    x = splitapply(funN,data{:},(1:nrGrps)');
                     % Combine with G, if G and x have common variable
                     % names, x overwrites G
                     G = ns.cache.horzcat_results_(G, x);
@@ -442,21 +448,30 @@ classdef (Abstract) cache < handle
         % Compute functions that take a signal with some options and return
         % a table with one or more output columns. Note that each column
         % should contain a row vector of results.
-        function v = do_fft(signal, fs)
-            % do_fft - Computes FFT amplitude and phase for each
-            %               epoch. Only includes real frequencies.
-            %
-            % Outputs (table columns):
-            %   amplitude: Amplitude of the FFT.
-            %   phase: Phase of the FFT.
-            %   frequency: Corresponding real frequencies.
+        function v = do_fft(signal, fs, pv)
+        % do_fft - Computes FFT amplitude and phase for each
+        %               epoch. Only includes real frequencies.
+        %
+        % Outputs (table columns):
+        %   amplitude: Amplitude of the FFT.
+        %   phase: Phase of the FFT.
+        %   frequency: Corresponding real frequencies.
+            arguments
+                signal cell
+                fs (1,1) double {mustBeFinite,mustBePositive}
+                pv.n double {mustBePositiveIntegerOrEmpty} = []
+            end        
 
             signal =cat(2,signal{:}); % Concatenate epochs
             % Compute FFT for each slice along time dim 1
-            fftResult = fft(signal);
+            if ~isempty(pv.n)
+                fftResult = fft(signal,pv.n);
+            else
+                fftResult = fft(signal);
+            end
 
             % Calculate real frequencies
-            N = size(signal, 1);
+            N = size(fftResult, 1);
             if mod(N, 2) == 0
                 freq = (0:N/2) * fs / N;
                 idx = 1:N/2+1;
@@ -470,19 +485,56 @@ classdef (Abstract) cache < handle
             % Return as table with results as row vectors
             v= table({amplitude},{phase},{freq},'VariableNames',{'amplitude','phase','frequency'});
         end
-        function v = do_psd(signal, fs, varargin)
-            % Power spectral density.
+        function v = do_pspectrum(signal, fs, pv)
+            % Compute power spectral density using MATLAB's pspectrum function.
+            arguments
+                signal cell
+                fs (1,1) double {mustBeFinite,mustBePositive}
+                pv.FrequencyLimits (1,2) double {mustBeFrequencyLimitsOrEmpty} = []
+                pv.FrequencyResolution double {mustBePositiveScalarOrEmpty} = []
+                pv.Leakage double {mustBeUnitIntervalOrEmpty} = []
+                pv.MinThreshold double {mustBeScalarOrEmpty} = []
+                pv.Reassign logical {mustBeScalarOrEmpty} = []
+                pv.TwoSided logical {mustBeScalarOrEmpty} = []
+            end
+          
             % Table with power and frequency
             signal =cat(2,signal{:}); % Concatenate epochs
             signal = signal - mean(signal,1,"omitmissing");
-            [power, freq] = pspectrum(signal, fs, varargin{:});
+            options = namedargs2cell(pv);
+            for iOption = numel(options)-1:-2:1
+                if isempty(options{iOption+1})
+                    options(iOption:iOption+1) = [];
+                end
+            end
+            [power, freq] = pspectrum(signal, fs, 'power', options{:});
             v= table({power},{freq},'VariableNames',{'power','frequency'});
         end
-        function v = do_pmtm(signal,varargin)
+        function v = do_pmtm(signal,pv)
+            arguments
+                signal cell
+                pv.tapertype (1,1) string {mustBeMember(pv.tapertype,["slepian" "sine"])} = "slepian"
+                pv.nw (1,1) double {mustBeFinite,mustBeReal,mustBePositive} = 4
+                pv.m double {mustBeSineTaperOption} = 7
+                pv.nfft double {mustBePositiveIntegerOrEmpty} = []
+                pv.fs (1,1) double {mustBeFinite,mustBeReal,mustBePositive}
+                pv.f double {mustBeVectorOrEmpty} = []
+            end
             % Multitaper power and frequency
-            signal =cat(2,signal{:}); % Concatenate epochs
-            signal(isinf(signal) | isnan(signal))=0;           
-            [power, freq] = pmtm(signal, varargin{:});
+            signal =cat(2,signal{:});
+            signal(isinf(signal) | isnan(signal))=0;
+            assert(isempty(pv.nfft) || isempty(pv.f), ...
+                "Specify only one of nfft and f.");
+            frequencyInput = pv.f;
+            if isempty(frequencyInput)
+                frequencyInput = pv.nfft;
+            end
+            if pv.tapertype == "sine"
+                [power, freq] = pmtm(signal,pv.m,'Tapers','sine', ...
+                    frequencyInput,pv.fs);
+            else
+                [power, freq] = pmtm(signal,pv.nw,frequencyInput,pv.fs);
+            end
             if isrow(freq) % make sure 1st dim is always frequency
                 freq = freq';
                 power = power';
@@ -496,7 +548,7 @@ classdef (Abstract) cache < handle
                 fs (1,1) double
                 pv.nfrex (1,1) double = 40
                 pv.fwhm (1,2) double = [2 0.2]
-                pv.limits (1,2) double =[0.5 100]
+                pv.limits (1,2) double =[0.5 50]
             end
             % Code adapted from Cohen M. X. (2019). A better way to
             % define and describe Morlet wavelets for time-frequency
@@ -514,13 +566,10 @@ classdef (Abstract) cache < handle
             wavet = (-5:1/fs:5)';
             halfw = floor(length(wavet)/2)+1;
             nConv = nrSamples + length(wavet) - 1;
-
             % initialize time-frequency matrix
             spectrogram = zeros(pv.nfrex,nrSamples);
-
             % spectrum of data - for convolution with wavelets
             dataX = fft(signal,nConv);
-
             % loop over frequencies
             for fi=1:length(freq)
                 % create wavelet
@@ -544,13 +593,15 @@ classdef (Abstract) cache < handle
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
         end
-        function v = do_snr(signal, freqs, signal_halfwidth, noise_halfwidth)
+        function v = do_snr(signal, freqs, pv)
             arguments
                 signal (:,:)
                 freqs (:,1)
-                signal_halfwidth (1,1) double {mustBePositive}
-                noise_halfwidth (1,1) double {mustBePositive}
+                pv.signalHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive} = 1
+                pv.noiseHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}  = 2 
             end
+            signalHalfWidth = pv.signalHalfWidth;
+            noiseHalfWidth = pv.noiseHalfWidth;
 
             if iscell(signal)
                 signal = cat(2,signal{:});
@@ -561,20 +612,21 @@ classdef (Abstract) cache < handle
             assert(size(signal,1) == numel(freqs), "Signal and frequencies are of different length.");
             df = uniquetol(diff(freqs),1e-6); % frequency step
             assert(isscalar(df), "Frequencies are not regularly sampled.");
-            assert(signal_halfwidth<noise_halfwidth,"Signal half width must be smaller than the noise half width");
-            assert(signal_halfwidth>df,"Signal half width must be larger than the frequency spacing");
             % create the kernel
-            half_width = floor(noise_halfwidth/df);
+            halfWidth = floor(noiseHalfWidth/df);
             % must be even
-            if rem(half_width,2), half_width = half_width + 1; end
-            half_skip_width = floor(signal_halfwidth/df);
-            if rem(half_skip_width,2), half_skip_width = half_skip_width + 1; end
-            kernel = ones(half_width,1);
-            kernel(1:half_skip_width) = 0;
+            if rem(halfWidth,2), halfWidth = halfWidth + 1; end
+            halfSkipWidth = floor(signalHalfWidth/df);
+            if rem(halfSkipWidth,2), halfSkipWidth = halfSkipWidth + 1; end
+            assert(signalHalfWidth<noiseHalfWidth,"Signal half width must be smaller than the noise half width");
+            assert(signalHalfWidth>df,"Signal half width must be larger than the frequency spacing");
+            assert(halfSkipWidth<halfWidth,"Signal and noise half widths do not leave any noise frequencies");
+            kernel = ones(halfWidth,1);
+            kernel(1:halfSkipWidth) = 0;
             kernel = [flip(kernel); 0; kernel];
 
-            isFq0 = freqs == 0; % 0 Hz is only the DC offset
-            signal(isFq0,:) = NaN; % DC offset should not be included in noise estimation
+            isFrequency0 = freqs == 0; % 0 Hz is only the DC offset
+            signal(isFrequency0,:) = NaN; % DC offset should not be included in noise estimation
             % make signal log scale
             % noise is computed as mean instead of geomean that is more
             % appropriate for amplitudes. Log scaled signal mean acts
@@ -587,13 +639,15 @@ classdef (Abstract) cache < handle
             v = table({snr}, {freqs}, VariableNames={'snr', 'frequency'});
 
         end
-        function v = search_peaks(signal, freqs, search_freqs, search_range_halfwidth)
+        function v = do_search_peaks(signal, freqs, pv)
             arguments
                 signal (:,:)
                 freqs (:,:)
-                search_freqs (1,:) {mustBeNonnegative}
-                search_range_halfwidth (1,1) {mustBePositive}
+                pv.searchFrequencies (1,:) double {mustBeFinite,mustBeReal,mustBeNonnegative}
+                pv.searchRangeHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}
             end
+            searchFrequencies = pv.searchFrequencies;
+            searchRangeHalfWidth = pv.searchRangeHalfWidth;
 
             if iscell(signal)
                 signal = cat(2,signal{:});
@@ -602,23 +656,27 @@ classdef (Abstract) cache < handle
                 freqs = cat(2,freqs{:});
             end
 
-            n_search_freq = numel(search_freqs);
-            n_ch = size(signal,2);
-            [search_freq, peak_freq, peak_amp] = deal(zeros(n_search_freq,n_ch));
-            for ii = 1:n_search_freq
+            nSearchFreq = numel(searchFrequencies);
+            nChannels = size(signal,2);
+            [searchFreq, peakFreq, peakAmp] = deal(zeros(nSearchFreq,nChannels));
+            for ii = 1:nSearchFreq
                 
-                s_freqN = search_freqs(ii);
-                s_win = s_freqN + [-1, 1] .* search_range_halfwidth;
-                isFq = do.ifwithin(freqs, s_win);
-                iiFq = find(isFq);
-                [peak_amp(ii,:), iiPeak] = maxk(signal(isFq,:),1,1);
+                sFreq = searchFrequencies(ii);
+                searchWindow = sFreq + [-1, 1] .* searchRangeHalfWidth;
+                isFrequency = do.ifwithin(freqs, searchWindow);
+                frequencyIndices = find(isFrequency);
+                if isempty(frequencyIndices)
+                    error('No frequencies found in search window [%g, %g] Hz around %g Hz.', ...
+                        searchWindow(1), searchWindow(2), sFreq);
+                end
+                [peakAmp(ii,:), peakIndices] = maxk(signal(isFrequency,:),1,1);
 
-                peak_freq(ii,:) = freqs(iiFq(iiPeak));               
-                search_freq(ii,:) = s_freqN;
+                peakFreq(ii,:) = freqs(frequencyIndices(peakIndices));
+                searchFreq(ii,:) = sFreq;
 
             end
 
-            v = table({search_freq}, {peak_freq}, {peak_amp}, VariableNames={'search_frequency', 'peak_frequency', 'magnitude'});
+            v = table({searchFreq}, {peakFreq}, {peakAmp}, VariableNames={'searchFrequency', 'peakFrequency', 'magnitude'});
         end
     end
 
@@ -667,4 +725,48 @@ classdef (Abstract) cache < handle
         [src] = getCacheQuery(o)
     end
 
+end
+
+function mustBeSineTaperOption(value)
+if isscalar(value)
+    validateattributes(value,{'numeric'},{'real','finite','integer','positive'});
+else
+    validateattributes(value,{'numeric'},{'vector','real','finite'});
+end
+end
+
+function mustBeVectorOrEmpty(value)
+if ~isempty(value)
+    validateattributes(value,{'numeric'},{'vector','real','finite'});
+end
+end
+
+function mustBePositiveIntegerOrEmpty(value)
+if ~isempty(value)
+    validateattributes(value,{'numeric'},{'scalar','real','finite','positive','integer'});
+end
+end
+
+function mustBePositiveScalarOrEmpty(value)
+if ~isempty(value)
+    validateattributes(value,{'numeric'},{'scalar','real','finite','positive'});
+end
+end
+
+function mustBeUnitIntervalOrEmpty(value)
+if ~isempty(value)
+    validateattributes(value,{'numeric'},{'scalar','real','finite','>=',0,'<=',1});
+end
+end
+
+function mustBeScalarOrEmpty(value)
+if ~isempty(value)
+    validateattributes(value,{'numeric','logical'},{'scalar','real'});
+end
+end
+
+function mustBeFrequencyLimitsOrEmpty(value)
+if ~isempty(value)
+    validateattributes(value,{'numeric'},{'vector','numel',2,'real','finite','nondecreasing'});
+end
 end
