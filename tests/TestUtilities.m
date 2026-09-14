@@ -90,12 +90,49 @@ classdef TestUtilities < matlab.unittest.TestCase
 
         function pspectrumAcceptsNamedOptions(testCase)
             signal = {sin(2*pi*(0:7)'/8)};
-            result = ns.cache.do_psd(signal,1000,FrequencyLimits=[0 250], ...
+            result = ns.cache.do_pspectrum(signal,1000,FrequencyLimits=[0 250], ...
                 Leakage=1,TwoSided=false);
 
             testCase.verifyEqual(result.frequency{1}(1),0);
             testCase.verifyLessThanOrEqual(result.frequency{1}(end),250);
             testCase.verifySize(result.power{1},size(result.frequency{1}));
         end
-    end
+        function pmtmAcceptsStructOptions(testCase)
+            signal = {sin(2*pi*(0:31)'/8)};
+            result = ns.cache.do_pmtm(signal,nw=4,nfft=16,fs=100);
+
+            testCase.verifySize(result.frequency{1},[9 1]);
+            testCase.verifySize(result.power{1},size(result.frequency{1}));
+        end
+
+        function waveletAcceptsStructOptions(testCase)
+            signal = {sin(2*pi*(0:31)'/8)};
+            result = ns.cache.do_wavelet(signal,100, ...
+                nfrex=4,fwhm=[2 1],limits=[5 20]);
+
+            testCase.verifyEqual(result.frequency{1},[5 10 15 20]');
+            testCase.verifySize(result.power{1},[4 32]);
+            testCase.verifySize(result.time{1},[1 32]);
+        end
+
+        function snrAcceptsStructOptions(testCase)
+            signal = {1 + (0:16)'/16};
+            frequencies = (0:16)'/4;
+            result = ns.cache.do_snr(signal,frequencies, ...
+                signalHalfWidth=1,noiseHalfWidth=2);
+
+            testCase.verifyEqual(result.frequency{1},frequencies);
+            testCase.verifySize(result.snr{1},[17 1]);
+        end
+
+        function searchPeaksAcceptsStructOptions(testCase)
+            signal = [(0:7)' (7:-1:0)'];
+            frequencies = (0:7)';
+            result = ns.cache.do_search_peaks(signal,frequencies, ...
+                searchFrequencies=[2 6],searchRangeHalfWidth=0.5);
+
+            testCase.verifyEqual(result.searchFrequency{1},[2 2; 6 6]);
+            testCase.verifyEqual(result.peakFrequency{1},[2 2; 6 6]);
+            testCase.verifyEqual(result.magnitude{1},[2 5; 6 1]);
+        end    end
 end
