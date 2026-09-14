@@ -38,6 +38,8 @@ classdef (Abstract) cache < handle
         qry (1,1) string =""     % The query that fetched the data
         independent (1,:) string = "time" % The name(s) of the independent variables
         dependent (1,:) string = "signal"  % The name(s) of the dependent variables
+        time (1,:) double = [] % Computed by fill
+        samplingRate (1,1) double =NaN % Computed by fill
     end
 
     methods
@@ -392,21 +394,22 @@ classdef (Abstract) cache < handle
                         thisOptions = {};
                     end
                     data = {M}; % input to the function called by splitapply
+                    srate= o.samplingRate; % Local copy to avoid broadcasting o in the parfor
                     switch thisFun
                         case "fft"
-                            funN = @(x) ns.cache.do_fft(x,o.samplingRate,thisOptions{:});
+                            funN = @(x) ns.cache.do_fft(x,srate,thisOptions{:});
                             dv = ["amplitude" "phase"];
                             idv = "frequency";
                         case "pspectrum"
-                            funN = @(x) ns.cache.do_pspectrum(x,o.samplingRate,thisOptions{:});
+                            funN = @(x) ns.cache.do_pspectrum(x,srate,thisOptions{:});
                             idv = "frequency";
                             dv = "power";
                         case "pmtm"
-                            funN = @(x) ns.cache.do_pmtm(x,'fs',o.samplingRate,thisOptions{:});
+                            funN = @(x) ns.cache.do_pmtm(x,'fs',srate,thisOptions{:});
                             idv = "frequency";
                             dv = "power";
                         case "wavelet"                         
-                            funN = @(x) ns.cache.do_wavelet(x,o.samplingRate,thisOptions{:});
+                            funN = @(x) ns.cache.do_wavelet(x,srate,thisOptions{:});
                             % do_wavelet() does not output time
                             idv = "frequency";
                             dv = "power";                        
@@ -428,7 +431,23 @@ classdef (Abstract) cache < handle
                     end
 
                     %% Apply the fun to the mean signal
-                    x = splitapply(funN,data{:},(1:nrGrps)');
+                    pool = nsParPool;
+                    if isempty(pool)
+                        x = splitapply(funN,data{:},(1:nrGrps)');
+                    else
+                        xCell = cell(nrGrps,1);
+                        progressQueue = parallel.pool.DataQueue;
+                        progressCount = 0;
+                        progressListener = afterEach(progressQueue,@updateProgress); %#ok<NASGU>
+                        fprintf('Applying %s in parallel: 0/%d',thisFun,nrGrps);
+                        parfor iGrp = 1:nrGrps                            
+                            groupData = cellfun(@(d) d(iGrp,:),data,UniformOutput=false);
+                            xCell{iGrp} = funN(groupData{:}); %#ok<PFBNS>
+                            send(progressQueue,1);
+                        end
+                        x = vertcat(xCell{:});
+                        fprintf('\n');
+                    end
                     % Combine with G, if G and x have common variable
                     % names, x overwrites G
                     G = ns.cache.horzcat_results_(G, x);
@@ -439,6 +458,14 @@ classdef (Abstract) cache < handle
             end
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
+
+            function updateProgress(~)
+                progressCount = progressCount + 1;
+                progressStep = max(1,ceil(nrGrps/10));
+                if mod(progressCount,progressStep) == 0 || progressCount == nrGrps
+                    fprintf('\rApplying %s in parallel: %d/%d',thisFun,progressCount,nrGrps);
+                end
+            end
         end
     end
 
@@ -483,16 +510,16 @@ classdef (Abstract) cache < handle
             amplitude = 2*abs(fftResult(idx,:,:)/sqrt(N));
             phase = angle(fftResult(idx,:,:));
             % Return as table with results as row vectors
-            v= table({amplitude},{phase},{freq},'VariableNames',{'amplitude','phase','frequency'});
+            v= table(amplitude',phase',freq,'VariableNames',{'amplitude','phase','frequency'});
         end
         function v = do_pspectrum(signal, fs, pv)
             % Compute power spectral density using MATLAB's pspectrum function.
             arguments
                 signal cell
                 fs (1,1) double {mustBeFinite,mustBePositive}
-                pv.FrequencyLimits (1,2) double {mustBeFrequencyLimitsOrEmpty} = []
+                pv.FrequencyLimits (1,2) double {mustBeFrequencyLimitsOrEmpty} = [0 fs/2]
                 pv.FrequencyResolution double {mustBePositiveScalarOrEmpty} = []
-                pv.Leakage double {mustBeUnitIntervalOrEmpty} = []
+                pv.Leakage double {mustBeUnitIntervalOrEmpty} = [0.5]
                 pv.MinThreshold double {mustBeScalarOrEmpty} = []
                 pv.Reassign logical {mustBeScalarOrEmpty} = []
                 pv.TwoSided logical {mustBeScalarOrEmpty} = []
@@ -508,7 +535,7 @@ classdef (Abstract) cache < handle
                 end
             end
             [power, freq] = pspectrum(signal, fs, 'power', options{:});
-            v= table({power},{freq},'VariableNames',{'power','frequency'});
+            v= table(power',freq','VariableNames',{'power','frequency'});
         end
         function v = do_pmtm(signal,pv)
             arguments
@@ -540,7 +567,7 @@ classdef (Abstract) cache < handle
                 power = power';
             end
             % Make table, force rows
-            v = table({power},{freq(:)},'VariableNames',{'power','frequency'});
+            v = table(power',freq','VariableNames',{'power','frequency'});
         end
         function v = do_wavelet(signal,fs, pv)
             arguments
@@ -582,14 +609,14 @@ classdef (Abstract) cache < handle
             end
             power = abs(spectrogram).^2;
             % Store power spectrogram and frequency
-            v = table({power},{freq},{time},'VariableNames',{'power','frequency','time'});
+            v = table({power'},freq',time,'VariableNames',{'power','frequency','time'});
         end
         function v = do_msten(x)
             % Mean, standard error, and N
             X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing"), ...  % Mean
-                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing"))),...  % Standard error
-                sum(~isnan(X),2,"omitmissing")};  % Non-Nan N
+            v = {mean(X,2,"omitmissing")', ...  % Mean
+                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
+                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
             % Make a table.
             v = cell2table(v,"VariableNames",{'mean','ste','n'});
         end
@@ -636,7 +663,7 @@ classdef (Abstract) cache < handle
             noise = do.ndconv(signal, kernel)/sum(kernel); % conv is sum, make it mean
             snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
-            v = table({snr}, {freqs}, VariableNames={'snr', 'frequency'});
+            v = table(snr', freqs', VariableNames={'snr', 'frequency'});
 
         end
         function v = do_search_peaks(signal, freqs, pv)
@@ -683,17 +710,13 @@ classdef (Abstract) cache < handle
     methods (Static, Access = private)
 
         function result = horzcat_results_(G, M)
-
             % 1. Find overlapping names
             overlap = intersect(G.Properties.VariableNames, M.Properties.VariableNames);
-
             % 2. Remove them from G
             G = removevars(G, overlap);
-
             % 3. Horizontally concatenate
             result = [G, M];
         end
-
     end
 
 
@@ -705,12 +728,20 @@ classdef (Abstract) cache < handle
                 % Safety check; time and align should match for all rows
                 % in the table.
                 preFetch = fetchtable(src,'time','align');
-                assert(isscalar(unique(preFetch.time(:,3))),'Rows of the EpochChannel table must have the same numbers of samples.');
+                epochTime = preFetch.time;
+                sameStart = isscalar(uniquetol(epochTime(:,1),1e-10));
+                sameStop = isscalar(uniquetol(epochTime(:,2),1e-10));
+                sameSamples = isscalar(unique(epochTime(:,3)));
+                assert(sameStart && sameStop && sameSamples, ...
+                    'Rows of the EpochChannel table must have identical start time, stop time, and number of samples.');
                 assert(isscalar(unique({preFetch.align.plugin})),'Rows of the EpochChannel should be aligned to the same plugin.');
                 assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');
                 o.T =fetchtable(src,'*','ORDER BY channel');
                 o.qry = src.sql;
+                o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));
+                o.samplingRate  = epochTime(1,3)./(epochTime(1,2)-epochTime(1,1));            
             end
+
             function s = canonicalize(s)
                 % 1. Find all aliases defined in AS clauses
                 aliasPattern = '\s+AS\s+`?([$\w]+)`';

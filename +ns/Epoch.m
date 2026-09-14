@@ -11,9 +11,7 @@ plg   : blob            # Struct with information on epoch removal (.plgparms) b
 %}
 classdef Epoch < dj.Computed & dj.DJInstance
 
-    properties (Dependent)
-        time
-        samplingRate
+    properties (Dependent)     
         keySource
     end
 
@@ -44,18 +42,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % Apply combined restriction
             % Selecting only those dimensions that have actual conditions.
             v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension & ns.DimensionCondition)) & combinedWhere;
-        end
-        function t =get.time(tbl)
-            t = fetchn(tbl, 'time');
-            t = cellfun(@(x) linspace(x(1),x(2),x(3))',t,'UniformOutput',false);
-            if count(tbl)==1
-                t= t{1};
-            end
-        end
-        function v = get.samplingRate(tbl)
-            t = fetchn(tbl, 'time');
-            v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);
-        end
+        end      
     end
 
 
@@ -232,7 +219,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 fprintf('No epochs remaining after artifact detection');
             else
                 tpl = mergestruct(key, ...
-                    struct(signal =signal,...
+                    struct(y =signal,...
                     trial = trial, ...
                     onset = onset,...
                     channel = channel));

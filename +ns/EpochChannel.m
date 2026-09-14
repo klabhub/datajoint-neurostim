@@ -5,7 +5,7 @@ channel : int       # Channel number
 trial : int         # Trial number 
 ---
 onset : float             # Time of the align event relative to trial start
-signal : longblob         # C data for a single channel, single trial
+y : longblob         # C data for a single channel, single trial
 %}
 classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache   
     properties (SetAccess = protected)
@@ -14,7 +14,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
 
     properties (Dependent)
         channels                % Channels contributing to this Epoch table    
-        samplingRate
+        
     end
 
 
@@ -29,16 +29,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
         function ch = get.channels(self)
             ch = self.unique('channel');
         end        
-
-        function v = get.samplingRate(self)
-            e = ns.Epoch & self;
-            v = uniquetol(e.samplingRate, 0.01);
-            if ~isscalar(v)
-                error('ns:EpochChannel:NonScalarSamplingRate', ...
-                    'Expected a single sampling rate across epochs, but found multiple values: %s', ...
-                    mat2str(v));
-            end
-        end        
+        
     end
 
    

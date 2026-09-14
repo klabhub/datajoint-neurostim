@@ -5,7 +5,7 @@ channel : int       # Channel number - can be zero to represent an average of ch
 trial : int         # Trial number - can represent the first trial in a set of trials with the same condition
 group = 0 : int         # Group number, 0 if none - ns.Tepoch/groups contain mapping
 ---
-y : longblob         # (Transformed) Data 
+signal : longblob         # (Transformed) Data 
 nrtrials = 1 : int       # Number of trials (if averaged)
 nrchannels = 1 : int      # Number of channels (if averaged)
 %}
@@ -15,8 +15,7 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
     end 
 
     properties (Dependent)
-        channels                % Channels contributing to this TEpoch table
-        samplingRate 
+        channels                % Channels contributing to this TEpoch table        
     end
 
     methods (Access = protected)
@@ -31,10 +30,7 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
             ch = unique([ch(:).channel]');
         end
         
-        function v = get.samplingRate(self)
-            e = ns.Epoch &self;
-            v = uniquetol(e.samplingRate,0.01);
-        end   
+    
     end
 end
 
