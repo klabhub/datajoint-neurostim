@@ -21,14 +21,6 @@
   results = run_tests;
   assertSuccess(results)
 
-## Codex interaction
-
-When running MATLAB from WSL, use host-level escalation because MATLAB is the Windows executable and WSL interop may be blocked by the sandbox.
-
-When running in Windows Native, use the Matlab MCP server to run Matlab commands. 
-
-Show the Matlab output when running tests.
-
 ##  DataJoint safety
 - Do not run destructive database commands manually unless explicitly requested.
 - Prefer the test suite’s isolated temporary database for integration testing.

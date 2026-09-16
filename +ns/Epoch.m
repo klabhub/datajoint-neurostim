@@ -164,8 +164,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
 
             parmTpl.channels =channelsWithData(:)';
-            % Extract the actual trials (in order of signal cols) that have
-            % been extracted
+            % Extract the actual trials that have  been extracted
             trials = T.Properties.CustomProperties.trials';
             startTime = T.Properties.CustomProperties.alignTime';
 
@@ -210,7 +209,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             insert(tbl, epoch_tpl);
 
             % Create EpochChannel tuple that contains the data
-            signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
+            % Reorder to trials × channels × samples, then make one row per signal.
+            signal = permute(signal,[2 3 1]);
+            signal = reshape(signal,nrTrials*nrChannels,nrSamples);
+            signal = num2cell(signal,2);
             trial = num2cell(repmat(trials,nrChannels,1));
             onset = num2cell(repmat(startTime,nrChannels,1));
             channel  = num2cell(reshape(repmat(parmTpl.channels,nrTrials,1),nrTrials*nrChannels,1));
@@ -219,7 +221,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 fprintf('No epochs remaining after artifact detection');
             else
                 tpl = mergestruct(key, ...
-                    struct(y =signal,...
+                    struct(signal =signal,...
                     trial = trial, ...
                     onset = onset,...
                     channel = channel));

@@ -1,9 +1,10 @@
 classdef (Abstract) cache < handle
     % Abstract superclass used by ns.EpochChannel and ns.TepochChannel
-    % When working with a set of EpochChannel or TepochChannel objects one often wants to compute
-    % derived measures (e.g. a spectrum from a signal), average in
-    % different ways (across trials or channels, or subjects), or visualize
-    % raw or computed data.
+    %
+    % When working with a set of EpochChannel or TepochChannel objects one 
+    % often wants to compute derived measures (e.g. a spectrum from a signal), 
+    % average in different ways (across trials or channels, or subjects), 
+    % or visualize raw or computed data.
     %
     % This cache class prevents multiple round trips to the server to fetch
     % the data. Instead, the data are fetched once and stored internally in
@@ -11,30 +12,33 @@ classdef (Abstract) cache < handle
     % row in the DJ table.
     %
     %  The instructions for a computation are provided as a struct
-    %  that combines the function (fft, pspectrum,etc) and the (optional) 
+    %  that combines the function (fft, pspectrum,etc) and the (optional)
     %  input arguments. Each of the fields of the struct specifies one
-    %  operation; they are executed in order. 
+    %  operation; they are executed in order.
     %
-    % SEE ns.cachce/compute for examples
+    % SEE ns.cachce/compute for detailed instructions and examples
     %
-    % EXAMPLES
-    % Determine the power spectral density between 0.5 and 50 Hz of a set of epochs 
-    %  e=ns.EpochChannel 
+    % EXAMPLE
+    % Determine the power spectral density between 0.5 and 50 Hz of a set of epochs
+    %  e=ns.EpochChannel
     %  plot(e)  ; % Plots epoch time courses averaged acros trials & channels.
     % Compute the power spectrum with pspectrum
     %  fun.pspectrum = struct('FrequencyLimits',[0.5 50])
     %  G = compute(e,fun)
-    % Plot the results (per condition)   
-    %  clf;for g= 1:height(G),plot(G.frequency{g},G.power{g});hold on;end;legend(G.condition)
-    %
-    %
+    % Plot the results (per condition)
+    %  clf;for g= 1:height(G)
+    %       plot(G.frequency{g},G.power{g});
+    %       hold on;
+    %       end;
+    % legend(G.condition)
+    %    
     % BK - Dec 2025
     % MO - 2026
     properties (Constant)
-        GROUPVARS = ["subject" "session_date" "starttime" "paradigm" "condition" "trial" "channel"];
+        AVERAGEVARS = ["subject" "session_date" "starttime" "paradigm" "condition" "trial" "channel"];
     end
     properties (GetAccess =public,SetAccess = protected)
-        T (:,:) table  = table;  % The Matlab table that stores the data
+        T (:,:) table  = table;  % The Matlab table that caches the data
         qry (1,1) string =""     % The query that fetched the data
         independent (1,:) string = "time" % The name(s) of the independent variables
         dependent (1,:) string = "signal"  % The name(s) of the dependent variables
@@ -67,28 +71,29 @@ classdef (Abstract) cache < handle
                 pv.delta (1,1) string = ""              % Show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
-                pv.average (1,:) string {mustBeMember(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date" ""])} = ["trial" "channel"]  % Average over these dimensions
+                pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date" ""])} = ["trial" "channel"]  % Average over these dimensions
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
                 pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
                 pv.figure = []  % Creates new figures if empty.
+                pv.xlim  (1,:) double = []
             end
 
             %% Fill the cache, then perform averaging per group
             fill(o);% Fill the cache if needed
             dimension = unique(o.T.dimension);
-            
-           % Raster plot cannot average over 
-           pv.average = setdiff(pv.average,pv.raster,'stable');
-           
-            grouping = setdiff(ns.cache.GROUPVARS,[pv.average pv.raster],'stable');
+
+            % Raster plot cannot average over the dimension that should be rastered
+            pv.average = setdiff(pv.average,pv.raster,'stable');
+            % Determine the grouping variables
+            grouping = setdiff(ns.cache.AVERAGEVARS,[pv.average pv.raster],'stable');
 
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);            
-            x = G{1,xName};
+            G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);
+            x = G{1,xName}';
             if xName =="time" && numel(x) ==3
                 x = linspace(x(1),x(2),x(3))';
             end
@@ -96,7 +101,7 @@ classdef (Abstract) cache < handle
                 % Concatenate the trials into a raster matrix in G.
                 rasterGrouping = setdiff(ns.cache.GROUPVARS,[pv.raster pv.average]);
                 P = groupsummary(G, rasterGrouping, @(x) x(1,:), ["align" xName "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+xName "fun1_paradigm"],["align" xName "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);
                 G = groupsummary(G,rasterGrouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
                 G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
                 G = innerjoin(G,P);
@@ -111,7 +116,6 @@ classdef (Abstract) cache < handle
             pv.newTileEach = intersect(pv.newTileEach,G.Properties.VariableNames);
             legStr =string([]);
             for i = 1:nrTimeSeries
-                align =G.align(i);
                 if i==1 || (~isempty(pv.newTileEach) && any(G{i,pv.newTileEach} ~= G{i-1,pv.newTileEach}))
                     % New  subject, session or experiment in a new tile
                     if i>1 &&  ~isempty(legStr)
@@ -119,12 +123,12 @@ classdef (Abstract) cache < handle
                         legend(h,legStr);
                     end
                     if isempty(pv.figure)
-                    if mod(tileCntr,pv.tilesPerPage)==0 
-                        if i>1 && pv.linkAxes
-                            linkaxes(gcf().Children().Children())
+                        if mod(tileCntr,pv.tilesPerPage)==0
+                            if i>1 && pv.linkAxes
+                                linkaxes(gcf().Children().Children())
+                            end
+                            figure;
                         end
-                        figure;
-                    end
                     else
                         figure(pv.figure); % Add to existing
                     end
@@ -138,27 +142,30 @@ classdef (Abstract) cache < handle
                 if pv.raster~=""
                     % Show each condition in a separate tile
                     nrTrials= size(G.mean{i},1);
-                    imagesc(x,1:nrTrials, cell2mat(G.mean{i}')')
+                    imagesc(x,1:nrTrials, G.mean{i})
                     axis xy
-                    n = mean(cell2mat(G.n{i}'),"all");
-                    ylabel ("")
+                    n = mean(G.n{i},"all");
+                    ylabel (pv.raster)
                     titlePV= setdiff(["paradigm" rasterGrouping],"",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 else
-                    m = G.mean{i,:};
-                    ste = G.ste{i,:};
-                    n = mean(G.n{i,:});                    
+                    m = G{i,"mean"}';
+                    ste = G{i,"ste"}';
+                    n = mean(G{i,"n"});
                     h = [h plot(x,m)];                %#ok<AGROW>
                     p = patch([x ;  flip(x)]',[m+ste ; flip(m-ste)]',h(end).Color,FaceAlpha= 0.5);
                     p.EdgeColor = h(end).Color;
                     plot(xlim,[0 0],'k');
-                    ylabel 'EP (\muV)'
+                    ylabel (o.dependent)
                     legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
                     titlePV= setdiff(["paradigm" grouping],"condition",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 end
                 title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');
-                xlabel (sprintf('Time after %s.%s (s)',align.plugin,align.event));
+                xlabel (o.independent);
+                if ~isempty(pv.xlim)
+                    xlim(pv.xlim)
+                end
                 % If delta is not empty, add the difference wave.
                 if pv.delta ~="" && G.condition(i) ~=pv.delta
                     matchVars = setdiff(grouping,"condition");
@@ -186,30 +193,26 @@ classdef (Abstract) cache < handle
             end
         end
 
-        function [G,dv,idv] =  compute(o,fun,pv)
-            % Compute derived measures from the EpochChannel table.
-            % fun - struct with fields corresponding to one of the 
-            % functions listed below. FFT and pspectrum take a struct
-            % containing named options; all spectral functions use this
-            % struct-based option format.
+        function [G,dv,idv,uGroup] =  compute(o,fun,pv)
+            % Compute derived measures from the (T)EpochChannel table.
+            % fun - struct with fields corresponding to one of the
+            % functions listed below. 
+            % Sampling rate is determined automatically, from the database.
             %   .fft:       Uses `fft()` to compute amplitude, phase as a function
-            %                   of frequency. Supports the named `n` option.
-            %                   Sampling rate is determined automatically.
-            %                EXAMPLE: fun.fft = struct('n',128)
+            %                   of frequency. Supports the named `n` option.            
+            %                EXAMPLE: fun.fft = struct()
             %   .pspectrum: Uses `pspectrum()` to compute power spectral
-            %                   density as a function of frequency
-            %                   Sampling rate is determined automatically.
+            %                   density as a function of frequency            
             %               EXAMPLE : fun.pspectrum = struct('FrequencyLimits',[0 50])
             %   .pmtm:      Uses the multitaper pmtm function. Options are
             %               supplied as a struct with these fields:
             %               tapertype: 'slepian' (default) or 'sine'
             %               nw:        4 (default) or a positive scalar
             %               m:         7 (default), an integer scalar, or vector
-            %               nfft:      [] (default) or an integer
-            %               fs:        sample rate, a positive scalar
+            %               nfft:      [] (default) or an integer            
             %               f:         frequencies, a vector
             %               EXAMPLE:
-            %               fun.pmtm = struct('nw',4,'nfft',256,'fs',250);
+            %               fun.pmtm = struct('nw',4,'nfft',256);
             %   .msten:     Mean,standard error, and N (used by the ns.EpochChannel/plot function)
             %               EXAMPLE fun.msten = {};
             %   .wavelet:   Wavelet spectrogram using the FWHM approach.
@@ -225,7 +228,7 @@ classdef (Abstract) cache < handle
             %   .snr:       Calculate SNRs as a ratio between the power
             %                  at a given frequency and the average power
             %                  at its neighboring (noise) frequencies
-            %                  excluding immediate neighbors. 
+            %                  excluding immediate neighbors.
             %               Options are supplied as a struct with fields
             %               signalHalfWidth and noiseHalfWidth, both in Hz.
             %
@@ -255,14 +258,14 @@ classdef (Abstract) cache < handle
             %               Or you can compute the snr at all frequencies
             %               and then find the peaks in the snr that are
             %               close to a set of frequencies of interest:
-            %                   fun.pspectrum   = {'FrequncyLimits',[0 50]}; 
+            %                   fun.pspectrum   = struct('FrequencyLimits',[0 50]);
             %                   fun.snr = struct('signalHalfWidth',1, ...
             %                       'noiseHalfWidth',2); % Determine SNR
             %                   fun.peak = struct('searchFrequencies', ...
             %                       [2 6 10 24], 'searchRangeHalfWidth',1);
             %                   snr within 1 Hz from 2,6, 10,24 Hz.
-            %            
-            %             
+            %
+            %
             %   .peak:      Finds peak locations and magnitudes around
             %                   specific frequencies within a search window.
             %               Options are supplied as a struct with fields
@@ -275,8 +278,8 @@ classdef (Abstract) cache < handle
             % average  - Analysis is applied after averaging over these
             %               fields.
             %               Defaults to ["trial" "channel"], but can be
-            %               any of ["subject" "session_date" "starttime" "condition" "trial" "channel"]
-            %           Use "" to compute for each trial and channel.
+            %                any of ["subject" "session_date" "starttime" "condition" "trial" "channel"]
+            %               Set to string.empty to avoid averaging.
             % OUTPUT
             % G  - A table with the results
             % dv -  The name of the dependent variable.
@@ -287,7 +290,7 @@ classdef (Abstract) cache < handle
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
-                pv.average (1,:) string {mustBeMember(pv.average,["" "subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
+                pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
                 pv.x (1,1) string = o.independent  % Name of the independent variable
                 pv.y (1,1) string = o.dependent    % Name of the dependent variable
             end
@@ -312,44 +315,57 @@ classdef (Abstract) cache < handle
             if any(isfinite(pv.timeWindow))
                 assert(ismember("time",o.T.Properties.VariableNames),"timeWindow restriction can only be used on a cache with a time column.")
                 % Crop to the timeWindow for this operation.
-                t = restrictedT{1,"time"}; % Time in secods (Taking first row as all should be the same)
+                t = restrictedT{1,"time"}; % Time in seconds (Taking first row as all should be the same)
                 if numel(t)==3
                     t = linspace(t(1),t(2),t(3));
                 end
                 keep = do.ifwithin(t,pv.timeWindow/1000);
-                restrictedT(:,dv)= rowfun(@(x) {x(keep,:)},restrictedT(:,dv) ,'ExtractCellContents',true);
+                croppedT = rowfun(@(x) x(:,keep), ...
+                    restrictedT(:,dv),ExtractCellContents=true);
+                restrictedT.(dv)  = croppedT;
                 t= t(keep);
                 assert(~isempty(t),'No time points left in the analysis window ([%f %f])',pv.timeWindow(1),pv.timeWindow(2));
                 restrictedT.time = repmat([t(1) t(end) numel(t)],height(restrictedT),1);
             end
 
+            %RestrictedT is a table with each subject/session/experiment/trial/channel as a row
+
             %%  Average/group
-            if ~(isscalar(pv.average) && pv.average=="")
-                if ismember("condition",pv.average) && ~ismember("trial",pv.average)
-                    pv.average = [pv.average "trial"];
-                end
-                grouping = setdiff(ns.cache.GROUPVARS,pv.average,'stable');
-                
+            if ~isempty(pv.average) 
+                %if ismember("condition",pv.average) && ~ismember("trial",pv.average)
+                %    pv.average = [pv.average "trial"];
+                %end
+                grouping = setdiff(ns.cache.AVERAGEVARS,pv.average,'stable');
+
                 [grp,G] = findgroups(restrictedT(:,grouping));
+                varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping),OutputFormat='uniform');                
+                if any(varies)
+                    uGroup  = G{:,grouping(varies)};
+                    if size(uGroup,2)>1
+                        uGroup = join(string(uGroup), "/", 2);
+                    end
+                else
+                    uGroup = "all"; % Averaging reduced this to a single group.
+                end
                 % Average per group
                 if isfield(fun,"msten")
                     % Special case; caller asks for the mean only (and ste
                     % and n)
-                    M = splitapply(@ns.cache.do_msten,restrictedT.(dv),grp);                    
+                    M = splitapply(@ns.cache.do_msten,restrictedT.(dv),grp);
                 else
                     % Average signal then that will be processed by the fun
                     % below.
                     if iscell(restrictedT{1,dv})
-                        M = splitapply(@(x) {mean(cat(2,x{:}),2,"omitmissing")},restrictedT.(dv),grp);
+                        M = splitapply(@(x) {mean(cat(1,x{:}),1,"omitmissing")},restrictedT.(dv),grp);
                     else
-                        M = splitapply(@(x) {mean(x,1,"omitmissing")'},restrictedT.(dv),grp);
+                        M = splitapply(@(x) {mean(x,1,"omitmissing")},restrictedT.(dv),grp);
                     end
                 end
 
                 % Combine with align/time/paradigm information. Note this
                 % assumes these are constant across the group (picking
                 % only the first here). fill() assures this is the case.
-                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv]);                
+                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv]);
                 P = renamevars(P,["fun1_align" "fun1_"+idv ],["align" idv ]);
 
                 % add trial counts
@@ -360,16 +376,18 @@ classdef (Abstract) cache < handle
                 nCh = groupsummary(restrictedT, grouping, @(x) numel(unique(x)), "channel");
                 nCh = renamevars(nCh,"fun1_channel", "nrchannels");
 
-                G = innerjoin(G,P); 
-                G = innerjoin(G,nT); 
-                G = innerjoin(G,nCh); 
+                G = innerjoin(G,P);
+                G = innerjoin(G,nT);
+                G = innerjoin(G,nCh);
                 G = removevars(G, "GroupCount");
+                G.group = uGroup;
             else
                 % No averaging. Just put the signal into M
                 G = restrictedT;
                 G.nrtrials = ones(height(G),1);
                 G.nrchannels = ones(height(G),1);
-                M = restrictedT.(dv);
+                M = restrictedT.(dv);                
+                G.group = repmat("_",height(G),1);
             end
             nrGrps = height(M);
 
@@ -390,10 +408,12 @@ classdef (Abstract) cache < handle
                     thisFun = funs{f};
                     if isstruct(fun.(thisFun))
                         thisOptions = namedargs2cell(fun.(thisFun));
-                    else
+                    elseif isempty(fun.(thisFun))
                         thisOptions = {};
+                    else
+                        error('Function options for %s must be a struct or empty', thisFun);
                     end
-                    data = {M}; % input to the function called by splitapply
+                    data = {M}; % Inputs indexed by group row
                     srate= o.samplingRate; % Local copy to avoid broadcasting o in the parfor
                     switch thisFun
                         case "fft"
@@ -408,18 +428,18 @@ classdef (Abstract) cache < handle
                             funN = @(x) ns.cache.do_pmtm(x,'fs',srate,thisOptions{:});
                             idv = "frequency";
                             dv = "power";
-                        case "wavelet"                         
+                        case "wavelet"
                             funN = @(x) ns.cache.do_wavelet(x,srate,thisOptions{:});
                             % do_wavelet() does not output time
                             idv = "frequency";
-                            dv = "power";                        
-                        %% Cases below take G (the result of previous computation) as their input
+                            dv = "power";
+                            %% Cases below take G (the result of previous computation) as their input
                         case "snr"
                             assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
                             funN = @(varargin) ns.cache.do_snr(varargin{:},thisOptions{:});
                             data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
                             idv = "frequency";
-                            dv = "snr";                        
+                            dv = "snr";
                         case 'peak'
                             assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
                             funN = @(varargin) ns.cache.do_search_peaks(varargin{:}, thisOptions{:});
@@ -432,22 +452,24 @@ classdef (Abstract) cache < handle
 
                     %% Apply the fun to the mean signal
                     pool = nsParPool;
+                    xCell = cell(nrGrps,1);
                     if isempty(pool)
-                        x = splitapply(funN,data{:},(1:nrGrps)');
+                        for iGrp = 1:nrGrps
+                            groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
+                            xCell{iGrp} = funN(groupData{:});
+                        end
                     else
-                        xCell = cell(nrGrps,1);
                         progressQueue = parallel.pool.DataQueue;
                         progressCount = 0;
-                        progressListener = afterEach(progressQueue,@updateProgress); %#ok<NASGU>
                         fprintf('Applying %s in parallel: 0/%d',thisFun,nrGrps);
-                        parfor iGrp = 1:nrGrps                            
-                            groupData = cellfun(@(d) d(iGrp,:),data,UniformOutput=false);
-                            xCell{iGrp} = funN(groupData{:}); %#ok<PFBNS>
+                        parfor iGrp = 1:nrGrps
+                            groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
+                            xCell{iGrp} = funN(groupData{:});
                             send(progressQueue,1);
                         end
-                        x = vertcat(xCell{:});
                         fprintf('\n');
                     end
+                    x = vertcat(xCell{:});
                     % Combine with G, if G and x have common variable
                     % names, x overwrites G
                     G = ns.cache.horzcat_results_(G, x);
@@ -476,20 +498,19 @@ classdef (Abstract) cache < handle
         % a table with one or more output columns. Note that each column
         % should contain a row vector of results.
         function v = do_fft(signal, fs, pv)
-        % do_fft - Computes FFT amplitude and phase for each
-        %               epoch. Only includes real frequencies.
-        %
-        % Outputs (table columns):
-        %   amplitude: Amplitude of the FFT.
-        %   phase: Phase of the FFT.
-        %   frequency: Corresponding real frequencies.
+            % do_fft - Computes FFT amplitude and phase for each
+            %               epoch. Only includes real frequencies.
+            %
+            % Outputs (table columns):
+            %   amplitude: Amplitude of the FFT.
+            %   phase: Phase of the FFT.
+            %   frequency: Corresponding real frequencies.
             arguments
-                signal cell
+                signal (:,1) {mustBeNumeric}
                 fs (1,1) double {mustBeFinite,mustBePositive}
                 pv.n double {mustBePositiveIntegerOrEmpty} = []
-            end        
+            end
 
-            signal =cat(2,signal{:}); % Concatenate epochs
             % Compute FFT for each slice along time dim 1
             if ~isempty(pv.n)
                 fftResult = fft(signal,pv.n);
@@ -515,7 +536,7 @@ classdef (Abstract) cache < handle
         function v = do_pspectrum(signal, fs, pv)
             % Compute power spectral density using MATLAB's pspectrum function.
             arguments
-                signal cell
+                signal (:,1) {mustBeNumeric}
                 fs (1,1) double {mustBeFinite,mustBePositive}
                 pv.FrequencyLimits (1,2) double {mustBeFrequencyLimitsOrEmpty} = [0 fs/2]
                 pv.FrequencyResolution double {mustBePositiveScalarOrEmpty} = []
@@ -524,9 +545,8 @@ classdef (Abstract) cache < handle
                 pv.Reassign logical {mustBeScalarOrEmpty} = []
                 pv.TwoSided logical {mustBeScalarOrEmpty} = []
             end
-          
+
             % Table with power and frequency
-            signal =cat(2,signal{:}); % Concatenate epochs
             signal = signal - mean(signal,1,"omitmissing");
             options = namedargs2cell(pv);
             for iOption = numel(options)-1:-2:1
@@ -539,7 +559,7 @@ classdef (Abstract) cache < handle
         end
         function v = do_pmtm(signal,pv)
             arguments
-                signal cell
+                signal (:,1) {mustBeNumeric}
                 pv.tapertype (1,1) string {mustBeMember(pv.tapertype,["slepian" "sine"])} = "slepian"
                 pv.nw (1,1) double {mustBeFinite,mustBeReal,mustBePositive} = 4
                 pv.m double {mustBeSineTaperOption} = 7
@@ -548,7 +568,6 @@ classdef (Abstract) cache < handle
                 pv.f double {mustBeVectorOrEmpty} = []
             end
             % Multitaper power and frequency
-            signal =cat(2,signal{:});
             signal(isinf(signal) | isnan(signal))=0;
             assert(isempty(pv.nfft) || isempty(pv.f), ...
                 "Specify only one of nfft and f.");
@@ -571,7 +590,7 @@ classdef (Abstract) cache < handle
         end
         function v = do_wavelet(signal,fs, pv)
             arguments
-                signal cell
+                signal (:,1) {mustBeNumeric}
                 fs (1,1) double
                 pv.nfrex (1,1) double = 40
                 pv.fwhm (1,2) double = [2 0.2]
@@ -581,7 +600,6 @@ classdef (Abstract) cache < handle
             % define and describe Morlet wavelets for time-frequency
             % analysis. NeuroImage, 199, 81-86.
             % https://doi.org/10.1016/j.neuroimage.2019.05.048
-            signal =cat(2,signal{:}); % Concatenate epochs
             nrSamples= size(signal,1);
             time = (0:nrSamples-1)/fs;
             % time-frequency parameters
@@ -612,30 +630,31 @@ classdef (Abstract) cache < handle
             v = table({power'},freq',time,'VariableNames',{'power','frequency','time'});
         end
         function v = do_msten(x)
+            arguments
+                x
+            end
             % Mean, standard error, and N
-            X =cat(2,x{:});
-            v = {mean(X,2,"omitmissing")', ...  % Mean
-                (std(X,0,2,"omitmissing")./sqrt(sum(~isnan(X),2,"omitmissing")))',...  % Standard error
-                sum(~isnan(X),2,"omitmissing")'};  % Non-Nan N
+            if iscell(x)
+                x =cat(1,x{:});
+            end
+
+            m = mean(x,1,"omitmissing");
+            ste= std(x,0,1,"omitmissing")./sqrt(sum(~isnan(x),1,"omitmissing"));
+            n = sum(~isnan(x),1,"omitmissing");  % Non-Nan N
             % Make a table.
-            v = cell2table(v,"VariableNames",{'mean','ste','n'});
+            v = table(m,ste,n,'VariableNames',{'mean','ste','n'});
         end
         function v = do_snr(signal, freqs, pv)
             arguments
-                signal (:,:)
+                signal (:,1)
                 freqs (:,1)
                 pv.signalHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive} = 1
-                pv.noiseHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}  = 2 
+                pv.noiseHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}  = 2
             end
             signalHalfWidth = pv.signalHalfWidth;
+            freqs = freqs(:);
             noiseHalfWidth = pv.noiseHalfWidth;
 
-            if iscell(signal)
-                signal = cat(2,signal{:});
-            end
-            if iscell(freqs)
-                freqs = cat(2,freqs{:});
-            end
             assert(size(signal,1) == numel(freqs), "Signal and frequencies are of different length.");
             df = uniquetol(diff(freqs),1e-6); % frequency step
             assert(isscalar(df), "Frequencies are not regularly sampled.");
@@ -658,9 +677,8 @@ classdef (Abstract) cache < handle
             % noise is computed as mean instead of geomean that is more
             % appropriate for amplitudes. Log scaled signal mean acts
             % similar to geometric mean
-            signal = log10(signal); 
-            % Todo: THIS USED TO HAVE nan AS THIRD INPUT. wHY?
-            noise = do.ndconv(signal, kernel)/sum(kernel); % conv is sum, make it mean
+            signal = log10(signal);            
+            noise = do.ndconv(signal, kernel,FillValue=NaN)/sum(kernel); % conv is sum, make it mean
             snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
             v = table(snr', freqs', VariableNames={'snr', 'frequency'});
@@ -668,26 +686,21 @@ classdef (Abstract) cache < handle
         end
         function v = do_search_peaks(signal, freqs, pv)
             arguments
-                signal (:,:)
-                freqs (:,:)
+                signal (:,1)
+                freqs (:,1)
                 pv.searchFrequencies (1,:) double {mustBeFinite,mustBeReal,mustBeNonnegative}
                 pv.searchRangeHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}
             end
             searchFrequencies = pv.searchFrequencies;
+            freqs = freqs(:);
             searchRangeHalfWidth = pv.searchRangeHalfWidth;
 
-            if iscell(signal)
-                signal = cat(2,signal{:});
-            end
-            if iscell(freqs)
-                freqs = cat(2,freqs{:});
-            end
 
             nSearchFreq = numel(searchFrequencies);
             nChannels = size(signal,2);
             [searchFreq, peakFreq, peakAmp] = deal(zeros(nSearchFreq,nChannels));
             for ii = 1:nSearchFreq
-                
+
                 sFreq = searchFrequencies(ii);
                 searchWindow = sFreq + [-1, 1] .* searchRangeHalfWidth;
                 isFrequency = do.ifwithin(freqs, searchWindow);
@@ -729,8 +742,8 @@ classdef (Abstract) cache < handle
                 % in the table.
                 preFetch = fetchtable(src,'time','align');
                 epochTime = preFetch.time;
-                sameStart = isscalar(uniquetol(epochTime(:,1),1e-10));
-                sameStop = isscalar(uniquetol(epochTime(:,2),1e-10));
+                sameStart = isscalar(uniquetol(epochTime(:,1),0.1));
+                sameStop = isscalar(uniquetol(epochTime(:,2),0.1));
                 sameSamples = isscalar(unique(epochTime(:,3)));
                 assert(sameStart && sameStop && sameSamples, ...
                     'Rows of the EpochChannel table must have identical start time, stop time, and number of samples.');
@@ -739,7 +752,17 @@ classdef (Abstract) cache < handle
                 o.T =fetchtable(src,'*','ORDER BY channel');
                 o.qry = src.sql;
                 o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));
-                o.samplingRate  = epochTime(1,3)./(epochTime(1,2)-epochTime(1,1));            
+                o.samplingRate  = epochTime(1,3)./(epochTime(1,2)-epochTime(1,1));
+                % If the signal is a vector, store it as a row for easy
+                % access in plot() and compute().
+                for col = ["signal" "x" o.dependent o.independent]
+                    if ismember(col,o.T.Properties.VariableNames)
+                    if iscell(o.T.(col)) && isvector(o.T.(col){1})
+                        o.T.(col)= cellfun(@(x) reshape(x,1,[]), ...
+                            o.T.(col),UniformOutput=false);
+                    end
+                    end
+                end
             end
 
             function s = canonicalize(s)
@@ -756,6 +779,20 @@ classdef (Abstract) cache < handle
         [src] = getCacheQuery(o)
     end
 
+end
+
+function d = selectDataRow(d,iGrp)
+if iscell(d)
+    d = cat(2,d{iGrp,:});
+else
+    d = d(iGrp,:);
+end
+end
+
+function mustBeMemberOrEmpty(value, validValues)
+if ~isempty(value)
+    mustBeMember(value, validValues);
+end
 end
 
 function mustBeSineTaperOption(value)

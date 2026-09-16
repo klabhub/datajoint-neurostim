@@ -6,12 +6,17 @@ dependent       : varchar(64)   # The name of the dependent variable(s)
 ---
 x : blob                        # The values of the independent variable
 independent     : varchar(64)   #  The name of the independent variable(s), if multiple, concatenated with ':' in order
-groups = NULL   : blob          # contains mappings for groups
 %}
 classdef Tepoch < dj.Computed & dj.DJInstance
 
     properties (SetAccess = protected)
-        keySource = ns.TepochParm * (ns.Epoch & ns.EpochChannel)
+        keySource 
+    end
+
+    methods 
+        function v = get.keySource(self)
+            v  = ns.TepochParm * (ns.Epoch & ns.EpochChannel);
+        end
     end
     methods (Access = protected)
         function makeTuples(self, key)
@@ -29,15 +34,26 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             tpl = dj.struct.join(struct(independent = strjoin(idv,':'), ...
                 x = x, dependent = cellstr(dv(:))),...%, groups=avg_groups),
                 key);
-
-            insert(self,tpl);            
+            
+            insert(self,makeMymSafe(tpl));            
 
             % dat_tbl = T(:,["channel", "trial", dv, "group", "nrtrials", "nrchannels"]);
-            dat_tbl = T(:,["channel", "trial", dv]);
+            varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" dv "group"],T.Properties.VariableNames);
+            dat_tbl = T(:,varnames);
+            if ismember("channel",dat_tbl.Properties.VariableNames)
+                dat_tbl.nrchannels = ones(height(dat_tbl),1);
+            else
+                dat_tbl.channel = zeros(height(dat_tbl),1); % Must be grouped/averaged
+            end
+            if ismember("trial",dat_tbl.Properties.VariableNames)
+                dat_tbl.nrtrials = ones(height(dat_tbl),1);
+            else
+                dat_tbl.trial = zeros(height(dat_tbl),1); % Grouped/Averaged
+            end
+
             dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'signal');
-            dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
-            dat_tpl = makeMymSafe(dat_tpl);
-            chunkedInsert(ns.TepochChannel,dat_tpl)
+            dat_tpl = dj.struct.join(table2struct(dat_tbl),key);            
+            chunkedInsert(ns.TepochChannel,makeMymSafe(dat_tpl))
 
         end
     end

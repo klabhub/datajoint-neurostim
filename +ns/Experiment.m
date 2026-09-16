@@ -3,7 +3,7 @@
 starttime: time # Time that the experiment started (HH:MM:SS)
 -> ns.Session   # Corresponding session session  (FK)
 ---
-paradigm: varchar(255)      # Name of the paradigm
+paradigm: varchar(32)      # Name of the paradigm
 file = NULL : varchar(255)  # File that contains the Neurostim output
 stimuli = NULL : smallint      # Number of stimuli in the experiment
 blocks = NULL : smallint       # Number of blocks in the experiment
