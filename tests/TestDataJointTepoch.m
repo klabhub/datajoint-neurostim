@@ -34,7 +34,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             testCase.verifyEqual(count(tepoch),2);
             testCase.verifyEqual(sort(string(fetchn(tepoch,'dependent'))),["amplitude";"phase"]);
             testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','independent'),'frequency');
-            testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','x'),[0 250 500]);
+            testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','x'),[0 200 400],'AbsTol',1e-10);
 
             testCase.report('checking one transformed row per source trial/channel');
             tc = ns.TepochChannel & tepochKey;

@@ -771,7 +771,8 @@ classdef (Abstract) cache < handle
                 o.T =fetchtable(src,'*','ORDER BY channel');
                 o.qry = src.sql;
                 o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));
-                o.samplingRate  = epochTime(1,3)./(epochTime(1,2)-epochTime(1,1));
+                % Epoch endpoints are seconds; N samples span N-1 intervals.
+                o.samplingRate = (epochTime(1,3)-1)/(epochTime(1,2)-epochTime(1,1));
                 % If the signal is a vector, store it as a row for easy
                 % access in plot() and compute().
                 for col = ["signal" "x" o.dependent o.independent]

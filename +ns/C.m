@@ -458,7 +458,7 @@ classdef C < dj.Computed & dj.DJInstance
                                 y = y- average(y,1); % Remove mean
                                 y(isnan(y)) = 0; % Remove nans
                                 for tr =  1:size(y,2)
-                                    [thisC(:,:,:,tr),phi,S12,freq] = cohmatrixc(squeeze(y(:,tr,:)),struct('tapers',[3 5],'pad',0,'Fs',1./pv.step)); %#ok<AGROW,ASGLU>
+                                    [thisC(:,:,:,tr),phi,S12,freq] = cohmatrixc(squeeze(y(:,tr,:)),struct('tapers',[3 5],'pad',0,'Fs',1/seconds(mode(diff(time))))); %#ok<AGROW,ASGLU>
                                 end
                                 thisM = average(thisC,4);
                                 thisX = time; % not sure yet
@@ -619,7 +619,7 @@ classdef C < dj.Computed & dj.DJInstance
             % the align event (below) in milliseconds.
             % start  - Extract signals startint at this time (ms) [0]
             % stop   - Last time point to extract. (ms) [inf; end of trial]
-            % step   - Step size in seconds. (ms)   [To use the native
+            % step   - Step size in milliseconds. [To use the native
             % resolution of the ns.C row, use 0, to average or interpolate,
             % specify a time].
             % align - The time (in ms) in each trial that is considered 0. By

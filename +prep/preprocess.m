@@ -63,7 +63,7 @@ else
     badChannels   = [];
     removeBadChannels = false;
 end                
-samplingRate = 1./(round(1000*mode(diff(time)))/1000);
+samplingRate = 1./mode(diff(time)); % Seconds; preserve sub-ms intervals.
 fn =string(fieldnames(parms))';
 
 for f=fn
@@ -129,7 +129,7 @@ for f=fn
                 end
             end
             signal =tmp;
-            time = linspace(time(1),time(end),nrSamples)';           
+            time = time(1) + (0:nrSamples-1)'*(R/samplingRate);
         case "filtfilt"
             %% Notch, Bandpass,etc.
             % Any filter that can be designed with designfilt

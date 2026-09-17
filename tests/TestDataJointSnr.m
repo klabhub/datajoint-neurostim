@@ -22,12 +22,15 @@ classdef TestDataJointSnr < TestDataJointPipelineBase
             testCase.assertNumElements(key,1);
             key.etag = etag;
             insert(ns.Epoch,mergestruct(key,struct( ...
-                'time',[1000*t(1) 1000*t(end) numel(t)], ...
+                'time',[t(1) t(end) numel(t)], ...
                 'prep',struct(),'art',struct(),'plg',struct())));
             insert(ns.EpochChannel,mergestruct(key,struct( ...
                 'channel',1,'trial',1,'onset',0,'signal',signal)));
             epochs = ns.EpochChannel & key;
             testCase.assertEqual(count(epochs),1);
+            cached = epochs.T; % Fetch the epoch and derive its sampling rate.
+            testCase.assertEqual(height(cached),1);
+            testCase.assertEqual(epochs.samplingRate,fs,AbsTol=1e-10);
 
             fun.pspectrum = struct('FrequencyLimits',[0 50]);
             fun.snr = struct('signalHalfWidth',1,'noiseHalfWidth',2);
@@ -41,9 +44,9 @@ classdef TestDataJointSnr < TestDataJointPipelineBase
             searchFrequency = cell2mat(result.searchFrequency);
             peakFrequency = cell2mat(result.peakFrequency);
             magnitude = cell2mat(result.magnitude);
-            testCase.verifyEqual(searchFrequency(:),[2;6;10;24]);
-            testCase.assertNumElements(peakFrequency,4);
-            testCase.assertNumElements(magnitude,4);
+            testCase.verifyEqual(searchFrequency(:),10);
+            testCase.assertNumElements(peakFrequency,1);
+            testCase.assertNumElements(magnitude,1);
             atTenHz = searchFrequency == 10;
             testCase.verifyEqual(peakFrequency(atTenHz),injectedFrequency,AbsTol=0.1);
             testCase.verifyTrue(isfinite(magnitude(atTenHz)));

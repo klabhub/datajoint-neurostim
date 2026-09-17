@@ -4,7 +4,7 @@
 -> ns.EpochParm     # Parameters used to epoch
 -> ns.Dimension     # Dimension that determines the conditions and selects the trials
 ---
-time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
+time : blob             # Time in seconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
 prep : blob             # Struct with information on preprocessing (.prepparms) done during epoching
 art   : blob            # Struct with information on artifact removal (.artparms) done during epoching
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
@@ -181,7 +181,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             tic;
             fprintf("Artifact detection ...\n");
             pv =namedargs2cell(parmTpl.artparms);
-            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,'epoch_no',trials,pv{:});
+            epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
+            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,'epoch_no',trials,pv{:});
             % Remove epochs that were identified as having artifacts
             out = ismember(trials,badByArt.all);
             signal(:,out,:) = [];
