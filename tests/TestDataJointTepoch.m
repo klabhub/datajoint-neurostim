@@ -24,9 +24,9 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             end
             testCase.report('inserting an FFT TepochParm with averaging disabled');
             insert(ns.TepochParm,struct('ttag','syntheticTepoch','etag','syntheticEpoch', ...
-                'parms',struct('fun',struct('fft',struct('n',5)), ...
-                'timeWindow',[-2 2],'channel',[1 2],'trial',[1 2 3], ...
-                'average',"")));
+                'fun',struct('fft',struct('n',5)), ...
+                'parms',struct('timeWindow',[-2 2],'channel',[1 2],'trial',[1 2 3], ...
+                'average',string.empty)));
 
             testCase.report('populating ns.Tepoch without channel/trial averaging');
             populate(ns.Tepoch & tepochKey);
@@ -50,6 +50,30 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             testCase.verifySize(amplitude,[3 1]);
             testCase.report('tepochIsPopulatedWithoutAveraging: complete');
         end
+        function tepochAveragesAcrossTrialsAndChannels(testCase)
+            key = testCase.experimentKey();
+            tepochKey = mergestruct(key,struct('ttag','averagedTepoch'));
+            populate(ns.Epoch & key);
+            testCase.setKnownEpochSignals(key);
+            insert(ns.TepochParm,struct('ttag','averagedTepoch','etag','syntheticEpoch', ...
+                'fun',struct('msten',struct([])), ...
+                'parms',struct('timeWindow',[-2 2],'channel',[1 2],'trial',[1 2 3], ...
+                'average',["trial" "channel"])));
+            populate(ns.Tepoch & tepochKey);
+            tc = ns.TepochChannel & tepochKey;
+            actualMeans = fetchn(tc & struct('dependent','mean'),'signal');
+            normalizedActualMeans = cellfun(@(signal) reshape(signal,1,[]), ...
+                actualMeans,UniformOutput=false);
+            actualMeans = sortrows(cat(1,normalizedActualMeans{:}),1);
+            testCase.verifyEqual(count(tc),6);
+            testCase.verifyEqual(unique(fetchn(tc,'channel')),0);
+            testCase.verifyEqual(unique(fetchn(tc,'trial')),0);
+            testCase.verifyEqual(unique(fetchn(tc,'nrtrials')),[1;2]);
+            testCase.verifyEqual(unique(fetchn(tc,'nrchannels')),2);
+            expectedMeans = [190+(0:4);200+(0:4)];
+            testCase.verifyEqual(actualMeans,expectedMeans,'AbsTol',1e-10);
+        end
+
         function chunkedDeleteRemovesPartRowsInBatches(testCase)
             testCase.report('chunkedDeleteRemovesPartRowsInBatches: starting');
             key = testCase.experimentKey();
@@ -77,6 +101,16 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             testCase.verifyEqual(count(ns.Epoch & key),1);
             clear restoreLimit
             testCase.report('chunkedDeleteRemovesPartRowsInBatches: complete');
+        end
+    end
+    methods (Access=private)
+        function setKnownEpochSignals(~,key)
+            sourceRows = fetch(ns.EpochChannel & key,'subject','session_date','starttime', ...
+                'ctag','dimension','etag','filename','paradigm','channel','trial');
+            for iRow = 1:numel(sourceRows)
+                signal = 100*sourceRows(iRow).channel + 10*sourceRows(iRow).trial^2 + (0:4)';
+                update(ns.EpochChannel & sourceRows(iRow),'signal',signal);
+            end
         end
     end
 end

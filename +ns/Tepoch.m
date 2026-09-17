@@ -14,7 +14,7 @@ classdef Tepoch < dj.Computed & dj.DJInstance
     end
 
     methods 
-        function v = get.keySource(self)
+        function v = get.keySource(~)
             v  = ns.TepochParm * (ns.Epoch & ns.EpochChannel);
         end
     end

@@ -460,34 +460,29 @@ classdef (Abstract) cache < handle
                         end
                     else
                         progressQueue = parallel.pool.DataQueue;
-                        progressCount = 0;
+                        
                         fprintf('Applying %s in parallel: 0/%d',thisFun,nrGrps);
                         parfor iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            xCell{iGrp} = funN(groupData{:});
+                            xCell{iGrp} = funN(groupData{:}); %#ok<PFBNS>
                             send(progressQueue,1);
                         end
                         fprintf('\n');
                     end
+                    ns.cache.validate_results_(xCell,dv,thisFun);
                     x = vertcat(xCell{:});
                     % Combine with G, if G and x have common variable
                     % names, x overwrites G
                     G = ns.cache.horzcat_results_(G, x);
 
                     % change M for the next computation
-                    M = table2cell(G(:,dv));
+                    M = table2cell(G(:,dv));                    
                 end
             end
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
 
-            function updateProgress(~)
-                progressCount = progressCount + 1;
-                progressStep = max(1,ceil(nrGrps/10));
-                if mod(progressCount,progressStep) == 0 || progressCount == nrGrps
-                    fprintf('\rApplying %s in parallel: %d/%d',thisFun,progressCount,nrGrps);
-                end
-            end
+          
         end
     end
 
@@ -722,6 +717,30 @@ classdef (Abstract) cache < handle
 
     methods (Static, Access = private)
 
+        function validate_results_(xCell,dv,thisFun)
+            % The compute code depends on the output of the function being a table with one row per group and
+            % each column being a row vector or a cell array of N-D arrays. Check this here for future extensions.
+            for iGrp = 1:numel(xCell)
+                result = xCell{iGrp};
+                assert(istable(result) && height(result) == 1, ...
+                    '%s must return a one-row table for each group.',thisFun);
+                for iDv = 1:numel(dv)
+                    value = result.(dv(iDv));
+                    if iscell(value)
+                        % Cell contents must be nonempty, nonscalar N-D arrays.
+                        valid = ~isempty(value) && all(cellfun(@(v) ...
+                            ~isempty(v) && ~isscalar(v) && ~isvector(v),value(:)));
+                    else
+                        % Non-cell outputs must be nonempty, nonscalar row vectors.
+                        valid = ~isempty(value) && ~isscalar(value) && isrow(value);
+                    end
+                    assert(valid, ...
+                        'Output %s.%s must be a row vector or a cell array of N-D arrays.', ...
+                        thisFun,dv(iDv));
+                end
+            end
+        end
+
         function result = horzcat_results_(G, M)
             % 1. Find overlapping names
             overlap = intersect(G.Properties.VariableNames, M.Properties.VariableNames);
@@ -783,9 +802,13 @@ end
 
 function d = selectDataRow(d,iGrp)
 if iscell(d)
-    d = cat(2,d{iGrp,:});
+    d = d{iGrp};
+    while iscell(d) && isscalar(d), d = d{1}; end
+    if iscell(d), d = cat(2,d{:}); end
+    d = d(:);
 else
     d = d(iGrp,:);
+    if isvector(d), d = d(:); end
 end
 end
 

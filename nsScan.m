@@ -465,13 +465,17 @@ if ismember("analyze",tExperiment.Properties.VariableNames) && pv.analyze
         return;
     end
 end
-clear meta fullName %  These are sorted differently; prevent accidental use below.
-
-nrExperiments = height(tExperiment);
-if pv.verbose
-    fprintf('Found %d matching Neurostim files: \n',nrExperiments)
-    tExperiment %#ok<NOPRT>
+% Check paradigm length
+nrVarChar= 32; % Fixed in the datajoint database to avoid PK name length issues in derived tables. See ns.Experiment
+len = strlength(tExperiment.paradigm);
+if any(len>nrVarChar)
+    warning('Paradigm names (%s) are longer than %d; they will be truncated',strjoin(unique(tExperiment.paradigm(len>nrVarChar)),"/"),nrVarChar);
+    trunc = tExperiment.paradigm(len>nrVarChar);
+    trunc = extractBefore(trunc,min(len(len>nrVarChar),nrVarChar)+1);
+    tExperiment{len>nrVarChar,"paradigm"} = trunc;
 end
+
+clear meta fullName %  These are sorted differently; prevent accidental use below.
 
 
 %% B. Session Meta Data
