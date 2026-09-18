@@ -110,9 +110,9 @@ classdef TestUtilities < matlab.unittest.TestCase
             result = ns.cache.do_wavelet(signal,100, ...
                 nfrex=4,fwhm=[2 1],limits=[5 20]);
 
-            testCase.verifyEqual(result.frequency,[5 10 15 20]);
+            testCase.verifyEqual(result.xt{1,1},[5 10 15 20]);
             testCase.verifySize(result.power{1},[32 4]);
-            testCase.verifySize(result.time,[1 32]);
+            testCase.verifyEqual(result.xt{1,2},(0:31)/100,'AbsTol',1e-10);
         end
 
         function snrAcceptsStructOptions(testCase)
@@ -131,8 +131,8 @@ classdef TestUtilities < matlab.unittest.TestCase
             result = ns.cache.do_search_peaks(signal,frequencies, ...
                 searchFrequencies=[2 6],searchRangeHalfWidth=0.5);
 
-            testCase.verifyEqual(result.searchFrequency{1},[2; 6]);
-            testCase.verifyEqual(result.peakFrequency{1},[2; 6]);
-            testCase.verifyEqual(result.magnitude{1},[2; 6]);
+            testCase.verifyEqual(result.searchFrequency,[2 6]);
+            testCase.verifyEqual(result.frequency,[2 6]);
+            testCase.verifyEqual(result.magnitude,[2 6]);
         end    end
 end

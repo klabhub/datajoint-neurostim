@@ -325,7 +325,7 @@ classdef (Abstract) cache < handle
                 keep = do.ifwithin(t,pv.timeWindow/1000);
                 croppedT = rowfun(@(x) x(:,keep), ...
                     restrictedT(:,dv),ExtractCellContents=true);
-                restrictedT.(dv)  = croppedT;
+                restrictedT.(dv) = croppedT.Var1;
                 t= t(keep);
                 assert(~isempty(t),'No time points left in the analysis window ([%f %f])',pv.timeWindow(1),pv.timeWindow(2));
                 restrictedT.time = repmat([t(1) t(end) numel(t)],height(restrictedT),1);
@@ -390,7 +390,8 @@ classdef (Abstract) cache < handle
                 G.nrtrials = ones(height(G),1);
                 G.nrchannels = ones(height(G),1);
                 M = restrictedT.(dv);                
-                G.group = repmat("_",height(G),1);
+                uGroup = "_";
+                G.group = repmat(uGroup,height(G),1);
             end
             nrGrps = height(M);
 
@@ -399,7 +400,8 @@ classdef (Abstract) cache < handle
             D = containers.Map;
             if isfield(fun,"msten")
                 % The average has already been determined above; just combine with G
-                G = [G(:,setdiff(G.Properties.VariableNames,"time")) M];              
+                G = [G(:,setdiff(G.Properties.VariableNames,"time")) M];
+                D('time') = {'mean','ste','n'};
             else
                 % Compute one or more functions
                 funs = fieldnames(fun);
@@ -464,7 +466,7 @@ classdef (Abstract) cache < handle
                     R = renamevars(R,R.Properties.VariableNames,thisFun + "_" + R.Properties.VariableNames );
                     idv = thisFun + "_" + idv ;
                     dv = setdiff(R.Properties.VariableNames,idv); % EVerything but the idv
-                    ns.cache.validate_results(R);
+                    ns.cache.validate_results(R,thisFun);
                     
                     % Pass the dependent variables to the next computation
                     M = table2cell(R(:,dv));        
@@ -714,7 +716,7 @@ classdef (Abstract) cache < handle
 
     methods (Static, Access = private)
 
-        function validate_results(R,~,thisFun)
+        function validate_results(R,thisFun)
             valid = varfun(@(value) ns.cache.validate_result_column(value), ...
                 R,OutputFormat="uniform");
             if ~all(valid)

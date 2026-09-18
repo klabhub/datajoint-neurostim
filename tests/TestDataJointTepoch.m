@@ -12,7 +12,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
                 previousSafeMode = dj.config('safemode');
                 restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
                 dj.config('safemode',false);
-                delete(ns.Epoch & key);
+                del(ns.Epoch & key);
                 populate(ns.Epoch & key);
             end
 
@@ -32,9 +32,9 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             populate(ns.Tepoch & tepochKey);
             tepoch = ns.Tepoch & tepochKey;
             testCase.verifyEqual(count(tepoch),2);
-            testCase.verifyEqual(sort(string(fetchn(tepoch,'dependent'))),["amplitude";"phase"]);
-            testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','independent'),'frequency');
-            testCase.verifyEqual(fetch1(tepoch & 'dependent="amplitude"','x'),[0 200 400],'AbsTol',1e-10);
+            testCase.verifyEqual(sort(string(fetchn(tepoch,'dependent'))),["fft_amplitude";"fft_phase"]);
+            testCase.verifyEqual(fetch1(tepoch & 'dependent="fft_amplitude"','independent'),'fft_frequency');
+            testCase.verifyEqual(fetch1(tepoch & 'dependent="fft_amplitude"','x'),[0 200 400],'AbsTol',1e-10);
 
             testCase.report('checking one transformed row per source trial/channel');
             tc = ns.TepochChannel & tepochKey;
@@ -43,11 +43,11 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             testCase.verifyEqual(sort(fetchn(tc,'trial')),repelem((1:3)',4));
             testCase.verifyEqual(unique(fetchn(tc,'nrtrials')),1);
             testCase.verifyEqual(unique(fetchn(tc,'nrchannels')),1);
-            amplitude = fetch1(tc & 'dependent="amplitude"' & 'trial=2' & 'channel=1','signal');
-            testCase.verifyEqual(amplitude,[0;sqrt(5);0],'AbsTol',1e-10);
-            phase = fetch1(tc & 'dependent="phase"' & 'trial=2' & 'channel=1','signal');
+            amplitude = fetch1(tc & 'dependent="fft_amplitude"' & 'trial=2' & 'channel=1','signal');
+            testCase.verifyEqual(amplitude,[0 sqrt(5) 0],'AbsTol',1e-10);
+            phase = fetch1(tc & 'dependent="fft_phase"' & 'trial=2' & 'channel=1','signal');
             testCase.verifyEqual(phase(2),-pi/2,'AbsTol',1e-10);
-            testCase.verifySize(amplitude,[3 1]);
+            testCase.verifySize(amplitude,[1 3]);
             testCase.report('tepochIsPopulatedWithoutAveraging: complete');
         end
         function tepochAveragesAcrossTrialsAndChannels(testCase)
@@ -84,7 +84,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
                 previousSafeMode = dj.config('safemode');
                 restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
                 dj.config('safemode',false);
-                delete(ns.Tepoch & key);
+                del(ns.Tepoch & key);
             end
             populate(ns.Epoch & key);
             before = count(ns.EpochChannel & key);

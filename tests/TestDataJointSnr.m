@@ -36,14 +36,15 @@ classdef TestDataJointSnr < TestDataJointPipelineBase
             fun.snr = struct('signalHalfWidth',1,'noiseHalfWidth',2);
             fun.peak = struct('searchFrequencies',10 , ...
                 'searchRangeHalfWidth',1);
-            [result,dependent,independent] = compute(epochs,fun,average=string.empty);
+            [result,mapping,groups] = compute(epochs,fun,average=string.empty);
 
-            testCase.verifyEqual(dependent,["peakFrequency" "magnitude"]);
-            testCase.verifyEqual(independent,"searchFrequency");
+            testCase.verifyEqual(string(mapping('peak_searchFrequency')), ...
+                ["peak_frequency" "peak_magnitude"]);
+            testCase.verifyEqual(groups,"_");
             testCase.assertEqual(height(result),1);
-            searchFrequency = cell2mat(result.searchFrequency);
-            peakFrequency = cell2mat(result.peakFrequency);
-            magnitude = cell2mat(result.magnitude);
+            searchFrequency = result.peak_searchFrequency;
+            peakFrequency = result.peak_frequency;
+            magnitude = result.peak_magnitude;
             testCase.verifyEqual(searchFrequency(:),10);
             testCase.assertNumElements(peakFrequency,1);
             testCase.assertNumElements(magnitude,1);
@@ -59,7 +60,7 @@ classdef TestDataJointSnr < TestDataJointPipelineBase
             previousSafeMode = dj.config('safemode');
             restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
             dj.config('safemode',false);
-            delete(ns.EpochParm & struct('etag',etag));
+            del(ns.EpochParm & struct('etag',etag));
         end
     end
 end
