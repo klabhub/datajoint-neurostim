@@ -226,7 +226,8 @@ classdef (Abstract) cache < handle
             end
             fill(o);% Fill the cache
             idv = pv.x;
-            dv = pv.y;
+            dv = pv.y;  
+            srate= o.samplingRate; % Local copy to avoid broadcasting o in the parfor
 
             %% Restrict the T by function input args and time window selection
             stay = true(height(o.T),1);
@@ -268,7 +269,7 @@ classdef (Abstract) cache < handle
                 if isfield(fun,"msten")
                     % Special case; caller asks for the mean only (and ste
                     % and n)
-                    M = splitapply(@ns.cache.do_msten,restrictedT.(dv),grp);                    
+                    M = splitapply(@(x) ns.cache.do_msten(x,srate),restrictedT.(dv),grp);
                 else
                     % Average signal then that will be processed by the fun
                     % below.
@@ -301,15 +302,21 @@ classdef (Abstract) cache < handle
                 % Combine with G
                 G = [G M];
             else
-
-                transforms = fieldnames(fun);
-                n_transform = numel(transforms);
-
-                for iTrans = 1:n_transform
-                    transN = transforms{iTrans};
-                    optionsN = fun.(transN);
-                    m_arg_in = {M}; % input to splitapply
-                    switch transN
+                % Compute one or more functions
+                funs = fieldnames(fun);
+                nrFuns = numel(funs);
+                fprintf('Applying %d functions (%s) to %d elements\n',nrFuns,strjoin(funs,"/"),size(M,1))
+                for f = 1:nrFuns
+                    thisFun = funs{f};
+                    if isstruct(fun.(thisFun))
+                        thisOptions = namedargs2cell(fun.(thisFun));
+                    elseif isempty(fun.(thisFun))
+                        thisOptions = {};
+                    else
+                        error('Function options for %s must be a struct or empty', thisFun);
+                    end
+                    data = {M}; % Inputs indexed by group row                  
+                    switch thisFun
                         case "fft"
                             assert(isempty(optionsN),"fft does not take any options")
                             funN = @(x) ns.cache.do_fft(x,o.samplingRate);
@@ -454,7 +461,11 @@ classdef (Abstract) cache < handle
             % Store power spectrogram and frequency
             v = table({power},{freq},'VariableNames',{'power','frequency'});
         end
-        function v = do_msten(x)
+        function [v,idv] = do_msten(signal,fs)
+            arguments
+                signal
+                fs (1,1) double 
+            end
             % Mean, standard error, and N
             X =cat(2,x{:});
             v = {mean(X,2,"omitmissing"), ...  % Mean
