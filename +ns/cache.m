@@ -398,8 +398,8 @@ classdef (Abstract) cache < handle
             % Map string to function handle and do error checking
             D = containers.Map;
             if isfield(fun,"msten")
-                % Combine with G
-                G = [G M];              
+                % The average has already been determined above; just combine with G
+                G = [G(:,setdiff(G.Properties.VariableNames,"time")) M];              
             else
                 % Compute one or more functions
                 funs = fieldnames(fun);
@@ -474,9 +474,10 @@ classdef (Abstract) cache < handle
                     G = [G R]; %#ok<AGROW>                    
                 end
             end
+            
+            
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
-
           
         end
     end
@@ -632,7 +633,7 @@ classdef (Abstract) cache < handle
             if iscell(signal)
                 signal =cat(1,signal{:});
             end
-            nrSamples= size(signal,1);
+            nrSamples= size(signal,2);
             time = (0:nrSamples-1)/fs;
 
             m = mean(signal,1,"omitmissing");
