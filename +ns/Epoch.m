@@ -4,16 +4,14 @@
 -> ns.EpochParm     # Parameters used to epoch
 -> ns.Dimension     # Dimension that determines the conditions and selects the trials
 ---
-time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
+time : blob             # Time in seconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
 prep : blob             # Struct with information on preprocessing (.prepparms) done during epoching
 art   : blob            # Struct with information on artifact removal (.artparms) done during epoching
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
 classdef Epoch < dj.Computed & dj.DJInstance
 
-    properties (Dependent)
-        time
-        samplingRate
+    properties (Dependent)     
         keySource
     end
 
@@ -44,18 +42,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % Apply combined restriction
             % Selecting only those dimensions that have actual conditions.
             v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension & ns.DimensionCondition)) & combinedWhere;
-        end
-        function t =get.time(tbl)
-            t = fetchn(tbl, 'time');
-            t = cellfun(@(x) linspace(x(1),x(2),x(3))',t,'UniformOutput',false);
-            if count(tbl)==1
-                t= t{1};
-            end
-        end
-        function v = get.samplingRate(tbl)
-            t = fetchn(tbl, 'time');
-            v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);
-        end
+        end      
     end
 
 
@@ -177,8 +164,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
 
             parmTpl.channels =channelsWithData(:)';
-            % Extract the actual trials (in order of signal cols) that have
-            % been extracted
+            % Extract the actual trials that have  been extracted
             trials = T.Properties.CustomProperties.trials';
             startTime = T.Properties.CustomProperties.alignTime';
 
@@ -195,7 +181,8 @@ classdef Epoch < dj.Computed & dj.DJInstance
             tic;
             fprintf("Artifact detection ...\n");
             pv =namedargs2cell(parmTpl.artparms);
-            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,'epoch_no',trials,pv{:});
+            epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
+            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,'epoch_no',trials,pv{:});
             % Remove epochs that were identified as having artifacts
             out = ismember(trials,badByArt.all);
             signal(:,out,:) = [];
@@ -223,7 +210,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             insert(tbl, epoch_tpl);
 
             % Create EpochChannel tuple that contains the data
-            signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
+            % Reorder to trials × channels × samples, then make one row per signal.
+            signal = permute(signal,[2 3 1]);
+            signal = reshape(signal,nrTrials*nrChannels,nrSamples);
+            signal = num2cell(signal,2);
             trial = num2cell(repmat(trials,nrChannels,1));
             onset = num2cell(repmat(startTime,nrChannels,1));
             channel  = num2cell(reshape(repmat(parmTpl.channels,nrTrials,1),nrTrials*nrChannels,1));

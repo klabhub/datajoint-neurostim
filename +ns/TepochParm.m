@@ -1,30 +1,35 @@
 %{
 # TepochParm: parameters to transform epoch data.
 ttag : varchar(32)  # tag for this transformed epoch
-etag : varchar(32) # which epochs to transform 
+etag : varchar(32)  # which epochs to transform
 ---
-fun : longblob # Function to do the transform (see ns.cache/compute)
-window  = NULL  : tinyblob          # Start and stop time of the epoch. Defaults to entire epoch
-channels = NULL  : blob              # Channels to include. Defaults to all in the etag
-average = NULL :blob               # Things to avere over  one ore more of these ["trial" "channel"];           
-trials  = NULL : blob               # Trials to include. Defaults to all in the etag    
+fun : longblob       # Struct that will be passed as fun to ns.cache.comput
+parms : longblob     # Struct of other name-value inputs for ns.cache.compute
 %}
 
-
 classdef TepochParm < dj.Lookup & dj.DJInstance
-    methods 
-    function insert(tbl,tpl)
-        arguments
-            tbl (1,1)
-            tpl (:,1) struct
+    methods
+        function insert(tbl,tpl)
+            arguments
+                tbl (1,1)
+                tpl (:,1) struct
+            end
+
+            tpl = namedargs2cell(tpl);
+            tpl = set_defaults(tpl{:});
+            tpl = makeMymSafe(tpl);
+            insert@dj.Lookup(tbl,tpl);
         end
-
-    % TODO define insert to check valid values
-%               assert(isempty(parms.average) || all(ismember(parms.average,["trial" "channel"])),"Tepoch averaging must ...")
-
-        tpl = makeMymSafe(tpl);
-        insert@dj.Lookup(tbl,tpl);
     end
-    end
+end
+
+function tpl = set_defaults(tpl)
+arguments
+    tpl.ttag char
+    tpl.etag char
+    tpl.parms (1,:) struct = struct('channel',[],'trial',[],'timewindow',[-inf inf],'average',"");
+    tpl.fun (1,1) struct
+end
+            
 
 end
