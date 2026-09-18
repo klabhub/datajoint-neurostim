@@ -61,31 +61,7 @@ classdef (Abstract) cache < handle
         end
     end
 
-    methods (Access = public)
-        function insert(o,tuples)
-            % Validate payloads before subclasses delegate to DataJoint.
-            if iscell(tuples)
-                tuples = cell2struct(tuples,o.header.names,2);
-            end
-            assert(isstruct(tuples),'ns:cache:InvalidTuples', ...
-                'Insert expects a struct array or a DataJoint cell array.');
-            if isempty(tuples), return; end
-            assert(isfield(tuples,'signal'),'ns:cache:MissingSignal', ...
-                'Every inserted tuple must contain signal.');
-            for iTuple = 1:numel(tuples)
-                value = tuples(iTuple).signal;
-                % A tuple is one table row: vectors must run along columns.
-                if isrow(value) || isscalar(value)
-                    valid = ~iscell(value) && ns.cache.validate_result_column(value);
-                else
-                    valid = ~iscell(value) && ns.cache.validate_result_column({value});
-                end
-                assert(valid,'ns:cache:InvalidSignalShape', ...
-                    ['Tuple %d: signal must be a nonempty row vector, scalar, ' ...
-                    'or multidimensional array; column vectors are not allowed.'],iTuple);
-            end
-        end
-
+    methods (Access = public)        
         function plot(o,pv)
             % Plot y as a function of x for all rows in the table.
             % Set the 'average' input to select which aspects to average
@@ -123,7 +99,7 @@ classdef (Abstract) cache < handle
             end
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
-                rasterGrouping = setdiff(ns.cache.GROUPVARS,[pv.raster pv.average]);
+                rasterGrouping = setdiff(ns.cache.AVERAGEVARS,[pv.raster pv.average]);
                 P = groupsummary(G, rasterGrouping, @(x) x(1,:), ["align" xName "paradigm"]);
                 P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);
                 G = groupsummary(G,rasterGrouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
@@ -181,7 +157,9 @@ classdef (Abstract) cache < handle
                     p.EdgeColor = h(end).Color;
                     plot(xlim,[0 0],'k');
                     ylabel (o.dependent)
-                    legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
+                    if ismember("condition",G.Properties.VariableNames)
+                        legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
+                    end
                     titlePV= setdiff(["paradigm" grouping],"condition",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 end
@@ -460,11 +438,11 @@ classdef (Abstract) cache < handle
                             %% Cases below take G (the result of previous computation) as their input
                         case "snr"
                             assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
-                            funN = @(signal,freqs) ns.cache.do_snr(signal,freqs,thisOptions{:});
+                            funN = @(signal,freqs,srate) ns.cache.do_snr(signal,freqs,srate,thisOptions{:});
                             data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.                           
                         case 'peak'
                             assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
-                            funN = @(signal,freqs) ns.cache.do_search_peaks(signal,freqs, thisOptions{:});
+                            funN = @(signal,freqs,srate) ns.cache.do_search_peaks(signal,freqs,srate, thisOptions{:});
                             data{end+1} = G.(idv); %#ok<AGROW> % frequency                        
                         otherwise
                             if isa(fun.(thisFun),'function_handle')
@@ -685,10 +663,11 @@ classdef (Abstract) cache < handle
             v = table(m,ste,n,time,'VariableNames',{'mean','ste','n','time'});
             idv = "time";
         end
-        function [v,idv] = do_snr(signal, freqs, pv)
+        function [v,idv] = do_snr(signal, freqs, srate,pv)
             arguments
                 signal (:,1)
                 freqs (:,1)
+                srate (1,1) double  %#ok<INUSA> %Not used but needed to match with other computes
                 pv.signalHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive} = 1
                 pv.noiseHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}  = 2
             end
@@ -725,10 +704,11 @@ classdef (Abstract) cache < handle
             v = table(snr', freqs', VariableNames={'snr', 'frequency'});
             idv = 'frequency';
         end
-        function [v,idv] = do_search_peaks(signal, freqs, pv)
+        function [v,idv] = do_search_peaks(signal, freqs,srate, pv)
             arguments
                 signal (:,1)
                 freqs (:,1)
+                srate (1,1) double  %#ok<INUSA> %Not used but needed to match with other computes           
                 pv.searchFrequencies (1,:) double {mustBeFinite,mustBeReal,mustBeNonnegative}
                 pv.searchRangeHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}
             end            
@@ -822,6 +802,31 @@ classdef (Abstract) cache < handle
                 s = strtrim(s);
             end
         end
+
+        function validateInsert(o,tuples)
+            % Validate payloads before subclasses delegate to DataJoint.
+            if iscell(tuples)
+                tuples = cell2struct(tuples,o.header.names,2);
+            end
+            assert(isstruct(tuples),'ns:cache:InvalidTuples', ...
+                'Insert expects a struct array or a DataJoint cell array.');
+            if isempty(tuples), return; end
+            assert(isfield(tuples,'signal'),'ns:cache:MissingSignal', ...
+                'Every inserted tuple must contain signal.');
+            for iTuple = 1:numel(tuples)
+                value = tuples(iTuple).signal;
+                % A tuple is one table row: vectors must run along columns.
+                if isrow(value) || isscalar(value)
+                    valid = ~iscell(value) && ns.cache.validate_result_column(value);
+                else
+                    valid = ~iscell(value) && ns.cache.validate_result_column({value});
+                end
+                assert(valid,'ns:cache:InvalidSignalShape', ...
+                    ['Tuple %d: signal must be a nonempty row vector, scalar, ' ...
+                    'or multidimensional array; column vectors are not allowed.'],iTuple);
+            end
+        end
+
     end
 
     methods (Abstract, Access = protected)

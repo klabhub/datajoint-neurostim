@@ -9,6 +9,11 @@ prep : blob             # Struct with information on preprocessing (.prepparms) 
 art   : blob            # Struct with information on artifact removal (.artparms) done during epoching
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
+%
+% This class works in concert with ns.EpochChannel, which derives from
+% ns.cache.  The latter has functionality for plotting and computing
+% derived measures. If you want to store such derived quantities (spectra, snr)
+% in the database, look at the ns.Tepoch/ns.TepochChannel table.
 classdef Epoch < dj.Computed & dj.DJInstance
 
     properties (Dependent)     

@@ -7,6 +7,9 @@ dependent       : varchar(64)   # The name of the dependent variable(s)
 x : blob                        # The values of the independent variable
 independent     : varchar(64)   #  The name of the independent variable(s), if multiple, concatenated with ':' in order
 %}
+%
+% See ns.cache for a list of computations , or how to add your own
+% computation (defined in a ns.TepochParm)
 classdef Tepoch < dj.Computed & dj.DJInstance
 
     properties (SetAccess = protected)
@@ -26,8 +29,8 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             fun   = fetch1(ns.TepochParm & key,'fun');
             parms = namedargs2cell(parms);
             [T,D] = compute( ns.EpochChannel&key,fun,parms{:});
-
             % D maps each independent-variable column to its dependent columns.
+            % Extract each dv here and insert.
             mapKeys = string(keys(D));
             allDv = string.empty(1,0);
             for iMap = 1:numel(mapKeys)
@@ -42,7 +45,8 @@ classdef Tepoch < dj.Computed & dj.DJInstance
                     insert(self,makeMymSafe(tpl));
                 end 
             end
-
+            
+            % Collect the information per Channel/Trial
             varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" allDv "group"],T.Properties.VariableNames);
             T = T(:,varnames);
             if ismember("channel",T.Properties.VariableNames)

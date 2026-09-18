@@ -9,6 +9,7 @@ signal : longblob         # (Transformed) Data
 nrtrials = 1 : int       # Number of trials (if averaged)
 nrchannels = 1 : int      # Number of channels (if averaged)
 %}
+% Most functionality is derived from the ns.cache class.
 classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache    
     properties (SetAccess = protected)
         master = ns.Tepoch
@@ -41,7 +42,7 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods      
         function insert(self,tuples,varargin)
-            insert@ns.cache(self,tuples);
+            validateInsert(self,tuples);
             insert@dj.Part(self,tuples,varargin{:});
         end
 

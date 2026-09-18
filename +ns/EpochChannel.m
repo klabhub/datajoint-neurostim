@@ -7,6 +7,8 @@ trial : int         # Trial number
 onset : float             # Time of the align event relative to trial start
 signal     : longblob     # C data for a single channel, single trial
 %}
+%
+% Most functionality is derived from the ns.cache class.
 classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache   
     properties (SetAccess = protected)
         master = ns.Epoch
@@ -33,7 +35,7 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
 
     methods      
         function insert(self,tuples,varargin)
-            insert@ns.cache(self,tuples);
+            validateInsert(self,tuples);
             insert@dj.Part(self,tuples,varargin{:});
         end
 
