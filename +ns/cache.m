@@ -193,7 +193,7 @@ classdef (Abstract) cache < handle
             end
         end
 
-        function [G,dv,idv,uGroup] =  compute(o,fun,pv)
+        function [G,D,uGroup] =  compute(o,fun,pv)
             % Compute derived measures from the (T)EpochChannel table.
             % fun - struct with fields corresponding to one of the
             % functions listed below. 
@@ -282,8 +282,10 @@ classdef (Abstract) cache < handle
             %               Set to string.empty to avoid averaging.
             % OUTPUT
             % G  - A table with the results
-            % dv -  The name of the dependent variable.
-            % idv - the name of the independent variable.
+            % D -  A dictionary mapping independent variables to dependent
+            % variables (both of which are columns in G)
+            % uGroup = the list of unique group names (or "_" if no
+            % averaging was performed).
             arguments
                 o (1,1)
                 fun  (1,1) struct
@@ -393,12 +395,10 @@ classdef (Abstract) cache < handle
 
             %% Determine which function to compute
             % Map string to function handle and do error checking
+            D = containers.Map;
             if isfield(fun,"msten")
-                % it outputs multiple dv
-                dv = ["mean", "ste", "n"];
-                idv = "time";
                 % Combine with G
-                G = [G M];
+                G = [G M];              
             else
                 % Compute one or more functions
                 funs = fieldnames(fun);
@@ -417,66 +417,61 @@ classdef (Abstract) cache < handle
                     srate= o.samplingRate; % Local copy to avoid broadcasting o in the parfor
                     switch thisFun
                         case "fft"
-                            funN = @(x) ns.cache.do_fft(x,srate,thisOptions{:});
-                            dv = ["amplitude" "phase"];
-                            idv = "frequency";
+                            funN = @(x) ns.cache.do_fft(x,srate,thisOptions{:});                           
                         case "pspectrum"
-                            funN = @(x) ns.cache.do_pspectrum(x,srate,thisOptions{:});
-                            idv = "frequency";
-                            dv = "power";
+                            funN = @(x) ns.cache.do_pspectrum(x,srate,thisOptions{:});                            
                         case "pmtm"
-                            funN = @(x) ns.cache.do_pmtm(x,'fs',srate,thisOptions{:});
-                            idv = "frequency";
-                            dv = "power";
+                            funN = @(x) ns.cache.do_pmtm(x,'fs',srate,thisOptions{:});                            
                         case "wavelet"
-                            funN = @(x) ns.cache.do_wavelet(x,srate,thisOptions{:});
-                            % do_wavelet() does not output time
-                            idv = "frequency";
-                            dv = "power";
+                            funN = @(x) ns.cache.do_wavelet(x,srate,thisOptions{:});                                                        
                             %% Cases below take G (the result of previous computation) as their input
                         case "snr"
                             assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
                             funN = @(varargin) ns.cache.do_snr(varargin{:},thisOptions{:});
-                            data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
-                            idv = "frequency";
-                            dv = "snr";
+                            data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.                           
                         case 'peak'
                             assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
                             funN = @(varargin) ns.cache.do_search_peaks(varargin{:}, thisOptions{:});
-                            data{end+1} = G.(idv); %#ok<AGROW> % frequency
-                            idv = "searchFrequency";
-                            dv = ["peakFrequency","magnitude"];
+                            data{end+1} = G.(idv); %#ok<AGROW> % frequency                        
                         otherwise
+                            %if isa
+                            % Check that the function returns two outputs
                             error('Unknown function %s', thisFun);
                     end
-
+                  
                     %% Apply the fun to the mean signal
                     pool = nsParPool;
+                    % Temp cell to store results
                     xCell = cell(nrGrps,1);
+                    idv  = repmat("",1, nrGrps);
                     if isempty(pool)
                         for iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            xCell{iGrp} = funN(groupData{:});
+                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:});
                         end
                     else
-                        progressQueue = parallel.pool.DataQueue;
-                        
+                        progressQueue = parallel.pool.DataQueue;                        
                         fprintf('Applying %s in parallel: 0/%d',thisFun,nrGrps);
                         parfor iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            xCell{iGrp} = funN(groupData{:}); %#ok<PFBNS>
+                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:}); %#ok<PFBNS>
                             send(progressQueue,1);
                         end
                         fprintf('\n');
                     end
-                    ns.cache.validate_results_(xCell,dv,thisFun);
-                    x = vertcat(xCell{:});
-                    % Combine with G, if G and x have common variable
-                    % names, x overwrites G
-                    G = ns.cache.horzcat_results_(G, x);
-
-                    % change M for the next computation
-                    M = table2cell(G(:,dv));                    
+                    R = vertcat(xCell{:}); % Results table
+                    idv = unique(idv); % Should all be the same.                     
+                    R = renamevars(R,R.Properties.VariableNames,thisFun + "_" + R.Properties.VariableNames );
+                    idv = thisFun + "_" + idv ;
+                    dv = setdiff(R.Properties.VariableNames,idv); % EVerything but the idv
+                    ns.cache.validate_results(R);
+                    
+                    % Pass the dependent variables to the next computation
+                    M = table2cell(R(:,dv));        
+                    
+                    % Combine the results with G and store idv->dv mapping                    
+                    D(idv)  = dv;                     
+                    G = [G R]; %#ok<AGROW>                    
                 end
             end
             % Sort in consistent order - not matched to the tbl query
@@ -492,7 +487,7 @@ classdef (Abstract) cache < handle
         % Compute functions that take a signal with some options and return
         % a table with one or more output columns. Note that each column
         % should contain a row vector of results.
-        function v = do_fft(signal, fs, pv)
+        function [v,idv] = do_fft(signal, fs, pv)
             % do_fft - Computes FFT amplitude and phase for each
             %               epoch. Only includes real frequencies.
             %
@@ -527,8 +522,9 @@ classdef (Abstract) cache < handle
             phase = angle(fftResult(idx,:,:));
             % Return as table with results as row vectors
             v= table(amplitude',phase',freq,'VariableNames',{'amplitude','phase','frequency'});
+            idv = "frequency";
         end
-        function v = do_pspectrum(signal, fs, pv)
+        function [v,idv] = do_pspectrum(signal, fs, pv)
             % Compute power spectral density using MATLAB's pspectrum function.
             arguments
                 signal (:,1) {mustBeNumeric}
@@ -551,8 +547,9 @@ classdef (Abstract) cache < handle
             end
             [power, freq] = pspectrum(signal, fs, 'power', options{:});
             v= table(power',freq','VariableNames',{'power','frequency'});
+            idv = "frequency";
         end
-        function v = do_pmtm(signal,pv)
+        function [v,idv] = do_pmtm(signal,pv)
             arguments
                 signal (:,1) {mustBeNumeric}
                 pv.tapertype (1,1) string {mustBeMember(pv.tapertype,["slepian" "sine"])} = "slepian"
@@ -582,8 +579,9 @@ classdef (Abstract) cache < handle
             end
             % Make table, force rows
             v = table(power',freq','VariableNames',{'power','frequency'});
+            idv = "frequency";
         end
-        function v = do_wavelet(signal,fs, pv)
+        function [v,idv] = do_wavelet(signal,fs, pv)
             arguments
                 signal (:,1) {mustBeNumeric}
                 fs (1,1) double
@@ -622,24 +620,28 @@ classdef (Abstract) cache < handle
             end
             power = abs(spectrogram).^2;
             % Store power spectrogram and frequency
-            v = table({power'},freq',time,'VariableNames',{'power','frequency','time'});
+            v = table({power'},{freq',time},'VariableNames',{'power','xt'});
+            idv = "xt";
         end
-        function v = do_msten(x)
+        function [v,idv] = do_msten(signal)
             arguments
-                x
+                signal
             end
             % Mean, standard error, and N
-            if iscell(x)
-                x =cat(1,x{:});
+            if iscell(signal)
+                signal =cat(1,signal{:});
             end
+            nrSamples= size(signal,1);
+            time = (0:nrSamples-1)/fs;
 
-            m = mean(x,1,"omitmissing");
-            ste= std(x,0,1,"omitmissing")./sqrt(sum(~isnan(x),1,"omitmissing"));
-            n = sum(~isnan(x),1,"omitmissing");  % Non-Nan N
+            m = mean(signal,1,"omitmissing");
+            ste= std(signal,0,1,"omitmissing")./sqrt(sum(~isnan(signal),1,"omitmissing"));
+            n = sum(~isnan(signal),1,"omitmissing");  % Non-Nan N
             % Make a table.
-            v = table(m,ste,n,'VariableNames',{'mean','ste','n'});
+            v = table(m,ste,n,time,'VariableNames',{'mean','ste','n','time'});
+            idv = "time";
         end
-        function v = do_snr(signal, freqs, pv)
+        function [v,idv] = do_snr(signal, freqs, pv)
             arguments
                 signal (:,1)
                 freqs (:,1)
@@ -677,78 +679,61 @@ classdef (Abstract) cache < handle
             snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
             v = table(snr', freqs', VariableNames={'snr', 'frequency'});
-
+            idv = 'frequency';
         end
-        function v = do_search_peaks(signal, freqs, pv)
+        function [v,idv] = do_search_peaks(signal, freqs, pv)
             arguments
                 signal (:,1)
                 freqs (:,1)
                 pv.searchFrequencies (1,:) double {mustBeFinite,mustBeReal,mustBeNonnegative}
                 pv.searchRangeHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}
-            end
-            searchFrequencies = pv.searchFrequencies;
-            freqs = freqs(:);
-            searchRangeHalfWidth = pv.searchRangeHalfWidth;
-
-
-            nSearchFreq = numel(searchFrequencies);
-            nChannels = size(signal,2);
-            [searchFreq, peakFreq, peakAmp] = deal(zeros(nSearchFreq,nChannels));
+            end            
+            freqs = freqs(:);            
+            nSearchFreq = numel(pv.searchFrequencies);            
+            [searchFreq, peakFreq, peakAmp] = deal(zeros(1,nSearchFreq));
             for ii = 1:nSearchFreq
-
-                sFreq = searchFrequencies(ii);
-                searchWindow = sFreq + [-1, 1] .* searchRangeHalfWidth;
+                sFreq = pv.searchFrequencies(ii);
+                searchWindow = sFreq + [-1, 1] .* pv.searchRangeHalfWidth;
                 isFrequency = do.ifwithin(freqs, searchWindow);
                 frequencyIndices = find(isFrequency);
                 if isempty(frequencyIndices)
                     error('No frequencies found in search window [%g, %g] Hz around %g Hz.', ...
                         searchWindow(1), searchWindow(2), sFreq);
                 end
-                [peakAmp(ii,:), peakIndices] = maxk(signal(isFrequency,:),1,1);
-
-                peakFreq(ii,:) = freqs(frequencyIndices(peakIndices));
-                searchFreq(ii,:) = sFreq;
-
+                [peakAmp(ii), peakIndices] = maxk(signal(isFrequency,:),1,1);
+                peakFreq(ii) = freqs(frequencyIndices(peakIndices));
+                searchFreq(ii) = sFreq;
             end
 
-            v = table({searchFreq}, {peakFreq}, {peakAmp}, VariableNames={'searchFrequency', 'peakFrequency', 'magnitude'});
+            v = table(searchFreq, peakFreq, peakAmp, VariableNames={'searchFrequency', 'frequency', 'magnitude'});
+            idv = 'searchFrequency';
         end
     end
 
     methods (Static, Access = private)
 
-        function validate_results_(xCell,dv,thisFun)
-            % The compute code depends on the output of the function being a table with one row per group and
-            % each column being a row vector or a cell array of N-D arrays. Check this here for future extensions.
-            for iGrp = 1:numel(xCell)
-                result = xCell{iGrp};
-                assert(istable(result) && height(result) == 1, ...
-                    '%s must return a one-row table for each group.',thisFun);
-                for iDv = 1:numel(dv)
-                    value = result.(dv(iDv));
-                    if iscell(value)
-                        % Cell contents must be nonempty, nonscalar N-D arrays.
-                        valid = ~isempty(value) && all(cellfun(@(v) ...
-                            ~isempty(v) && ~isscalar(v) && ~isvector(v),value(:)));
-                    else
-                        % Non-cell outputs must be nonempty, nonscalar row vectors.
-                        valid = ~isempty(value) && ~isscalar(value) && isrow(value);
-                    end
-                    assert(valid, ...
-                        'Output %s.%s must be a row vector or a cell array of N-D arrays.', ...
-                        thisFun,dv(iDv));
-                end
+        function validate_results(R,~,thisFun)
+            valid = varfun(@(value) ns.cache.validate_result_column(value), ...
+                R,OutputFormat="uniform");
+            if ~all(valid)
+                invalid = string(R.Properties.VariableNames(~valid));
+                error('%s returned incompatible result columns: %s.', ...
+                    thisFun,strjoin(invalid,', '));
             end
         end
 
-        function result = horzcat_results_(G, M)
-            % 1. Find overlapping names
-            overlap = intersect(G.Properties.VariableNames, M.Properties.VariableNames);
-            % 2. Remove them from G
-            G = removevars(G, overlap);
-            % 3. Horizontally concatenate
-            result = [G, M];
+        function valid = validate_result_column(value)
+            if iscell(value)
+                valid = ~isempty(value) && all(cellfun(@(v) ...
+                    ~isempty(v) && ~isrow(v) && ~isscalar(v),value(:)));
+            else
+                valid = ~isempty(value) && all(arrayfun(@(iRow) ...
+                    isrow(value(iRow,:)) || isscalar(value(iRow,:)), ...
+                    (1:size(value,1))'));
+            end
         end
+
+     
     end
 
 

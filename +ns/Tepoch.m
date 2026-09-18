@@ -25,35 +25,55 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             parms = fetch1(ns.TepochParm & key,'parms');                 
             fun   = fetch1(ns.TepochParm & key,'fun');
             parms = namedargs2cell(parms);
-            [T,dv,idv] = compute( ns.EpochChannel&key,fun,parms{:});
+            [T,D] = compute( ns.EpochChannel&key,fun,parms{:});
 
-            
-            %% Insert in the table           
-            x = table2cell(T(1,idv));
-            x = cat(2,x{:});
-            tpl = dj.struct.join(struct(independent = strjoin(idv,':'), ...
-                x = x, dependent = cellstr(dv(:))),...%, groups=avg_groups),
-                key);
-            
-            insert(self,makeMymSafe(tpl));            
-
-            % dat_tbl = T(:,["channel", "trial", dv, "group", "nrtrials", "nrchannels"]);
-            varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" dv "group"],T.Properties.VariableNames);
-            dat_tbl = T(:,varnames);
-            if ismember("channel",dat_tbl.Properties.VariableNames)
-                dat_tbl.nrchannels = ones(height(dat_tbl),1);
-            else
-                dat_tbl.channel = zeros(height(dat_tbl),1); % Must be grouped/averaged
-            end
-            if ismember("trial",dat_tbl.Properties.VariableNames)
-                dat_tbl.nrtrials = ones(height(dat_tbl),1);
-            else
-                dat_tbl.trial = zeros(height(dat_tbl),1); % Grouped/Averaged
+            % D maps each independent-variable column to its dependent columns.
+            mapKeys = string(keys(D));
+            allDv = string.empty(1,0);
+            for iMap = 1:numel(mapKeys)
+                idv = mapKeys(iMap);
+                dv = string(D(char(mapKeys(iMap))));
+                allDv = [allDv dv(:)']; %#ok<AGROW>
+                for iDv = 1:numel(dv)
+                    x = table2cell(T(1,idv));
+                    x = cat(2,x{:});
+                    tpl = dj.struct.join(struct(independent = idv, ...
+                        x = x, dependent = char(dv(iDv))),key);
+                    insert(self,makeMymSafe(tpl));
+                end 
             end
 
-            dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'signal');
-            dat_tpl = dj.struct.join(table2struct(dat_tbl),key);            
-            chunkedInsert(ns.TepochChannel,makeMymSafe(dat_tpl))
+            varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" allDv "group"],T.Properties.VariableNames);
+            T = T(:,varnames);
+            if ismember("channel",T.Properties.VariableNames)
+                T.nrchannels = ones(height(T),1);
+            else
+                T.channel = zeros(height(T),1); % grouped/averaged
+            end
+            if ismember("trial",T.Properties.VariableNames)
+                T.nrtrials = ones(height(T),1);
+            else
+                T.trial = zeros(height(T),1); % Grouped/Averaged
+            end
+
+            % Build one TepochChannel row per dependent variable and group.
+            % Dependent arrays may have different widths, so stack() cannot
+            % combine them into one homogeneous table variable.
+            channelRows = cell(numel(allDv),1);
+            for iDv = 1:numel(allDv)
+                dv = allDv(iDv);
+                values = T.(dv);
+                if ~iscell(values)
+                    values = num2cell(values,2);
+                end
+                channelRow = removevars(T,allDv);
+                channelRow.dependent = repmat(dv,height(T),1);
+                channelRow.signal = values;
+                channelRows{iDv} = channelRow;
+            end
+            T = vertcat(channelRows{:});
+            tpl = dj.struct.join(table2struct(T),key);
+            chunkedInsert(ns.TepochChannel,makeMymSafe(tpl))
 
         end
     end

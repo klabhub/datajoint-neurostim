@@ -26,9 +26,11 @@ classdef TepochChannel < dj.Part & dj.DJInstance & ns.cache
         % align - the name of the event to which the epoch is aligned
         % signal - the actual data for the epoch
         % onset - the time of the align event relative to trial start
-        % condition - the condition for each trial
+        % If the Tepoch is grouped/averaged, condition column represents the name of the group of averaged trials and/or channels.
+        % If the Tepoch is not grouped/averaged, condition column represents the condition for each trial (same as the condition of the related epoch)        
             groups = string(fetchn(o,'group'));
-            if all(groups=="_") % No groups, use condition from dimension
+            if all(groups=="_") 
+                % No groups, use condition from dimension
                 src = proj(o,'signal') * proj(ns.Tepoch,'x','independent','dependent') * proj(ns.Epoch,'time') * proj(ns.EpochParm,'align') * proj(ns.Experiment,'paradigm') * proj(ns.DimensionTrial,'name->condition');                             
             else
                 % Use groups as conditions
