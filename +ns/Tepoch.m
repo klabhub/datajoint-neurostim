@@ -1,80 +1,130 @@
 %{
 # Transformed Epoch - a computation applied to a (set of) epochs.
--> ns.Epoch         # The epochs that were transformed
--> ns.TepochParm    # Parameters used for the transformation
-dependent : varchar(64)  # The name of the dependent variable(s)
+-> ns.Epoch                     # The epochs that were transformed
+-> ns.TepochParm                # Parameters used for the transformation
+dependent       : varchar(64)   # The name of the dependent variable(s)
 ---
-x : blob            # The values of the independent variable
-independent : varchar(64)  #  The name of the independent variable(s), if multiple, concatenated with ':' in order
+x : blob                        # The values of the independent variable
+independent     : varchar(64)   #  The name of the independent variable(s), if multiple, concatenated with ':' in order
 %}
 classdef Tepoch < dj.Computed & dj.DJInstance
 
+    properties (SetAccess = protected)
+        keySource 
+    end
+
+    methods 
+        function v = get.keySource(~)
+            v  = ns.TepochParm * (ns.Epoch & ns.EpochChannel);
+        end
+    end
     methods (Access = protected)
-        function makeTuples(tbl, key)
+        function makeTuples(self, key)
             % Apply a computation/transform to a collection of Epochs and
             % store as Tepoch.
-            parms = fetch(ns.TepochParm & key,'*');
+            parms = fetch1(ns.TepochParm & key,'parms');                 
+            fun   = fetch1(ns.TepochParm & key,'fun');
+            parms = namedargs2cell(parms);
+            [T,D] = compute( ns.EpochChannel&key,fun,parms{:});
 
-            % Restrict the epoch channels and trials if requested in the
-            % parms
-            ecTbl = (ns.EpochChannel & key);
-            if ~isempty(parms.channels)
-                ecTbl = ecTbl & struct('channel',num2cell(parms.channels));
+            % D maps each independent-variable column to its dependent columns.
+            mapKeys = string(keys(D));
+            allDv = string.empty(1,0);
+            for iMap = 1:numel(mapKeys)
+                idv = mapKeys(iMap);
+                dv = string(D(char(mapKeys(iMap))));
+                allDv = [allDv dv(:)']; %#ok<AGROW>
+                for iDv = 1:numel(dv)
+                    x = table2cell(T(1,idv));
+                    x = cat(2,x{:});
+                    tpl = dj.struct.join(struct(independent = idv, ...
+                        x = x, dependent = char(dv(iDv))),key);
+                    insert(self,makeMymSafe(tpl));
+                end 
             end
-            if ~isempty(parms.trials)
-                ecTbl = ecTbl & struct('trial',num2cell(parms.trial));
-            end
-            if isempty(parms.window)
-                % Use the same window as the epoch
-                parms.window = fetch(ns.EpochParm & key,'window');
-            end
-            % Compute - uses the ns.cache/compute function  (abstract
-            % superclass).
-            [T,dv,idv] = compute(ecTbl,parms.fun,average=parms.average,timeWindow=parms.window);
 
-            % Insert in the table
-            %%
-            x = table2cell(T(1,idv));
-            x = cat(2,x{:});
-            tpl = dj.struct.join(struct(independent = strjoin(idv,':'), x = x, dependent = cellstr(dv(:))),key);
-
-            insert(tbl,tpl);
-
-
-            if ismember("trial",parms.average)
-                % Trials were averaged out (per-condition average).
-                % Use a fake trial number that corresponds to the first
-                % trial in each condition
-                dimTrials = fetchtable(proj(ns.DimensionTrial & key,'name->condition'));
-                dimTrials = innerjoin(T,dimTrials);
-                G= groupsummary(dimTrials,"condition",{@min,@numel},"trial");
-                G=renamevars(G,["fun1_trial" "fun2_trial"],["trial" "count"]);
-                T = innerjoin(T,G,"Keys","condition","RightVariables",["trial" "count"]);
-                nrTrials = T.count;
+            varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" allDv "group"],T.Properties.VariableNames);
+            T = T(:,varnames);
+            if ismember("channel",T.Properties.VariableNames)
+                T.nrchannels = ones(height(T),1);
             else
-                nrTrials = ones(height(T),1);
+                T.channel = zeros(height(T),1); % grouped/averaged
             end
-
-            if ismember("channel",parms.average)
-                % Channel was averaged out, replace by 0
-                T = addvars(T,zeros(height(T),1),'NewVariableNames','channel');
-                nrChannels = numel(unique([fetch(ecTbl,'channel').channel]))*ones(height(T),1);
-
+            if ismember("trial",T.Properties.VariableNames)
+                T.nrtrials = ones(height(T),1);
             else
-                nrChannels =ones(height(T),1);
+                T.trial = zeros(height(T),1); % Grouped/Averaged
             end
 
-
-            dat_tbl = T(:,["channel", "trial", dv]);
-            dat_tbl.nrtrials = nrTrials;
-            dat_tbl.nrchannels = nrChannels;
-            dat_tbl = stack(dat_tbl, dv, "IndexVariableName", 'dependent', 'NewDataVariableName', 'y');
-            dat_tbl= convertvars(dat_tbl,'dependent', 'char');
-            dat_tpl = dj.struct.join(table2struct(dat_tbl),key);
-
-            insert(ns.TepochChannel,dat_tpl)
+            % Build one TepochChannel row per dependent variable and group.
+            % Dependent arrays may have different widths, so stack() cannot
+            % combine them into one homogeneous table variable.
+            channelRows = cell(numel(allDv),1);
+            for iDv = 1:numel(allDv)
+                dv = allDv(iDv);
+                values = T.(dv);
+                if ~iscell(values)
+                    values = num2cell(values,2);
+                end
+                channelRow = removevars(T,allDv);
+                channelRow.dependent = repmat(dv,height(T),1);
+                channelRow.signal = values;
+                channelRows{iDv} = channelRow;
+            end
+            T = vertcat(channelRows{:});
+            tpl = dj.struct.join(table2struct(T),key);
+            chunkedInsert(ns.TepochChannel,makeMymSafe(tpl))
 
         end
     end
+
+end
+
+function [ecTbl, groups] = find_groups_to_average_(self, key, varargin)
+
+% every char element in varargin is either a custom func_str or one of the
+% pre-set averaging options. Every cell array within varargin is associated
+% with the preceding char element.
+
+% Get relevant tables
+% eTbl = ns.Epoch & key;
+
+n_arg = numel(varargin);
+ii = 1;
+while ii <= n_arg
+
+    argN = varargin{ii};
+    % whether assigned input args
+    inp_argsN = {};
+    if n_arg > ii && iscell(varargin{ii+1})
+
+        inp_argsN = varargin{ii+1};
+        
+    end
+
+    % find groups
+    switch argN
+
+        case {'trial','channel','condition'}
+            
+            disp('TBD.');
+
+        case '' % no averaging
+
+            ecTbl = ns.EpochChannel & (ns.Epoch & key);
+            groups = struct(name = '', id = 1);
+
+        otherwise % custom function
+
+            fun = str2func(argN);
+            [ecTbl, groups] = fun(self, key, inp_argsN{:});
+
+    end
+
+    % next item
+    ii = ii + 1 + ~isempty(inp_argsN);
+
+end
+
 
 end

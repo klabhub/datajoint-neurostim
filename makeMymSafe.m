@@ -12,9 +12,17 @@ for t = 1:numel(tpl)
     for f=1:nrFields
         thisField= tpl(t).(fn{f});
         if isobject(thisField) && ~isstring(thisField)
-            warning('off','MATLAB:structOnObject')
-            thisField = struct(thisField);
-            warning('on','MATLAB:structOnObject')
+            if iscategorical(thisField)
+                 if isscalar(thisField)
+                   thisField  = char(thisField);
+                else
+                   thisField = cellstr(thisField);
+                end
+            else
+                warning('off','MATLAB:structOnObject')
+                thisField = struct(thisField);
+                warning('on','MATLAB:structOnObject')
+            end
             tpl(t).(fn{f}) = thisField;
         end
         switch class(thisField)
@@ -33,6 +41,7 @@ for t = 1:numel(tpl)
                 end
             case 'function_handle'
                 tpl(t).(fn{f}) = func2str(thisField);
+            
             otherwise
                 %Nothing to do
         end

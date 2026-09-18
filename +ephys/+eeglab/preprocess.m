@@ -17,44 +17,49 @@ end
 
 fn = fieldnames(parms.eeglab);
 for f= 1:numel(fn)
-    switch fn{f}
+    % Strip trailing digits so the same operation can be run more than once,
+    % while keeping the parameters for each invocation independent.
+    main_funN = regexprep(fn{f}, '\d+$', '');
+    parmsN = parms.eeglab.(fn{f});
+
+    switch main_funN
         case 'reref'
             % Average rereference
-             if isstruct(parms.eeglab.reref)
+             if isstruct(parmsN)
                 % The user specified parameters that differ from the
                 % defaults; pass those.
-                pv= namedargs2cell(parms.eeglab.reref);
+                pv= namedargs2cell(parmsN);
                 EEG  = pop_reref(EEG,[],pv{:});
-             elseif islogical(parms.eeglab.reref) && parms.eeglab.reref
+             elseif islogical(parmsN) && parmsN
                 % Use all defaults
                 EEG  = pop_reref(EEG,[]);                
             end
         case 'cleanline'
             % Use cleanline to remove power line noise
-            if isstruct(parms.eeglab.cleanline)
+            if isstruct(parmsN)
                 % The user specified parameters that differ from the
                 % defaults; pass those.
-                pv= namedargs2cell(parms.eeglab.cleanline);
+                pv= namedargs2cell(parmsN);
                 EEG  = cleanline(EEG,pv{:});
-            elseif islogical(parms.eeglab.cleanline) && parms.eeglab.cleanline
+            elseif islogical(parmsN) && parmsN
                 % Use all defaults
                 EEG  = cleanline(EEG);                
             end
         case 'cleanartifacts'
             % Use clean_artifacts in eeglab to clean artifacts.
-            if isstruct(parms.eeglab.cleanartifacts)
+            if isstruct(parmsN)
                 % The user specified parameters that differ from the
                 % defaults; pass those.
-                pv= namedargs2cell(parms.eeglab.cleanartifacts);
+                pv= namedargs2cell(parmsN);
                 EEG  = clean_artifacts(EEG,pv{:});
-            elseif islogical(parms.eeglab.cleanartifacts) && parms.eeglab.cleanartifacts
+            elseif islogical(parmsN) && parmsN
                 % Use all defaults
                 EEG  = clean_artifacts(EEG);                
             end
         case 'ica'
             % Run ICA to identify components. The fields of the ica struct
             % are passed as parm/value pairs to pop_runica.           
-            if ~isfield(parms.eeglab.ica,'pca')
+            if ~isfield(parmsN,'pca')
                 % The number of PCA components was not pre-specified.
                 % Set it to the rank of the data. (Necessary for picard,
                 % runica does this in pop_runica)
@@ -62,13 +67,13 @@ for f= 1:numel(fn)
                 X = double(EEG.data(:,1:nrSamplesToUse) - mean(EEG.data(:,1:nrSamplesToUse),2));                
                 rnk =getrank(X);
                 if rnk<size(X,1)
-                    parms.eeglab.ica.pca = rnk;
+                    parmsN.pca = rnk;
                 end
             end
-            icaPV= namedargs2cell(parms.eeglab.ica);
+            icaPV= namedargs2cell(parmsN);
             EEG = pop_runica(EEG,icaPV{:});     
         case 'resample'
-            if iscell(parms.eeglab.resample)
+            if iscell(parmsN)
                 % Passed verbatim to pop_resample
                 % Must be {freq [Hz] ,fc,df}
                 %   fc         - anti-aliasing filter cutoff (pi rad / sample)
@@ -76,24 +81,24 @@ for f= 1:numel(fn)
                 %   df         - anti-aliasing filter transition band width (pi rad /
                 %                sample) {default 0.2}
                 % fc and df are optional
-                resampleParms = parms.eeglab.resample;
-            elseif isnumeric(parms.eeglab.resample) && isscalar(parms.eeglab.resample)
+                resampleParms = parmsN;
+            elseif isnumeric(parmsN) && isscalar(parmsN)
                 % Only frequency specified.
-                resampleParms = {parms.eeglab.resample};
+                resampleParms = {parmsN};
             else
                 error('parms.eeglab.resample must be either a scalar double (frequency) or a cell array with frequency,fc, and df. see pop_resample');
             end
             assert(~isfield(EEG.etc, 'clean_sample_mask'),"Downsampling after clean_artifacts is not recommended (or would need some thought on which windows to remove/keep).");
             EEG = pop_resample(EEG, resampleParms{:});
         case 'zapline'
-            if isstruct(parms.eeglab.zapline)
-                if ~isfield(parms.eeglab.zapline,'noisefreqs')
+            if isstruct(parmsN)
+                if ~isfield(parmsN,'noisefreqs')
                     % Oddly zapline does not look at line (50/60) noise
                     % by default. Force that default here
-                    parms.eeglab.zapline.noisefreqs = 'line';
+                    parmsN.noisefreqs = 'line';
                 end
-                zapParms = namedargs2cell(parms.eeglab.zapline);
-            elseif islogical(parms.eeglab.zapline) && parms.eeglab.zapline
+                zapParms = namedargs2cell(parmsN);
+            elseif islogical(parmsN) && parmsN
                 zapParms = {'noisefreqs','line'};
             end
             EEG = pop_zapline_plus(EEG, zapParms{:});
@@ -101,12 +106,13 @@ for f= 1:numel(fn)
             % Use the PREP pipelin eegLab plugin for preprocessing
             % All unspecified values will be taken from the PREP defaults, except the
             % file paths (which we set to match the MFF file).
-            if isstruct(parms.eeglab.prep)
+            if isstruct(parmsN)
                 % The user specified parameters that differ from the PREP defaults
                 % using a structure with structure fields.
-            elseif islogical(parms.eeglab.prep) && parms.eeglab.prep
+            elseif islogical(parmsN) && parmsN
                 % User had parms.prep =true
                 % Use all PREP defaults
+                parmsN = struct;
                 %{
         % Not needed documentation only
         parms.prep.general.errorMsgs  = 'verbose';
@@ -165,22 +171,22 @@ for f= 1:numel(fn)
             end
             % Only change the reporting file paths if they have not been
             % specified already in the prep parms
-            if ~isfield(parms.eeglab.prep,'report')
-                parms.eeglab.prep.report = struct('reportMode','normal');
+            if ~isfield(parmsN,'report')
+                parmsN.report = struct('reportMode','normal');
             end
             % Reporting does not work with an absolute file path due to some
             % weirdness in the prep pipeline
             % Temporarily cd
             here= pwd;
             cd(EEG.filepath)
-            if ~isfield(parms.eeglab.prep.report,'summaryFilePath')
-                parms.eeglab.prep.report.summaryFilePath  = ['.' filesep 'prep_summary.html'];
+            if ~isfield(parmsN.report,'summaryFilePath')
+                parmsN.report.summaryFilePath  = ['.' filesep 'prep_summary.html'];
             end
-            if ~isfield(parms.eeglab.prep.report,'sessionFilePath')
-                parms.eeglab.prep.report.sessionFilePath  =  ['.' filesep strrep(EEG.filename,'.mff','_prep.pdf')];
+            if ~isfield(parmsN.report,'sessionFilePath')
+                parmsN.report.sessionFilePath  =  ['.' filesep strrep(EEG.filename,'.mff','_prep.pdf')];
             end
             try
-                EEG = pop_prepPipeline(EEG, parms.eeglab.prep);
+                EEG = pop_prepPipeline(EEG, parmsN);
             catch me
                 cd (here)
                 rethrow(me)
@@ -189,7 +195,7 @@ for f= 1:numel(fn)
             EEG = pop_select(EEG, 'channel', setdiff(1:EEG.nbchan,EEG.etc.noiseDetection.stillNoisyChannelNumbers)');
             cd (here)
         case 'filt'
-            EEG = pop_eegfiltnew(EEG, 'locutoff',parms.eeglab.filt.locutoff,'hicutoff',parms.eeglab.filt.hicutoff,'plotfreqz',0,'usefftfilt',true);
+            EEG = pop_eegfiltnew(EEG, 'locutoff',parmsN.locutoff,'hicutoff',parmsN.hicutoff,'plotfreqz',0,'usefftfilt',true);
         otherwise
             error('Unknown eeglab preprocessing struct %s  \n',fn{f})
     end
