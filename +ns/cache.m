@@ -295,6 +295,13 @@ classdef (Abstract) cache < handle
             %               Options are supplied as a struct with fields
             %               searchFrequencies and searchRangeHalfWidth.
             %
+            % You can extend this functionality by specifying your own function handle as a field of the fun struct. 
+            % The function must accept the signal and sampling rate as its first two arguments, and return a table with row vectors of results. 
+            % The function must also return a second output, which is the name of the column in the table that is the independent variable.
+            % For instance
+            %        fun.myfun = @(signal,srate) myfun(signal,srate,'start',1,'mode','bla');
+            %        The function myfun must return a table with one row per group and one column per dependent variable.
+            %        Note how the additional inputs to your function are specified in the function handle.
             %
             % channel  - Select a subset of channels
             % trial    - Select a subset of trials
@@ -435,34 +442,43 @@ classdef (Abstract) cache < handle
                     thisFun = funs{f};
                     if isstruct(fun.(thisFun))
                         thisOptions = namedargs2cell(fun.(thisFun));
-                    elseif isempty(fun.(thisFun))
+                    elseif isempty(fun.(thisFun)) || isa(fun.(thisFun),'function_handle')
                         thisOptions = {};
                     else
-                        error('Function options for %s must be a struct or empty', thisFun);
+                        error('Function options for %s must be a struct, empty, or a function handle', thisFun);
                     end
                     data = {M}; % Inputs indexed by group row                  
                     switch thisFun
                         case "fft"
-                            funN = @(x) ns.cache.do_fft(x,srate,thisOptions{:});                           
+                            funN = @(signal,srate) ns.cache.do_fft(signal,srate,thisOptions{:});                           
                         case "pspectrum"
-                            funN = @(x) ns.cache.do_pspectrum(x,srate,thisOptions{:});                            
+                            funN = @(signal,srate) ns.cache.do_pspectrum(signal,srate,thisOptions{:});                            
                         case "pmtm"
-                            funN = @(x) ns.cache.do_pmtm(x,'fs',srate,thisOptions{:});                            
+                            funN = @(signal,srate) ns.cache.do_pmtm(signal,'fs',srate,thisOptions{:});                            
                         case "wavelet"
-                            funN = @(x) ns.cache.do_wavelet(x,srate,thisOptions{:});                                                        
+                            funN = @(signal,srate) ns.cache.do_wavelet(signal,srate,thisOptions{:});                                                        
                             %% Cases below take G (the result of previous computation) as their input
                         case "snr"
                             assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
-                            funN = @(varargin) ns.cache.do_snr(varargin{:},thisOptions{:});
+                            funN = @(signal,freqs) ns.cache.do_snr(signal,freqs,thisOptions{:});
                             data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.                           
                         case 'peak'
                             assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
-                            funN = @(varargin) ns.cache.do_search_peaks(varargin{:}, thisOptions{:});
+                            funN = @(signal,freqs) ns.cache.do_search_peaks(signal,freqs, thisOptions{:});
                             data{end+1} = G.(idv); %#ok<AGROW> % frequency                        
                         otherwise
-                            %if isa
-                            % Check that the function returns two outputs
-                            error('Unknown function %s', thisFun);
+                            if isa(fun.(thisFun),'function_handle')
+                               % Check that the function takes two inputs (data and sampling rate) 
+                               % returns two outputs (the table with results and the name of the idv column)
+                               % The nargout==-1 is there to handle an
+                               % anonymous function that uses deal to
+                               % generate two outputs.
+                               funN = fun.(thisFun);
+                               assert(nargin(funN)==2,"The compute function (%s) must take two inputs (data and sampling rate)",thisFun);      
+                               assert(nargout(funN)==2 || nargout(funN)==-1,"The compute function (%s) must return two outputs (the table with results and the name of the idv column)",thisFun);
+                            else
+                                error('Unknown function %s', thisFun);
+                            end
                     end
                   
                     %% Apply the fun to the mean signal
@@ -473,14 +489,14 @@ classdef (Abstract) cache < handle
                     if isempty(pool)
                         for iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:});
+                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate);
                         end
                     else
                         progressQueue = parallel.pool.DataQueue;                        
                         fprintf('Applying %s in parallel: 0/%d',thisFun,nrGrps);
                         parfor iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:}); %#ok<PFBNS>
+                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate); %#ok<PFBNS>
                             send(progressQueue,1);
                         end
                         fprintf('\n');
