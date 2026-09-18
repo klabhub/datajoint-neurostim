@@ -17,7 +17,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             end
 
             testCase.report('replacing epoch signals with a known one-cycle sinusoid');
-            sinusoid = sin(2*pi*(0:4)'/5);
+            sinusoid = sin(2*pi*(0:4)/5);
             sourceRows = fetch(ns.EpochChannel & key,'subject','session_date','starttime','ctag','dimension','etag','filename','paradigm','channel','trial');
             for iRow = 1:numel(sourceRows)
                 update(ns.EpochChannel & sourceRows(iRow),'signal',sinusoid);
@@ -62,6 +62,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             populate(ns.Tepoch & tepochKey);
             tc = ns.TepochChannel & tepochKey;
             actualMeans = fetchn(tc & struct('dependent','mean'),'signal');
+            testCase.verifyTrue(all(cellfun(@isrow,actualMeans)));
             normalizedActualMeans = cellfun(@(signal) reshape(signal,1,[]), ...
                 actualMeans,UniformOutput=false);
             actualMeans = sortrows(cat(1,normalizedActualMeans{:}),1);
@@ -108,7 +109,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             sourceRows = fetch(ns.EpochChannel & key,'subject','session_date','starttime', ...
                 'ctag','dimension','etag','filename','paradigm','channel','trial');
             for iRow = 1:numel(sourceRows)
-                signal = 100*sourceRows(iRow).channel + 10*sourceRows(iRow).trial^2 + (0:4)';
+                signal = 100*sourceRows(iRow).channel + 10*sourceRows(iRow).trial^2 + (0:4);
                 update(ns.EpochChannel & sourceRows(iRow),'signal',signal);
             end
         end

@@ -12,6 +12,8 @@ classdef TestDataJointEpoch < TestDataJointPipelineBase
             c = ns.C & key;
             testCase.verifyEqual(c.samplingRate,1000);
             testCase.verifyEqual(count(ns.EpochChannel & key),6);
+            signals = fetchn(ns.EpochChannel & key,'signal');
+            testCase.verifyTrue(all(cellfun(@isrow,signals)));
             testCase.report('checking trial 2/channel 1 extracted signal and onset');
             testCase.verifyEqual(fetch1(ns.EpochChannel & key & 'trial=2' & 'channel=1','signal')',double((3:7)'+1000),'AbsTol',1e-10);
             testCase.verifyEqual(fetch1(ns.EpochChannel & key & 'trial=2' & 'channel=1','onset'),5);

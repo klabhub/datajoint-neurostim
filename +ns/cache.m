@@ -62,6 +62,30 @@ classdef (Abstract) cache < handle
     end
 
     methods (Access = public)
+        function insert(o,tuples)
+            % Validate payloads before subclasses delegate to DataJoint.
+            if iscell(tuples)
+                tuples = cell2struct(tuples,o.header.names,2);
+            end
+            assert(isstruct(tuples),'ns:cache:InvalidTuples', ...
+                'Insert expects a struct array or a DataJoint cell array.');
+            if isempty(tuples), return; end
+            assert(isfield(tuples,'signal'),'ns:cache:MissingSignal', ...
+                'Every inserted tuple must contain signal.');
+            for iTuple = 1:numel(tuples)
+                value = tuples(iTuple).signal;
+                % A tuple is one table row: vectors must run along columns.
+                if isrow(value) || isscalar(value)
+                    valid = ~iscell(value) && ns.cache.validate_result_column(value);
+                else
+                    valid = ~iscell(value) && ns.cache.validate_result_column({value});
+                end
+                assert(valid,'ns:cache:InvalidSignalShape', ...
+                    ['Tuple %d: signal must be a nonempty row vector, scalar, ' ...
+                    'or multidimensional array; column vectors are not allowed.'],iTuple);
+            end
+        end
+
         function plot(o,pv)
             % Plot y as a function of x for all rows in the table.
             % Set the 'average' input to select which aspects to average
@@ -729,7 +753,7 @@ classdef (Abstract) cache < handle
         function valid = validate_result_column(value)
             if iscell(value)
                 valid = ~isempty(value) && all(cellfun(@(v) ...
-                    ~isempty(v) && ~isrow(v) && ~isscalar(v),value(:)));
+                    ~isempty(v) && ~isvector(v) && ~isscalar(v),value(:)));
             else
                 valid = ~isempty(value) && all(arrayfun(@(iRow) ...
                     isrow(value(iRow,:)) || isscalar(value(iRow,:)), ...

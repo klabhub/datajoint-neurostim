@@ -32,6 +32,11 @@ classdef EpochChannel < dj.Part & dj.DJInstance & ns.cache
     end
 
     methods      
+        function insert(self,tuples,varargin)
+            insert@ns.cache(self,tuples);
+            insert@dj.Part(self,tuples,varargin{:});
+        end
+
         function ch = get.channels(self)
             ch = self.unique('channel');
         end               
