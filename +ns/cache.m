@@ -51,11 +51,17 @@ classdef (Abstract) cache < handle
             % Fill the cache and return as as table
             fill(o);
             if ismember("dependent", o.T.Properties.VariableNames)
-                % Tepoch - rename
+                % Tepoch with named dv and idv - rename for easy reference
                 o.dependent = o.T.dependent(1);
                 o.independent = o.T.independent(1);
                 o.T = renamevars(o.T,["signal" "x"], [o.dependent o.independent]);
                 o.T = removevars(o.T,["dependent" "independent"]);
+            end
+            if o.T.Properties.VariableTypes(o.T.Properties.VariableNames==o.dependent) =="double"
+                o.T.(o.dependent) = num2cell(o.T.(o.dependent),2); 
+            end
+            if o.T.Properties.VariableTypes(o.T.Properties.VariableNames==o.independent) =="double"
+                o.T.(o.independent) = num2cell(o.T.(o.independent),2);
             end
             v = o.T;
         end
@@ -92,17 +98,19 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);
-            x = G{1,xName}';
-            if xName =="time" && numel(x) ==3
-                x = linspace(x(1),x(2),x(3))';
+            if isempty(pv.average)
+                % No averaging, so the group is just the row number
+                G = o.T;
+            else
+                G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);
             end
+           
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
                 rasterGrouping = setdiff(ns.cache.AVERAGEVARS,[pv.raster pv.average]);
-                P = groupsummary(G, rasterGrouping, @(x) x(1,:), ["align" xName "paradigm"]);
+                P = groupsummary(G, rasterGrouping, @(x) firstCellValue_(x), ["align" xName "paradigm"]);
                 P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);
-                G = groupsummary(G,rasterGrouping,@(x) ({cat(1,x)}),["mean" "ste" "n"]);
+                G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},["mean" "ste" "n"]);
                 G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
                 G = innerjoin(G,P);
                 pv.newTileEach = union(pv.newTileEach,"condition");
@@ -148,10 +156,42 @@ classdef (Abstract) cache < handle
                     ylabel (pv.raster)
                     titlePV= setdiff(["paradigm" rasterGrouping],"",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
-                else
-                    m = G{i,"mean"}';
-                    ste = G{i,"ste"}';
-                    n = mean(G{i,"n"});
+                elseif isempty(pv.average)
+                    x = G.(xName){1}';
+                    if xName =="time" && numel(x) ==3
+                        x = linspace(x(1),x(2),x(3))';
+                    end
+                    y = G{i,yName};
+                    if iscell(y)
+                        y = cat(1,y{:});
+                    end                    
+                    x = G{i,xName};
+                    if iscell(x)
+                        x = cat(1,x{:});
+                    end
+                    try
+                    plot(x,y,'x');
+                    catch
+                    end
+                    hold on;
+                    xlabel (xName)
+                    ylabel (yName)
+                    ttlStr = "";
+                    n =1;
+                else 
+                    % An average has been determined
+                    x =G.(xName){i}';
+                    if xName =="time" && numel(x) ==3
+                        x = linspace(x(1),x(2),x(3))';
+                    end
+                    m = G.mean{i}';
+                    ste = G.ste{i}';
+                    n = mean(G.n{i});
+                    if all(isnan(m)) || all(isnan(ste))
+                        % No data for this group, skip
+                        warning("No data for this group, skipping");
+                        continue
+                    end
                     h = [h plot(x,m)];                %#ok<AGROW>
                     p = patch([x ;  flip(x)]',[m+ste ; flip(m-ste)]',h(end).Color,FaceAlpha= 0.5);
                     p.EdgeColor = h(end).Color;
@@ -327,17 +367,20 @@ classdef (Abstract) cache < handle
             if any(isfinite(pv.timeWindow))
                 assert(ismember("time",o.T.Properties.VariableNames),"timeWindow restriction can only be used on a cache with a time column.")
                 % Crop to the timeWindow for this operation.
-                t = restrictedT{1,"time"}; % Time in seconds (Taking first row as all should be the same)
+                t = restrictedT.time{1}; % Time in seconds (all should be the same)              
                 if numel(t)==3
                     t = linspace(t(1),t(2),t(3));
                 end
                 keep = do.ifwithin(t,pv.timeWindow/1000);
-                croppedT = rowfun(@(x) x(:,keep), ...
-                    restrictedT(:,dv),ExtractCellContents=true);
-                restrictedT.(dv) = croppedT.Var1;
+                if restrictedT.Properties.VariableTypes(string(restrictedT.Properties.VariableNames)==dv)=="double"
+                    restrictedT.(dv) = restrictedT.(dv)(:,keep);
+                else 
+                    % Cell
+                    restrictedT.(dv) = cellfun(@(x) x(:,keep), restrictedT.(dv),UniformOutput=false);
+                end
                 t= t(keep);
                 assert(~isempty(t),'No time points left in the analysis window ([%f %f])',pv.timeWindow(1),pv.timeWindow(2));
-                restrictedT.time = repmat([t(1) t(end) numel(t)],height(restrictedT),1);
+                restrictedT.time = repmat({[t(1) t(end) numel(t)]},height(restrictedT),1);
             end
 
             %RestrictedT is a table with each subject/session/experiment/trial/channel as a row
@@ -350,7 +393,8 @@ classdef (Abstract) cache < handle
                 grouping = setdiff(ns.cache.AVERAGEVARS,pv.average,'stable');
 
                 [grp,G] = findgroups(restrictedT(:,grouping));
-                varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping),OutputFormat='uniform');                
+                varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping),OutputFormat='uniform');     
+                varies(grouping=="trial") = false; % Tracked separately
                 if any(varies)
                     uGroup  = G{:,grouping(varies)};
                     if size(uGroup,2)>1
@@ -363,21 +407,19 @@ classdef (Abstract) cache < handle
                 if isfield(fun,"msten")
                     % Special case; caller asks for the mean only (and ste
                     % and n)
-                    M = splitapply(@(x) ns.cache.do_msten(x,srate),restrictedT.(dv),grp);
+                    M = splitapply(@(x) ns.cache.do_msten(x,srate), ...
+                         restrictedT.(dv),grp);
                 else
                     % Average signal then that will be processed by the fun
                     % below.
-                    if iscell(restrictedT{1,dv})
-                        M = splitapply(@(x) {mean(cat(1,x{:}),1,"omitmissing")},restrictedT.(dv),grp);
-                    else
-                        M = splitapply(@(x) {mean(x,1,"omitmissing")},restrictedT.(dv),grp);
-                    end
+                    M = splitapply(@(x) {mean(cat(1,x{:}),1,"omitmissing")}, ...
+                        restrictedT.(dv),grp);
                 end
 
-                % Combine with align/time/paradigm information. Note this
-                % assumes these are constant across the group (picking
+                % Combine with align/time (or other idv) information. Note this
+                % assumes these are constant per group (picking
                 % only the first here). fill() assures this is the case.
-                P = groupsummary(restrictedT, grouping, @(x) x(1,:), ["align" idv]);
+                P = groupsummary(restrictedT, grouping, @(x) (x(1,:)), ["align" idv]);
                 P = renamevars(P,["fun1_align" "fun1_"+idv ],["align" idv ]);
 
                 % add trial counts
@@ -484,7 +526,16 @@ classdef (Abstract) cache < handle
                     R = renamevars(R,R.Properties.VariableNames,thisFun + "_" + R.Properties.VariableNames );
                     idv = thisFun + "_" + idv ;
                     dv = setdiff(R.Properties.VariableNames,idv); % EVerything but the idv
-                    ns.cache.validate_results(R,thisFun);
+
+                    %% Check the format of the output 
+                    % The dv is usuallly a row vector (or a scalar), but it has to be placed inside a cell to allow for some functions 
+                    % that return a matrix. The only thing that is not allowed is a column vector.
+                    % This is mainly here to avoid errors in the subsequent plotting function, which expects a row vector or a matrix.
+                    for col = [dv idv]
+                        assert(iscell(R{:,col}), 'The variable (%s) must be a cell array for each group', col);
+                        assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col})), 'The variable (%s) must be numerical values inside a cell) for each group', col);
+                        assert(all(size(R{1,col})==size(R{1,idv(1)})),"IDV and DV must match in size")
+                    end
                     
                     % Pass the dependent variables to the next computation
                     M = table2cell(R(:,dv));        
@@ -542,7 +593,8 @@ classdef (Abstract) cache < handle
             amplitude = 2*abs(fftResult(idx,:,:)/sqrt(N));
             phase = angle(fftResult(idx,:,:));
             % Return as table with results as row vectors
-            v= table(amplitude',phase',freq,'VariableNames',{'amplitude','phase','frequency'});
+            v= table({amplitude'},{phase'},{freq}, ...
+                'VariableNames',{'amplitude','phase','frequency'});
             idv = "frequency";
         end
         function [v,idv] = do_pspectrum(signal, fs, pv)
@@ -567,7 +619,7 @@ classdef (Abstract) cache < handle
                 end
             end
             [power, freq] = pspectrum(signal, fs, 'power', options{:});
-            v= table(power',freq','VariableNames',{'power','frequency'});
+            v= table({power'},{freq'},'VariableNames',{'power','frequency'});
             idv = "frequency";
         end
         function [v,idv] = do_pmtm(signal,pv)
@@ -599,7 +651,7 @@ classdef (Abstract) cache < handle
                 power = power';
             end
             % Make table, force rows
-            v = table(power',freq','VariableNames',{'power','frequency'});
+            v = table({power'},{freq'},'VariableNames',{'power','frequency'});
             idv = "frequency";
         end
         function [v,idv] = do_wavelet(signal,fs, pv)
@@ -660,7 +712,8 @@ classdef (Abstract) cache < handle
             ste= std(signal,0,1,"omitmissing")./sqrt(sum(~isnan(signal),1,"omitmissing"));
             n = sum(~isnan(signal),1,"omitmissing");  % Non-Nan N
             % Make a table.
-            v = table(m,ste,n,time,'VariableNames',{'mean','ste','n','time'});
+            v = table({m},{ste},{n},{time}, ...
+                'VariableNames',{'mean','ste','n','time'});
             idv = "time";
         end
         function [v,idv] = do_snr(signal, freqs, srate,pv)
@@ -701,7 +754,7 @@ classdef (Abstract) cache < handle
             noise = do.ndconv(signal, kernel,FillValue=NaN)/sum(kernel); % conv is sum, make it mean
             snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
-            v = table(snr', freqs', VariableNames={'snr', 'frequency'});
+            v = table({snr'}, {freqs'}, VariableNames={'snr', 'frequency'});
             idv = 'frequency';
         end
         function [v,idv] = do_search_peaks(signal, freqs,srate, pv)
@@ -729,36 +782,12 @@ classdef (Abstract) cache < handle
                 searchFreq(ii) = sFreq;
             end
 
-            v = table(searchFreq, peakFreq, peakAmp, VariableNames={'searchFrequency', 'frequency', 'magnitude'});
+            v = table({searchFreq}, {peakFreq}, {peakAmp}, ...
+                VariableNames={'searchFrequency', 'frequency', 'magnitude'});
             idv = 'searchFrequency';
         end
     end
 
-    methods (Static, Access = private)
-
-        function validate_results(R,thisFun)
-            valid = varfun(@(value) ns.cache.validate_result_column(value), ...
-                R,OutputFormat="uniform");
-            if ~all(valid)
-                invalid = string(R.Properties.VariableNames(~valid));
-                error('%s returned incompatible result columns: %s.', ...
-                    thisFun,strjoin(invalid,', '));
-            end
-        end
-
-        function valid = validate_result_column(value)
-            if iscell(value)
-                valid = ~isempty(value) && all(cellfun(@(v) ...
-                    ~isempty(v) && ~isvector(v) && ~isscalar(v),value(:)));
-            else
-                valid = ~isempty(value) && all(arrayfun(@(iRow) ...
-                    isrow(value(iRow,:)) || isscalar(value(iRow,:)), ...
-                    (1:size(value,1))'));
-            end
-        end
-
-     
-    end
 
 
     methods (Access= protected)
@@ -777,21 +806,11 @@ classdef (Abstract) cache < handle
                     'Rows of the EpochChannel table must have identical start time, stop time, and number of samples.');
                 assert(isscalar(unique({preFetch.align.plugin})),'Rows of the EpochChannel should be aligned to the same plugin.');
                 assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');
-                o.T =fetchtable(src,'*','ORDER BY channel');
+                o.T =fetchtable(src,'*','ORDER BY channel');              
                 o.qry = src.sql;
                 o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));
                 % Epoch endpoints are seconds; N samples span N-1 intervals.
-                o.samplingRate = (epochTime(1,3)-1)/(epochTime(1,2)-epochTime(1,1));
-                % If the signal is a vector, store it as a row for easy
-                % access in plot() and compute().
-                for col = ["signal" "x" o.dependent o.independent]
-                    if ismember(col,o.T.Properties.VariableNames)
-                    if iscell(o.T.(col)) && isvector(o.T.(col){1})
-                        o.T.(col)= cellfun(@(x) reshape(x,1,[]), ...
-                            o.T.(col),UniformOutput=false);
-                    end
-                    end
-                end
+                o.samplingRate = (epochTime(1,3)-1)/(epochTime(1,2)-epochTime(1,1));               
             end
 
             function s = canonicalize(s)
@@ -802,30 +821,7 @@ classdef (Abstract) cache < handle
                 s = strtrim(s);
             end
         end
-
-        function validateInsert(o,tuples)
-            % Validate payloads before subclasses delegate to DataJoint.
-            if iscell(tuples)
-                tuples = cell2struct(tuples,o.header.names,2);
-            end
-            assert(isstruct(tuples),'ns:cache:InvalidTuples', ...
-                'Insert expects a struct array or a DataJoint cell array.');
-            if isempty(tuples), return; end
-            assert(isfield(tuples,'signal'),'ns:cache:MissingSignal', ...
-                'Every inserted tuple must contain signal.');
-            for iTuple = 1:numel(tuples)
-                value = tuples(iTuple).signal;
-                % A tuple is one table row: vectors must run along columns.
-                if isrow(value) || isscalar(value)
-                    valid = ~iscell(value) && ns.cache.validate_result_column(value);
-                else
-                    valid = ~iscell(value) && ns.cache.validate_result_column({value});
-                end
-                assert(valid,'ns:cache:InvalidSignalShape', ...
-                    ['Tuple %d: signal must be a nonempty row vector, scalar, ' ...
-                    'or multidimensional array; column vectors are not allowed.'],iTuple);
-            end
-        end
+       
 
     end
 

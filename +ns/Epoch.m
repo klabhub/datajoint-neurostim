@@ -100,7 +100,16 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 T(isMismatch,:);
             end
         end
+
+        function plot(tbl,varargin) 
+            % Wrapper to call plot on the ns.EpochChannel table, which is a cache table that contains the actual data.
+            % The Epoch table contains the metadata, but the actual data is in EpochChannel.
+            channelTbl = ns.EpochChannel & tbl;
+            plot(channelTbl,varargin{:});
+
+        end
     end
+
 
     methods (Access = protected)
         function makeTuples(tbl, key)
