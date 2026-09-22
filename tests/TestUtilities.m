@@ -84,8 +84,8 @@ classdef TestUtilities < matlab.unittest.TestCase
             signal = sin(2*pi*(0:4)'/5);
             result = ns.cache.do_fft(signal,1000,n=8);
 
-            testCase.verifyEqual(result.frequency,(0:4)*1000/8);
-            testCase.verifySize(result.amplitude,[1 5]);
+            testCase.verifyEqual(result.frequency{1},(0:4)*1000/8);
+            testCase.verifySize(result.amplitude{1},[1 5]);
         end
 
         function pspectrumAcceptsNamedOptions(testCase)
@@ -93,16 +93,16 @@ classdef TestUtilities < matlab.unittest.TestCase
             result = ns.cache.do_pspectrum(signal,1000,FrequencyLimits=[0 250], ...
                 Leakage=1,TwoSided=false);
 
-            testCase.verifyEqual(result.frequency(1),0);
-            testCase.verifyLessThanOrEqual(result.frequency(end),250);
-            testCase.verifySize(result.power,size(result.frequency));
+            testCase.verifyEqual(result.frequency{1}(1),0);
+            testCase.verifyLessThanOrEqual(result.frequency{1}(end),250);
+            testCase.verifySize(result.power{1},size(result.frequency{1}));
         end
         function pmtmAcceptsStructOptions(testCase)
             signal = sin(2*pi*(0:31)'/8);
             result = ns.cache.do_pmtm(signal,nw=4,nfft=16,fs=100);
 
-            testCase.verifySize(result.frequency,[1 9]);
-            testCase.verifySize(result.power,size(result.frequency));
+            testCase.verifySize(result.frequency{1},[1 9]);
+            testCase.verifySize(result.power{1},size(result.frequency{1}));
         end
 
         function waveletAcceptsStructOptions(testCase)
@@ -118,21 +118,22 @@ classdef TestUtilities < matlab.unittest.TestCase
         function snrAcceptsStructOptions(testCase)
             signal = 1 + (0:16)'/16;
             frequencies = (0:16)'/4;
-            result = ns.cache.do_snr(signal,frequencies, ...
+            result = ns.cache.do_snr(signal,frequencies,100, ...
                 signalHalfWidth=1,noiseHalfWidth=2);
 
-            testCase.verifyEqual(result.frequency',frequencies);
-            testCase.verifySize(result.snr,[1 17]);
+            testCase.verifyEqual(result.frequency{1}',frequencies);
+            testCase.verifySize(result.snr{1},[1 17]);
         end
 
+       
         function searchPeaksAcceptsStructOptions(testCase)
             signal = (0:7)';
             frequencies = (0:7)';
-            result = ns.cache.do_search_peaks(signal,frequencies, ...
+            result = ns.cache.do_search_peaks(signal,frequencies,100, ...
                 searchFrequencies=[2 6],searchRangeHalfWidth=0.5);
 
-            testCase.verifyEqual(result.searchFrequency,[2 6]);
-            testCase.verifyEqual(result.frequency,[2 6]);
-            testCase.verifyEqual(result.magnitude,[2 6]);
+            testCase.verifyEqual(result.searchFrequency{1},[2 6]);
+            testCase.verifyEqual(result.frequency{1},[2 6]);
+            testCase.verifyEqual(result.magnitude{1},[2 6]);
         end    end
 end

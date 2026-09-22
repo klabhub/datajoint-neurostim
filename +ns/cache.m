@@ -78,6 +78,8 @@ classdef (Abstract) cache < handle
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["starttime" "condition" "trial" "channel" "subject" "session_date" ""])} = ["trial" "channel"]  % Average over these dimensions
+                pv.robust (1,1) logical = false;       % Set to true to use median and iqr
+                pv.outlier (1,1) double = inf           % Tthreshold factor for outlier removal
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
@@ -102,16 +104,17 @@ classdef (Abstract) cache < handle
                 % No averaging, so the group is just the row number
                 G = o.T;
             else
-                G = compute(o,struct("msten",[]),x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);
+                G = compute(o,struct("averageforplot",''),outlier=pv.outlier, robust=pv.robust,x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);               
             end
            
+ 
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
                 rasterGrouping = setdiff(ns.cache.AVERAGEVARS,[pv.raster pv.average]);
-                P = groupsummary(G, rasterGrouping, @(x) firstCellValue_(x), ["align" xName "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);
-                G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},["mean" "ste" "n"]);
-                G = renamevars(G,["fun1_mean" "fun1_ste" "fun1_n"],["mean" "ste" "n"]);
+                P = groupsummary(G, rasterGrouping, @(x) x(1), ["align" xName "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);                
+                G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},["average" "error" "n"]);
+                G = renamevars(G,["fun1_average" "fun1_error" "fun1_n"],["average" "error" "n"]);
                 G = innerjoin(G,P);
                 pv.newTileEach = union(pv.newTileEach,"condition");
                 G= sortrows(G,intersect([ "subject" "session_date" "starttime" "condition" "channel" "trial" "paradigm"],G.Properties.VariableNames,'stable'));
@@ -149,8 +152,12 @@ classdef (Abstract) cache < handle
                 end
                 if pv.raster~=""
                     % Show each condition in a separate tile
-                    nrTrials= size(G.mean{i},1);
-                    imagesc(x,1:nrTrials, G.mean{i})
+                    x = G.(xName){1}';
+                    if xName =="time" && numel(x) ==3
+                        x = linspace(x(1),x(2),x(3))';
+                    end
+                    nrTrials= size(G.average{i},1);
+                    imagesc(x,1:nrTrials, G.average{i})
                     axis xy
                     n = mean(G.n{i},"all");
                     ylabel (pv.raster)
@@ -165,10 +172,7 @@ classdef (Abstract) cache < handle
                     if iscell(y)
                         y = cat(1,y{:});
                     end                    
-                    x = G{i,xName};
-                    if iscell(x)
-                        x = cat(1,x{:});
-                    end
+                   
                     try
                     plot(x,y,'x');
                     catch
@@ -184,19 +188,19 @@ classdef (Abstract) cache < handle
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
-                    m = G.mean{i}';
-                    ste = G.ste{i}';
+                    m = G.average{i}';
+                    err = G.error{i}';
                     n = mean(G.n{i});
-                    if all(isnan(m)) || all(isnan(ste))
+                    if all(isnan(m)) || all(isnan(err))
                         % No data for this group, skip
                         warning("No data for this group, skipping");
                         continue
                     end
                     h = [h plot(x,m)];                %#ok<AGROW>
-                    p = patch([x ;  flip(x)]',[m+ste ; flip(m-ste)]',h(end).Color,FaceAlpha= 0.5);
+                    p = patch([x ;  flip(x)]',[m+err ; flip(m-err)]',h(end).Color,FaceAlpha= 0.5);
                     p.EdgeColor = h(end).Color;
                     plot(xlim,[0 0],'k');
-                    ylabel (o.dependent)
+                    ylabel (o.dependent,'Interpreter','none');
                     if ismember("condition",G.Properties.VariableNames)
                         legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
                     end
@@ -204,7 +208,7 @@ classdef (Abstract) cache < handle
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 end
                 title (ttlStr + " (n=" + string(n) +")",'Interpreter','none');
-                xlabel (o.independent);
+                xlabel (o.independent,'Interpreter','none');
                 if ~isempty(pv.xlim)
                     xlim(pv.xlim)
                 end
@@ -218,10 +222,10 @@ classdef (Abstract) cache < handle
                     end
                     reference = find(matchG.condition ==pv.delta);
                     if ~isempty(reference)
-                        y = m - matchG.mean{reference,:};
-                        ste = ste +matchG.ste{reference,:};
+                        y = m - matchG.average{reference,:};
+                        err = err +matchG.ste{reference,:};
                         h = [h plot(x,y)];                     %#ok<AGROW>
-                        p = patch([x;flip(x)]',[y+ste;flip(y-ste)]',h(end).Color,FaceAlpha= 0.5);
+                        p = patch([x;flip(x)]',[y+err;flip(y-err)]',h(end).Color,FaceAlpha= 0.5);
                         p.EdgeColor = h(end).Color;
                         legStr = [legStr G.condition(i)+"-"+ pv.delta]; %#ok<AGROW>
                     end
@@ -255,8 +259,12 @@ classdef (Abstract) cache < handle
             %               f:         frequencies, a vector
             %               EXAMPLE:
             %               fun.pmtm = struct('nw',4,'nfft',256);
-            %   .msten:     Mean,standard error, and N (used by the ns.EpochChannel/plot function)
-            %               EXAMPLE fun.msten = {};
+            %   .average:     Average, an error estimate, and N (used by the ns.EpochChannel/plot function)
+            %               EXAMPLE fun.average= {}; 
+            %                           Returns mean and ste  
+            %                      fun.average = {'robust',true}           
+            %                           returns the median and iqr
+            %               EXAMPLE fun.robust_average = {};
             %   .wavelet:   Wavelet spectrogram using the FWHM approach.
             %               Sampling rate is supplied automatically. The
             %               options are supplied as a struct. Its fields
@@ -342,6 +350,8 @@ classdef (Abstract) cache < handle
                 pv.trial (:,1) double = []            % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
                 pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
+                pv.robust (1,1) logical = false   % Set to true to determine median as average                
+                pv.outlier (1,1) double = inf     % Threshold to remove outliers before averaging 
                 pv.x (1,1) string = o.independent  % Name of the independent variable
                 pv.y (1,1) string = o.dependent    % Name of the dependent variable
             end
@@ -364,13 +374,14 @@ classdef (Abstract) cache < handle
             if isempty(restrictedT)
                 error('No data in this table');
             end
+            t = restrictedT.time{1}; % Time in seconds (all should be the same)              
+            if numel(t)==3
+                    t = linspace(t(1),t(2),t(3));
+            end
             if any(isfinite(pv.timeWindow))
                 assert(ismember("time",o.T.Properties.VariableNames),"timeWindow restriction can only be used on a cache with a time column.")
                 % Crop to the timeWindow for this operation.
-                t = restrictedT.time{1}; % Time in seconds (all should be the same)              
-                if numel(t)==3
-                    t = linspace(t(1),t(2),t(3));
-                end
+               
                 keep = do.ifwithin(t,pv.timeWindow/1000);
                 if restrictedT.Properties.VariableTypes(string(restrictedT.Properties.VariableNames)==dv)=="double"
                     restrictedT.(dv) = restrictedT.(dv)(:,keep);
@@ -403,19 +414,29 @@ classdef (Abstract) cache < handle
                 else
                     uGroup = "all"; % Averaging reduced this to a single group.
                 end
-                % Average per group
-                if isfield(fun,"msten")
-                    % Special case; caller asks for the mean only (and ste
-                    % and n)
-                    M = splitapply(@(x) ns.cache.do_msten(x,srate), ...
-                         restrictedT.(dv),grp);
+                % Average signal per group
+                if isfield(fun,"averageforplot")
+                    % Special case; averaging for the plot function
+                    % (includes a variance estimate)
+                   M = splitapply(@(x) ns.cache.do_average(x,srate,t,robust=pv.robust,outlier=pv.outlier),restrictedT.(dv),grp);
                 else
-                    % Average signal then that will be processed by the fun
-                    % below.
-                    M = splitapply(@(x) {mean(cat(1,x{:}),1,"omitmissing")}, ...
-                        restrictedT.(dv),grp);
-                end
-
+                    % Average for the fun computed below.
+                    if pv.robust
+                        av = @median;
+                    else
+                        av = @mean;
+                    end
+                    if isfinite(pv.outlier)
+                        % Average after outlier removal
+                        M = splitapply(@(x) {av(rmoutliers(cat(1,x{:}),"median","ThresholdFactor",pv.outlier),1,"omitmissing")}, ...
+                            restrictedT.(dv),grp);
+                    else
+                        % Average
+                        M = splitapply(@(x) {av(cat(1,x{:}),1,"omitmissing")}, ...
+                            restrictedT.(dv),grp);
+                    end
+                end                                
+                
                 % Combine with align/time (or other idv) information. Note this
                 % assumes these are constant per group (picking
                 % only the first here). fill() assures this is the case.
@@ -449,10 +470,10 @@ classdef (Abstract) cache < handle
             %% Determine which function to compute
             % Map string to function handle and do error checking
             D = containers.Map;
-            if isfield(fun,"msten")
+           if isfield(fun,"averageforplot")
                 % The average has already been determined above; just combine with G
-                G = [G(:,setdiff(G.Properties.VariableNames,"time")) M];
-                D('time') = {'mean','ste','n'};
+                G = [G M(:,setdiff(M.Properties.VariableNames,"time"))];
+                D('time') = {'average','error','n'};
             else
                 % Compute one or more functions
                 funs = fieldnames(fun);
@@ -469,6 +490,8 @@ classdef (Abstract) cache < handle
                     end
                     data = {M}; % Inputs indexed by group row                  
                     switch thisFun
+                        case "average"
+                            funN = @(signal,srate) ns.cache.do_average(signal,srate,thisOptions{:});                           
                         case "fft"
                             funN = @(signal,srate) ns.cache.do_fft(signal,srate,thisOptions{:});                           
                         case "pspectrum"
@@ -543,10 +566,9 @@ classdef (Abstract) cache < handle
                     % Combine the results with G and store idv->dv mapping                    
                     D(idv)  = dv;                     
                     G = [G R]; %#ok<AGROW>                    
-                end
-            end
-            
-            
+                end                       
+           end
+
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
           
@@ -696,26 +718,36 @@ classdef (Abstract) cache < handle
             v = table({power'},{freq',time},'VariableNames',{'power','xt'});
             idv = "xt";
         end
-        function [v,idv] = do_msten(signal,fs)
+        function [v,idv] = do_average(signal,fs,time,pv)
             arguments
                 signal
-                fs (1,1) double 
+                fs (1,1) double %#ok<INUSA>                
+                time (1,:) double
+                pv.robust (1,1) logical = false                
+                pv.outlier (1,1) double = inf
             end
             % Mean, standard error, and N
             if iscell(signal)
                 signal =cat(1,signal{:});
             end
-            nrSamples= size(signal,2);
-            time = (0:nrSamples-1)/fs;
-
-            m = mean(signal,1,"omitmissing");
-            ste= std(signal,0,1,"omitmissing")./sqrt(sum(~isnan(signal),1,"omitmissing"));
+            if isfinite(pv.outlier)
+                signal = rmoutliers(signal,"median","ThresholdFactor",pv.outlier);
+            end
+            if pv.robust
+                av = median(signal,1,"omitmissing");
+                err = iqr(signal,1)/sqrt(sum(~isnan(signal),1,"omitmissing"));
+            else
+                av = mean(signal,1,"omitmissing");
+                err= std(signal,0,1,"omitmissing")./sqrt(sum(~isnan(signal),1,"omitmissing"));
+            end
             n = sum(~isnan(signal),1,"omitmissing");  % Non-Nan N
             % Make a table.
-            v = table({m},{ste},{n},{time}, ...
-                'VariableNames',{'mean','ste','n','time'});
-            idv = "time";
+            v = table({av},{err},{n}, {time}, ...
+                'VariableNames',{'average','error','n','time'});
+            idv = "time";  % time is not in v, but supplemented in the compute() code.
         end
+
+
         function [v,idv] = do_snr(signal, freqs, srate,pv)
             arguments
                 signal (:,1)

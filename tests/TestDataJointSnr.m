@@ -25,7 +25,7 @@ classdef TestDataJointSnr < TestDataJointPipelineBase
                 'time',[t(1) t(end) numel(t)], ...
                 'prep',struct(),'art',struct(),'plg',struct())));
             insert(ns.EpochChannel,mergestruct(key,struct( ...
-                'channel',1,'trial',1,'onset',0,'signal',signal.')));
+                'channel',1,'trial',1,'onset',0,'signal',{signal})));
             epochs = ns.EpochChannel & key;
             testCase.assertEqual(count(epochs),1);
             cached = epochs.T; % Fetch the epoch and derive its sampling rate.
@@ -42,9 +42,9 @@ classdef TestDataJointSnr < TestDataJointPipelineBase
                 ["peak_frequency" "peak_magnitude"]);
             testCase.verifyEqual(groups,"_");
             testCase.assertEqual(height(result),1);
-            searchFrequency = result.peak_searchFrequency;
-            peakFrequency = result.peak_frequency;
-            magnitude = result.peak_magnitude;
+            searchFrequency = [result.peak_searchFrequency{:}];
+            peakFrequency = [result.peak_frequency{:}];
+            magnitude = [result.peak_magnitude{:}];
             testCase.verifyEqual(searchFrequency(:),10);
             testCase.assertNumElements(peakFrequency,1);
             testCase.assertNumElements(magnitude,1);
