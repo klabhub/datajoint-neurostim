@@ -87,6 +87,7 @@ classdef (Abstract) cache < handle
                 pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
                 pv.figure = []  % Creates new figures if empty.
                 pv.xlim  (1,:) double = []
+                pv.clim (1,:) double  = []
             end
 
             %% Fill the cache, then perform averaging per group
@@ -158,15 +159,23 @@ classdef (Abstract) cache < handle
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
-                    nrTrials= size(G.signal{i},1);
+                    if isempty(pv.average)
+                        src = "signal";
+                    else
+                        src = "average";
+                    end
+                    nrTrials= size(G.(src){i},1);                    
                     if pv.line
-                        y =G.signal{i};
+                        y =G.(src){i};
                         y = y./max(abs(y),[],"all") + repmat((1:size(y,1))',[1 size(y,2)]);
                         plot(x,y)
                     else
-                        imagesc(x,1:nrTrials, G.signal{i})
+                        imagesc(x,1:nrTrials, G.(src){i})
                         axis xy
                         ylabel (pv.raster)
+                        if ~isempty(pv.clim)
+                            clim(pv.clim);
+                        end
                     end
                     n = mean(G.n{i},"all");
                     hold on 
