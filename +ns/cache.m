@@ -83,6 +83,7 @@ classdef (Abstract) cache < handle
                 pv.tilesPerPage (1,1) double = 6        % Select how many tiles per page.
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
+                pv.line (1,1) logical = false           % Show offset lines instead of raster
                 pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
                 pv.figure = []  % Creates new figures if empty.
                 pv.xlim  (1,:) double = []
@@ -100,21 +101,22 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            if isempty(pv.average)
-                % No averaging, so the group is just the row number
-                G = o.T;
-            else
-                G = compute(o,struct("averageforplot",''),outlier=pv.outlier, robust=pv.robust,x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);               
-            end
-           
+            G = compute(o,struct("averageforplot",''),outlier=pv.outlier, robust=pv.robust,x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);               
+            
  
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
                 rasterGrouping = setdiff(ns.cache.AVERAGEVARS,[pv.raster pv.average]);
                 P = groupsummary(G, rasterGrouping, @(x) x(1), ["align" xName "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);                
-                G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},["average" "error" "n"]);
-                G = renamevars(G,["fun1_average" "fun1_error" "fun1_n"],["average" "error" "n"]);
+                P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);        
+                if isempty(pv.average)
+                    G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},"signal");
+                    G = renamevars(G,"fun1_signal","signal");
+                    G.n =repmat({1},height(G),1);
+                else
+                    G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},["average" "error" "n"]);
+                    G = renamevars(G,["fun1_average" "fun1_error" "fun1_n"],["average" "error" "n"]);
+                end
                 G = innerjoin(G,P);
                 pv.newTileEach = union(pv.newTileEach,"condition");
                 G= sortrows(G,intersect([ "subject" "session_date" "starttime" "condition" "channel" "trial" "paradigm"],G.Properties.VariableNames,'stable'));
@@ -156,11 +158,19 @@ classdef (Abstract) cache < handle
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
-                    nrTrials= size(G.average{i},1);
-                    imagesc(x,1:nrTrials, G.average{i})
-                    axis xy
+                    nrTrials= size(G.signal{i},1);
+                    if pv.line
+                        y =G.signal{i};
+                        y = y./max(abs(y),[],"all") + repmat((1:size(y,1))',[1 size(y,2)]);
+                        plot(x,y)
+                    else
+                        imagesc(x,1:nrTrials, G.signal{i})
+                        axis xy
+                        ylabel (pv.raster)
+                    end
                     n = mean(G.n{i},"all");
-                    ylabel (pv.raster)
+                    hold on 
+                    plot([0 0],ylim,'k')
                     titlePV= setdiff(["paradigm" rasterGrouping],"",'stable');
                     ttlStr = strjoin(string(G{i,titlePV}),"/");
                 elseif isempty(pv.average)
@@ -197,8 +207,10 @@ classdef (Abstract) cache < handle
                         continue
                     end
                     h = [h plot(x,m)];                %#ok<AGROW>
-                    p = patch([x ;  flip(x)]',[m+err ; flip(m-err)]',h(end).Color,FaceAlpha= 0.5);
-                    p.EdgeColor = h(end).Color;
+                    out = isnan(m);
+                    p = patch([x(~out) ;  flip(x(~out))]',[m(~out)+err(~out) ; flip(m(~out)-err(~out))]',h(end).Color);
+                    p.EdgeColor = h(end).Color;                    
+                    p.FaceAlpha = 0.5;
                     plot(xlim,[0 0],'k');
                     ylabel (o.dependent,'Interpreter','none');
                     if ismember("condition",G.Properties.VariableNames)
@@ -222,8 +234,8 @@ classdef (Abstract) cache < handle
                     end
                     reference = find(matchG.condition ==pv.delta);
                     if ~isempty(reference)
-                        y = m - matchG.average{reference,:};
-                        err = err +matchG.ste{reference,:};
+                        y = m - matchG.signal{reference,:};
+                        err = err +matchG.error{reference,:};
                         h = [h plot(x,y)];                     %#ok<AGROW>
                         p = patch([x;flip(x)]',[y+err;flip(y-err)]',h(end).Color,FaceAlpha= 0.5);
                         p.EdgeColor = h(end).Color;
@@ -374,11 +386,12 @@ classdef (Abstract) cache < handle
             if isempty(restrictedT)
                 error('No data in this table');
             end
-            t = restrictedT.time{1}; % Time in seconds (all should be the same)              
-            if numel(t)==3
-                    t = linspace(t(1),t(2),t(3));
-            end
+            
             if any(isfinite(pv.timeWindow))
+                t = restrictedT.time{1}; % Time in seconds (all should be the same)              
+                if numel(t)==3
+                    t = linspace(t(1),t(2),t(3));
+                end
                 assert(ismember("time",o.T.Properties.VariableNames),"timeWindow restriction can only be used on a cache with a time column.")
                 % Crop to the timeWindow for this operation.
                
@@ -397,7 +410,15 @@ classdef (Abstract) cache < handle
             %RestrictedT is a table with each subject/session/experiment/trial/channel as a row
 
             %%  Average/group
-            if ~isempty(pv.average) 
+            if isempty(pv.average) 
+                 % No averaging. Just put the signal into M
+                G = restrictedT;
+                G.nrtrials = ones(height(G),1);
+                G.nrchannels = ones(height(G),1);
+                M = restrictedT.(dv);                
+                uGroup = "_";
+                G.group = repmat(uGroup,height(G),1);
+            else                
                 %if ismember("condition",pv.average) && ~ismember("trial",pv.average)
                 %    pv.average = [pv.average "trial"];
                 %end
@@ -412,13 +433,13 @@ classdef (Abstract) cache < handle
                         uGroup = join(string(uGroup), "/", 2);
                     end
                 else
-                    uGroup = "all"; % Averaging reduced this to a single group.
+                    uGroup = repmat("all",height(G),1); % Averaging reduced this to a single group.
                 end
                 % Average signal per group
                 if isfield(fun,"averageforplot")
                     % Special case; averaging for the plot function
                     % (includes a variance estimate)
-                   M = splitapply(@(x) ns.cache.do_average(x,srate,t,robust=pv.robust,outlier=pv.outlier),restrictedT.(dv),grp);
+                   M = splitapply(@(x) ns.cache.do_average(x,srate,robust=pv.robust,outlier=pv.outlier),restrictedT.(dv),grp);
                 else
                     % Average for the fun computed below.
                     if pv.robust
@@ -455,15 +476,7 @@ classdef (Abstract) cache < handle
                 G = innerjoin(G,nT);
                 G = innerjoin(G,nCh);
                 G = removevars(G, "GroupCount");
-                G.group = uGroup;
-            else
-                % No averaging. Just put the signal into M
-                G = restrictedT;
-                G.nrtrials = ones(height(G),1);
-                G.nrchannels = ones(height(G),1);
-                M = restrictedT.(dv);                
-                uGroup = "_";
-                G.group = repmat(uGroup,height(G),1);
+                G.group = uGroup;              
             end
             nrGrps = height(M);
 
@@ -472,7 +485,13 @@ classdef (Abstract) cache < handle
             D = containers.Map;
            if isfield(fun,"averageforplot")
                 % The average has already been determined above; just combine with G
-                G = [G M(:,setdiff(M.Properties.VariableNames,"time"))];
+                if iscell(M)
+                    % No average
+                    G.signal = M;
+                else
+                    % Averaged
+                    G = [G M(:,setdiff(M.Properties.VariableNames,"time"))];
+                end
                 D('time') = {'average','error','n'};
             else
                 % Compute one or more functions
@@ -640,6 +659,11 @@ classdef (Abstract) cache < handle
                     options(iOption:iOption+1) = [];
                 end
             end
+            out = isnan(signal);
+            if any(out)
+                fprintf(2,"Setting %.1f%% of the signal that to zero (removing NaN)\n",100*mean(out));
+                signal(out)=0;
+            end
             [power, freq] = pspectrum(signal, fs, 'power', options{:});
             v= table({power'},{freq'},'VariableNames',{'power','frequency'});
             idv = "frequency";
@@ -718,11 +742,10 @@ classdef (Abstract) cache < handle
             v = table({power'},{freq',time},'VariableNames',{'power','xt'});
             idv = "xt";
         end
-        function [v,idv] = do_average(signal,fs,time,pv)
+        function [v,idv] = do_average(signal,fs,pv)
             arguments
                 signal
-                fs (1,1) double %#ok<INUSA>                
-                time (1,:) double
+                fs (1,1) double %#ok<INUSA>                                
                 pv.robust (1,1) logical = false                
                 pv.outlier (1,1) double = inf
             end
@@ -735,14 +758,14 @@ classdef (Abstract) cache < handle
             end
             if pv.robust
                 av = median(signal,1,"omitmissing");
-                err = iqr(signal,1)/sqrt(sum(~isnan(signal),1,"omitmissing"));
+                err = arrayfun(@(j) iqr(signal(~isnan(signal(:,j)), j))/sqrt(sum(~isnan(signal(:,j)))),1:size(signal,2));                
             else
                 av = mean(signal,1,"omitmissing");
                 err= std(signal,0,1,"omitmissing")./sqrt(sum(~isnan(signal),1,"omitmissing"));
             end
             n = sum(~isnan(signal),1,"omitmissing");  % Non-Nan N
             % Make a table.
-            v = table({av},{err},{n}, {time}, ...
+            v = table({av},{err},{n}, {1:size(av,2)}, ...
                 'VariableNames',{'average','error','n','time'});
             idv = "time";  % time is not in v, but supplemented in the compute() code.
         end
@@ -763,7 +786,7 @@ classdef (Abstract) cache < handle
             assert(size(signal,1) == numel(freqs), "Signal and frequencies are of different length.");
             df = uniquetol(diff(freqs),1e-6); % frequency step
             assert(isscalar(df), "Frequencies are not regularly sampled.");
-            % create the kernel
+            % create the kernel to compute the noise
             halfWidth = floor(noiseHalfWidth/df);
             % must be even
             if rem(halfWidth,2), halfWidth = halfWidth + 1; end

@@ -255,7 +255,7 @@ stay = stay &  ~ismember({meta.subject},pv.excludeSubject);
 % include based on paradigm
 if isempty(pv.paradigm)
     pv.minNrTrials = [];
-elseif exists(ns.Paradigm) && isscalar(pv.paradigm) && pv.paradigm==""
+elseif isscalar(pv.paradigm) && pv.paradigm=="" && exists(ns.Paradigm)
     % Select on the basis of the ns.Paradigm table
     [pv.paradigm,pv.minNrTrials,from,to]= fetchn(ns.Paradigm,'name','mintrials','from','to');
     pv.paradigm= upper(string(pv.paradigm));
