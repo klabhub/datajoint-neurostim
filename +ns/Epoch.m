@@ -160,8 +160,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
             C = ns.C & key;
             if isempty(parmTpl.channels)
                 % Use all channels by default
-                parmTpl.channels = C.channels';
+                parmTpl.channels = C.channels';             
             end
+            info = fetch1(C,'info');
+            if isfield(info,'etc') && isfield(info.etc,'noiseDetection')
+                % Prep pipeline - remove still noisy channels.
+                parmTpl.channels =setdiff(parmTpl.channels,info.etc.noiseDetection.stillNoisyChannelNumbers);
+                fprintf('Removing %d channels based on the prep pipeline noise detection\n',numel(info.etc.noiseDetection.stillNoisyChannelNumbers))
+            end 
             %% Extract aligned segments from ns.C
             tic;
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
@@ -204,7 +210,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             startTime(out) = [];
             nrTrials =numel(trials);
 
-            fprintf("\t Artifact detection complete after %s\n",toc);
+            fprintf("\t Artifact detection complete after %s, %d trials removed.\n",toc,sum(out));
 
             %% --- Submit to the server ---
             tic;

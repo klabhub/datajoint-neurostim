@@ -145,6 +145,7 @@ classdef (Abstract) cache < handle
                         end
                     else
                         figure(pv.figure); % Add to existing
+                        drawnow
                     end
                     % Start a new tile with empty handles
                     nexttile;
