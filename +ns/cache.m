@@ -438,7 +438,7 @@ classdef (Abstract) cache < handle
                 varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping),OutputFormat='uniform');     
                 varies(grouping=="trial") = false; % Tracked separately
                 if any(varies)
-                    uGroup  = G{:,grouping(varies)};
+                    uGroup  = string(G{:,grouping(varies)});
                     if size(uGroup,2)>1
                         uGroup = join(string(uGroup), "/", 2);
                     end

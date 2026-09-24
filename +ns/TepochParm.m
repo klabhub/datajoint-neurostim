@@ -3,6 +3,7 @@
 ttag : varchar(32)  # tag for this transformed epoch
 etag : varchar(32)  # which epochs to transform
 ---
+description = NULL : varchar(512) # Brief description.
 fun : longblob       # Struct that will be passed as fun to ns.cache.compute
 parms : longblob     # Struct of other name-value inputs for ns.cache.compute
 %}
@@ -27,6 +28,7 @@ function tpl = set_defaults(tpl)
 arguments
     tpl.ttag (1,1) string 
     tpl.etag (1,1) string 
+    tpl.description (1,1) string
     tpl.parms (1,1) struct = struct('channel',[],'trial',[],'timeWindow',[-inf inf],'average',string.empty);
     tpl.fun (1,1) struct
 end
