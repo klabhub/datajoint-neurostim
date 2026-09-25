@@ -28,7 +28,7 @@ classdef Paradigm < dj.Lookup
                     warning('Paradigm name is longer than 32 characters. It will be truncated.');
            end
            tpl.name = tpl.name(1:min(32,length(tpl.name)));
-           insertIfNew(tbl,makeMymSafe(tpl));           
+           insert@dj.Lookup(tbl,makeMymSafe(tpl));           
         end
     end
 

@@ -119,7 +119,7 @@ classdef (Abstract) cache < handle
                     G = renamevars(G,["fun1_average" "fun1_error" "fun1_n"],["average" "error" "n"]);
                 end
                 G = innerjoin(G,P);
-                pv.newTileEach = union(pv.newTileEach,"condition");
+                %pv.newTileEach = union(pv.newTileEach,"condition");
                 G= sortrows(G,intersect([ "subject" "session_date" "starttime" "condition" "channel" "trial" "paradigm"],G.Properties.VariableNames,'stable'));
             end
 
@@ -194,7 +194,7 @@ classdef (Abstract) cache < handle
                     end                    
                    
                     try
-                    plot(x,y,'x');
+                    plot(x,y);
                     catch
                     end
                     hold on;
@@ -564,14 +564,15 @@ classdef (Abstract) cache < handle
                             [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate);
                         end
                     else
-                        progressQueue = parallel.pool.DataQueue;                        
-                        fprintf('Applying %s in parallel: 0/%d',thisFun,nrGrps);
+                        progressQueue = parallel.pool.DataQueue;
+                        ns.cache.resetParforProgress(thisFun,nrGrps);
+                        progressListener = afterEach(progressQueue,@(~) ns.cache.advanceParforProgress()); %#ok<NASGU>
                         parfor iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
                             [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate); %#ok<PFBNS>
                             send(progressQueue,1);
                         end
-                        fprintf('\n');
+                        ns.cache.finishParforProgress();
                     end
                     R = vertcat(xCell{:}); % Results table
                     idv = unique(idv); % Should all be the same.                     
@@ -850,6 +851,56 @@ classdef (Abstract) cache < handle
             v = table({searchFreq}, {peakFreq}, {peakAmp}, ...
                 VariableNames={'searchFrequency', 'frequency', 'magnitude'});
             idv = 'searchFrequency';
+        end
+
+        function resetParforProgress(label,total)
+            state = struct(...
+                'label', string(label), ...
+                'total', total, ...
+                'count', 0, ...
+                'digits', strlength(string(total)), ...
+                'messageLength', 0);
+            setappdata(0,'nsCacheParforProgress',state);
+            ns.cache.printParforProgress();
+        end
+
+        function advanceParforProgress()
+            if ~isappdata(0,'nsCacheParforProgress')
+                return
+            end
+
+            state = getappdata(0,'nsCacheParforProgress');
+            state.count = state.count + 1;
+            setappdata(0,'nsCacheParforProgress',state);
+            ns.cache.printParforProgress();
+        end
+
+        function finishParforProgress()
+            if ~isappdata(0,'nsCacheParforProgress')
+                return
+            end
+
+            state = getappdata(0,'nsCacheParforProgress');
+            state.count = state.total;
+            setappdata(0,'nsCacheParforProgress',state);
+            ns.cache.printParforProgress();
+            fprintf('\n')
+            rmappdata(0,'nsCacheParforProgress');
+        end
+
+        function printParforProgress()
+            if ~isappdata(0,'nsCacheParforProgress')
+                return
+            end
+
+            state = getappdata(0,'nsCacheParforProgress');
+            backspace = repmat(sprintf('\b'),1,state.messageLength);
+            message = sprintf('Applying %s in parallel: %*d/%d', ...
+                state.label,state.digits,state.count,state.total);
+            fprintf('%s%s',backspace,message);
+            state.messageLength = strlength(message);
+            setappdata(0,'nsCacheParforProgress',state);
+            drawnow limitrate
         end
     end
 
