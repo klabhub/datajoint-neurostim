@@ -924,6 +924,9 @@ classdef (Abstract) cache < handle
                 assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');
                 o.T =fetchtable(src,'*','ORDER BY channel');              
                 o.qry = src.sql;
+                if ismember("signal",o.T.Properties.VariableNames) && all(cellfun(@iscolumn,o.T.signal))
+                    o.T.signal = cellfun(@(x) (x'),o.T.signal,'UniformOutput',false);
+                end
                 o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));
                 % Epoch endpoints are seconds; N samples span N-1 intervals.
                 o.samplingRate = (epochTime(1,3)-1)/(epochTime(1,2)-epochTime(1,1));               
