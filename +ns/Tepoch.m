@@ -36,6 +36,14 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             % Apply a computation/transform to a collection of Epochs and
             % store as Tepoch.
             parms = fetch1(ns.TepochParm & key,'parms');
+            if isfield(parms,'trial') && isa(parms.trial,'char')
+                % Convert char back to function_handle
+                parms.trial = str2func(parms.trial);
+            end
+            if isfield(parms,'channel') && isa(parms.channel,'char') 
+                % Convert char back to function_handle
+                parms.channel= str2func(parms.channel);
+            end
             fun   = fetch1(ns.TepochParm & key,'fun');
             parms = namedargs2cell(parms);
             % T containts the independent and dependent variables, D maps each independent-variable column to its dependent columns.
