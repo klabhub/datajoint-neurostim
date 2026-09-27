@@ -64,7 +64,7 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             end
 
             % Collect the information per channel/trial.
-            varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" allDv "group"],T.Properties.VariableNames);
+            varnames = intersect(["channel" "trial" "nrchannels" "nrtrials" allDv "name"],T.Properties.VariableNames);
             T = T(:,varnames);
             if ismember("channel",T.Properties.VariableNames)
                 T.nrchannels = ones(height(T),1);

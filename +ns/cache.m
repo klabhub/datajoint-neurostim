@@ -351,8 +351,16 @@ classdef (Abstract) cache < handle
             %        The function myfun must return a table with one row per group and one column per dependent variable.
             %        Note how the additional inputs to your function are specified in the function handle.
             %
-            % channel  - Select a subset of channels
-            % trial    - Select a subset of trials
+            % channel  - Select a subset of channels. Defaults to []: all channels
+            % trial    - Select a subset of trials. Defaults to []: all trials
+            %
+            % Channel or trial seelection can be donw with a vector of 
+            % channel/ trial numbers , or a function that takes the cached data 
+            % table (o.T) as input and returns a logical vector that
+            % indicates per row whether it should be included or not. 
+            % For instance: trial   = @(T) (T.trial<100), will include only
+            % trial numbers up to 100 in the computation.
+            %
             % timeWindow - Select a time window
             % average  - Analysis is applied after averaging over these
             %               fields.
@@ -368,8 +376,8 @@ classdef (Abstract) cache < handle
             arguments
                 o (1,1)
                 fun  (1,1) struct
-                pv.channel (:,1) double = []            % Select a subset of channels
-                pv.trial (:,1) double = []            % Select a subset of trials
+                pv.channel (:,1)  {mustBeA(pv.channel,["double" "function_handle"])} = [] % Select a subset of channels
+                pv.trial (:,1)  {mustBeA(pv.trial,["double" "function_handle"])} = [] % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
                 pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
                 pv.robust (1,1) logical = false   % Set to true to determine median as average                
@@ -386,11 +394,22 @@ classdef (Abstract) cache < handle
             stay = true(height(o.T),1);
             if ~isempty(pv.channel)
                 % Restrict channels for this operation
-                stay = stay & ismember(o.T.channel,pv.channel);
+                if isa(pv.channel,'function_handle')
+                    % Evaluate the function
+                    stay = stay & pv.channel(o.T);
+                else
+                    stay = stay & ismember(o.T.channel,pv.channel);
+                end
             end
-            if ~isempty(pv.trial)
+
+            if ~isempty(pv.trial)                
                 % Restrict trials for this operation
-                stay = stay  & ismember(o.T.trial,pv.trial);
+                if isa(pv.trial,'function_handle')
+                    % Evaluate the function
+                    stay = stay & pv.trial(o.T);
+                else
+                    stay = stay  & ismember(o.T.trial,pv.trial);
+                end
             end
             restrictedT = o.T(stay,:);
             if isempty(restrictedT)
@@ -427,7 +446,7 @@ classdef (Abstract) cache < handle
                 G.nrchannels = ones(height(G),1);
                 M = restrictedT.(dv);                
                 uGroup = "_";
-                G.group = repmat(uGroup,height(G),1);
+                G.name = repmat(uGroup,height(G),1);
             else                
                 %if ismember("condition",pv.average) && ~ismember("trial",pv.average)
                 %    pv.average = [pv.average "trial"];
@@ -486,7 +505,7 @@ classdef (Abstract) cache < handle
                 G = innerjoin(G,nT);
                 G = innerjoin(G,nCh);
                 G = removevars(G, "GroupCount");
-                G.group = uGroup;              
+                G.name = uGroup;              
             end
             nrGrps = height(M);
 
