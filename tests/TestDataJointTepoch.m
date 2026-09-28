@@ -61,7 +61,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
                 'average',["trial" "channel"])));
             populate(ns.Tepoch & tepochKey);
             tc = ns.TepochChannel & tepochKey;
-            actualMeans = fetchn(tc & struct('dependent','average'),'signal');
+            actualMeans = fetchn(tc & struct('dependent','average_average'),'signal');
             testCase.verifyTrue(all(cellfun(@isrow,actualMeans)));
             normalizedActualMeans = cellfun(@(signal) reshape(signal,1,[]), ...
                 actualMeans,UniformOutput=false);
@@ -71,7 +71,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             testCase.verifyEqual(unique(fetchn(tc,'trial')),0);
             testCase.verifyEqual(unique(fetchn(tc,'nrtrials')),[1;2]);
             testCase.verifyEqual(unique(fetchn(tc,'nrchannels')),2);
-            expectedMeans = [190+(0:4);200+(0:4)];
+            expectedMeans = [192 ;202];
             testCase.verifyEqual(actualMeans,expectedMeans,'AbsTol',1e-10);
         end
 
