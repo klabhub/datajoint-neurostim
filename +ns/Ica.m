@@ -319,12 +319,12 @@ classdef Ica < dj.Computed & dj.DJInstance
                 icaRelVar = ns.IcaSession & (ns.Session & (ns.C &  cTpl)) & struct('itag',pv.itag);
                 labelRelVar  = ns.LabelSession & icaRelVar & struct('ltag',pv.ltag);
                 assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
-                W = ns.Ica.getWeights(fetch(icaRelVar));
-                labelRelVar =  labelRelVar  & (ns.LabelParm & struct('ltag',pv.ltag));
-                pv.find.op = function_handle.empty;
             end
             assert(exists(labelRelVar),"No labels for ltag %s (itag %s) for %s@%sT%s",pv.ltag,pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
-            T = find(labelRelVar ,pv.find.value,op=pv.find.op);
+
+            W = ns.Ica.getWeights(fetch(icaRelVar));
+            args = namedargs2cell(pv.find);
+            T = find(labelRelVar,args{:});
             compsToRemove = [T.components{:}];
             % Reconstruct the signal from these components.
             Xica = signal(:, W.channels);

@@ -39,6 +39,10 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 pv.align (1,1) struct =struct('dummy',true);
             end  
 
+            % The brace validator checks the value but does not return its
+            % normalized struct, so assign the defaults explicitly.
+            pv.artparms = prep.mustBeArtParm(pv.artparms);
+
              % validate 'dimension' and 'plugin' exist in ns.Dimension
             dimTbl = ns.Dimension & struct('dimension',pv.dimension);
             assert(count(dimTbl), ...
