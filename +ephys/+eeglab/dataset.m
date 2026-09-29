@@ -15,11 +15,14 @@ arguments
     pv.plg (1,:)  string  = string.empty % Plugin name 
     pv.prm (1,:) string   = string.empty % Event names
     pv.itag (1,1) string = "" % The ICA to load, identified by its itag. "" means no ICA will be loaded.
+    pv.etag (1,1) string = "" % Epoch parameter tag. "" means return continuous data.
+    pv.dimension (1,1) string = "" % Optional dimension restriction for epoch data.
+    pv.readNsMeta (1,1) logical = false; % For reading the Neurostim meta data from the mff file ; required for Continuous data, optional for Epoched data.
 end 
 
 if ismember(upper(pv.data),["RAW" "EMPTY"])    
     % Ignore ctag to determine ns.C key
-    key = fetch(ns.File & key & 'extension=".mff"','filename');
+    key = fetch(ns.File & key & 'extension=".mff" AND NOT filename LIKE "%zcheck%.mff"','filename');
 else
     key.ctag = pv.data;
     key = fetch(ns.C & key & 'filename LIKE "%.mff"','filename');    
@@ -28,6 +31,24 @@ assert(~isempty(key),"This experiment does not have an associated MFF file");
 mffFile = fullfile(folder(ns.Experiment &key),key.filename);
 mffFile= strrep(mffFile,'\','/'); % Avoid fprintf errors
 assert(exist(mffFile),"MFF file %s does not exist.",mffFile); %#ok<EXIST>
+
+% Epoch data are already segmented and preprocessed in ns.EpochChannel.
+% Branch before continuous C data are fetched so epoch mode does not first
+% load the complete recording into memory.
+if pv.etag ~= ""
+    assert(~ismember(upper(pv.data),["RAW" "EMPTY"]), ...
+        'Epoch mode requires pv.data to identify an ns.C ctag.');
+    EEG = epochDataset(key,pv,mffFile);
+    if pv.readNsMeta
+        EEG = addNeurostimMetadata(EEG,key,mffFile,[],true);
+    end
+    if ~isempty(pv.plg)
+        EEG = ephys.egi.eeglabAddEvents(EEG,pv.plg,pv.prm);
+    end
+    EEG = ensureEpochAlignmentEvents(EEG);
+    EEG = eeg_checkset(EEG);
+    return
+end
 
 
 switch upper(pv.data)
@@ -156,107 +177,8 @@ switch upper(pv.data)
  end
 
 
-%% Process BREC event to ensure the neurostim and mff file correspond to the same experiment
-nrEvts = numel(EEG.event);
-eventCode = {EEG.event.code};
-brec = EEG.event(strcmpi('BREC',eventCode)); % neurostim sends this BREC event
-assert(~isempty(brec),"No BREC event found in " +  mffFile + ". Cannot match this EGI file to Neurostim");
-EEG.event(strcmpi('BREC',eventCode)).mffkey_TRIA= '1'; % Force it to be in TRIAL 1 (not defined)
-[fldr,nsFile,~] = fileparts(file(ns.Experiment &key));
-% Check that this MFF file was created by the current neurostim file.
-if ~contains(brec.mffkey_FLNM,nsFile)
-    % No match. Check if the file was renamed with nsMeta
-    jsonFile = fullfile(fldr,nsFile + ".json");
-    if exist(jsonFile,"file")
-        json = readJson(jsonFile);
-        originalFilename = fliplr(extractBefore(fliplr(brec.mffkey_FLNM),'\'));
-        ok= contains(json.provenance,originalFilename);  % OK: this was renamed after recording
-    else
-        ok =false;
-    end
-    assert(ok ,sprintf('The MFF file (%s) was created by a different Neurostim file (%s)',brec.mffkey_FLNM,nsFile));
-end
-
-%% Preprocess the BTRL events to get trial and time.
-isBeginTrial =strcmpi(eventCode,'BTRL');
-trial = nan(nrEvts,1);
-trial(isBeginTrial) = cellfun(@str2num,{EEG.event(isBeginTrial).mffkey_TRIA});
-trial(1) =1; % Group events before trial 1 with trial 1
-trial = fillmissing(trial,"previous");
-trial =num2cell(trial);
-[EEG.event.trial]=deal(trial{:});
-% Determine the time of all events (on the EGI clock)
-% Use the .latency field of the MFF.event, not the begintime (which can be
-% offset by a few hundred ms). .latency is in samples.
-eventEgiTime = ([EEG.event.latency]-1)/urSrate; % This is seconds since the start of the data in EGI
-
-
-%% Read the properties of cic and the egi plugin for this experiment
-% Synchronize clocks.
-% Using NTPSync results in pretty much perfectly aligned clocks (no
-% drift). But we check anyway using the Begin Trial (bTRL) events.
-prms  = get(ns.Experiment &key,{'cic','egi'});
-trialStartTimeNeurostim  = prms.cic.trial.clocktime(2:end);%
-trialStartTimeEgi = eventEgiTime(isBeginTrial);
-
-% The number of trials should match
-assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
-% Determine clock drift, and the offset between the first trial start event
-% in neurostim and in EGI.
-% Remove EEG data before the start of the first trial
-slack =1; % seconds 
-startEEGTime = trialStartTimeEgi(1) -slack;
-if numel(trialStartTimeNeurostim)>1
-    % Remove EEG after the last trial (plus estimated ITI) to avoid 
-    % potentially large transients at the end of the experiment.
-    stopEEGTime = trialStartTimeEgi(end)  + median(diff(trialStartTimeEgi)) + slack;
-    EEG  = pop_select(EEG,'time',[startEEGTime stopEEGTime ]);
-    trialStartTimeEgi = trialStartTimeEgi - startEEGTime;
-    % Linear mapping from EGI time (in s) to Neurostim time (in ms)
-    EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
-    fprintf(['Average Clock drift is ' num2str((EEG.etc.neurostim.clockParms(1)-1000)) ' ms/s and the offset is ' num2str(EEG.etc.neurostim.clockParms(2)) ' ms \n' ]);
-else
-    fprintf('Single trial; assuming zero clock drift.\n');
-    % Assume that the trialStartTimeEgi and trialStartTimeNeurostim refer
-    % to the same time and that there is no clock drift. The 1000 slope
-    % takes the s from egi to ms used here.
-    % Because the ITI follows the trial we have no good way of estimating
-    % its duration (end not logged), so in a 1 trial experiment we just
-    % keep all the data to the end.
-    EEG  = pop_select(EEG,'time',[startEEGTime EEG.xmax]);
-    trialStartTimeEgi = trialStartTimeEgi - startEEGTime;
-    offset = (trialStartTimeNeurostim - trialStartTimeEgi*1000);
-    EEG.etc.neurostim.clockParms = [1000 offset]; % Assming zero drift
-end
-%%
-
-%% Package the events in a tpl that can be inserted into the DJ PluginParameter table
-isBoundary = strcmpi({EEG.event.type},'boundary');
-if sum(isBoundary) <=2
-    EEG.event(isBoundary) =[];
-end
-
-eventEgiTime =([EEG.event.latency]-1)/urSrate; % This is seconds since the start of the data in EGI
-eventNsTime = polyval(EEG.etc.neurostim.clockParms,eventEgiTime);
-eventTrial = [EEG.event.trial];
-eventTrialTime = eventNsTime' - trialStartTimeNeurostim(eventTrial);
-eventCode = string({EEG.event.code});
-uNames= unique(eventCode);
-nrNames= numel(uNames);
-
-prmTpl  = struct('property_name','','property_time',[],'property_nstime',[],'property_trial',[],'property_value',[],'property_type','Event');
-prmTpl = repmat(prmTpl,[nrNames 1]);
-nmCntr =0;
-for nm = uNames
-    nmCntr = nmCntr+1;
-    prmTpl(nmCntr).property_name = char(nm);
-    stay= eventCode == nm;
-    prmTpl(nmCntr).property_time = eventTrialTime(stay);
-    prmTpl(nmCntr).property_nstime=eventNsTime(stay);
-    prmTpl(nmCntr).property_trial= eventTrial(stay);
-    prmTpl(nmCntr).property_value = EEG.event(stay);
-end
-EEG.etc.neurostim.pluginparameter = prmTpl;
+%% Process MFF/Neurostim metadata shared by continuous and epoch datasets.
+EEG = addNeurostimMetadata(EEG,key,mffFile,urSrate,false);
 [EEG.filepath, name, ext] = fileparts(char(mffFile));
 EEG.filename = [name ext];
 EEG.etc.neurostim.expt = key;
@@ -264,7 +186,7 @@ EEG.etc.neurostim.expt = key;
 if EEG.srate ~=urSrate
     for iEvent=1:length(EEG.event)
         EEG.event(iEvent).latency = round(EEG.event(iEvent).latency*(EEG.srate/urSrate));
-    end    
+    end
 end
 %%
 % Check consistency
@@ -272,4 +194,233 @@ EEG = eeg_checkset(EEG);
 
 if ~isempty(pv.plg)
     EEG= ephys.egi.eeglabAddEvents(EEG,pv.plg,pv.prm);
+end
+end
+function EEG = epochDataset(key,pv,mffFile)
+% Construct an EEGLAB dataset directly from ns.EpochChannel.
+epochKey = key;
+epochKey.ctag = char(pv.data);
+epochKey.etag = char(pv.etag);
+if pv.dimension ~= ""
+    epochKey.dimension = char(pv.dimension);
+end
+epochRel = ns.Epoch & epochKey;
+nrEpochRows = count(epochRel);
+assert(nrEpochRows==1,"Expected exactly one ns.Epoch row for etag=%s; found %d.",pv.etag,nrEpochRows);
+epochTime = fetch1(epochRel,'time');
+assert(numel(epochTime)==3 && epochTime(3)>=1 && epochTime(3)==round(epochTime(3)),'ns.Epoch.time must be [start stop nrSamples].');
+t = linspace(epochTime(1),epochTime(2),epochTime(3));
+nrSamples = numel(t);
+[channel,trial,signal,onset] = fetchn(ns.EpochChannel & epochRel,'channel','trial','signal','onset');
+assert(~isempty(signal),'The selected ns.Epoch contains no EpochChannel rows.');
+channel = double(channel(:));
+trial = double(trial(:));
+if ~iscell(signal), signal = num2cell(signal,2); end
+signal = signal(:);
+onset = double(onset(:));
+[~,order] = sortrows([trial channel],[1 2]);
+channel = channel(order); trial = trial(order); signal = signal(order); onset = onset(order);
+trialValues = unique(trial,'stable');
+channelValues = unique(channel,'stable');
+nrTrials = numel(trialValues); nrChannels = numel(channelValues);
+data = zeros(nrChannels,nrSamples,nrTrials,'like',signal{1}); seen = false(nrChannels,nrTrials);
+for i = 1:numel(signal)
+    y = signal{i};
+    assert(isvector(y) && numel(y)==nrSamples,'EpochChannel signal for trial %d/channel %d has %d samples; expected %d.',trial(i),channel(i),numel(y),nrSamples);
+    if isempty(data), data = zeros(nrChannels,nrSamples,nrTrials,'like',y); end
+    ti = find(trialValues==trial(i),1); ci = find(channelValues==channel(i),1);
+    assert(~seen(ci,ti),'Duplicate EpochChannel row for trial %d/channel %d.',trial(i),channel(i));
+    data(ci,:,ti) = reshape(y,1,[]); seen(ci,ti) = true;
+end
+assert(all(seen,'all'),'EpochChannel does not contain a complete trial-by-channel grid.');
+cRel = ns.C & key & struct('ctag',char(pv.data));
+C = fetch(ns.CChannel & cRel,'channel','channelinfo');
+cChannels = double([C.channel]);
+[isPresent,channelIndex] = ismember(channelValues,cChannels);
+assert(all(isPresent),'Epoch channels are missing from the corresponding ns.CChannel relation.');
+chanlocs = [C(channelIndex).channelinfo];
+EEG = eeg_emptyset();
+EEG.setname = sprintf('%s@%sT%s_%s',key.subject,key.session_date,key.starttime,pv.etag);
+EEG.srate = round(cRel.samplingRate); EEG.nbchan = nrChannels; EEG.pnts = nrSamples; EEG.trials = nrTrials;
+EEG.data = data; EEG.chanlocs = chanlocs; EEG.urchanlocs = chanlocs;
+EEG.xmin = t(1); EEG.xmax = t(end); EEG.times = 1000*t;
+EEG.event = struct('type',{},'latency',{},'epoch',{},'trial',{});
+align = fetch1(ns.EpochParm & epochRel,'align');
+assert(isfield(align,'event'),'ns.EpochParm.align must contain an event field.');
+alignEvent = char(string(align.event));
+alignLatency = -1000*t(1); % Alignment event position within the epoch, in ms.
+EEG.epoch = repmat(struct('trial',[],'event',[],'eventtype',alignEvent,'eventlatency',alignLatency,'condition',[],'onset',[]),1,nrTrials);
+for i = 1:nrTrials
+    EEG.epoch(i).trial = trialValues(i); EEG.epoch(i).onset = onset(find(trial==trialValues(i),1));
+end
+try
+    [dimTrial,condition] = fetchn(ns.DimensionTrial & epochRel,'trial','name');
+    for i = 1:nrTrials
+        j = find(double(dimTrial)==trialValues(i),1);
+        if ~isempty(j), EEG.epoch(i).condition = condition{j}; end
+    end
+catch
+    % Condition metadata is supplementary.
+end
+EEG.etc.neurostim.expt = key;
+EEG.etc.neurostim.epoch = struct('etag',char(pv.etag),'dimension',char(pv.dimension),'time',t,'trials',trialValues,'alignEvent',alignEvent);
+EEG = createEpochAlignmentEvents(EEG,alignEvent,trialValues);
+[EEG.filepath,name,ext] = fileparts(char(mffFile)); EEG.filename = [name ext];
+EEG = eeg_checkset(EEG,'makeur');
+end
+
+function EEG = addNeurostimMetadata(EEG,key,mffFile,urSrate,isEpoch)
+% Add MFF events, Neurostim trial metadata, clock mapping, and plugin data.
+if isEpoch
+    [~,begTime] = mff_importinfo(mffFile);
+    mffHeader = ft_read_header(mffFile,'headerformat','egi_mff_v1');
+    urSrate = mffHeader.Fs;
+    EEG.event = mff_importevents(mffFile,begTime,urSrate,0);
+end
+nrEvts = numel(EEG.event);
+eventCode = string({EEG.event.code});
+brec = EEG.event(strcmpi('BREC',eventCode));
+assert(~isempty(brec),"No BREC event found in " + mffFile + ". Cannot match this EGI file to Neurostim");
+EEG.event(strcmpi('BREC',eventCode)).mffkey_TRIA = '1';
+[fldr,nsFile,~] = fileparts(file(ns.Experiment & key));
+if ~contains(brec.mffkey_FLNM,nsFile)
+    jsonFile = fullfile(fldr,nsFile + ".json");
+    if exist(jsonFile,"file")
+        json = readJson(jsonFile);
+        originalFilename = fliplr(extractBefore(fliplr(brec.mffkey_FLNM),'\'));
+        ok = contains(json.provenance,originalFilename);
+    else
+        ok = false;
+    end
+    assert(ok,sprintf('The MFF file (%s) was created by a different Neurostim file (%s)',brec.mffkey_FLNM,nsFile));
+end
+isBeginTrial = strcmpi(eventCode,'BTRL');
+trial = nan(nrEvts,1);
+trial(isBeginTrial) = cellfun(@str2num,{EEG.event(isBeginTrial).mffkey_TRIA});
+trial(1) = 1;
+trial = fillmissing(trial,"previous");
+trial = num2cell(trial);
+[EEG.event.trial] = deal(trial{:});
+eventEgiTime = ([EEG.event.latency]-1)/urSrate;
+prms = get(ns.Experiment & key,{'cic','egi'});
+trialStartTimeNeurostim = prms.cic.trial.clocktime(2:end);
+trialStartTimeEgi = eventEgiTime(isBeginTrial);
+assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
+if ~isEpoch
+    slack = 1;
+    startEEGTime = trialStartTimeEgi(1)-slack;
+    if numel(trialStartTimeNeurostim)>1
+        stopEEGTime = trialStartTimeEgi(end)+median(diff(trialStartTimeEgi))+slack;
+        EEG = pop_select(EEG,'time',[startEEGTime stopEEGTime]);
+        trialStartTimeEgi = trialStartTimeEgi-startEEGTime;
+        EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
+    else
+        EEG = pop_select(EEG,'time',[startEEGTime EEG.xmax]);
+        trialStartTimeEgi = trialStartTimeEgi-startEEGTime;
+        EEG.etc.neurostim.clockParms = [1000 trialStartTimeNeurostim-trialStartTimeEgi*1000];
+    end
+    % Hack; pop_select sets trial to []?
+    if isempty(EEG.event(1).trial); EEG.event(1).trial =1;end
+else
+    EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
+end
+% pop_select may have removed some events; reconstruct.
+eventEgiTime = ([EEG.event.latency]-1)/urSrate;
+eventNsTime = polyval(EEG.etc.neurostim.clockParms,eventEgiTime);
+eventTrial = [EEG.event.trial];
+eventTrialTime = eventNsTime - trialStartTimeNeurostim(eventTrial);
+eventCode = string({EEG.event.code});
+
+if isEpoch
+    retainedTrials = [EEG.epoch.trial];
+    epochStart = EEG.xmin*1000;
+    epochStop = EEG.xmax*1000;
+    epochOnset = [EEG.epoch.onset]*1000;
+    keep = false(1,numel(EEG.event));
+    for i = 1:numel(EEG.event)
+        j = find(retainedTrials==eventTrial(i),1);
+        if ~isempty(j)
+            relativeTime = eventTrialTime(i)-epochOnset(j);
+            keep(i) = relativeTime>=epochStart && relativeTime<=epochStop;
+            if keep(i)
+                EEG.event(i).latency = 1+(relativeTime-epochStart)/1000*EEG.srate;
+                EEG.event(i).epoch = j;
+            end
+        end
+    end
+    EEG.event = EEG.event(keep);
+    eventCode = eventCode(keep);
+    eventTrial = eventTrial(keep);
+    eventNsTime = eventNsTime(keep);
+    eventTrialTime = eventTrialTime(keep);
+    for iEpoch = 1:EEG.trials
+        EEG.epoch(iEpoch).event = find([EEG.event.epoch] == iEpoch);
+    end
+end
+uNames = unique(eventCode);
+prmTpl = struct('property_name','','property_time',[],'property_nstime',[],'property_trial',[],'property_value',[],'property_type','Event');
+prmTpl = repmat(prmTpl,[numel(uNames) 1]);
+for iName = 1:numel(uNames)
+    prmTpl(iName).property_name = char(uNames(iName));
+    stay = eventCode == uNames(iName);
+    prmTpl(iName).property_time = eventTrialTime(stay);
+    prmTpl(iName).property_nstime = eventNsTime(stay);
+    prmTpl(iName).property_trial = eventTrial(stay);
+    prmTpl(iName).property_value = EEG.event(stay);
+end
+EEG.etc.neurostim.pluginparameter = prmTpl;
+if isEpoch
+    % Guarantee one explicit alignment event for every retained epoch.
+    alignEventName = EEG.etc.neurostim.epoch.alignEvent;
+    alignEvents = repmat(struct('type',alignEventName,'code',alignEventName, ...
+        'latency',1+(-EEG.xmin)*EEG.srate,'epoch',0,'trial',0),1,EEG.trials);
+    for iEpoch = 1:EEG.trials
+        alignEvents(iEpoch).epoch = iEpoch;
+        alignEvents(iEpoch).trial = EEG.epoch(iEpoch).trial;
+    end
+    if isempty(EEG.event)
+        EEG.event = alignEvents;
+    else
+        allFields = union(fieldnames(EEG.event),fieldnames(alignEvents));
+        for iField = 1:numel(allFields)
+            fieldName = allFields{iField};
+            if ~isfield(EEG.event,fieldName)
+                [EEG.event.(fieldName)] = deal([]);
+            end
+            if ~isfield(alignEvents,fieldName)
+                [alignEvents.(fieldName)] = deal([]);
+            end
+        end
+        EEG.event = [EEG.event alignEvents];
+    end
+    for iEpoch = 1:EEG.trials
+        EEG.epoch(iEpoch).event = find([EEG.event.epoch] == iEpoch);
+    end
+end
+end
+function EEG = ensureEpochAlignmentEvents(EEG)
+% Ensure every retained epoch has one EEGLAB alignment event.
+if isempty(EEG.event)
+    alignEventName = EEG.etc.neurostim.epoch.alignEvent;
+    EEG.event = repmat(struct('type',alignEventName,'code',alignEventName, ...
+        'latency',1+(-EEG.xmin)*EEG.srate,'epoch',0,'trial',0),1,EEG.trials);
+    for iEpoch = 1:EEG.trials
+        EEG.event(iEpoch).epoch = iEpoch;
+        EEG.event(iEpoch).trial = EEG.epoch(iEpoch).trial;
+    end
+end
+for iEpoch = 1:EEG.trials
+    EEG.epoch(iEpoch).event = find([EEG.event.epoch] == iEpoch);
+end
+end
+function EEG = createEpochAlignmentEvents(EEG,alignEvent,trialValues)
+% Create one alignment event per epoch from ns.Epoch metadata.
+latency = 1+(-EEG.xmin)*EEG.srate;
+EEG.event = repmat(struct('type',alignEvent,'code',alignEvent, ...
+    'latency',latency,'epoch',0,'trial',0),1,EEG.trials);
+for iEpoch = 1:EEG.trials
+    EEG.event(iEpoch).epoch = iEpoch;
+    EEG.event(iEpoch).trial = trialValues(iEpoch);
+    EEG.epoch(iEpoch).event = iEpoch;
+end
 end

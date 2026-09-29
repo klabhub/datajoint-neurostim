@@ -18,6 +18,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
     properties (Dependent)     
         keySource
+        EEG
     end
 
     methods %Set/Get
@@ -48,6 +49,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % Selecting only those dimensions that have actual conditions.
             v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension & ns.DimensionCondition)) & combinedWhere;
         end      
+        function v = get.EEG(tbl)
+            assert(count(tbl)==1,"Extracting an EEGLAB struct requires a single Epoch");
+            expt = fetch(ns.Experiment & tbl);
+            ekey = fetch(tbl);
+            v = ephys.eeglab.dataset(expt,data=ekey.ctag,etag=ekey.etag,dimension=ekey.dimension);
+        end
     end
 
 
