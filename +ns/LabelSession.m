@@ -40,7 +40,7 @@ classdef LabelSession < dj.Computed & dj.DJInstance
     end
 
     methods (Access=public)
-        function T = find(tbl,value,pv)
+        function T = find(tbl,pv)
             % Find components matching a query. See ns.Label.find for
             % examples
             % Delegates to ns.Label.findInTable so the logic is maintained in one place.
