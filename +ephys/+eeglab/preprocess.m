@@ -59,7 +59,7 @@ for f= 1:numel(fn)
         case 'ica'
             % Run ICA to identify components. The fields of the ica struct
             % are passed as parm/value pairs to pop_runica.           
-            if ~isfield(parmsN,'pca')
+            if ~isfield(parmsN,'pca') || isinf(parmsN.pca)
                 % The number of PCA components was not pre-specified.
                 % Set it to the rank of the data. (Necessary for picard,
                 % runica does this in pop_runica)

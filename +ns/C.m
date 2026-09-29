@@ -791,7 +791,8 @@ classdef C < dj.Computed & dj.DJInstance
             end
 
             if ~isempty(pv.ica)                
-                  [signal,icaInfo] = ns.Ica.clean(signal,fetch(tbl),itag= pv.ica.itag,ltag=pv.ica.ltag,find = pv.ica.find);               
+                   icaOpts =namedargs2cell(pv.ica);
+                  [signal,icaInfo] = ns.Ica.clean(signal,fetch(tbl),icaOpts{:});               
             end
  
             %% Artifact removal

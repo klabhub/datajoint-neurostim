@@ -14,6 +14,7 @@ arguments
 end
 wrnStatus = warning("query");
 warning("off",'DataJoint:longCondition')
+warningCleanup = onCleanup(@() warning(wrnStatus)); %#ok<NASGU>
 if ~exists(targetQuery)
     fprintf('Nothing to delete. \n');
     return;
@@ -36,6 +37,7 @@ end
 list = unique([descBase, descExtra], 'stable');
 
 % Optionally pull in external FK children by inspecting INFORMATION_SCHEMA.
+extChildren = {};
 if autoDetectFK
     listFullNames = cellfun(@(c) feval(c).fullTableName, list, 'uni', false);
     extChildren = discoverExternalChildren(listFullNames);
@@ -69,6 +71,13 @@ for i = 1:length(list)
 end
 
 
+rowCounts = cell2mat(summary(:, 2));
+rowBytes = cell2mat(summary(:, 3));
+canEstimateTotalBytes = all(~isnan(rowBytes));
+estimatedTotalBytes = sum(rowCounts .* rowBytes);
+useNativeDelete = isempty(extraRelvars) && isempty(extChildren) && ...
+    canEstimateTotalBytes && estimatedTotalBytes <= maxUnchunkedBytes;
+
 % Display Plan
 fprintf('\n--- DELETE PLAN (Bottom-Up) ---\n');
 for i = 1:size(summary, 1)
@@ -87,7 +96,17 @@ for i = 1:size(summary, 1)
     end
 end
 
-% 2. Safety Mode Confirmation
+% 2. Use native set-based deletion when the complete cascade is small.
+% Native del() owns its confirmation and transaction handling.
+if useNativeDelete
+    fprintf('\nEstimated cascade size is %.1f MB; using native del().\n', ...
+        estimatedTotalBytes / 1024^2);
+    del(targetQuery);
+    warning(wrnStatus);
+    return;
+end
+
+% 3. Safety Mode Confirmation
 if dj.config('safemode') && totalTuples > 0
     prompt = sprintf('\nSafemode is ON. Delete %d tuples? (y/n): ', totalTuples);
     if ~strcmpi(input(prompt, 's'), 'y')
@@ -95,7 +114,7 @@ if dj.config('safemode') && totalTuples > 0
     end
 end
 
-% 3. Resilient Execution
+% 4. Resilient Execution
 for i = 1:length(list)
     tableName = list{i};
     tableObj = feval(tableName);
@@ -187,7 +206,7 @@ function maxBatchRows = resolveMaxDeleteBatchRows()
 end
 
 function maxUnchunkedBytes = resolveMaxUnchunkedDeleteBytes()
-% Limit when a leaf table may be deleted in a single statement.
+% Limit when a complete in-schema cascade may use native set-based deletion.
 
     maxUnchunkedBytes = getenv("NS_MAXUNCHUNKEDDELETE");
     if isempty(maxUnchunkedBytes)

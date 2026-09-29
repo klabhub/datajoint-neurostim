@@ -9,6 +9,7 @@ classdef TestDataJointPipelineFixture < matlab.unittest.fixtures.Fixture
         oldPath
         oldFolder
         oldRoot
+        oldSafeMode
         schemaCreated = false
     end
     methods
@@ -16,6 +17,7 @@ classdef TestDataJointPipelineFixture < matlab.unittest.fixtures.Fixture
             fixture.oldPath = path;
             fixture.oldFolder = pwd;
             fixture.oldRoot = getenv('NS_ROOT');
+            fixture.oldSafeMode = dj.config('safemode');
             fixture.dataRoot = string(tempname);
             fixture.projectRoot = string(tempname);
             mkdir(fixture.dataRoot);
@@ -122,6 +124,9 @@ classdef TestDataJointPipelineFixture < matlab.unittest.fixtures.Fixture
                 end
             end
             setenv('NS_ROOT',fixture.oldRoot);
+            if ~isempty(fixture.oldSafeMode)
+                dj.config('safemode',fixture.oldSafeMode);
+            end
             if ~isempty(fixture.oldPath), path(fixture.oldPath); end
             if ~isempty(fixture.oldFolder) && isfolder(fixture.oldFolder)
                 cd(fixture.oldFolder);
