@@ -323,6 +323,7 @@ if ~isEpoch
     % Hack; pop_select can add a boundary event which messes up the prep
     % pipeline later. Delete it.
     if strcmpi(EEG.event(1).type,'boundary'); EEG.event(1)= [];end
+    if strcmpi(EEG.event(end).type,'boundary'); EEG.event(end)= [];end
 else
     EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
 end
