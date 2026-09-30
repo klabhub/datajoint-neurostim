@@ -2,7 +2,7 @@ function EEG = dataset(key,pv)
 % Uses EEGLAB plugins (mffmatlabio and fieldtrip) to read egi MFF
 % files and returns an EEG struct. This is used to add EGI data to the
 % database (ephys.egi.read),
-% 
+%
 % Neurostim adds the following fields
 % EEG.etc.neurostim.clockParms   - polyval(clockParms,EGI.time) -> converts EGI time to neurostim time
 % EEG.etc.neurostim.pluginparameter -  the events stored in the MFF file  packaged as a struct array for easy insertion into the pluginparameter table (used by ephys.egi.read_
@@ -12,20 +12,20 @@ function EEG = dataset(key,pv)
 arguments
     key (1,1)      % Experiment key or a keySource for the ns.C table
     pv.data (1,1) string % RAW, EMPTY, or a ctag
-    pv.plg (1,:)  string  = string.empty % Plugin name 
+    pv.plg (1,:)  string  = string.empty % Plugin name
     pv.prm (1,:) string   = string.empty % Event names
     pv.itag (1,1) string = "" % The ICA to load, identified by its itag. "" means no ICA will be loaded.
     pv.etag (1,1) string = "" % Epoch parameter tag. "" means return continuous data.
     pv.dimension (1,1) string = "" % Optional dimension restriction for epoch data.
     pv.readNsMeta (1,1) logical = false; % For reading the Neurostim meta data from the mff file ; required for Continuous data, optional for Epoched data.
-end 
+end
 
-if ismember(upper(pv.data),["RAW" "EMPTY"])    
+if ismember(upper(pv.data),["RAW" "EMPTY"])
     % Ignore ctag to determine ns.C key
     key = fetch(ns.File & key & 'extension=".mff" AND NOT filename LIKE "%zcheck%.mff"','filename');
 else
     key.ctag = pv.data;
-    key = fetch(ns.C & key & 'filename LIKE "%.mff"','filename');    
+    key = fetch(ns.C & key & 'filename LIKE "%.mff"','filename');
 end
 assert(~isempty(key),"This experiment does not have an associated MFF file");
 mffFile = fullfile(folder(ns.Experiment &key),key.filename);
@@ -53,15 +53,17 @@ end
 
 switch upper(pv.data)
     case "RAW"
-        % Call mff_import directly to read everything
+        % Call mff_import directly to read events and signal
         eegLabSave = 0 ; % Don't save in eeglab
         correctEvents = 0; %  Don't correct events with UTF chars/
         fprintf("Using eeglab to read header and data from " +  mffFile + "...\n")
         EEG = pop_mffimport(char(mffFile),{},eegLabSave,correctEvents);
         urSrate = EEG.srate;
-    otherwise        
-        % Adapted code from mff_import to avoid reading the signal
-        % Some pieces (that we don't currently use) are missing
+    otherwise
+        % Adapted code from mff_import to avoid reading the signal (Which
+        % will be pulled from the C table in the DJ database)
+
+        
         fprintf("Using eeglab to read header from " +  mffFile + "...\n")
 
         %  Initialize an empty standard EEGLAB structure
@@ -94,8 +96,13 @@ switch upper(pv.data)
         % Import the event tracks
         correctEvents=0;
         EEG.event      = mff_importevents(mffFile,begTime,EEG.srate,correctEvents);
+        if size(mffHeader.orig.epochdef,2) >1
+            % Need to remap event latencies to use a single start time.
+            fprintf('Merging multiple epochs as one.\n');
+            [EEG.event, ~] = remapMffEventLatencies( EEG.event, mffHeader, EEG.srate, begTime);
+        end
         urSrate = EEG.srate;
-        if upper(pv.data)=="EMPTY" 
+        if upper(pv.data)=="EMPTY"
            % Set the data to all-zero sparse to avoid erors on channel/time
             % selection
             EEG.data =sparse(EEG.nbchan,EEG.pnts);
@@ -112,7 +119,21 @@ switch upper(pv.data)
             EEG.xmin  =0;
             EEG.xmax = (EEG.pnts-1)/EEG.srate+EEG.xmin;
 
-            % Check if there are ICA results
+            % Convert MFF-rate event latencies before pop_select/eeg_checkset.
+            if EEG.srate ~= urSrate
+                eventScale = EEG.srate/urSrate;
+                for iEvent=1:numel(EEG.event)
+                    EEG.event(iEvent).latency = round( ...
+                        EEG.event(iEvent).latency*eventScale);
+                    if isfield(EEG.event, 'duration') && ...
+                            ~isempty(EEG.event(iEvent).duration)
+                        EEG.event(iEvent).duration = ...
+                            EEG.event(iEvent).duration*eventScale;
+                    end
+                end
+            end
+
+            % Check if there are ICA results to put in the EEG struct
             if pv.itag ~=""
                     icaKey = key;
                     icaKey.itag = pv.itag;
@@ -170,10 +191,9 @@ switch upper(pv.data)
                         EEG.icaweights  = w.weights;
                         EEG.icawinv     = w.winverse;
                         EEG.icaact = icaact(EEG.data, EEG.icaweights * EEG.icasphere, mean(EEG.data, 2));
-                    end                
+                    end
             end
-            EEG= eeg_checkset(EEG);
-        end        
+        end
  end
 
 
@@ -183,11 +203,7 @@ EEG = addNeurostimMetadata(EEG,key,mffFile,urSrate,false);
 EEG.filename = [name ext];
 EEG.etc.neurostim.expt = key;
 
-if EEG.srate ~=urSrate
-    for iEvent=1:length(EEG.event)
-        EEG.event(iEvent).latency = round(EEG.event(iEvent).latency*(EEG.srate/urSrate));
-    end
-end
+
 %%
 % Check consistency
 EEG = eeg_checkset(EEG);
@@ -269,7 +285,7 @@ EEG = createEpochAlignmentEvents(EEG,alignEvent,trialValues);
 EEG = eeg_checkset(EEG,'makeur');
 end
 
-function EEG = addNeurostimMetadata(EEG,key,mffFile,urSrate,isEpoch)
+function EEG = addNeurostimMetadata(EEG,key,mffFile,~,isEpoch)
 % Add MFF events, Neurostim trial metadata, clock mapping, and plugin data.
 if isEpoch
     [~,begTime] = mff_importinfo(mffFile);
@@ -301,7 +317,7 @@ trial(1) = 1;
 trial = fillmissing(trial,"previous");
 trial = num2cell(trial);
 [EEG.event.trial] = deal(trial{:});
-eventEgiTime = ([EEG.event.latency]-1)/urSrate;
+eventEgiTime = ([EEG.event.latency]-1)/EEG.srate;
 prms = get(ns.Experiment & key,{'cic','egi'});
 trialStartTimeNeurostim = prms.cic.trial.clocktime(2:end);
 trialStartTimeNeurostim = trialStartTimeNeurostim(:)';
@@ -322,13 +338,13 @@ if ~isEpoch
     end
     % Hack; pop_select can add a boundary event which messes up the prep
     % pipeline later. Delete it.
-    if strcmpi(EEG.event(1).type,'boundary'); EEG.event(1)= [];end
-    if strcmpi(EEG.event(end).type,'boundary'); EEG.event(end)= [];end
+    if ~isempty(EEG.event) && strcmpi(EEG.event(1).type,'boundary'); EEG.event(1)= [];end
+    if ~isempty(EEG.event) && strcmpi(EEG.event(end).type,'boundary'); EEG.event(end)= [];end
 else
     EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
 end
 % pop_select may have removed some events; reconstruct.
-eventEgiTime = ([EEG.event.latency]-1)/urSrate;
+eventEgiTime = ([EEG.event.latency]-1)/EEG.srate;
 eventNsTime = polyval(EEG.etc.neurostim.clockParms,eventEgiTime);
 eventTrial = [EEG.event.trial];
 eventTrialTime = eventNsTime - trialStartTimeNeurostim(eventTrial);
@@ -425,5 +441,130 @@ for iEpoch = 1:EEG.trials
     EEG.event(iEpoch).epoch = iEpoch;
     EEG.event(iEpoch).trial = trialValues(iEpoch);
     EEG.epoch(iEpoch).event = iEpoch;
+end
+end
+
+
+function [events, epochIndex] = remapMffEventLatencies(events, mffHeader, srate, begTime)
+%remapMffEventLatencies - Map MFF event times onto concatenated data
+%   Remap mff_importevents latencies and insert MFF boundary events.
+
+arguments
+    events (1,:) struct
+    mffHeader (1,1) struct
+    srate (1,1) double {mustBePositive, mustBeFinite}
+    begTime (1,1) double {mustBeFinite}
+end
+
+epochdef = getEpochDef(mffHeader, srate);
+epochLength = epochdef(:,2) - epochdef(:,1) + 1;
+originalStart = epochdef(:,3);
+originalEnd = originalStart + epochLength - 1;
+
+if isempty(events)
+    epochIndex = zeros(1, 0);
+    return
+end
+
+if ~all(isfield(events, 'begintime'))
+    error('remapMffEventLatencies:MissingBeginTime', ...
+        'Each event must contain a begintime field.')
+end
+
+epochIndex = zeros(1, numel(events));
+for iEvent = 1:numel(events)
+    eventTime = mff_decodetime(char(events(iEvent).begintime));
+    originalSample = (eventTime - begTime) * 86400 * srate;
+
+    matches = find(originalSample >= originalStart - 1e-6 & ...
+        originalSample <= originalEnd + 1e-6);
+    if numel(matches) ~= 1
+        error('remapMffEventLatencies:EventOutsideEpochs', ...
+            ['Event %d at original sample %.12g does not fall ', ...
+             'inside exactly one MFF epoch.'], iEvent, originalSample)
+    end
+
+    iEpoch = matches;
+    epochIndex(iEvent) = iEpoch;
+    events(iEvent).latency = originalSample - ...
+        originalStart(iEpoch) + epochdef(iEpoch,1);
+end
+
+[events, boundaryIndex] = addMffBoundaryEvents(events, epochdef);
+epochIndex = [epochIndex boundaryIndex];
+[~, order] = sort([events.latency]);
+events = events(order);
+epochIndex = epochIndex(order);
+end
+
+function [events, boundaryIndex] = addMffBoundaryEvents(events, epochdef)
+boundaryIndex = zeros(1, 0);
+if isempty(events)
+    return
+end
+
+base = events(1);
+fields = fieldnames(base);
+for iField = 1:numel(fields)
+    base.(fields{iField}) = [];
+end
+base.type = 'boundary';
+if isfield(base, 'code')
+    base.code = 'boundary';
+end
+
+for iEpoch = 2:size(epochdef,1)
+    previousEnd = epochdef(iEpoch-1,3) + ...
+        (epochdef(iEpoch-1,2) - epochdef(iEpoch-1,1) + 1);
+    gapSamples = epochdef(iEpoch,3) - previousEnd;
+    if gapSamples > 0
+        boundary = base;
+        boundary.latency = epochdef(iEpoch,1);
+        boundary.duration = gapSamples;
+        events(end+1) = boundary; %#ok<AGROW>
+        boundaryIndex(end+1) = 0; %#ok<AGROW>
+    end
+end
+end
+
+function epochdef = getEpochDef(mffHeader, srate)
+if isfield(mffHeader, 'orig') && isfield(mffHeader.orig, 'epochdef')
+    epochdef = mffHeader.orig.epochdef;
+    validateEpochDef(epochdef)
+    return
+end
+
+if ~isfield(mffHeader, 'orig') || ~isfield(mffHeader.orig, 'xml') || ...
+        ~isfield(mffHeader.orig.xml, 'epochs')
+    error('remapMffEventLatencies:MissingEpochDef', ...
+        'mffHeader.orig.epochdef or mffHeader.orig.xml.epochs is required.')
+end
+
+epochs = mffHeader.orig.xml.epochs;
+epochdef = zeros(numel(epochs), 3);
+for iEpoch = 1:numel(epochs)
+    epoch = epochs(iEpoch).epoch;
+    beginSample = round(str2double(char(epoch.beginTime)) / ...
+        (1000000 / srate));
+    endSample = round(str2double(char(epoch.endTime)) / ...
+        (1000000 / srate));
+
+    if iEpoch == 1
+        epochdef(iEpoch,:) = [beginSample + 1, endSample, beginSample];
+    else
+        epochLength = endSample - beginSample;
+        epochdef(iEpoch,1) = epochdef(iEpoch-1,2) + 1;
+        epochdef(iEpoch,2) = epochdef(iEpoch-1,2) + epochLength;
+        epochdef(iEpoch,3) = beginSample;
+    end
+end
+validateEpochDef(epochdef)
+end
+
+function validateEpochDef(epochdef)
+if ~isnumeric(epochdef) || size(epochdef,2) < 3 || isempty(epochdef) || ...
+        any(~isfinite(epochdef(:)))
+    error('remapMffEventLatencies:InvalidEpochDef', ...
+        'epochdef must be a nonempty numeric N-by-3 array.')
 end
 end
