@@ -19,8 +19,7 @@ function art = mustBeArtParm(art)
     defaults.criterion_channels = [];
     defaults.exclude = [];
     defaults.epoch_no = [];
-
-    defaults.ica = struct(name = string.empty,threshold=NaN,op=function_handle.empty);
+    defaults.ica = []; 
 
     supplied = art;
     art = defaults;
