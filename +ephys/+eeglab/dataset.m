@@ -1,7 +1,8 @@
 function EEG = dataset(key,pv)
 % Uses EEGLAB plugins (mffmatlabio and fieldtrip) to read egi MFF
 % files and returns an EEG struct. This is used to add EGI data to the
-% database (ephys.egi.read),
+% database (ephys.egi.read), or to pull data out of the database and then
+% postprocess in eeglab or fieldtrip.
 %
 % Neurostim adds the following fields
 % EEG.etc.neurostim.clockParms   - polyval(clockParms,EGI.time) -> converts EGI time to neurostim time
@@ -18,26 +19,23 @@ arguments
     pv.etag (1,1) string = "" % Epoch parameter tag. "" means return continuous data.
     pv.dimension (1,1) string = "" % Optional dimension restriction for epoch data.
     pv.readNsMeta (1,1) logical = false; % For reading the Neurostim meta data from the mff file ; required for Continuous data, optional for Epoched data.
+%DATASET Build an EEGLAB dataset from MFF, ns.C, or ns.Epoch data.
 end
 
 if ismember(upper(pv.data),["RAW" "EMPTY"])
-    % Ignore ctag to determine ns.C key
     key = fetch(ns.File & key & 'extension=".mff" AND NOT filename LIKE "%zcheck%.mff"','filename');
 else
     key.ctag = pv.data;
     key = fetch(ns.C & key & 'filename LIKE "%.mff"','filename');
 end
 assert(~isempty(key),"This experiment does not have an associated MFF file");
-mffFile = fullfile(folder(ns.Experiment &key),key.filename);
-mffFile= strrep(mffFile,'\','/'); % Avoid fprintf errors
+mffFile = fullfile(folder(ns.Experiment & key),key.filename);
+mffFile = strrep(mffFile,'\','/');
 assert(exist(mffFile),"MFF file %s does not exist.",mffFile); %#ok<EXIST>
 
-% Epoch data are already segmented and preprocessed in ns.EpochChannel.
-% Branch before continuous C data are fetched so epoch mode does not first
-% load the complete recording into memory.
 if pv.etag ~= ""
-    assert(~ismember(upper(pv.data),["RAW" "EMPTY"]), ...
-        'Epoch mode requires pv.data to identify an ns.C ctag.');
+    %% Create an EEG data set from the data in the ns.Epoch table
+    assert(exists(ns.CParm & struct('ctag',pv.data)), 'Epoch mode requires a valid ctag in pv.data (not %s).',pv.data);
     EEG = epochDataset(key,pv,mffFile);
     if pv.readNsMeta
         EEG = addNeurostimMetadata(EEG,key,mffFile,[],true);
@@ -47,25 +45,32 @@ if pv.etag ~= ""
     end
     EEG = ensureEpochAlignmentEvents(EEG);
     EEG = eeg_checkset(EEG);
-    return
+else
+    %% Create a continuous data EEG dataset from the file (RAW) or from the ns.C table.
+    [EEG,urSrate] = readContinuousDataset(key,pv,mffFile);
+    EEG = finalizeContinuousDataset(EEG,key,pv,mffFile,urSrate);
+end
 end
 
 
+function [EEG,urSrate] = readContinuousDataset(key,pv,mffFile)
+% Read RAW, EMPTY, or ns.C-backed continuous data.
 switch upper(pv.data)
     case "RAW"
-        % Call mff_import directly to read events and signal
+        % Call mff_import directly to read events and signal from the file.
+        % This is used by egi.read to import and then preprocess EGI data.
         eegLabSave = 0 ; % Don't save in eeglab
         correctEvents = 0; %  Don't correct events with UTF chars/
         fprintf("Using eeglab to read header and data from " +  mffFile + "...\n")
         EEG = pop_mffimport(char(mffFile),{},eegLabSave,correctEvents);
         urSrate = EEG.srate;
     otherwise
-        % Adapted code from mff_import to avoid reading the signal (Which
-        % will be pulled from the C table in the DJ database)
+        % Signal will be read from the ns.C table.
+        %
+        % Adapted code from mff_import to avoid reading the signal from the
+        % file.
 
-        
         fprintf("Using eeglab to read header from " +  mffFile + "...\n")
-
         %  Initialize an empty standard EEGLAB structure
         EEG = eeg_emptyset();
         %  Use the ft read header v1 tool to parse metadata without reading the binary signal
@@ -96,8 +101,8 @@ switch upper(pv.data)
         % Import the event tracks
         correctEvents=0;
         EEG.event      = mff_importevents(mffFile,begTime,EEG.srate,correctEvents);
-        if size(mffHeader.orig.epochdef,2) >1
-            % Need to remap event latencies to use a single start time.
+        if size(mffHeader.orig.epochdef,1) >1
+            % Multiple epochs: need to remap event latencies to use a single start time.
             fprintf('Merging multiple epochs as one.\n');
             [EEG.event, ~] = remapMffEventLatencies( EEG.event, mffHeader, EEG.srate, begTime);
         end
@@ -195,25 +200,22 @@ switch upper(pv.data)
             end
         end
  end
+end
 
-
-%% Process MFF/Neurostim metadata shared by continuous and epoch datasets.
+function EEG = finalizeContinuousDataset(EEG,key,pv,mffFile,urSrate)
+% Add continuous Neurostim metadata and finalize EEGLAB consistency.
 EEG = addNeurostimMetadata(EEG,key,mffFile,urSrate,false);
-[EEG.filepath, name, ext] = fileparts(char(mffFile));
+[EEG.filepath,name,ext] = fileparts(char(mffFile));
 EEG.filename = [name ext];
 EEG.etc.neurostim.expt = key;
-
-
-%%
-% Check consistency
 EEG = eeg_checkset(EEG);
-
 if ~isempty(pv.plg)
-    EEG= ephys.egi.eeglabAddEvents(EEG,pv.plg,pv.prm);
+    EEG = ephys.egi.eeglabAddEvents(EEG,pv.plg,pv.prm);
 end
 end
+
 function EEG = epochDataset(key,pv,mffFile)
-% Construct an EEGLAB dataset directly from ns.EpochChannel.
+% Construct an EEGLAB dataset from preprocessed epoch data.
 epochKey = key;
 epochKey.ctag = char(pv.data);
 epochKey.etag = char(pv.etag);
@@ -286,7 +288,7 @@ EEG = eeg_checkset(EEG,'makeur');
 end
 
 function EEG = addNeurostimMetadata(EEG,key,mffFile,~,isEpoch)
-% Add MFF events, Neurostim trial metadata, clock mapping, and plugin data.
+% Add MFF events and fit the EGI-to-Neurostim clock mapping.
 if isEpoch
     [~,begTime] = mff_importinfo(mffFile);
     mffHeader = ft_read_header(mffFile,'headerformat','egi_mff_v1');
@@ -418,6 +420,7 @@ if isEpoch
 end
 end
 function EEG = ensureEpochAlignmentEvents(EEG)
+% Ensure each epoch has an alignment event and event indices.
 % Ensure every retained epoch has one EEGLAB alignment event.
 if isempty(EEG.event)
     alignEventName = EEG.etc.neurostim.epoch.alignEvent;
@@ -433,7 +436,7 @@ for iEpoch = 1:EEG.trials
 end
 end
 function EEG = createEpochAlignmentEvents(EEG,alignEvent,trialValues)
-% Create one alignment event per epoch from ns.Epoch metadata.
+% Create one alignment event for each epoch.
 latency = 1+(-EEG.xmin)*EEG.srate;
 EEG.event = repmat(struct('type',alignEvent,'code',alignEvent, ...
     'latency',latency,'epoch',0,'trial',0),1,EEG.trials);
@@ -446,6 +449,7 @@ end
 
 
 function [events, epochIndex] = remapMffEventLatencies(events, mffHeader, srate, begTime)
+% Map MFF event times onto the concatenated continuous sample axis.
 %remapMffEventLatencies - Map MFF event times onto concatenated data
 %   Remap mff_importevents latencies and insert MFF boundary events.
 
@@ -498,6 +502,7 @@ epochIndex = epochIndex(order);
 end
 
 function [events, boundaryIndex] = addMffBoundaryEvents(events, epochdef)
+% Add boundary events for gaps between MFF epochs.
 boundaryIndex = zeros(1, 0);
 if isempty(events)
     return
@@ -528,6 +533,7 @@ end
 end
 
 function epochdef = getEpochDef(mffHeader, srate)
+% Return or reconstruct the MFF epoch sample mapping.
 if isfield(mffHeader, 'orig') && isfield(mffHeader.orig, 'epochdef')
     epochdef = mffHeader.orig.epochdef;
     validateEpochDef(epochdef)
@@ -562,6 +568,7 @@ validateEpochDef(epochdef)
 end
 
 function validateEpochDef(epochdef)
+% Validate the MFF epoch mapping array.
 if ~isnumeric(epochdef) || size(epochdef,2) < 3 || isempty(epochdef) || ...
         any(~isfinite(epochdef(:)))
     error('remapMffEventLatencies:InvalidEpochDef', ...

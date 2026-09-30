@@ -23,7 +23,7 @@ checksum = NULL : char(32) # MD5 Hash checksum
 % end
 % BK = April 2022
 
-classdef File < dj.Imported
+classdef File < dj.Imported  & dj.DJInstance
 
     methods (Access = public)
         function ff= open(tbl)
