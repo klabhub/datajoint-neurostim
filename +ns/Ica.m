@@ -111,6 +111,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                 % Per-experiment ICA
                 icaParms = fetch1(ns.IcaParm & key, 'parms');
                 EEG = ephys.eeglab.dataset(key, data=key.ctag, itag="");
+                assert(EEG.pnts>0,"No %s C data in %s",key.ctag,key.starttime);
                 if isfield(icaParms, 'filt') && ~isempty(icaParms.filt)
                     EEG = pop_eegfiltnew(EEG, 'hicutoff', icaParms.filt.hicutoff, ...
                         'locutoff',  icaParms.filt.locutoff);

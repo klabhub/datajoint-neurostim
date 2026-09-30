@@ -304,6 +304,7 @@ trial = num2cell(trial);
 eventEgiTime = ([EEG.event.latency]-1)/urSrate;
 prms = get(ns.Experiment & key,{'cic','egi'});
 trialStartTimeNeurostim = prms.cic.trial.clocktime(2:end);
+trialStartTimeNeurostim = trialStartTimeNeurostim(:)';
 trialStartTimeEgi = eventEgiTime(isBeginTrial);
 assert(numel(trialStartTimeEgi)==numel(trialStartTimeNeurostim),'Number of trials mismatched in EGI and NS');
 if ~isEpoch
@@ -319,8 +320,9 @@ if ~isEpoch
         trialStartTimeEgi = trialStartTimeEgi-startEEGTime;
         EEG.etc.neurostim.clockParms = [1000 trialStartTimeNeurostim-trialStartTimeEgi*1000];
     end
-    % Hack; pop_select sets trial to []?
-    if isempty(EEG.event(1).trial); EEG.event(1).trial =1;end
+    % Hack; pop_select can add a boundary event which messes up the prep
+    % pipeline later. Delete it.
+    if strcmpi(EEG.event(1).type,'boundary'); EEG.event(1)= [];end
 else
     EEG.etc.neurostim.clockParms = polyfit(trialStartTimeEgi,trialStartTimeNeurostim,1);
 end
