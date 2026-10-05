@@ -33,15 +33,16 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 pv.dimension (1,1) string
                 pv.window (1,2) 
                 pv.channels (1,:) {mustBeNumeric} = []
-                pv.prepparms (1,1) struct {prep.mustBePrepParm}  = struct('enable',false);
-                pv.artparms  (1,1) struct  {prep.mustBeArtParm} = struct('enable',false);
-                pv.plgparms (1,1) struct  {prep.mustBePlgParm} = struct('enable',false);
-                pv.align (1,1) struct =struct('dummy',true);
+                pv.prepparms (1,1) struct  = struct('enable',false);
+                pv.artparms  (1,1) struct  = struct('enable',false);
+                pv.plgparms (1,1) struct  = struct('enable',false);
+                pv.align (1,1) struct =struct([]);
             end  
+            % Check validity and set defaults
+            pv.artparms = mustBeArtParm(pv.artparms);
+            pv.plgparms = mustBePlgParm(pv.plgparms);
+            pv.prepparms = mustBePrepParm(pv.prepparms);
 
-            % The brace validator checks the value but does not return its
-            % normalized struct, so assign the defaults explicitly.
-            pv.artparms = prep.mustBeArtParm(pv.artparms);
 
              % validate 'dimension' and 'plugin' exist in ns.Dimension
             dimTbl = ns.Dimension & struct('dimension',pv.dimension);
@@ -51,7 +52,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
             assert(count(cTbl), ...
                 'C table does not contain ctag value of "%s"', pv.ctag);
 
-            if isfield(pv.align,'dummy')
+            if isempty(pv.align)
                 % Default to the startTime of the plugin that defined the
                 % dimension. 
                 %  Check that there is only one plugin for this dimension
@@ -66,6 +67,72 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
         end
     end
 
+end
+
+function prep= mustBePrepParm(prep)
+ %TODO
+end
+function plg = mustBePlgParm(plg)
+ %TODO
+end
+
+function art = mustBeArtParm(art)
+% Validate artifact-detection parameters stored in ns.EpochParm.
+% The validator is called by an arguments-block validator as a positional
+% struct, so the input must be declared as a struct rather than as a
+% name-value structure.
+arguments
+    art (1,1) struct
+end
+
+% See prep.artifactDetection for descriptions.
+defaults = struct;
+defaults.enable = false;
+defaults.amplitude_threshold_peak = 1;
+defaults.amplitude_channelfrac = 1;
+defaults.variance_z_threshold = 5;
+defaults.hf_cutoff_hz = 50;
+defaults.hf_z_threshold = 5;
+defaults.correlation_z_threshold = 3;
+defaults.criterion_channels = [];
+defaults.exclude = [];
+defaults.epoch_no = [];
+defaults.ica = [];
+
+supplied = art;
+art = defaults;
+suppliedNames = fieldnames(supplied);
+notAllowed = setdiff(string(suppliedNames),string(fieldnames(defaults)));
+assert(isempty(notAllowed),"artparms do not allow %s fields",strjoin(notAllowed));
+for iName = 1:numel(suppliedNames)
+    art.(suppliedNames{iName}) = supplied.(suppliedNames{iName});
+end
+
+if isfield(art,'enable')
+    validateattributes(art.enable,{'logical'},{'scalar'},mfilename,'enable');
+end
+numericScalarFields = ["amplitude_threshold_peak" "varianze_z_threshold" ...
+    "hf_cutoff_hz" "hf_z_threshold" "correlation_z_threshold"];
+for name = numericScalarFields
+    if isfield(art,name)
+        validateattributes(art.(name),{'double'},{'scalar','real','finite'}, ...
+            mfilename,char(name));
+    end
+end
+if isfield(art,'flag_if_channel_noisy') && ~isempty(art.flag_if_channel_noisy)
+    validateattributes(art.flag_if_channel_noisy,{'double'}, ...
+        {'row','real','finite'},mfilename,'flag_if_channel_noisy');
+end
+% The .ica struct is passed to ns.Ica/clean as pv.
+if isfield(art,'ica') && ~isempty(art.ica)
+    assert(isstruct(art.ica) && all(isfield(art.ica,["itag" "ltag"])), ...
+        'The ICA artifact parameter must specify itag and ltag.');
+    if isfield(art.ica,'find')
+        assert(isempty(art.ica.find) || ...
+            (isstruct(art.ica.find) && all(ismember(fieldnames(art.ica.find),["op" "name" "threshold"]))), ...
+            'The ICA find operation must specify value or threshold and optionally the op.');
+    end
+end
 end
 
 

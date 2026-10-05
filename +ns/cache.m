@@ -84,7 +84,7 @@ classdef (Abstract) cache < handle
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
                 pv.line (1,1) logical = false           % Show offset lines instead of raster
-                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime"];  % Start a new tile when any of these parameters change.
+                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime" "condition"];  % Start a new tile when any of these parameters change.
                 pv.figure = []  % Creates new figures if empty.
                 pv.xlim  (1,:) double = []
                 pv.clim (1,:) double  = []
