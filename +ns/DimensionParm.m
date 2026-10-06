@@ -1,7 +1,7 @@
 %{
 # Parameters that define a set of conditions (a Dimension) for a paradigm.
 dimension : varchar(32) # Name of this dimension
-paradigm : varchar(255) # Paradigm for which this dimension is defined (matches ns.Experiment.paradigm)
+paradigm : varchar(32) # Paradigm for which this dimension is defined (matches ns.Experiment.paradigm)
 ---
 parms  : longblob  # Parameters that define the condition
 description = NULL : varchar(1024) # Description

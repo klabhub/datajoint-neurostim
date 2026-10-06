@@ -41,7 +41,10 @@ function [signal,time,result,channels] = preprocess(signal,time,parms,key)
 % parms.detrend  = {1,'Continuous', true};
     
 if ismatrix(signal) % [samples channels]
+    inputIsMatrix= true;
     signal = permute(signal,[1 3 2]); % Add singleton trial dimension
+else
+    inputIsMatrix= false;
 end
 [nrSamples,nrTrials,nrChannels] = size(signal);
 channels = 1:nrChannels;  
@@ -60,7 +63,7 @@ else
     badChannels   = [];
     removeBadChannels = false;
 end                
-samplingRate = 1./(round(1000*mode(diff(time)))/1000);
+samplingRate = 1./mode(diff(time)); % Seconds; preserve sub-ms intervals.
 fn =string(fieldnames(parms))';
 
 for f=fn
@@ -126,7 +129,7 @@ for f=fn
                 end
             end
             signal =tmp;
-            time = linspace(time(1),time(end),nrSamples)';           
+            time = time(1) + (0:nrSamples-1)'*(R/samplingRate);
         case "filtfilt"
             %% Notch, Bandpass,etc.
             % Any filter that can be designed with designfilt
@@ -211,7 +214,7 @@ if removeBadChannels
 end
 result.removeBadChannel = removeBadChannels;
 
-if nrTrials ==1
+if inputIsMatrix
     % Back to original shape (remove singleton trial)
     signal = squeeze(signal);
 end

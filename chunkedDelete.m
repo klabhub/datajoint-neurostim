@@ -8,12 +8,13 @@ function chunkedDelete(targetQuery, batchSize, extraRelvars, autoDetectFK)
 % the deletion plan)/
 arguments
     targetQuery (1,1) dj.internal.GeneralRelvar
-    batchSize (1,1) double = 500 %Delete this many rows each call.
+    batchSize (1,1) double = 1000 % Fallback row count for each delete batch.
     extraRelvars cell = {} % Optional cell array of additional relvars (possibly cross-schema) to include.
     autoDetectFK (1,1) logical = true % When true, include external FK children discovered via INFORMATION_SCHEMA
 end
 wrnStatus = warning("query");
 warning("off",'DataJoint:longCondition')
+warningCleanup = onCleanup(@() warning(wrnStatus)); %#ok<NASGU>
 if ~exists(targetQuery)
     fprintf('Nothing to delete. \n');
     return;
@@ -36,20 +37,17 @@ end
 list = unique([descBase, descExtra], 'stable');
 
 % Optionally pull in external FK children by inspecting INFORMATION_SCHEMA.
+extChildren = {};
 if autoDetectFK
     listFullNames = cellfun(@(c) feval(c).fullTableName, list, 'uni', false);
     extChildren = discoverExternalChildren(listFullNames);
     list = unique([list, extChildren], 'stable');
 end
 
-referenceRowBytes = NaN;
-if ~isempty(descBase)
-    referenceRowBytes = estimateRowBytes(feval(descBase{1}).fullTableName);
-end
-
 list = flip(list);
 
-targetBytesPerDelete = resolveDeleteByteTarget(batchSize, referenceRowBytes);
+targetBytesPerDelete = resolveDeleteByteTarget();
+maxBatchRows = resolveMaxDeleteBatchRows();
 maxUnchunkedBytes = resolveMaxUnchunkedDeleteBytes();
 
 
@@ -59,7 +57,8 @@ for i = 1:length(list)
     tableObj = feval(list{i});
     toDelete = tableObj & targetQuery.proj();
     c = count(toDelete);
-    [rowBytes, adaptiveBatchSize] = estimateDeleteBatchSize(tableObj, batchSize, targetBytesPerDelete);
+    [rowBytes, adaptiveBatchSize] = estimateDeleteBatchSize( ...
+        tableObj, batchSize, targetBytesPerDelete, maxBatchRows);
     isLeafTable = isLeafDeleteTable(tableObj, autoDetectFK);
     useSingleShotDelete = isLeafTable && shouldDeleteInSingleShot(c, rowBytes, maxUnchunkedBytes);
     summary{i, 1} = list{i};
@@ -71,6 +70,13 @@ for i = 1:length(list)
     totalTuples = totalTuples + c;
 end
 
+
+rowCounts = cell2mat(summary(:, 2));
+rowBytes = cell2mat(summary(:, 3));
+canEstimateTotalBytes = all(~isnan(rowBytes));
+estimatedTotalBytes = sum(rowCounts .* rowBytes);
+useNativeDelete = isempty(extraRelvars) && isempty(extChildren) && ...
+    canEstimateTotalBytes && estimatedTotalBytes <= maxUnchunkedBytes;
 
 % Display Plan
 fprintf('\n--- DELETE PLAN (Bottom-Up) ---\n');
@@ -90,7 +96,17 @@ for i = 1:size(summary, 1)
     end
 end
 
-% 2. Safety Mode Confirmation
+% 2. Use native set-based deletion when the complete cascade is small.
+% Native del() owns its confirmation and transaction handling.
+if useNativeDelete
+    fprintf('\nEstimated cascade size is %.1f MB; using native del().\n', ...
+        estimatedTotalBytes / 1024^2);
+    del(targetQuery);
+    warning(wrnStatus);
+    return;
+end
+
+% 3. Safety Mode Confirmation
 if dj.config('safemode') && totalTuples > 0
     prompt = sprintf('\nSafemode is ON. Delete %d tuples? (y/n): ', totalTuples);
     if ~strcmpi(input(prompt, 's'), 'y')
@@ -98,7 +114,7 @@ if dj.config('safemode') && totalTuples > 0
     end
 end
 
-% 3. Resilient Execution
+% 4. Resilient Execution
 for i = 1:length(list)
     tableName = list{i};
     tableObj = feval(tableName);
@@ -127,9 +143,14 @@ for i = 1:length(list)
         endIdx = min(j + adaptiveBatchSize - 1, numTuples);
         currentBatch = keys(j:endIdx);
 
+        batchTimer = tic;
         try
             delQuick(tableObj & currentBatch); % Commit-per-batch
-            fprintf('  Deleted %d/%d\n', endIdx, numTuples);
+            elapsed = toc(batchTimer);
+            fprintf('  Deleted %d/%d in %.2f s\n', endIdx, numTuples, elapsed);
+            if elapsed > 1
+                fprintf('  Note: this batch exceeded 1 s; consider a smaller byte target.\n');
+            end
             j = j + adaptiveBatchSize; % Advance only on success
         catch ME
             if contains(ME.message, 'gone away') || contains(ME.message, 'Lost connection')
@@ -153,16 +174,12 @@ warning(wrnStatus)
 end
 
 
-function bytesPerDelete = resolveDeleteByteTarget(fallbackBatchSize, referenceRowBytes)
+function bytesPerDelete = resolveDeleteByteTarget()
 % Keep a roughly constant amount of table data per delete batch.
 
     bytesPerDelete = getenv("NS_BYTESPERDELETE");
     if isempty(bytesPerDelete)
-        if ~isnan(referenceRowBytes) && referenceRowBytes > 0
-            bytesPerDelete = fallbackBatchSize * referenceRowBytes;
-        else
-            bytesPerDelete = fallbackBatchSize * 8192;
-        end
+        bytesPerDelete = 32e6;
         return;
     end
 
@@ -172,9 +189,24 @@ function bytesPerDelete = resolveDeleteByteTarget(fallbackBatchSize, referenceRo
     end
 end
 
+function maxBatchRows = resolveMaxDeleteBatchRows()
+% Prevent very narrow tables from producing excessively large key batches.
+
+    maxBatchRows = getenv("NS_MAXBATCHROWS");
+    if isempty(maxBatchRows)
+        maxBatchRows = 10000;
+        return;
+    end
+
+    maxBatchRows = str2double(maxBatchRows);
+    if isnan(maxBatchRows) || maxBatchRows < 1
+        error('NS_MAXBATCHROWS must be a positive numeric value.');
+    end
+    maxBatchRows = floor(maxBatchRows);
+end
 
 function maxUnchunkedBytes = resolveMaxUnchunkedDeleteBytes()
-% Limit when a leaf table may be deleted in a single statement.
+% Limit when a complete in-schema cascade may use native set-based deletion.
 
     maxUnchunkedBytes = getenv("NS_MAXUNCHUNKEDDELETE");
     if isempty(maxUnchunkedBytes)
@@ -189,16 +221,18 @@ function maxUnchunkedBytes = resolveMaxUnchunkedDeleteBytes()
 end
 
 
-function [rowBytes, adaptiveBatchSize] = estimateDeleteBatchSize(tableObj, fallbackBatchSize, targetBytesPerDelete)
-% Use INFORMATION_SCHEMA estimates when possible, otherwise keep the input batch size.
+function [rowBytes, adaptiveBatchSize] = estimateDeleteBatchSize( ...
+        tableObj, fallbackBatchSize, targetBytesPerDelete, maxBatchRows)
+% Use the current table metadata when possible, with both byte and row caps.
 
     rowBytes = estimateRowBytes(tableObj.fullTableName);
     if isnan(rowBytes) || rowBytes <= 0
-        adaptiveBatchSize = fallbackBatchSize;
+        adaptiveBatchSize = min(fallbackBatchSize, maxBatchRows);
         return;
     end
 
-    adaptiveBatchSize = max(1, floor(targetBytesPerDelete / rowBytes));
+    adaptiveBatchSize = min(maxBatchRows, ...
+        max(1, floor(targetBytesPerDelete / rowBytes)));
 end
 
 

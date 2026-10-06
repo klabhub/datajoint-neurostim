@@ -4,17 +4,21 @@
 -> ns.EpochParm     # Parameters used to epoch
 -> ns.Dimension     # Dimension that determines the conditions and selects the trials
 ---
-time : blob             # Time in milliseconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
+time : blob             # Time in seconds relative to the align event (which is defined in EpochParm) [start stop nrSamples]
 prep : blob             # Struct with information on preprocessing (.prepparms) done during epoching
 art   : blob            # Struct with information on artifact removal (.artparms) done during epoching
 plg   : blob            # Struct with information on epoch removal (.plgparms) based on behavior/plugins done during epoching
 %}
+%
+% This class works in concert with ns.EpochChannel, which derives from
+% ns.cache.  The latter has functionality for plotting and computing
+% derived measures. If you want to store such derived quantities (spectra, snr)
+% in the database, look at the ns.Tepoch/ns.TepochChannel table.
 classdef Epoch < dj.Computed & dj.DJInstance
 
-    properties (Dependent)
-        time
-        samplingRate
+    properties (Dependent)     
         keySource
+        EEG
     end
 
     methods %Set/Get
@@ -44,17 +48,12 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % Apply combined restriction
             % Selecting only those dimensions that have actual conditions.
             v = (proj(ns.C) * proj(ns.EpochParm) * proj(ns.Dimension & ns.DimensionCondition)) & combinedWhere;
-        end
-        function t =get.time(tbl)
-            t = fetchn(tbl, 'time');
-            t = cellfun(@(x) linspace(x(1),x(2),x(3))',t,'UniformOutput',false);
-            if count(tbl)==1
-                t= t{1};
-            end
-        end
-        function v = get.samplingRate(tbl)
-            t = fetchn(tbl, 'time');
-            v= cellfun(@(x) x(3)./(x(2)-x(1)),t,'UniformOutput',true);
+        end      
+        function v = get.EEG(tbl)
+            assert(count(tbl)==1,"Extracting an EEGLAB struct requires a single Epoch");
+            expt = fetch(ns.Experiment & tbl);
+            ekey = fetch(tbl);
+            v = ephys.eeglab.dataset(expt,data=ekey.ctag,etag=ekey.etag,dimension=ekey.dimension);
         end
     end
 
@@ -108,7 +107,16 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 T(isMismatch,:);
             end
         end
+
+        function plot(tbl,varargin) 
+            % Wrapper to call plot on the ns.EpochChannel table, which is a cache table that contains the actual data.
+            % The Epoch table contains the metadata, but the actual data is in EpochChannel.
+            channelTbl = ns.EpochChannel & tbl;
+            plot(channelTbl,varargin{:});
+
+        end
     end
+
 
     methods (Access = protected)
         function makeTuples(tbl, key)
@@ -159,8 +167,14 @@ classdef Epoch < dj.Computed & dj.DJInstance
             C = ns.C & key;
             if isempty(parmTpl.channels)
                 % Use all channels by default
-                parmTpl.channels = C.channels';
+                parmTpl.channels = C.channels';             
             end
+            info = fetch1(C,'info');
+            if isfield(info,'etc') && isfield(info.etc,'noiseDetection')
+                % Prep pipeline - remove still noisy channels.
+                parmTpl.channels =setdiff(parmTpl.channels,info.etc.noiseDetection.stillNoisyChannelNumbers);
+                fprintf('Removing %d channels based on the prep pipeline noise detection\n',numel(info.etc.noiseDetection.stillNoisyChannelNumbers))
+            end 
             %% Extract aligned segments from ns.C
             tic;
             fprintf("Collecting segmented data from %d channels in ns.CChannel...\n",numel(parmTpl.channels));
@@ -177,8 +191,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
 
             parmTpl.channels =channelsWithData(:)';
-            % Extract the actual trials (in order of signal cols) that have
-            % been extracted
+            % Extract the actual trials that have  been extracted
             trials = T.Properties.CustomProperties.trials';
             startTime = T.Properties.CustomProperties.alignTime';
 
@@ -194,8 +207,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             %% --- Artifact/Outlier Rejection ---
             tic;
             fprintf("Artifact detection ...\n");
+            parmTpl.artparms.epoch_no = trials;
             pv =namedargs2cell(parmTpl.artparms);
-            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),C.samplingRate,'epoch_no',trials,pv{:});
+            epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
+            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,pv{:});
             % Remove epochs that were identified as having artifacts
             out = ismember(trials,badByArt.all);
             signal(:,out,:) = [];
@@ -203,7 +218,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             startTime(out) = [];
             nrTrials =numel(trials);
 
-            fprintf("\t Artifact detection complete after %s\n",toc);
+            fprintf("\t Artifact detection complete after %s, %d trials removed.\n",toc,sum(out));
 
             %% --- Submit to the server ---
             tic;
@@ -223,7 +238,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             insert(tbl, epoch_tpl);
 
             % Create EpochChannel tuple that contains the data
-            signal = reshape(squeeze(num2cell(signal,1)),nrTrials*nrChannels,1);
+            % Reorder to trials × channels × samples, then make one row per signal.
+            signal = permute(signal,[2 3 1]);
+            signal = reshape(signal,nrTrials*nrChannels,nrSamples);
+            signal = num2cell(signal,2);
             trial = num2cell(repmat(trials,nrChannels,1));
             onset = num2cell(repmat(startTime,nrChannels,1));
             channel  = num2cell(reshape(repmat(parmTpl.channels,nrTrials,1),nrTrials*nrChannels,1));
@@ -243,4 +261,3 @@ classdef Epoch < dj.Computed & dj.DJInstance
         end
     end
 end
-
