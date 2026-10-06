@@ -259,7 +259,12 @@ assert(all(isPresent),'Epoch channels are missing from the corresponding ns.CCha
 chanlocs = [C(channelIndex).channelinfo];
 EEG = eeg_emptyset();
 EEG.setname = sprintf('%s@%sT%s_%s',key.subject,key.session_date,key.starttime,pv.etag);
-EEG.srate = round(cRel.samplingRate); EEG.nbchan = nrChannels; EEG.pnts = nrSamples; EEG.trials = nrTrials;
+if nrSamples > 1
+    EEG.srate = (nrSamples-1)/(t(end)-t(1));
+else
+    EEG.srate = cRel.samplingRate;
+end
+EEG.nbchan = nrChannels; EEG.pnts = nrSamples; EEG.trials = nrTrials;
 EEG.data = data; EEG.chanlocs = chanlocs; EEG.urchanlocs = chanlocs;
 EEG.xmin = t(1); EEG.xmax = t(end); EEG.times = 1000*t;
 EEG.event = struct('type',{},'latency',{},'epoch',{},'trial',{});
