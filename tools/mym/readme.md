@@ -7,3 +7,7 @@ Forked [the original mym ](https://github.com/datajoint/mym) to [klabhub](https:
 Added cleanup on exit (closing connections).
 Recompiled on RHEL and Windows. 
 This fixed matlab crashes that only occurred on exiting Matlab on RHEL.
+
+Fixed "Commands out of sync" when a query contains multiple statements (e.g. a
+multi-statement `connectionInit_function`): mym now consumes the results of all
+statements (`drainResults` in mym.cpp). Rebuilt on RHEL (mexa64) only; mexw64 and mexmaci64 still need to be recompiled.
