@@ -163,7 +163,7 @@ classdef TestUtilities < matlab.unittest.TestCase
                 average=string.empty);
 
             testCase.verifySize(result.wavelet_power{1},[32 4]);
-            axes = result.wavelet_xt{1};
+            axes = result.wavelet_xt;
             testCase.verifyEqual(axes{1},[5 10 15 20]);
             testCase.verifyEqual(axes{2},0:31);
         end
