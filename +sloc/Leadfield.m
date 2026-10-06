@@ -98,7 +98,28 @@ classdef Leadfield < dj.Computed & dj.DJInstance
             parms  = fetch1(sloc.LeadfieldParm & key, 'parms');
 
             gpsFile = ns.File & 'extension=".gpsr"' & 'filename LIKE "%solved%"' & key;
-            assert(exists(gpsFile), 'No solved GPS file found for this session.');
+            if ~exists(gpsFile)
+                % Maybe it exists but has not been added  to the ns.File
+                % table.
+                f = fullfile(folder(ns.Session & key),key.subject + "*.solved.gpsr");
+                solvedGps = dir(f);
+                if isempty(solvedGps)
+                    % Test to see whetehr there is a GPS file at all
+                    f = fullfile(folder(ns.Session & key),key.subject + "*.gpsr");
+                    unsolvedGps = dir(f);
+                    if isempty(unsolvedGps)
+                        error('No solved GPS file found for this session. (%s/%s)',key.subject,key.session_date);
+                    else
+                        error("Session %s for %s has an unsolved GPS file. Solve it, then retry the leadfield computation\n",key.subject,key.session_date);
+                    end
+                else
+                    % Add it, then requery
+                    updateWithFiles(ns.File,key,solvedGps);                    
+                    gpsFile = ns.File & 'extension=".gpsr"' & 'filename LIKE "%solved%"' & key;            
+                end
+            end
+
+            
             
             filename= fullfile(folder(ns.Session & key),gpsFile{1,"filename"},'coordinates.gpsc');
             assert(exist(filename,"file"), '%s not found',filename);
