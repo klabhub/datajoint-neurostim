@@ -89,7 +89,7 @@ end
 defaults = struct;
 defaults.enable = false;
 defaults.amplitude_threshold_peak = 1;
-defaults.amplitude_channelfrac = 1;
+defaults.amplitude_channelfrac = 0.5;
 defaults.variance_z_threshold = 5;
 defaults.hf_cutoff_hz = 50;
 defaults.hf_z_threshold = 5;
@@ -102,7 +102,7 @@ defaults.ica = [];
 supplied = art;
 art = defaults;
 suppliedNames = fieldnames(supplied);
-notAllowed = setdiff(string(suppliedNames),string(fieldnames(defaults)));
+notAllowed = setdiff(string(suppliedNames),[string(fieldnames(defaults)); "flat_threshold_sd"]);
 assert(isempty(notAllowed),"artparms do not allow %s fields",strjoin(notAllowed));
 for iName = 1:numel(suppliedNames)
     art.(suppliedNames{iName}) = supplied.(suppliedNames{iName});

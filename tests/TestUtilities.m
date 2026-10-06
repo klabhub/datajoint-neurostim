@@ -153,6 +153,21 @@ classdef TestUtilities < matlab.unittest.TestCase
             testCase.verifyEqual(result.xt{1,2},(0:31)/100,'AbsTol',1e-10);
         end
 
+        function computeAcceptsWaveletAxesAndPowerWithDifferentCellSizes(testCase)
+            signal = sin(2*pi*(0:31)'/8);
+            cache = testsupport.VariableLengthCache(table( ...
+                {signal},{[0 0.31 32]},'VariableNames',{'signal','time'}));
+
+            result = cache.compute(struct('wavelet', ...
+                struct('nfrex',4,'fwhm',[2 1],'limits',[5 20])), ...
+                average=string.empty);
+
+            testCase.verifySize(result.wavelet_power{1},[32 4]);
+            axes = result.wavelet_xt;
+            testCase.verifyEqual(axes{1},[5 10 15 20]);
+            testCase.verifyEqual(axes{2},0:31);
+        end
+
         function snrAcceptsStructOptions(testCase)
             signal = 1 + (0:16)'/16;
             frequencies = (0:16)'/4;

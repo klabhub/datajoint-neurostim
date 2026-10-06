@@ -135,7 +135,7 @@ classdef (Abstract) cache < handle
                         "average_" + yName + "_error", ...
                         "average_" + yName + "_n"];
                     G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},averageVariables);
-                    G = renamevars(G,"fun1_" + averageVariables,["average" "error" "n"]);
+                    G = renamevars(G,"fun1_" + averageVariables,[plotYName plotYName + "_error" "n"]);
                 end
                 G = innerjoin(G,P);
                 %pv.newTileEach = union(pv.newTileEach,"condition");
@@ -262,8 +262,8 @@ classdef (Abstract) cache < handle
                     end
                     reference = find(matchG.condition ==pv.delta);
                     if ~isempty(reference)
-                        y = m - matchG.average_signal{reference,:};
-                        err = err +matchG.average_signal_error{reference,:};
+                        y = m - matchG.(plotYName){reference}';
+                        err = err + matchG.(plotYName + "_error"){reference}';
                         h = [h plot(x,y)];                     %#ok<AGROW>
                         p = patch([x;flip(x)]',[y+err;flip(y-err)]',h(end).Color,FaceAlpha= 0.5);
                         p.EdgeColor = h(end).Color;
@@ -595,7 +595,16 @@ classdef (Abstract) cache < handle
                     for col = [dv idv]
                         assert(iscell(R{:,col}), 'The variable (%s) must be a cell array for each group', col);
                         assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col})), 'The variable (%s) must be numerical values inside a cell) for each group', col);
-                        assert(all(size(R{1,col})==size(R{1,idv(1)})),"IDV and DV must match in size")
+                    end
+                    axisSizes = cellfun(@numel,R{1,idv(1)});
+                    for col = dv
+                        valueSize = size(R{1,col}{1});
+                        if numel(axisSizes)==1
+                            matchesAxes = ismember(axisSizes,valueSize);
+                        else
+                            matchesAxes = isequal(sort(axisSizes),sort(valueSize));
+                        end
+                        assert(matchesAxes,"IDV and DV must match in size")
                     end
                     
                     % Pass the dependent variables to the next computation
@@ -1071,7 +1080,7 @@ classdef (Abstract) cache < handle
                 assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');
                 o.T =fetchtable(src,'*','ORDER BY channel');              
                 o.qry = src.sql;
-                if ismember("signal",o.T.Properties.VariableNames) && all(cellfun(@iscolumn,o.T.signal))
+                if ismember("signal",o.T.Properties.VariableNames) && iscell(o.T.signal) && all(cellfun(@iscolumn,o.T.signal))
                     o.T.signal = cellfun(@(x) (x'),o.T.signal,'UniformOutput',false);
                 end
                 o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));

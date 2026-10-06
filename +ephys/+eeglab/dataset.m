@@ -259,7 +259,12 @@ assert(all(isPresent),'Epoch channels are missing from the corresponding ns.CCha
 chanlocs = [C(channelIndex).channelinfo];
 EEG = eeg_emptyset();
 EEG.setname = sprintf('%s@%sT%s_%s',key.subject,key.session_date,key.starttime,pv.etag);
-EEG.srate = round(cRel.samplingRate); EEG.nbchan = nrChannels; EEG.pnts = nrSamples; EEG.trials = nrTrials;
+if nrSamples > 1
+    EEG.srate = (nrSamples-1)/(t(end)-t(1));
+else
+    EEG.srate = cRel.samplingRate;
+end
+EEG.nbchan = nrChannels; EEG.pnts = nrSamples; EEG.trials = nrTrials;
 EEG.data = data; EEG.chanlocs = chanlocs; EEG.urchanlocs = chanlocs;
 EEG.xmin = t(1); EEG.xmax = t(end); EEG.times = 1000*t;
 EEG.event = struct('type',{},'latency',{},'epoch',{},'trial',{});
@@ -356,12 +361,12 @@ if isEpoch
     retainedTrials = [EEG.epoch.trial];
     epochStart = EEG.xmin*1000;
     epochStop = EEG.xmax*1000;
-    epochOnset = [EEG.epoch.onset]*1000;
+    epochOnset = [EEG.epoch.onset];
     keep = false(1,numel(EEG.event));
     for i = 1:numel(EEG.event)
         j = find(retainedTrials==eventTrial(i),1);
         if ~isempty(j)
-            relativeTime = eventTrialTime(i)-epochOnset(j);
+            relativeTime = eventNsTime(i)-epochOnset(j);
             keep(i) = relativeTime>=epochStart && relativeTime<=epochStop;
             if keep(i)
                 EEG.event(i).latency = 1+(relativeTime-epochStart)/1000*EEG.srate;
@@ -397,6 +402,7 @@ if isEpoch
         'latency',1+(-EEG.xmin)*EEG.srate,'epoch',0,'trial',0),1,EEG.trials);
     for iEpoch = 1:EEG.trials
         alignEvents(iEpoch).epoch = iEpoch;
+        alignEvents(iEpoch).latency = 1+(-EEG.xmin)*EEG.srate+(iEpoch-1)*EEG.pnts;
         alignEvents(iEpoch).trial = EEG.epoch(iEpoch).trial;
     end
     if isempty(EEG.event)

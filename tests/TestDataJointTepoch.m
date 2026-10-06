@@ -1,5 +1,21 @@
 classdef TestDataJointTepoch < TestDataJointPipelineBase
     methods (Test)
+        function tepochParmSupportsBatchInsert(testCase)
+            tuples = repmat(struct('ttag',"",'etag',"",'fun',struct()),2,1);
+            tuples(1).ttag = "syntheticTepochBatch1";
+            tuples(2).ttag = "syntheticTepochBatch2";
+            for iTuple = 1:numel(tuples)
+                tuples(iTuple).etag = "syntheticEpoch";
+                tuples(iTuple).fun = struct('fft',struct('n',5));
+            end
+
+            insert(ns.TepochParm,tuples);
+
+            testCase.verifyEqual(count(ns.TepochParm & ...
+                struct('ttag',"syntheticTepochBatch1")) + ...
+                count(ns.TepochParm & struct('ttag',"syntheticTepochBatch2")),2);
+        end
+
         function tepochIsPopulatedWithoutAveraging(testCase)
             testCase.report('tepochIsPopulatedWithoutAveraging: starting');
             key = testCase.experimentKey();

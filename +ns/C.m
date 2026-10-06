@@ -1135,8 +1135,12 @@ classdef C < dj.Computed & dj.DJInstance
                         end
                     end
                     bads = {sortrows(table(ch(:), flags(:), interpCh(:), VariableNames={'channel', 'flag', 'interpolated'}), 'channel')};
-                catch 'MATLAB:nonExistentField';
-                    bads = empty_art;
+                catch ME
+                    if strcmp(ME.identifier,'MATLAB:nonExistentField')
+                        bads = {empty_art};
+                    else
+                        rethrow(ME);
+                    end
                 end
             end           
             
@@ -1148,8 +1152,8 @@ classdef C < dj.Computed & dj.DJInstance
             art(numRows==0,:) = [];
             if isempty(art) 
                 % return empty table
-                art = do.empty_like(art);
-                return; 
+                self.artifacts_ = [do.empty_like(removevars(c_tbl,'info')), empty_art];
+                return;
             else
                 numRows = numRows(numRows>0);
             end
