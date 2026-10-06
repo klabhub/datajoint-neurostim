@@ -73,7 +73,7 @@ classdef (Abstract) cache < handle
             % Set the 'average' input to select which aspects to average
             % over. By default, trials and channels are averaged.
             arguments
-                o (1,1) {mustHaveRows}
+                o (1,1) 
                 pv.delta (1,1) string = ""              % Show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
@@ -102,21 +102,38 @@ classdef (Abstract) cache < handle
             % Epochs always contain signal and time
             xName = o.independent;
             yName = o.dependent;
-            G = compute(o,struct("averageforplot",''),outlier=pv.outlier, robust=pv.robust,x=xName,y=yName,average= pv.average,channel=pv.channel,trial=pv.trial);               
+            if isempty(pv.average)
+                fun = struct();
+            else
+                fun.average = struct(...
+                    "average",pv.average, ...
+                    "robust",pv.robust, ...
+                    "outlier",pv.outlier);
+            end
+            G = compute(o,fun,x=xName,y=yName,average=string.empty, ...
+                channel=pv.channel,trial=pv.trial);
+            if isempty(pv.average)
+                plotXName = xName;
+            else
+                plotXName = "average_" + xName;
+            end
             
  
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
                 rasterGrouping = setdiff(ns.cache.AVERAGEVARS,[pv.raster pv.average]);
-                P = groupsummary(G, rasterGrouping, @(x) x(1), ["align" xName "paradigm"]);
-                P = renamevars(P,["fun1_align" "fun1_"+xName ],["align" xName ]);        
+                P = groupsummary(G, rasterGrouping, @(x) x(1), ["align" plotXName "paradigm"]);
+                P = renamevars(P,["fun1_align" "fun1_"+plotXName ],["align" plotXName ]);
                 if isempty(pv.average)
                     G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},"signal");
                     G = renamevars(G,"fun1_signal","signal");
                     G.n =repmat({1},height(G),1);
                 else
-                    G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},["average" "error" "n"]);
-                    G = renamevars(G,["fun1_average" "fun1_error" "fun1_n"],["average" "error" "n"]);
+                    averageVariables = ["average_" + yName, ...
+                        "average_" + yName + "_error", ...
+                        "average_" + yName + "_n"];
+                    G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},averageVariables);
+                    G = renamevars(G,"fun1_" + averageVariables,["average" "error" "n"]);
                 end
                 G = innerjoin(G,P);
                 %pv.newTileEach = union(pv.newTileEach,"condition");
@@ -156,7 +173,7 @@ classdef (Abstract) cache < handle
                 end
                 if pv.raster~=""
                     % Show each condition in a separate tile
-                    x = G.(xName){1}';
+                    x = G.(plotXName){1}';
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
@@ -204,13 +221,13 @@ classdef (Abstract) cache < handle
                     n =1;
                 else 
                     % An average has been determined
-                    x =G.(xName){i}';
+                    x =G.(plotXName){i}';
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
-                    m = G.average{i}';
-                    err = G.error{i}';
-                    n = mean(G.n{i});
+                    m = G.average_signal{i}';
+                    err = G.average_signal_error{i}';
+                    n = mean(G.average_signal_n{i});
                     if all(isnan(m)) || all(isnan(err))
                         % No data for this group, skip
                         warning("No data for this group, skipping");
@@ -244,8 +261,8 @@ classdef (Abstract) cache < handle
                     end
                     reference = find(matchG.condition ==pv.delta);
                     if ~isempty(reference)
-                        y = m - matchG.signal{reference,:};
-                        err = err +matchG.error{reference,:};
+                        y = m - matchG.average_signal{reference,:};
+                        err = err +matchG.average_signal_error{reference,:};
                         h = [h plot(x,y)];                     %#ok<AGROW>
                         p = patch([x;flip(x)]',[y+err;flip(y-err)]',h(end).Color,FaceAlpha= 0.5);
                         p.EdgeColor = h(end).Color;
@@ -281,12 +298,13 @@ classdef (Abstract) cache < handle
             %               f:         frequencies, a vector
             %               EXAMPLE:
             %               fun.pmtm = struct('nw',4,'nfft',256);
-            %   .average:     Average, an error estimate, and N (used by the ns.EpochChannel/plot function)
-            %               EXAMPLE fun.average= {}; 
-            %                           Returns mean and ste  
-            %                      fun.average = {'robust',true}           
-            %                           returns the median and iqr
-            %               EXAMPLE fun.robust_average = {};
+            %   .average:    Average the result of the preceding function,
+            %               including an error estimate and N. For example:
+            %                   fun.pspectrum = struct('FrequencyLimits',[0 40]);
+            %                   fun.average = struct('average',"trial");
+            %               computes one spectrum per trial and then averages
+            %               the spectra across trials. Set robust=true to use
+            %               the median and IQR instead of the mean and STE.
             %   .wavelet:   Wavelet spectrogram using the FWHM approach.
             %               Sampling rate is supplied automatically. The
             %               options are supplied as a struct. Its fields
@@ -379,7 +397,7 @@ classdef (Abstract) cache < handle
                 pv.channel (:,1)  {mustBeA(pv.channel,["double" "function_handle"])} = [] % Select a subset of channels
                 pv.trial (:,1)  {mustBeA(pv.trial,["double" "function_handle"])} = [] % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
-                pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["subject" "session_date" "starttime" "condition" "trial" "channel"])} = ["trial" "channel"]
+                pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["subject" "session_date" "starttime" "paradigm" "condition" "trial" "channel"])} = ["trial" "channel"]
                 pv.robust (1,1) logical = false   % Set to true to determine median as average                
                 pv.outlier (1,1) double = inf     % Threshold to remove outliers before averaging 
                 pv.x (1,1) string = o.independent  % Name of the independent variable
@@ -447,14 +465,14 @@ classdef (Abstract) cache < handle
                 M = restrictedT.(dv);                
                 uGroup = "_";
                 G.name = repmat(uGroup,height(G),1);
-            else                
-                %if ismember("condition",pv.average) && ~ismember("trial",pv.average)
-                %    pv.average = [pv.average "trial"];
-                %end
+            else
+                [G,~,averageValues,~,~] = ns.cache.averageData(...
+                    restrictedT, restrictedT.(dv), pv.average, srate, pv.robust, pv.outlier);
                 grouping = setdiff(ns.cache.AVERAGEVARS,pv.average,'stable');
-
-                [grp,G] = findgroups(restrictedT(:,grouping));
-                varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping),OutputFormat='uniform');     
+                keep = intersect([grouping "align" idv "nrtrials" "nrchannels"], ...
+                    string(G.Properties.VariableNames), 'stable');
+                G = G(:,keep);
+                varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping),OutputFormat='uniform');
                 varies(grouping=="trial") = false; % Tracked separately
                 if any(varies)
                     uGroup  = string(G{:,grouping(varies)});
@@ -464,71 +482,28 @@ classdef (Abstract) cache < handle
                 else
                     uGroup = repmat("all",height(G),1); % Averaging reduced this to a single group.
                 end
-                % Average signal per group
-                if isfield(fun,"averageforplot")
-                    % Special case; averaging for the plot function
-                    % (includes a variance estimate)
-                   M = splitapply(@(x) ns.cache.do_average(x,srate,robust=pv.robust,outlier=pv.outlier),restrictedT.(dv),grp);
-                else
-                    % Average for the fun computed below.
-                    if pv.robust
-                        av = @median;
-                    else
-                        av = @mean;
-                    end
-                    if isfinite(pv.outlier)
-                        % Average after outlier removal
-                        M = splitapply(@(x) {av(rmoutliers(cat(1,x{:}),"median","ThresholdFactor",pv.outlier),1,"omitmissing")}, ...
-                            restrictedT.(dv),grp);
-                    else
-                        % Average
-                        M = splitapply(@(x) {av(cat(1,x{:}),1,"omitmissing")}, ...
-                            restrictedT.(dv),grp);
-                    end
-                end                                
-                
-                % Combine with align/time (or other idv) information. Note this
-                % assumes these are constant per group (picking
-                % only the first here). fill() assures this is the case.
-                P = groupsummary(restrictedT, grouping, @(x) (x(1,:)), ["align" idv]);
-                P = renamevars(P,["fun1_align" "fun1_"+idv ],["align" idv ]);
-
-                % add trial counts
-                nT = groupsummary(restrictedT, grouping, @(x) numel(unique(x)), "trial");
-                nT = renamevars(nT,"fun1_trial", "nrtrials");
-
-                % add channel counts
-                nCh = groupsummary(restrictedT, grouping, @(x) numel(unique(x)), "channel");
-                nCh = renamevars(nCh,"fun1_channel", "nrchannels");
-
-                G = innerjoin(G,P);
-                G = innerjoin(G,nT);
-                G = innerjoin(G,nCh);
-                G = removevars(G, "GroupCount");
-                G.name = uGroup;              
+                % M already contains the averaged signal for each group.
+                M = averageValues;
+                G.name = uGroup;
             end
             nrGrps = height(M);
 
             %% Determine which function to compute
             % Map string to function handle and do error checking
             D = containers.Map;
-           if isfield(fun,"averageforplot")
-                % The average has already been determined above; just combine with G
-                if iscell(M)
-                    % No average
-                    G.signal = M;
-                else
-                    % Averaged
-                    G = [G M(:,setdiff(M.Properties.VariableNames,"time"))];
-                end
-                D('time') = {'average','error','n'};
-            else
-                % Compute one or more functions
-                funs = fieldnames(fun);
-                nrFuns = numel(funs);
-                fprintf('Applying %d functions (%s) to %d elements\n',nrFuns,strjoin(funs,"/"),size(M,1))
+            % Compute one or more functions
+            funs = fieldnames(fun);
+            nrFuns = numel(funs);
+            fprintf('Applying %d functions (%s) to %d elements\n',nrFuns,strjoin(funs,"/"),size(M,1))
+            pool = nsParPool;
+            progressQueue = [];
+            progressListener = [];
+            if ~isempty(pool)
+                progressQueue = parallel.pool.DataQueue;
+                progressListener = afterEach(progressQueue,@(~) ns.cache.advanceParforProgress());
+            end
                 for f = 1:nrFuns
-                    thisFun = funs{f};
+                    thisFun = string(funs{f});
                     if isstruct(fun.(thisFun))
                         thisOptions = namedargs2cell(fun.(thisFun));
                     elseif isempty(fun.(thisFun)) || isa(fun.(thisFun),'function_handle')
@@ -536,10 +511,20 @@ classdef (Abstract) cache < handle
                     else
                         error('Function options for %s must be a struct, empty, or a function handle', thisFun);
                     end
+                    if thisFun == "average"
+                        % Special case, needs access to G
+                        [G,M,D,idv,dv] = ns.cache.averageResults(...
+                            G,M,D,idv,dv,srate,fun.(thisFun));
+                        continue
+                    end
+
+                    if ismember(thisFun,["snr" "peak"])
+                        assert(f > 1 && ~isempty(idv), ...
+                            '%s requires a preceding spectral function.',thisFun);
+                    end
+
                     data = {M}; % Inputs indexed by group row                  
                     switch thisFun
-                        case "average"
-                            funN = @(signal,srate) ns.cache.do_average(signal,srate,thisOptions{:});                           
                         case "fft"
                             funN = @(signal,srate) ns.cache.do_fft(signal,srate,thisOptions{:});                           
                         case "pspectrum"
@@ -573,7 +558,6 @@ classdef (Abstract) cache < handle
                     end
                   
                     %% Apply the fun to the mean signal
-                    pool = nsParPool;
                     % Temp cell to store results
                     xCell = cell(nrGrps,1);
                     idv  = repmat("",1, nrGrps);
@@ -583,9 +567,7 @@ classdef (Abstract) cache < handle
                             [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate);
                         end
                     else
-                        progressQueue = parallel.pool.DataQueue;
                         ns.cache.resetParforProgress(thisFun,nrGrps);
-                        progressListener = afterEach(progressQueue,@(~) ns.cache.advanceParforProgress()); %#ok<NASGU>
                         parfor iGrp = 1:nrGrps
                             groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
                             [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate); %#ok<PFBNS>
@@ -594,7 +576,9 @@ classdef (Abstract) cache < handle
                         ns.cache.finishParforProgress();
                     end
                     R = vertcat(xCell{:}); % Results table
-                    idv = unique(idv); % Should all be the same.                     
+                    idv = unique(idv);
+                    assert(isscalar(idv), ...
+                        'Function %s returned inconsistent independent-variable columns.',thisFun);
                     R = renamevars(R,R.Properties.VariableNames,thisFun + "_" + R.Properties.VariableNames );
                     idv = thisFun + "_" + idv ;
                     dv = setdiff(R.Properties.VariableNames,idv); % EVerything but the idv
@@ -615,8 +599,10 @@ classdef (Abstract) cache < handle
                     % Combine the results with G and store idv->dv mapping                    
                     D(idv)  = dv;                     
                     G = [G R]; %#ok<AGROW>                    
-                end                       
-           end
+                end
+                if ~isempty(pool)
+                    delete(progressListener);
+                end
 
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
@@ -630,6 +616,130 @@ classdef (Abstract) cache < handle
         % Compute functions that take a signal with some options and return
         % a table with one or more output columns. Note that each column
         % should contain a row vector of results.
+        function [G,M,D,idv,dv] = averageResults(G,M,D,idv,dv,srate,options)
+            % Average the output of a preceding compute function over cache dimensions.
+            assert(isstruct(options) && isfield(options,"average"), ...
+                'fun.average requires an ''average'' dimension, for example struct(''average'',"trial").');
+            idv = string(idv);
+            dv = string(dv);
+            average = string(options.average);
+            idvValues = G.(idv);
+            [G,~,averageValues,errorValues,nValues,groupInfo] = ns.cache.averageData(...
+                G,M,average,srate,getOption(options,'robust',false),getOption(options,'outlier',inf));
+            ns.cache.validateIndependentVariable(idvValues,groupInfo.groupNumber,idv);
+            idvValues = idvValues(groupInfo.first);
+            oldVariables = intersect([idv dv], string(G.Properties.VariableNames), 'stable');
+            G = removevars(G, oldVariables);
+            idvOut = "average_" + idv;
+            averageOut = "average_" + dv;
+            errorOut = averageOut + "_error";
+            nOut = averageOut + "_n";
+
+            R = table(idvValues);
+            R.Properties.VariableNames = cellstr(idvOut);
+            for j = 1:numel(dv)
+                R.(averageOut(j)) = averageValues(:,j);
+                R.(errorOut(j)) = errorValues(:,j);
+                R.(nOut(j)) = nValues(:,j);
+            end
+
+            G = [G R];
+            M = averageValues;
+            idv = idvOut;
+            dv = averageOut;
+            D(idv) = [dv errorOut nOut];
+        end
+
+        function [G,M,averageValues,errorValues,nValues,groupInfo] = averageData(G,M,average,srate,robust,outlier)
+            % Group rows and average one or more cell/numeric data columns.
+            average = string(average);
+            mustBeMemberOrEmpty(average, ns.cache.AVERAGEVARS);
+            variables = string(G.Properties.VariableNames);
+            assert(all(ismember(average, variables)), ...
+                'Cannot average over a dimension (%s) that is not present in the result table.',average);
+
+            available = intersect(ns.cache.AVERAGEVARS, variables, 'stable');
+            grouping = setdiff(available, average, 'stable');
+            [groupNumber, ~] = findgroups(G(:,grouping));
+            first = splitapply(@(x) x(1), (1:height(G))', groupNumber);
+            nrGroups = numel(first);
+            groupInfo = struct('first',first,'groupNumber',groupNumber,'grouping',grouping);
+
+            nrTrials = [];
+            if ismember("trial", average) && ismember("trial", variables)
+                nrTrials = splitapply(@(x) numel(unique(x)), G.trial, groupNumber);
+            end
+            nrChannels = [];
+            if ismember("channel", average) && ismember("channel", variables)
+                nrChannels = splitapply(@(x) numel(unique(x)), G.channel, groupNumber);
+            end
+
+            G = G(first,:);
+            remove = intersect(average, variables, 'stable');
+            G = removevars(G, remove);
+            if ~isempty(nrTrials), G.nrtrials = nrTrials; end
+            if ~isempty(nrChannels), G.nrchannels = nrChannels; end
+
+            if ~iscell(M)
+                M = num2cell(M, 2);
+            end
+            nrColumns = size(M,2);
+            averageValues = cell(nrGroups,nrColumns);
+            errorValues = cell(nrGroups,nrColumns);
+            nValues = cell(nrGroups,nrColumns);
+            groupRows = accumarray(groupNumber,(1:numel(groupNumber))',[],@(x){x});
+            for j = 1:nrColumns
+                column = M(:,j);
+                canUseFastMean = ~robust && isinf(outlier) && ...
+                    all(cellfun(@(x) isnumeric(x) && isrow(x),column));
+                if canUseFastMean
+                    sizes = cellfun(@numel,column);
+                    canUseFastMean = all(sizes == sizes(1));
+                end
+                if canUseFastMean
+                    values = vertcat(column{:});
+                    averageValues(:,j) = splitapply(@(x) {mean(x,1,'omitmissing')},values,groupNumber);
+                    errorValues(:,j) = splitapply(@(x) {std(x,0,1,'omitmissing') ./ ...
+                        sqrt(sum(~isnan(x),1,'omitmissing'))},values,groupNumber);
+                    nValues(:,j) = splitapply(@(x) {sum(~isnan(x),1,'omitmissing')},values,groupNumber);
+                else
+                    for i = 1:nrGroups
+                        result = ns.cache.do_average(column(groupRows{i}),srate, ...
+                            robust=robust,outlier=outlier);
+                        averageValues{i,j} = result.average{1};
+                        errorValues{i,j} = result.error{1};
+                        nValues{i,j} = result.n{1};
+                    end
+                end
+            end
+            M = averageValues;
+        end
+
+        function validateIndependentVariable(values,groupNumber,name)
+            % Verify that an IDV is constant within every averaging group.
+            if ~iscell(values)
+                values = num2cell(values,2);
+            end
+            for i = 1:max(groupNumber)
+                rows = find(groupNumber == i);
+                reference = values{rows(1)};
+                for j = 2:numel(rows)
+                    candidate = values{rows(j)};
+                    sameSize = isequal(size(reference),size(candidate));
+                    if isnumeric(reference) && isnumeric(candidate) && sameSize
+                        scale = max(1,max(abs(reference),[],'all'));
+                        same = all(abs(reference-candidate) <= 1e-10*scale,'all');
+                    else
+                        same = isequaln(reference,candidate);
+                    end
+                    if ~same
+                        error('ns:cache:IndependentVariableMismatch', ...
+                            'Independent variable %s differs within averaging group %d.',name,i);
+                    end
+                end
+            end
+        end
+
         function [v,idv] = do_fft(signal, fs, pv)
             % do_fft - Computes FFT amplitude and phase for each
             %               epoch. Only includes real frequencies.
@@ -967,6 +1077,14 @@ classdef (Abstract) cache < handle
         [src] = getCacheQuery(o)
     end
 
+end
+
+function value = getOption(options, name, default)
+if isfield(options, name) && ~isempty(options.(name))
+    value = options.(name);
+else
+    value = default;
+end
 end
 
 function d = selectDataRow(d,iGrp)

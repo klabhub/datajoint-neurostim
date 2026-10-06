@@ -295,7 +295,7 @@ classdef C < dj.Computed & dj.DJInstance
             % plot(ns.C & 'ctag=''eeg''',[1 2 ],expt,"isFlick",prctileMax=99, start =-100,stop =500,align=onset,mode ="TIMECOURSE",perTrial =true);
 
             arguments
-                cTbl (1,1) ns.C {mustHaveRows}
+                cTbl (1,1) ns.C 
                 pv.channel   = []  % A ns.CChannel or a CChannel based restriction
                 pv.grouping = ""
                 pv.groupingName = {};
@@ -660,7 +660,7 @@ classdef C < dj.Computed & dj.DJInstance
             % with a length equal to the number of trials in which each
             % element represent the onset time in ms such as returned by ns.Experiment.get()
             arguments
-                tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
+                tbl  (1,1) ns.C
                 pv.fetchOptions {mustBeText} = ''
                 pv.channel  =[]   %
                 pv.grouping = ""
