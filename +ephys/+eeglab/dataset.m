@@ -402,6 +402,7 @@ if isEpoch
         'latency',1+(-EEG.xmin)*EEG.srate,'epoch',0,'trial',0),1,EEG.trials);
     for iEpoch = 1:EEG.trials
         alignEvents(iEpoch).epoch = iEpoch;
+        alignEvents(iEpoch).latency = 1+(-EEG.xmin)*EEG.srate+(iEpoch-1)*EEG.pnts;
         alignEvents(iEpoch).trial = EEG.epoch(iEpoch).trial;
     end
     if isempty(EEG.event)
