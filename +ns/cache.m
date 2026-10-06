@@ -262,8 +262,8 @@ classdef (Abstract) cache < handle
                     end
                     reference = find(matchG.condition ==pv.delta);
                     if ~isempty(reference)
-                        y = m - matchG.average_signal{reference,:};
-                        err = err +matchG.average_signal_error{reference,:};
+                        y = m - matchG.(plotYName){reference}';
+                        err = err + matchG.(plotYName + "_error"){reference}';
                         h = [h plot(x,y)];                     %#ok<AGROW>
                         p = patch([x;flip(x)]',[y+err;flip(y-err)]',h(end).Color,FaceAlpha= 0.5);
                         p.EdgeColor = h(end).Color;
