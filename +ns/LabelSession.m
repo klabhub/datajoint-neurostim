@@ -45,7 +45,7 @@ classdef LabelSession < dj.Computed & dj.DJInstance
             % examples
             % Delegates to ns.Label.findInTable so the logic is maintained in one place.
             arguments
-                tbl (1,1) ns.Label
+                tbl (1,1) ns.LabelSession
                 pv.name(1,:) string  = string.empty % One or more names to look for
                 pv.threshold (1,1) double = NaN 
                 pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to containts for string and > for numeric                
