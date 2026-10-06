@@ -207,9 +207,10 @@ classdef Epoch < dj.Computed & dj.DJInstance
             %% --- Artifact/Outlier Rejection ---
             tic;
             fprintf("Artifact detection ...\n");
+            parmTpl.artparms.epoch_no = trials;
             pv =namedargs2cell(parmTpl.artparms);
             epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
-            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,'epoch_no',trials,pv{:});
+            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,pv{:});
             % Remove epochs that were identified as having artifacts
             out = ismember(trials,badByArt.all);
             signal(:,out,:) = [];
@@ -260,4 +261,3 @@ classdef Epoch < dj.Computed & dj.DJInstance
         end
     end
 end
-
