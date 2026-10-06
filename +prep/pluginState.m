@@ -22,7 +22,7 @@ function BB = pluginState(expt,trials,parms)
 arguments
     expt (1,1) ns.Experiment
     trials (1,:) double
-    parms (1,1) struct {prep.mustBePlgParm}  % Struct with instructtions
+    parms (1,1) struct  % Struct with instructtions
 end
 BB = prep.badBy;
 if ~parms.enable 
