@@ -44,7 +44,12 @@ classdef Tepoch < dj.Computed & dj.DJInstance
                 % Convert char back to function_handle
                 parms.channel= str2func(parms.channel);
             end
-            fun   = fetch1(ns.TepochParm & key,'fun');
+            fun = fetch1(ns.TepochParm & key,'fun');
+            for name = string(fieldnames(fun))'
+                if ischar(fun.(name)) && ~isempty(fun.(name))
+                    fun.(name) = str2func(fun.(name));
+                end
+            end
             parms = namedargs2cell(parms);
             % T containts the independent and dependent variables, D maps each independent-variable column to its dependent columns.
             [T,D] = compute( ns.EpochChannel&key,fun,parms{:});
