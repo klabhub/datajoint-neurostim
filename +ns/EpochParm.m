@@ -89,7 +89,7 @@ end
 defaults = struct;
 defaults.enable = false;
 defaults.amplitude_threshold_peak = 1;
-defaults.amplitude_channelfrac = 1;
+defaults.amplitude_channelfrac = 0.5;
 defaults.variance_z_threshold = 5;
 defaults.hf_cutoff_hz = 50;
 defaults.hf_z_threshold = 5;
