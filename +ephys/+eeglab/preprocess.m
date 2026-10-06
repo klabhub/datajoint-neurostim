@@ -66,9 +66,7 @@ for f= 1:numel(fn)
                 nrSamplesToUse =min(3000,EEG.pnts); % Same as EEGLAB runica                
                 X = double(EEG.data(:,1:nrSamplesToUse) - mean(EEG.data(:,1:nrSamplesToUse),2));                
                 rnk =getrank(X);
-                if rnk<size(X,1)
-                    parmsN.pca = rnk;
-                end
+                parmsN.pca = rnk;
             end
             icaPV= namedargs2cell(parmsN);
             EEG = pop_runica(EEG,icaPV{:});     
