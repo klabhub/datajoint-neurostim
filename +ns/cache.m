@@ -513,8 +513,10 @@ classdef (Abstract) cache < handle
                     end
                     if thisFun == "average"
                         % Special case, needs access to G
+                        D = remove(D,idv); % This will be replaced by average_idv
                         [G,M,D,idv,dv] = ns.cache.averageResults(...
                             G,M,D,idv,dv,srate,fun.(thisFun));
+                        nrGrps = height(G);
                         continue
                     end
 
