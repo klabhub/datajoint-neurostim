@@ -24,10 +24,11 @@ classdef Paradigm < dj.Lookup
         function insert(tbl, tpl)
             % Check the length of the name; to avoid problems with PK length for tables that link to this or the
             % experiment table, paradigms are 32 characters long. If the name is longer than 32 characters, we truncate it and issue a warning.
-           if length(tpl.name) > 32
-                    warning('Paradigm name is longer than 32 characters. It will be truncated.');
+           name = string(tpl.name);
+           if strlength(name) > 32
+               warning('Paradigm name is longer than 32 characters. It will be truncated.');
            end
-           tpl.name = tpl.name(1:min(32,length(tpl.name)));
+           tpl.name = extractBefore(name,min(32,strlength(name))+1);
            insert@dj.Lookup(tbl,makeMymSafe(tpl));           
         end
     end
