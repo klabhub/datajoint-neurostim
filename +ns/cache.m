@@ -595,7 +595,16 @@ classdef (Abstract) cache < handle
                     for col = [dv idv]
                         assert(iscell(R{:,col}), 'The variable (%s) must be a cell array for each group', col);
                         assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col})), 'The variable (%s) must be numerical values inside a cell) for each group', col);
-                        assert(all(size(R{1,col})==size(R{1,idv(1)})),"IDV and DV must match in size")
+                    end
+                    axisSizes = cellfun(@numel,R{1,idv(1)});
+                    for col = dv
+                        valueSize = size(R{1,col}{1});
+                        if numel(axisSizes)==1
+                            matchesAxes = ismember(axisSizes,valueSize);
+                        else
+                            matchesAxes = isequal(sort(axisSizes),sort(valueSize));
+                        end
+                        assert(matchesAxes,"IDV and DV must match in size")
                     end
                     
                     % Pass the dependent variables to the next computation
