@@ -84,7 +84,7 @@ classdef (Abstract) cache < handle
                 pv.linkAxes (1,1) logical = false        % Force the same xy axes on all tiles in a figure
                 pv.raster (1,:) string = ""            % Set to true to show trials as rasters (removes "trial" from pv.average)
                 pv.line (1,1) logical = false           % Show offset lines instead of raster
-                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime" "condition"];  % Start a new tile when any of these parameters change.
+                pv.newTileEach = ["paradigm" "subject" "session_date" "starttime" ];  % Start a new tile when any of these parameters change.
                 pv.figure = []  % Creates new figures if empty.
                 pv.xlim  (1,:) double = []
                 pv.clim (1,:) double  = []
@@ -114,8 +114,10 @@ classdef (Abstract) cache < handle
                 channel=pv.channel,trial=pv.trial);
             if isempty(pv.average)
                 plotXName = xName;
+                plotYName = yName;
             else
                 plotXName = "average_" + xName;
+                plotYName = "average_" + yName;
             end
             
  
@@ -125,8 +127,8 @@ classdef (Abstract) cache < handle
                 P = groupsummary(G, rasterGrouping, @(x) x(1), ["align" plotXName "paradigm"]);
                 P = renamevars(P,["fun1_align" "fun1_"+plotXName ],["align" plotXName ]);
                 if isempty(pv.average)
-                    G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},"signal");
-                    G = renamevars(G,"fun1_signal","signal");
+                    G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},yName);
+                    G = renamevars(G,"fun1_" +yName,yName);
                     G.n =repmat({1},height(G),1);
                 else
                     averageVariables = ["average_" + yName, ...
@@ -176,19 +178,14 @@ classdef (Abstract) cache < handle
                     x = G.(plotXName){1}';
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
-                    end
-                    if isempty(pv.average)
-                        src = "signal";
-                    else
-                        src = "average";
-                    end
-                    nrTrials= size(G.(src){i},1);                    
+                    end                    
+                    nrTrials= size(G.(plotYName){i},1);                    
                     if pv.line
-                        y =G.(src){i};
+                        y =G.(plotYName){i};
                         y = y./max(abs(y),[],"all") + repmat((1:size(y,1))',[1 size(y,2)]);
                         plot(x,y)
                     else
-                        imagesc(x,1:nrTrials, G.(src){i})
+                        imagesc(x,1:nrTrials, G.(plotYName){i})
                         axis xy
                         ylabel (pv.raster)
                         if ~isempty(pv.clim)
@@ -198,14 +195,14 @@ classdef (Abstract) cache < handle
                     n = mean(G.n{i},"all");
                     hold on 
                     plot([0 0],ylim,'k')
-                    titlePV= setdiff(["paradigm" rasterGrouping],"",'stable');
-                    ttlStr = strjoin(string(G{i,titlePV}),"/");
+                    keep = intersect(setdiff(ns.cache.AVERAGEVARS,pv.newTileEach),G.Properties.VariableNames);
+                    ttlStr = strjoin(string(G{i,keep}),"/");
                 elseif isempty(pv.average)
-                    x = G.(xName){1}';
+                    x = G.(plotXName){1}';
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
-                    y = G{i,yName};
+                    y = G{i,plotYName};
                     if iscell(y)
                         y = cat(1,y{:});
                     end                    
@@ -215,19 +212,23 @@ classdef (Abstract) cache < handle
                     catch
                     end
                     hold on;
-                    xlabel (xName)
-                    ylabel (yName)
-                    ttlStr = "";
-                    n =1;
+                    xlabel (plotXName)
+                    ylabel (plotYName)
+                    titlePV= setdiff(["paradigm" grouping],"condition",'stable');
+                    ttlStr = strjoin(string(G{i,titlePV}),"/");
+                    if ismember("condition",G.Properties.VariableNames)
+                        legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
+                    end
+                    n =NaN;
                 else 
                     % An average has been determined
                     x =G.(plotXName){i}';
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
                     end
-                    m = G.average_signal{i}';
-                    err = G.average_signal_error{i}';
-                    n = mean(G.average_signal_n{i});
+                    m = G.(plotYName){i}';
+                    err = G.(plotYName + "_error"){i}';
+                    n = mean(G.(plotYName + "_n"){i});
                     if all(isnan(m)) || all(isnan(err))
                         % No data for this group, skip
                         warning("No data for this group, skipping");
@@ -513,8 +514,12 @@ classdef (Abstract) cache < handle
                     end
                     if thisFun == "average"
                         % Special case, needs access to G
+                        if isKey(D,idv)
+                            D = remove(D,idv); % This will be replaced by average_idv
+                        end
                         [G,M,D,idv,dv] = ns.cache.averageResults(...
                             G,M,D,idv,dv,srate,fun.(thisFun));
+                        nrGrps = height(G);
                         continue
                     end
 
@@ -628,6 +633,19 @@ classdef (Abstract) cache < handle
                 G,M,average,srate,getOption(options,'robust',false),getOption(options,'outlier',inf));
             ns.cache.validateIndependentVariable(idvValues,groupInfo.groupNumber,idv);
             idvValues = idvValues(groupInfo.first);
+            grouping = groupInfo.grouping;
+            varies = varfun(@(x) numel(unique(x)) > 1, G(:,grouping), ...
+                OutputFormat='uniform');
+            varies(grouping=="trial") = false;
+            if any(varies)
+                uGroup = string(G{:,grouping(varies)});
+                if size(uGroup,2)>1
+                    uGroup = join(string(uGroup), "/", 2);
+                end
+            else
+                uGroup = repmat("all",height(G),1);
+            end
+            G.name = uGroup;
             oldVariables = intersect([idv dv], string(G.Properties.VariableNames), 'stable');
             G = removevars(G, oldVariables);
             idvOut = "average_" + idv;

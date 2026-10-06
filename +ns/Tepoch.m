@@ -90,13 +90,13 @@ classdef Tepoch < dj.Computed & dj.DJInstance
             % them into one homogeneous table variable.
             channelRows = cell(numel(allDv),1);
             for iDv = 1:numel(allDv)
-                dv = allDv(iDv);
-                values = T.(dv);
+                thisDv = allDv(iDv);
+                values = T.(thisDv);
                 if ~iscell(values)
                     values = num2cell(values,2);
                 end
                 channelRow = removevars(T,allDv);
-                channelRow.dependent = repmat(dv,height(T),1);
+                channelRow.dependent = repmat(thisDv,height(T),1);
                 channelRow.signal = values;
                 channelRows{iDv} = channelRow;
             end
