@@ -102,7 +102,7 @@ defaults.ica = [];
 supplied = art;
 art = defaults;
 suppliedNames = fieldnames(supplied);
-notAllowed = setdiff(string(suppliedNames),string(fieldnames(defaults)));
+notAllowed = setdiff(string(suppliedNames),[string(fieldnames(defaults)); "flat_threshold_sd"]);
 assert(isempty(notAllowed),"artparms do not allow %s fields",strjoin(notAllowed));
 for iName = 1:numel(suppliedNames)
     art.(suppliedNames{iName}) = supplied.(suppliedNames{iName});
