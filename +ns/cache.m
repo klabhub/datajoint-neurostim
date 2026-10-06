@@ -135,7 +135,7 @@ classdef (Abstract) cache < handle
                         "average_" + yName + "_error", ...
                         "average_" + yName + "_n"];
                     G = groupsummary(G,rasterGrouping,@(x) {cat(1,x{:})},averageVariables);
-                    G = renamevars(G,"fun1_" + averageVariables,["average" "error" "n"]);
+                    G = renamevars(G,"fun1_" + averageVariables,[plotYName plotYName + "_error" "n"]);
                 end
                 G = innerjoin(G,P);
                 %pv.newTileEach = union(pv.newTileEach,"condition");
