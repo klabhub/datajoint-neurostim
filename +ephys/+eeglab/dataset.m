@@ -361,12 +361,12 @@ if isEpoch
     retainedTrials = [EEG.epoch.trial];
     epochStart = EEG.xmin*1000;
     epochStop = EEG.xmax*1000;
-    epochOnset = [EEG.epoch.onset]*1000;
+    epochOnset = [EEG.epoch.onset];
     keep = false(1,numel(EEG.event));
     for i = 1:numel(EEG.event)
         j = find(retainedTrials==eventTrial(i),1);
         if ~isempty(j)
-            relativeTime = eventTrialTime(i)-epochOnset(j);
+            relativeTime = eventNsTime(i)-epochOnset(j);
             keep(i) = relativeTime>=epochStart && relativeTime<=epochStop;
             if keep(i)
                 EEG.event(i).latency = 1+(relativeTime-epochStart)/1000*EEG.srate;
