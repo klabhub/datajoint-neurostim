@@ -212,13 +212,18 @@ classdef Epoch < dj.Computed & dj.DJInstance
             epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
             [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,pv{:});
             % Remove epochs that were identified as having artifacts
+            fracRemoved = mean(out);
             out = ismember(trials,badByArt.all);
             signal(:,out,:) = [];
             trials(out) = [];
             startTime(out) = [];
             nrTrials =numel(trials);
 
+                           
             fprintf("\t Artifact detection complete after %s, %d trials removed.\n",toc,sum(out));
+            if (fracRemoved>0.5)
+                fprintf(2,"%.1f %% of trials removed!\",100*fracRemoved);
+            end
 
             %% --- Submit to the server ---
             tic;

@@ -107,21 +107,18 @@ classdef Leadfield < dj.Computed & dj.DJInstance
                     % Test to see whetehr there is a GPS file at all
                     f = fullfile(folder(ns.Session & key),key.subject + "*.gpsr");
                     unsolvedGps = dir(f);
-                    if isempty(unsolvedGps)
-                        error('No solved GPS file found for this session. (%s/%s)',key.subject,key.session_date);
+                    if isempty(unsolvedGps)         
+                        error('No GPS file found for this session. (%s/%s)',key.subject,key.session_date);
                     else
-                        error("Session %s for %s has an unsolved GPS file. Solve it, then retry the leadfield computation\n",key.subject,key.session_date);
-                    end
+                        error("Session %s for %s has an unsolved GPS file. It looks like it may have a solutin inside. \n",key.subject,key.session_date);
+                    end                    
                 else
                     % Add it, then requery
                     updateWithFiles(ns.File,key,solvedGps);                    
-                    gpsFile = ns.File & 'extension=".gpsr"' & 'filename LIKE "%solved%"' & key;            
                 end
             end
-
-            
-            
-            filename= fullfile(folder(ns.Session & key),gpsFile{1,"filename"},'coordinates.gpsc');
+            assert(exists(gpsFile),"No gps file found.")
+            filename= fullfile(folder(ns.Session & key),gpsFile{1,"filename"},'coordinates.gpsc'); %
             assert(exist(filename,"file"), '%s not found',filename);
             GPS= readtable(filename, FileType="text");
             GPS = renamevars(GPS,"Var"  + string(1:4),["label" "Y" "X" "Z"]);
