@@ -26,46 +26,14 @@ classdef  HeadmodelParm < dj.Lookup & dj.DJInstance
                 pv.parms  (1,1) struct 
             end
             
-            
-            if ~isfield(pv.parms, 'mesh')
-               pv.parms.mesh.cfg  = struct;
-            end
-            assert(isstruct(pv.parms.mesh.cfg), 'Missing mesh.cfg in parms');
-            if isempty(pv.parms.mesh.cfg) || ~isfield(pv.parms.mesh.cfg, 'downsample')
-                pv.parms.mesh.cfg.downsample =1;
-            end
+            defaults.mesh.cfg.downsample = 2; % This .cfg will be passed to ft_prepare_mesh
+            defaults.sourcemodel.cfg.resolution = 8;  % This .cfg will be passed to ft_prepare_sourcemodel
+            defaults.sourcemodel.cfg.method = 'basedonmni';
+            defaults.sourcemodel.template = 'standard_sourcemodel3d5mm'; % Only needed/used for basedonmni
+            defaults.sourcemodel.atlas= 'brainnetome/BNA_MPM_thr25_1.25mm.nii';% Only needed/used for basedonmni
 
-
-            assert(isfield(pv.parms, 'sourcemodel'), 'Missing sourcemodel in parms');
-            assert(isfield(pv.parms.sourcemodel, 'cfg'), 'Missing sourcemodel.cfg in parms');
-            assert(isfield(pv.parms.sourcemodel.cfg, 'method'), 'Missing sourcemodel.cfg.method in parms');
-            
-
-            switch pv.parms.sourcemodel.cfg.method
-                case 'basedonmri'
-                    % Supplement defaults if missing.
-                    if ~isfield(pv.parms.sourcemodel.cfg, 'resolution')                        
-                        pv.parms.sourcemodel.cfg.resolution = 8; % in mm
-                    end
-                    if ~isfield(pv.parms.sourcemodel.cfg, 'tight')                        
-                        pv.parms.sourcemodel.cfg.tight = 'no';
-                    end
-                    if ~isfield(pv.parms.sourcemodel.cfg, 'movetocentroids')                        
-                        pv.parms.sourcemodel.cfg.movetocentroids = 'yes';
-                    end
-                case 'basedonresolution'
-                    % Supplement defaults if missing.
-                    if ~isfield(pv.parms.sourcemodel.cfg, 'resolution')                        
-                        pv.parms.sourcemodel.cfg.resolution = 10; % in mm
-                    end
-                case 'basedonmni'
-                    assert(isfield(pv.parms.sourcemodel, 'template'), 'Missing sourcemodel.template in parms');
-                    assert(isfield(pv.parms.sourcemodel, 'atlas'), 'Missing sourcemodel,atlas in parms');
-                    assert(isfield(pv.parms, 'elec'), 'Missing elec (template file) in parms');
-         
-                otherwise
-                    error('Invalid sourcemodel.cfg.method in parms');
-            end         
+            pv.parms= mergeDefaults(pv.parms,defaults);
+           
         end
     end
 end

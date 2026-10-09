@@ -79,7 +79,7 @@ classdef Fiducial <dj.Manual
                     else
                         mri = sloc.Fiducial.dicom2nifti(fullfile(dcmFile.folder,dcmFile.name),niftiFile);                        
                     end
-                    %Always get the study date from teh first dicom file
+                    %Always get the study date from the first dicom file
                     %(not in the nifti?).
                     info = dicominfo(fullfile(dcmFile.folder,dcmFile.name));
                     studyDate = datetime(info.StudyDate,InputFormat= 'uuuuMMdd',Format='uuuu-MM-dd');
