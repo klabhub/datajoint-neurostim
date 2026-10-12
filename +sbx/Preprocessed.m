@@ -110,7 +110,7 @@ classdef Preprocessed < dj.Computed
     methods (Access=public)
         function [tpl] = mismatch(tbl,pv)
             arguments
-                tbl (1,1) sbx.Preprocessed
+                tbl (1,1) sbx.Preprocessed {mustHaveRows(tbl,1)}
                 pv.verbose (1,1) logical = true
             end
             %  Compares the number of frames in the preprocessed data

@@ -94,7 +94,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % retrieve the parameter value (using ns.Experiment/get) for
             % the experiment with the mnost trials
             arguments
-                tbl ns.Experiment
+                tbl ns.Experiment {mustHaveRows(tbl)}
                 pv.showParameters (1,1) logical =false %
                 pv.showPlugins (1,1) logical = true
             end
@@ -407,7 +407,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         function showBehavior(tbl,behavior,pv)
             arguments
-                tbl (1,1) ns.Experiment
+                tbl (1,1) ns.Experiment {mustHaveRows}
                 behavior (1,1) string
                 pv.trial (1,:) = [] % List of trials to include [] means all.
             end
@@ -483,7 +483,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % database.
             %
             arguments
-                tbl (1,1) ns.Experiment
+                tbl (1,1) ns.Experiment {mustHaveRows}
                 plg (1,:) string  =  "cic"
                 pv.prm {mustBeText} = string.empty
                 pv.what (1,:) string = "all"
@@ -569,7 +569,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %  Identify timepoints in t (ms) that are between firstFrame and
             % trialStopTime  with slack of halfWidth (ms) on either end.
             arguments
-                expt (1,1) ns.Experiment
+                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
                 t (1,:) double
                 halfWidth (1,1) double
             end

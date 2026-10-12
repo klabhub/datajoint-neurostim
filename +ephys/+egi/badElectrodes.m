@@ -8,7 +8,7 @@ function [perExpt,perChannel] = badElectrodes(C,parms)
 % electrodes considered "bad".
 % See Also ns.Artifact
 arguments
-    C (1,1) {mustBeCOrExperiment(C)}
+    C (1,1) {mustBeCOrExperiment(C), mustHaveRows(C,1)}
     parms (1,1) struct
 end
 
