@@ -8,7 +8,7 @@ end
 tpl  = makeMymSafe(tpl);
 for i=1:numel(tpl)
     key = ns.stripToPrimary(tbl,tpl(i));
-    if count(tbl&key)==0
+    if ~exists(tbl&key)
         insert(tbl,tpl(i));
     end
 end

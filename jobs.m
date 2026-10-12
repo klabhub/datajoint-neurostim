@@ -11,7 +11,7 @@ arguments
     pv.status = {'error'}
     pv.ctag = ""
 end
-if count(tbl)==0;fprintf('No jobs in the %s table\n',tbl.className);return;end
+if ~exists(tbl);fprintf('No jobs in the %s table\n',tbl.className);return;end
 [key,table_name,status, error_message,error_stack,timestamp,key_hash] = fetchn(tbl &struct('status',pv.status),'key','table_name','status','error_message','error_stack','timestamp','key_hash');
 if isempty(key);fprintf('No jobs with status %s in the %s table\n',strjoin(string(pv.status),'/'),tbl.className);return;end
 

@@ -26,7 +26,7 @@ if ~exists(ks&key)
     return;
 end
 preps = sbx.Preprocessed & key & in('prep', parms.prep);
-if count(preps)==0
+if ~exists(preps)
     % The session has not been preprocessed. Do that first.
     error('No preprocessed data for %s in session %s for subject %s. Run populate(sbx.Preprocessed,prep="%s") first',strjoin(cellstr(parms.prep),'/'),key.session_date,key.subject,strjoin(cellstr(parms.prep),'/'));
 elseif count(preps)>1
