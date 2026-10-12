@@ -205,6 +205,12 @@ classdef PluginParameter < dj.Part
             end
 
             T = fetchtable(tbl ,'*');
+            % Hack to handle bad property_name
+            isEmptyName = T.property_name==""; 
+            if any(isEmptyName)
+                fprintf(2,"%d plugin parameter have an empty name; assigning the name 'empty'\n",sum(isEmptyName));
+                [T{isEmptyName,"property_name"}] = deal("empty");
+            end
 
             % Determine whether there are plugins that are numbered
             % versions (e.g. psybayes_1218748374)

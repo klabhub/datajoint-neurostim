@@ -356,6 +356,10 @@ eventNsTime = polyval(EEG.etc.neurostim.clockParms,eventEgiTime);
 eventTrial = [EEG.event.trial];
 eventTrialTime = eventNsTime - trialStartTimeNeurostim(eventTrial);
 eventCode = string({EEG.event.code});
+% Boundary (and other?) events sometimes lack an eventCode; give them a non
+% empty string name
+isEmptyEventcode = eventCode=="";
+eventCode(isEmptyEventcode) = "empty_" +  string(EEG.event(isEmptyEventCode).type);
 
 if isEpoch
     retainedTrials = [EEG.epoch.trial];
