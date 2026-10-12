@@ -211,9 +211,9 @@ classdef Epoch < dj.Computed & dj.DJInstance
             pv =namedargs2cell(parmTpl.artparms);
             epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
             [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,pv{:});
-            % Remove epochs that were identified as having artifacts
-            fracRemoved = mean(out);
+            % Remove epochs that were identified as having artifacts            
             out = ismember(trials,badByArt.all);
+            fracRemoved = mean(out);
             signal(:,out,:) = [];
             trials(out) = [];
             startTime(out) = [];

@@ -52,6 +52,14 @@ classdef Headmodel < dj.Computed & dj.DJInstance
                         cfg.funcolormap  = lines(6);              % distinct color per tissue + background
                         cfg.location     = 'center';
                         ft_sourceplot(cfg, segmentedmri_indexed);
+                    case "scalp"
+                        [scalp] = fetch1(tbl, 'scalp');
+                        ft_plot_mesh(scalp, 'edgecolor','none', 'facecolor', 'skin_medium_light');
+                        ft_plot_axes(scalp)
+                        alpha 1
+                        material default
+                        camlight
+                    
                     case "mesh"
                         ft_plot_mesh(mesh, 'edgecolor','none', 'facecolor', 'skin_medium_light', 'facealpha', 0.7,'surfaceonly',true);
                         ft_plot_axes(mesh)
@@ -176,7 +184,7 @@ classdef Headmodel < dj.Computed & dj.DJInstance
 
             mri = ft_convert_units(mri, 'mm');
 
-            % Align axes to CTG.(necessary for fiducial alignment below, interactive alignment
+            % Align axes to CTF. (necessary for fiducial alignment below, interactive alignment
             % does this internally)
             cfg = [];
             cfg.method = 'flip';
@@ -208,7 +216,7 @@ classdef Headmodel < dj.Computed & dj.DJInstance
             cfg = parms.mesh.cfg;
             cfg.method = 'projectmesh';
             cfg.tissue = {'scalp'};
-            cfg.numvertices = 10000;   % optional
+            cfg.numvertices = 10000;   
             scalp = ft_prepare_mesh(cfg, mri_segmented);
             scalp = ft_convert_units(scalp, 'mm');
 
