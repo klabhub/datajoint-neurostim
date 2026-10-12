@@ -171,7 +171,7 @@ classdef Headmodel < dj.Computed & dj.DJInstance
             if exist(mriFile,"file")
                 mri = ft_read_mri(char(mriFile),'dataformat','nifti');
             else
-                sloc.Fiducial.dicom2nifti(fullfile(getenv('NS_ROOT'),fids.folder,fids.subject+ ".dicoms"),mriFile);
+                sloc.Fiducial.dicom2nifti(fullfile(getenv('NS_ROOT'),fids.folder),mriFile);
             end
 
             mri = ft_convert_units(mri, 'mm');
