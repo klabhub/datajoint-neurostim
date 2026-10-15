@@ -119,15 +119,16 @@ for iTrial = 1:nrTrials
     trialOnset(iTrial) = onset(find(trial == trialValues(iTrial),1));
 end
 
-% FieldTrip sampleinfo refers to the sample numbers in the original
-% continuous recording, not to the local sample numbers within each epoch.
+% FieldTrip sampleinfo uses the exported epoch-rate sample axis, anchored
+% at the first sample of the corresponding continuous recording.
 % EpochChannel.onset is the absolute continuous-data time (in ms) at the
 % alignment event, whereas epochTime is relative to that event.
 sampleinfo = zeros(nrTrials,2);
 for iTrial = 1:nrTrials
     absoluteWindow = trialOnset(iTrial) + epochTime(1:2);
-    [~, sampleinfo(iTrial,1)] = min(abs(continuousTime - absoluteWindow(1)));
-    [~, sampleinfo(iTrial,2)] = min(abs(continuousTime - absoluteWindow(2)));
+    sampleinfo(iTrial,1) = round( ...
+        (absoluteWindow(1) - continuousTime(1)) * fsample) + 1;
+    sampleinfo(iTrial,2) = sampleinfo(iTrial,1) + nrSamples - 1;
     assert(sampleinfo(iTrial,1) <= sampleinfo(iTrial,2), ...
         'Epoch %d maps to an invalid continuous sample interval.', ...
         trialValues(iTrial));
