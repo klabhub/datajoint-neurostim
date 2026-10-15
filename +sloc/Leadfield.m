@@ -114,7 +114,8 @@ classdef Leadfield < dj.Computed & dj.DJInstance
                     end                    
                 else
                     % Add it, then requery
-                    updateWithFiles(ns.File,key,solvedGps);                    
+                    nsScan('date',datetime(key.session_date),'schedule','d', ...
+                        'subject',key.subject,'addToDatajoint',true);
                 end
             end
             assert(exists(gpsFile),"No gps file found.")
@@ -559,4 +560,3 @@ for k = 1:size(rhs,2)
     pot(:,k) = x(elecnodes);
 end
 end
-
