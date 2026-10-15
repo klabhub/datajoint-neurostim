@@ -73,7 +73,7 @@ classdef (Abstract) cache < handle
             % Set the 'average' input to select which aspects to average
             % over. By default, trials and channels are averaged.
             arguments
-                o (1,1) {mustHaveRows}
+                o (1,1) 
                 pv.delta (1,1) string = ""              % Show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials

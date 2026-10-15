@@ -47,7 +47,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
             % to indicate which condition the row (trial) corresponds to.
             %
             arguments
-                d (1,1) ns.Dimension {mustHaveRows(d,1)}
+                d (1,1) ns.Dimension
                 T (:,:) table
                 pv.labelOnly  (1,1) logical = true
             end
@@ -103,7 +103,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
             % the second condition in the second dimension. (i.e. it
             % matches the layout of the trials output).
             arguments
-                d (1,1) {mustHaveRows(d,1)}
+                d (1,1)
             end
             arguments (Repeating)
                 dimension (1,1) string
@@ -285,7 +285,7 @@ classdef Dimension < dj.Computed & dj.DJInstance
             % of trials that occur in conditions of separate dimensions
             %
             arguments
-                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
+                expt (1,1) ns.Experiment
                 pv =1
             end
 

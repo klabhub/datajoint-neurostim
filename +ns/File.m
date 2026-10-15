@@ -32,7 +32,7 @@ classdef File < dj.Imported  & dj.DJInstance
             % best-effort system call (open / xdg-open), or errors if
             % unsupported.
             arguments
-                tbl (1,1) ns.File {mustHaveRows(tbl,1)}
+                tbl (1,1) ns.File
             end
             fname =fetch1(tbl,'filename');
             ff = fullfile(folder(ns.Experiment &tbl),fname);

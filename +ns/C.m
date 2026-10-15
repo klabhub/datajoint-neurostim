@@ -660,7 +660,7 @@ classdef C < dj.Computed & dj.DJInstance
             % with a length equal to the number of trials in which each
             % element represent the onset time in ms such as returned by ns.Experiment.get()
             arguments
-                tbl  (1,1) ns.C {mustHaveRows(tbl,1)}
+                tbl  (1,1) ns.C
                 pv.fetchOptions {mustBeText} = ''
                 pv.channel  =[]   %
                 pv.grouping = ""
