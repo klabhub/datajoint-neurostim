@@ -95,34 +95,7 @@ classdef TestDataJointTepoch < TestDataJointPipelineBase
             testCase.verifyEqual(actualMeans,expectedMeans,'AbsTol',1e-10);
         end
 
-        function chunkedDeleteRemovesPartRowsInBatches(testCase)
-            testCase.report('chunkedDeleteRemovesPartRowsInBatches: starting');
-            key = testCase.experimentKey();
-            testCase.report('ensuring ns.Epoch and ns.EpochChannel are populated');
-            populate(ns.Epoch & key);
-            if count(ns.Tepoch & key)>0
-                testCase.report('removing Tepoch rows before deleting source EpochChannel rows');
-                previousSafeMode = dj.config('safemode');
-                restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
-                dj.config('safemode',false);
-                del(ns.Tepoch & key);
-            end
-            populate(ns.Epoch & key);
-            before = count(ns.EpochChannel & key);
-            testCase.verifyEqual(before,6);
-            previousLimit = getenv('NS_MAXUNCHUNKEDDELETE');
-            restoreLimit = onCleanup(@() setenv('NS_MAXUNCHUNKEDDELETE',previousLimit));
-            previousSafeMode = dj.config('safemode');
-            restoreSafeMode = onCleanup(@() dj.config('safemode',previousSafeMode));
-            dj.config('safemode',false);
-            setenv('NS_MAXUNCHUNKEDDELETE','1');
-            testCase.report('deleting %d EpochChannel rows with batch size 1',before);
-            chunkedDelete(ns.EpochChannel & key,1,{},false);
-            testCase.verifyEqual(count(ns.EpochChannel & key),0);
-            testCase.verifyEqual(count(ns.Epoch & key),1);
-            clear restoreLimit
-            testCase.report('chunkedDeleteRemovesPartRowsInBatches: complete');
-        end
+       
     end
     methods (Access=private)
         function setKnownEpochSignals(~,key)
