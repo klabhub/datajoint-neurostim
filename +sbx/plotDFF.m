@@ -27,8 +27,8 @@ function plotDFF(roi,expt,pv)
             %    over time, and a map of the shotnoise
             %
             arguments
-                roi (1,1) sbx.Roi {mustHaveRows}
-                expt (1,1) ns.Experiment  {mustHaveRows}
+                roi (1,1) sbx.Roi
+                expt (1,1) ns.Experiment
                 pv.trial   (1,:) double = []
                 pv.baseline (1,:) double = [2 3]
                 pv.window (1,2) double = [0 3]

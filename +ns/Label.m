@@ -103,58 +103,50 @@ classdef Label <  dj.Computed & dj.DJInstance
     end
 
     methods (Access=public)
-        function T = find(tbl,value, pv)
+        function T = find(tbl,pv)
             % Find components matching a query
             % EXAMPLE:
             % Find iclabel components that match the string
-            %  find(ns.Label &'ltag="ICLABEL"',"Eye")
+            %  find(ns.Label &'ltag="ICLABEL"',name= "Eye")
             % Find iclabel components that match any of the array of
             % strings
-            %  find(ns.Label &'ltag="ICLABEL"',["Eye" "Muscle"])
+            %  find(ns.Label &'ltag="ICLABEL"',name= ["Eye" "Muscle"])
             % Find components from a set with probability above 0.5.
-            %  find(ns.Label &'ltag="ICLABEL"',{["Eye" "Heart" "muscle"],0.5})
+            %  find(ns.Label &'ltag="ICLABEL"',name = ["Eye" "Heart" "muscle"],threshold = 0.5)
             % Find components where the sum of probabilities across artifacts is  above 0.5.
-            % find(ns.Label & &'ltag="ICLABEL"',{["Eye" "Heart" "muscle"],0.5},op = @(x,y) (gt(sum(x,2),y))
+            % find(ns.Label & &'ltag="ICLABEL"',name= ["Eye" "Heart" "muscle"], threshold= 0.5,op = @(x,y) (gt(sum(x,2),y))
             %
             % Find a EOG component with a correlation (q) above 0.5
-            % find(ns.Label & 'ltag="EOG"',0.5)
+            % find(ns.Label & 'ltag="EOG"',threshold = 0.5)
             arguments
                 tbl (1,1) ns.Label
-                value  (1,:) {mustBeA(value,["string" "double" "cell" "char"])}  % One or more values to look for
-                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to == for string and > for numeric
+                pv.name(1,:) string  = string.empty % One or more names to look for
+                pv.threshold (1,1) double = NaN 
+                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to containts for string and > for numeric                
             end
             % Pass to static that is also used by LabelSession
             pv = namedargs2cell(pv);
-            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), value,pv{:});
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), pv{:});
         end
     end
 
     methods (Static)
-        function T = findInTable(T, value,pv)
+        function T = findInTable(T, pv)
             arguments
                 T (:,:) table
-                value  (1,:) {mustBeA(value,["string" "double" "cell" "char"])} % One or more values to look for
-                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to == for string and > for numeric
-                pv.findExtra (1,1) logical =false
+                pv.name (1,:) string   =  string.empty  % For named IC, specify the name to look for
+                pv.threshold  (1,1) double  = NaN % For IC with an associated numeric value.
+                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to contains for string and > for numeric                
             end
+            
             if ischar(pv.op) || isstring(pv.op)
                 pv.op = str2func(pv.op);
             end
-            if ischar(value)
-                value = string(value);
-            end
-            isStringSearch = iscellstr(value) || isstring(value);
-            if isempty(pv.op)
-                if isStringSearch
-                    pv.op = @(x,y)contains(x,y,'IgnoreCase',true);
-                else
-                    pv.op = @gt;
-                end
-            end
-
 
             % Core find logic shared by ns.Label.find and ns.LabelSession.find.
             % T must be a table with columns 'parms'  'q' and 'extra' (from a *ns.LabelParm join).
+            % This is constructed in the Label/find  and LabelSession/find
+            % functions
             T = addvars(T, cell(height(T), 1), 'NewVariableNames', 'components');
             for tpl = 1:height(T)
                 if isstruct(T.parms)
@@ -169,37 +161,48 @@ classdef Label <  dj.Computed & dj.DJInstance
                 if iscell(extra)&& isscalar(extra);extra =extra{1};end
                 switch upper(method)
                     case 'ICLABEL'
-                        if iscell(value)
-                            % Looking for labels with a probability
-                            cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
-                            colsToInspect = contains(cols,string(value{1}),'IgnoreCase',true);
-                            probability= extra(:,colsToInspect);
-                            comp = find(any(pv.op(probability,value{2}),2));
-                        else
-                            if isStringSearch
-                                % Looking for labels matching the value
-                                comp = find(pv.op(q,value));
-                            else
-                                comp = [];
+                        if isnan(pv.threshold)
+                            % Looking for labels matching any of the items
+                            % in the name  string array (no  threshold probability)
+                            if isempty(pv.op)
+                                pv.op = @(x,y)contains(x,y,'IgnoreCase',true);
                             end
-
+                            comp = find(pv.op(q,pv.name));                            
+                        else
+                            % Looking for labels (name) with a
+                            % probability larger than (pv.threshold)
+                            cols = ["Brain"  "Muscle" "Eye"  "Heart" "Line Noise" "Channel Noise" "Other"];
+                            colsToInspect = contains(cols,pv.name,'IgnoreCase',true);
+                            probability= extra(:,colsToInspect); % Probabilities associated with all ICLabels (rows) for all canidate names (cols)
+                            % Include a component if any of the targets
+                            % (names) have an above threshold probability.
+                            if isempty(pv.op)
+                                pv.op = @gt;
+                            end
+                            comp = find(any(pv.op(probability,pv.threshold),2));                                                    
                         end
                     case {'ETA','SPEARMAN','EOG'}
-                        if isStringSearch || iscell(value)
-                            comp = [];
-                        else
-                            comp = find(pv.op(q,value));
+                        % These methods determine whether a single label
+                        % (name) should be applied to a component or not. 
+                        % The q-value is the probability (or some other
+                        % quantification); by comparing that to a
+                        % method-specific threshold, matching components 
+                        % are identified
+                        assert(isempty(pv.name),"For label method %s, names are not used and should not be specified",method);
+                        if isempty(pv.op)
+                            pv.op = @gt;
                         end
+                        comp = find(pv.op(q,pv.threshold));                        
                     otherwise
                         error('No find implemented for labeling method: %s', method);
                 end
                 T{tpl, 'components'} = {comp};
 
                 % Command line info:
-                if iscell(value)
-                    strValue = strjoin(string(value{1}),'/') + "," + string(value{2});
+                if isempty(pv.name)
+                    strValue = string(pv.threshold);
                 else
-                    strValue = strjoin(string(deblank(value)),'/');
+                    strValue = strjoin(pv.name,'/');
                 end
                 if isempty(comp)
                     fprintf('No components with %s(q,%s) in %s Label for %s.\n', func2str(pv.op),strValue,T{tpl,"ltag"},id);

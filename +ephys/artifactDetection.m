@@ -18,7 +18,7 @@ function [perExpt,perChannel] = artifactDetection(C,parms)
 % BK  - Apr 2020
 % Updated for ns.C/ns.Artifact
 arguments
-    C (1,1) ns.C {mustHaveRows(C,1)}
+    C (1,1) ns.C
     parms (1,1) struct
 end 
 % parms 

@@ -8,7 +8,7 @@ trials      : blob              # The trials in this condition
 %}
 % See also ns.Dimension
 % BK - March 2023.
-classdef DimensionCondition < dj.Part
+classdef DimensionCondition < dj.Part & dj.DJInstance
      properties (SetAccess = protected)
         master = ns.Dimension
     end

@@ -40,19 +40,19 @@ classdef LabelSession < dj.Computed & dj.DJInstance
     end
 
     methods (Access=public)
-        function T = find(tbl,value,pv)
+        function T = find(tbl,pv)
             % Find components matching a query. See ns.Label.find for
             % examples
             % Delegates to ns.Label.findInTable so the logic is maintained in one place.
             arguments
                 tbl (1,1) ns.LabelSession
-                value  (1,:)  {mustBeA(value,["string" "double"])} % One or more values to look for
-                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to == for string and > for numeric                
-                pv.findExtra (1,1) logical =false 
-            end
+                pv.name(1,:) string  = string.empty % One or more names to look for
+                pv.threshold (1,1) double = NaN 
+                pv.op (1,:)  {mustBeA(pv.op,["function_handle" "string" "char"])} = function_handle.empty  % Operator to use. Defaults to containts for string and > for numeric                
+              end
             % Pass to static that is also used by LabelSession
             pv = namedargs2cell(pv);
-            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'), value,pv{:});
+            T = ns.Label.findInTable(fetchtable(tbl * ns.LabelParm, '*'),pv{:});
         end
     end
 

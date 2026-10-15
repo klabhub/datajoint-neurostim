@@ -12,7 +12,7 @@ classdef Subject < dj.Manual
         function subject = nwb(tbl,nwbRoot,pv)      
             % nwb export function, called from ns.Experiment nwbExport.      
             arguments
-                tbl (1,1) ns.Subject {mustHaveRows(tbl,1)} %  A single row in this table
+                tbl (1,1) ns.Subject %  A single row in this table
                 nwbRoot (1,1) NwbFile  % The root element 
                 pv (1,1) struct % The struct of pv pairs set in ns.Experiment/nwbExport
             end

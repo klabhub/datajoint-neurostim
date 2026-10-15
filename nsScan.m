@@ -199,15 +199,12 @@ end
 [~,~,fileExtension]= fileparts(dirInfo(1).name);
 % Select files matching Neurostim format filename
 fullName = fullfile({dirInfo.folder}',{dirInfo.name}');
-if strcmpi(filesep','\')
-    fs = '\\';
-else
-    fs = filesep;
-end
+fullName = strrep(fullName, '\', '/');
+fs = '/';
 % The first part of the pattern should be thre root. But on some HPC
 % systems searching in one location returns files from a different location
 % Hence we allow the initial match to anything \w\d/.
-pattern = ['[\w\d' fs ']*(?<session_date>\d{4,4}' fs '\d{2,2}' fs '\d{2,2})' fs '(?<subject>\w{1,10})\.(?<paradigm>\w+)\.(?<starttime>\d{6,6})\' fileExtension];
+pattern = ['.*?(?<session_date>[0-9]{4}/[0-9]{2}/[0-9]{2})/(?<subject>[A-Za-z0-9_]{1,10})[.](?<paradigm>[A-Za-z0-9_]+)[.](?<starttime>[0-9]{6})[.]' fileExtension(2:end)];
 meta = regexp(fullName,pattern,'names');
 % Prune those file that did not match
 out = cellfun(@isempty,meta);
@@ -229,7 +226,7 @@ if ~iscell(file);file={file};end
 [meta.file] = deal(file{:});
 [meta.bytes] = deal(dirInfo.bytes);
 [meta.provenance] =deal("");
-session_dates = deal(strrep({meta.session_date},filesep,'-'));  % Match ISO format of DJ
+session_dates = deal(strrep({meta.session_date},'/','-'));  % Match ISO format of DJ
 [meta.session_date] = deal(session_dates{:});
 starttimes = cellfun(@(x)([x(1:2) ':' x(3:4) ':' x(5:6)]),{meta.starttime},'uni',false);
 [meta.starttime] = deal(starttimes{:}); % Match the  HH:MM:SS format of DJ
@@ -258,7 +255,7 @@ stay = stay &  ~ismember({meta.subject},pv.excludeSubject);
 % include based on paradigm
 if isempty(pv.paradigm)
     pv.minNrTrials = [];
-elseif exists(ns.Paradigm) && pv.paradigm==""
+elseif isscalar(pv.paradigm) && pv.paradigm=="" && exists(ns.Paradigm)
     % Select on the basis of the ns.Paradigm table
     [pv.paradigm,pv.minNrTrials,from,to]= fetchn(ns.Paradigm,'name','mintrials','from','to');
     pv.paradigm= upper(string(pv.paradigm));
@@ -468,13 +465,17 @@ if ismember("analyze",tExperiment.Properties.VariableNames) && pv.analyze
         return;
     end
 end
-clear meta fullName %  These are sorted differently; prevent accidental use below.
-
-nrExperiments = height(tExperiment);
-if pv.verbose
-    fprintf('Found %d matching Neurostim files: \n',nrExperiments)
-    tExperiment %#ok<NOPRT>
+% Check paradigm length
+nrVarChar= 32; % Fixed in the datajoint database to avoid PK name length issues in derived tables. See ns.Experiment
+len = strlength(tExperiment.paradigm);
+if any(len>nrVarChar)
+    warning('Paradigm names (%s) are longer than %d; they will be truncated',strjoin(unique(tExperiment.paradigm(len>nrVarChar)),"/"),nrVarChar);
+    trunc = tExperiment.paradigm(len>nrVarChar);
+    trunc = extractBefore(trunc,min(len(len>nrVarChar),nrVarChar)+1);
+    tExperiment{len>nrVarChar,"paradigm"} = trunc;
 end
+
+clear meta fullName %  These are sorted differently; prevent accidental use below.
 
 
 %% B. Session Meta Data

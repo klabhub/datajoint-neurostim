@@ -26,7 +26,7 @@ tic;
 nrTpls = numel(tpl);
 
 
-fprintf('Uploading to server (%d tuples with %d MB per chunk):',maxElementsPerChunk,round(maxElementsPerChunk*elementSize/1e6))
+fprintf('Uploading to server (Per-chunk max is %d tuples with %d MB):',maxElementsPerChunk,round(maxElementsPerChunk*elementSize/1e6))
 
 i = 1;
 progress_old = 0;

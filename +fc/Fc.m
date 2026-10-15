@@ -21,7 +21,7 @@ classdef Fc < dj.Computed
          function plot(tbl,pv)
             % Rudimentary plot function. Needs to be extended with options
             arguments
-                tbl (1,1) {mustHaveRows(tbl)}               
+                tbl (1,1)
                 pv.bothSides (1,1) logical = true; % Show symmetric matrix
                 pv.alpha (1,1) double = Inf; % so far for testing                
             end

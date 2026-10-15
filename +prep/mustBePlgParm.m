@@ -1,3 +1,0 @@
-function mustBeArtParm(art)
-    
-end

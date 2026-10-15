@@ -38,10 +38,10 @@ classdef Ica < dj.Computed & dj.DJInstance
             % To select components, use a find struct (see ns.Label/find)
             %  f.ltag= "iclabel" - search in Label with ltag iclabel
             % Search components with specific labels:
-            %  f.value = ["Eye" "Muscle" "Other"]; 
+            %  f.value = ["Eye" "Muscle" "Other"];
             % or search components where the probability for certain
             % artifacts is above some threshold value:
-            % f.value = {["Eye" "Muscle" "Other"],0.8}; 
+            % f.value = {["Eye" "Muscle" "Other"],0.8};
             % plot(tbl,find = f)
             arguments
                 tbl (1,1) ns.Ica
@@ -96,7 +96,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                     'ctag', key.ctag);
 
                 src = fetch1(ns.IcaSession & sessionKey, ...
-                        'nrcomponents', 'chanlabels', 'variance');
+                    'nrcomponents', 'chanlabels', 'variance');
                 % Remap session channel labels to per-experiment indices
                 expChanlocs = fetch(ns.CChannel & key, 'channelinfo');
                 expLabels = {expChanlocs.channelinfo.labels};
@@ -111,7 +111,8 @@ classdef Ica < dj.Computed & dj.DJInstance
                 % Per-experiment ICA
                 icaParms = fetch1(ns.IcaParm & key, 'parms');
                 EEG = ephys.eeglab.dataset(key, data=key.ctag, itag="");
-                if isfield(icaParms, 'filt')
+                assert(EEG.pnts>0,"No %s C data in %s",key.ctag,key.starttime);
+                if isfield(icaParms, 'filt') && ~isempty(icaParms.filt)
                     EEG = pop_eegfiltnew(EEG, 'hicutoff', icaParms.filt.hicutoff, ...
                         'locutoff',  icaParms.filt.locutoff);
                     icaParms = rmfield(icaParms, 'filt');
@@ -288,7 +289,7 @@ classdef Ica < dj.Computed & dj.DJInstance
                     axis off;
                     title("#" + string(d.compIdx));
                 else
-                    hold on;
+            hold on;
                     for j = 1:numel(d.etaEntries)
                         e = d.etaEntries{j};
                         plot(e.timesMs, e.eta, 'DisplayName', e.label);
@@ -318,12 +319,13 @@ classdef Ica < dj.Computed & dj.DJInstance
                 % Try a session level ICA
                 icaRelVar = ns.IcaSession & (ns.Session & (ns.C &  cTpl)) & struct('itag',pv.itag);
                 labelRelVar  = ns.LabelSession & icaRelVar & struct('ltag',pv.ltag);
-            assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
-            W = ns.Ica.getWeights(fetch(icaRelVar));
-            findLabelRelvar =  labelRelVar  & (ns.LabelParm & struct('ltag',pv.ltag));
-                pv.find.op = function_handle.empty;
+                assert(exists(icaRelVar),"No ica with itag %s found for %s@%sT%s",pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
             end
-            T = find(findLabelRelvar ,pv.find.value,op=pv.find.op);              
+            assert(exists(labelRelVar),"No labels for ltag %s (itag %s) for %s@%sT%s",pv.ltag,pv.itag,cTpl.subject,cTpl.session_date,cTpl.starttime);
+
+            W = ns.Ica.getWeights(fetch(icaRelVar));
+            args = namedargs2cell(pv.find);
+            T = find(labelRelVar,args{:});
             compsToRemove = [T.components{:}];
             % Reconstruct the signal from these components.
             Xica = signal(:, W.channels);
@@ -333,7 +335,7 @@ classdef Ica < dj.Computed & dj.DJInstance
             varExplained = fetch1(icaRelVar,'variance');
             info.nrComponents= numel(compsToRemove);
             info.variance = sum(varExplained(compsToRemove));
-            fprintf('Removed %d components (%.0f%% variance) based on ICA %s\n',info.nrComponents,info.variance,pv.itag);    
+            fprintf('Removed %d components (%.0f%% variance) based on ICA %s\n',info.nrComponents,info.variance,pv.itag);
         end
     end
 

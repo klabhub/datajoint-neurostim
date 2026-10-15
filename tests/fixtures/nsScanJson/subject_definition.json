@@ -1,0 +1,7 @@
+{
+  "Locked": "1",
+  "Fields": {
+    "species": {"Description": "Species"},
+    "cohort": {"Description": "Study cohort"}
+  }
+}

@@ -42,24 +42,33 @@ classdef IcaParm < dj.Lookup
 
     methods
         function insert(self, tuples, varargin)
+            
             % Validate then insert into IcaParm.
             for i = 1:numel(tuples)
-                ns.IcaParm.validate(tuples(i));
+                pv = namedargs2cell(tuples(i).parms);
+                tuples(i).parms = ns.IcaParm.validate(pv{:});
             end
-            insert@dj.Lookup(self, tuples, varargin{:});
+            insert@dj.Lookup(self, makeMymSafe(tuples), varargin{:});
         end
     end
 
     methods (Static, Access = protected)
-        function validate(tpl)
-            % Validate a single IcaParm tuple before insertion.
-
-            assert(isfield(tpl, 'parms') && isstruct(tpl.parms), ...
-                '"parms" must be a struct.');
-
+        function tpl = validate(tpl)
+            % Validate and supply defaults for a single IcaParm tuple before insertion.
+            arguments
+                tpl.filt (1,1) struct = struct([])  % Pre-ICA filtering (high-pass recommended)
+                % inputs of pop_runica /runica see help runica for details
+                tpl.pca (1,1) double = inf          % Number of components (Inf = all)                
+                tpl.icatype (1,1) string  {mustBeMember(tpl.icatype,["runica","binica","jader", "fastica"])}= "runica"
+                tpl.extended (1,1) double = 1
+                tpl.sphering (1,1) string {mustBeMember(tpl.sphering,["on" "off"])}= "on"
+                tpl.maxsteps (1,1) double = 512
+                tpl.stop (1,1) double = 1e-7
+            end
+                        
             % Optional filt sub-struct
-            if isfield(tpl.parms, 'filt')
-                f = tpl.parms.filt;
+            if isfield(tpl, 'filt')
+                f = tpl.filt;
                 assert(isstruct(f), '"parms.filt" must be a struct.');
                 assert(isfield(f, 'locutoff') && isnumeric(f.locutoff) && isscalar(f.locutoff), ...
                     '"parms.filt.locutoff" must be a numeric scalar (Hz; use 0 to skip).');

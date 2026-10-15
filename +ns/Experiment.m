@@ -3,7 +3,7 @@
 starttime: time # Time that the experiment started (HH:MM:SS)
 -> ns.Session   # Corresponding session session  (FK)
 ---
-paradigm: varchar(255)      # Name of the paradigm
+paradigm: varchar(32)      # Name of the paradigm
 file = NULL : varchar(255)  # File that contains the Neurostim output
 stimuli = NULL : smallint      # Number of stimuli in the experiment
 blocks = NULL : smallint       # Number of blocks in the experiment
@@ -94,7 +94,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % retrieve the parameter value (using ns.Experiment/get) for
             % the experiment with the mnost trials
             arguments
-                tbl ns.Experiment {mustHaveRows(tbl)}
+                tbl ns.Experiment
                 pv.showParameters (1,1) logical =false %
                 pv.showPlugins (1,1) logical = true
             end
@@ -355,7 +355,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % This includes multiple dimensions (i.e., ways to define a
             % condition).
             arguments
-                tbl (1,1) ns.Experiment {mustHaveRows(tbl)}
+                tbl (1,1) ns.Experiment
                 pv.max (1,1) double = Inf
             end
             tiledlayout('flow');
@@ -407,7 +407,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
 
         function showBehavior(tbl,behavior,pv)
             arguments
-                tbl (1,1) ns.Experiment {mustHaveRows}
+                tbl (1,1) ns.Experiment
                 behavior (1,1) string
                 pv.trial (1,:) = [] % List of trials to include [] means all.
             end
@@ -483,7 +483,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             % database.
             %
             arguments
-                tbl (1,1) ns.Experiment {mustHaveRows}
+                tbl (1,1) ns.Experiment
                 plg (1,:) string  =  "cic"
                 pv.prm {mustBeText} = string.empty
                 pv.what (1,:) string = "all"
@@ -521,7 +521,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 missing = cellfun(@isempty,G.(p));
                 if any(missing)
                     fprintf(2,'These experiments did not use the %s plugin\n ',p);
-                    exptWithMissing = G(missing,:)
+                    exptWithMissing = G(missing,:) %#ok<NOPRT>
                 end
             end
 
@@ -569,7 +569,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
             %  Identify timepoints in t (ms) that are between firstFrame and
             % trialStopTime  with slack of halfWidth (ms) on either end.
             arguments
-                expt (1,1) ns.Experiment {mustHaveRows(expt,1)}
+                expt (1,1) ns.Experiment
                 t (1,:) double
                 halfWidth (1,1) double
             end

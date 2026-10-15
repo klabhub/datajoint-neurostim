@@ -364,7 +364,7 @@ classdef Preprocessed < dj.Computed
         function X = movie(tbl,pv)
             % Create a movie from the raw sbx data 
             arguments
-                tbl (1,1) sbx.Preprocessed {mustHaveRows(tbl,1)}
+                tbl (1,1) sbx.Preprocessed
                 pv.file (1,:) char = '%'  
                 pv.startFrame (1,1) = 0
                 pv.nrFrames (1,1) double = 10000
