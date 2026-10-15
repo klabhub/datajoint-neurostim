@@ -61,7 +61,7 @@ classdef Source< dj.Computed
             GG = sortrows(GG,"label");
             sourcemodel = fetch1(sloc.Headmodel & tbl,'sourcemodel','LIMIT 1');
             power =GG.fun1_power;
-            ax = gobjects(height(GG),1);
+            ax = gobjects(0);
             switch lower(pv.what)
                 case "3d"
                     clf;
@@ -160,8 +160,7 @@ classdef Source< dj.Computed
                 end
                 sourcemodel =fetch1(sloc.Headmodel & tpl,'sourcemodel');
 
-                if count(ns.DimensionCondition & tpl)>1;continue;end
-                condition = fetch1(ns.DimensionCondition & tpl,'name');
+                condition = tpl.label;
                 for wh = pv.what
                     switch lower(wh)
                         case "3d"
@@ -191,7 +190,8 @@ classdef Source< dj.Computed
                             cfg.downsample = 2;
                             cfg.sphereradius =20;
                             cfg.power = 2;
-                            sourcedata = tpl.source;
+                            sourcedata = tpl.ft.response;
+                            sourcedata.pow = tpl.power(:);
                             sourcedata = rmfield(sourcedata,setdiff(fieldnames(sourcedata),["pos" "pow"  "unit" "coordsys"]));
                             functional = ft_sourceinterpolate(cfg,  ...
                                 sourcedata,...

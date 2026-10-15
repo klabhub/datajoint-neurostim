@@ -43,7 +43,8 @@ classdef Headmodel < dj.Computed & dj.DJInstance
                 switch what
                     case "segmentation"
                         % convert from probabilistic/binary into indexed representation
-                        segmentedmri_indexed = ft_datatype_segmentation(mri, 'segmentationstyle', 'indexed');
+                        segmented = fetch1(tbl, 'segmented');
+                        segmentedmri_indexed = ft_datatype_segmentation(segmented, 'segmentationstyle', 'indexed');
                         % also add the anatomical mri
                         segmentedmri_indexed.anatomy = mri.anatomy;
                         cfg              = [];
@@ -179,7 +180,9 @@ classdef Headmodel < dj.Computed & dj.DJInstance
             if exist(mriFile,"file")
                 mri = ft_read_mri(char(mriFile),'dataformat','nifti');
             else
-                sloc.Fiducial.dicom2nifti(fullfile(getenv('NS_ROOT'),fids.folder),mriFile);
+                dcmFile = sloc.Fiducial.firstDicomFile(fullfile(getenv('NS_ROOT'),fids.folder));
+                assert(~isempty(dcmFile),'No DICOM files found for this MRI.');
+                mri = sloc.Fiducial.dicom2nifti(fullfile(dcmFile.folder,dcmFile.name),mriFile);
             end
 
             mri = ft_convert_units(mri, 'mm');

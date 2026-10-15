@@ -47,7 +47,7 @@ classdef SourceParm  < dj.Lookup
                     defaults.freq.tapsmofrq   = 2;
                     defaults.freq.pad= 'nextpow2';
 
-                    defaults.source.dics.method             = 'dics';
+                    defaults.source.method                  = 'dics';
                     defaults.source.dics.projectnoise       = 'yes';
                     defaults.source.dics.lambda             = '5%';
                     defaults.source.dics.keepfilter         = 'yes';
