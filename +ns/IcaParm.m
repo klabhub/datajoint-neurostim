@@ -81,7 +81,7 @@ classdef IcaParm < dj.Lookup
             end
 
             % Warn if ctag not yet in ns.C (may not exist at definition time, so just warn)
-            if isfield(tpl, 'ctag') && count(ns.CParm & struct('ctag', tpl.ctag)) == 0
+            if isfield(tpl, 'ctag') && ~exists(ns.CParm & struct('ctag', tpl.ctag))
                 warning('ns:IcaParm:unknownCtag', ...
                     'ctag "%s" has no matching rows in ns.CParm yet.', tpl.ctag);
             end

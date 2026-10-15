@@ -107,14 +107,11 @@ channelInfo = makeMymSafe(table2struct(channelInfo));
 
 
 %% Add evts to egi plugin
-% Define the tpls.
+% Define the tpls. Some events maye have already been added to the pluginparameter table.
+% (Presumably by some other ns.CParm that also loads from this file).
+% So we only insert if new.
 plgTpl = fetch(ns.Plugin & 'plugin_name="egi"' & key);
-if exists(ns.PluginParameter & plgTpl & 'property_name="BREC"')
-    % The events have already been added to the pluginparameter table.
-    % (Presumably by some other ns.CParm that also loads from this file).
-else
-    prmTpl= mergestruct(plgTpl,EEG.etc.neurostim.pluginparameter);
-    insert(ns.PluginParameter,prmTpl);
-end
+prmTpl= mergestruct(plgTpl,EEG.etc.neurostim.pluginparameter);
+insertIfNew(ns.PluginParameter,prmTpl);
 end
 

@@ -119,12 +119,20 @@ classdef File < dj.Imported  & dj.DJInstance
                 out =T;
             end
         end
-        function updateWithFiles(tbl,key,linkedFiles)
+        function updateWithFiles(tbl,key,linkedFiles,pv)
+            arguments
+                tbl
+                key
+                linkedFiles
+                pv.keepDir =false
+            end
+
             % Usually called from makeTuples to add the standard files
             % named according to NS conventions, but can be called to add
             % other file,s that don't match that format.
+            if ~pv.keepDir
             linkedFiles([linkedFiles.isdir])=[];            
-            
+            end
             persistent warnedForExclusion 
             if isempty(warnedForExclusion)
                 warnedForExclusion= false;

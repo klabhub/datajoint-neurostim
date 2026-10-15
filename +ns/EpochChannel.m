@@ -4,7 +4,7 @@
 channel : int       # Channel number
 trial : int         # Trial number 
 ---
-onset : float             # Time of the align event relative to trial start
+onset : float             # Experiment time of the align event 
 signal     : longblob     # C data for a single channel, single trial
 %}
 %

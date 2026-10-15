@@ -68,7 +68,7 @@ if exists(keysource) &&  pv.clearJobStatus~=""
     if exist(jobsTableName,"class")
         % Find related jobs (i.e. filling the same table and the specified status)
         sameTableJobs = feval(jobsTableName) & in("status",pv.clearJobStatus) & sprintf('table_name="%s"',tbl.className);
-        if count(sameTableJobs)>0
+        if exists(sameTableJobs)
             % Determine which of these jobs will be retried by the current
             % populate call
             keysourceTable = fetchtable(keysource);

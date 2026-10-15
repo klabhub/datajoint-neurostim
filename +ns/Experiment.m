@@ -68,7 +68,7 @@ classdef Experiment  < dj.Manual & dj.DJInstance
                 reference = aggr(allS,ns.Experiment,'min(starttime)->reference');
             else
                 reference = proj(allE & sprintf('paradigm="%s"',referenceParadigm),'starttime->reference');
-                if count(reference)==0
+                if ~exists(reference)
                     fprintf('Reference paradigm %s not found in the experiment table.',referenceParadigm);
                 end
             end

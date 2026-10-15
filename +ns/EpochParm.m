@@ -58,7 +58,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 %  Check that there is only one plugin for this dimension
                 G = proj(dimTbl, 'dimension');                         
                 multipleOptions = aggr(G, dimTbl, 'count(distinct plugin)->n') & 'n>1';
-                assert(count(multipleOptions)==0,"The %s dimension links to multiple plugins. Cannot pick a default align.",pv.dimension);
+                assert(~exists(multipleOptions),"The %s dimension links to multiple plugins. Cannot pick a default align.",pv.dimension);
                 % Setup the align struct
                 plg = fetch1(dimTbl,'plugin','LIMIT 1');
                 pv.align = struct('plugin',plg{1},'event','startTime');
@@ -88,7 +88,7 @@ end
 % See prep.artifactDetection for descriptions.
 defaults = struct;
 defaults.enable = false;
-defaults.amplitude_threshold_peak = 1;
+defaults.amplitude_threshold_peak = 150;
 defaults.amplitude_channelfrac = 0.5;
 defaults.variance_z_threshold = 5;
 defaults.hf_cutoff_hz = 50;

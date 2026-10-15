@@ -20,7 +20,7 @@ end
 
 
 prmRel = ns.PluginParameter & plgRel & in('property_name',prm);
-if count(prmRel)==0
+if ~exists(prmRel)
     fprintf(2,'No %s:%s events found.\n',plg,strjoin(prm,'/'));
 else
     % Map neurostim time to egi time.

@@ -100,7 +100,7 @@ classdef DimensionParm < dj.Lookup
 
             for thisParadigm = paradigm
                 expts = proj(ns.Experiment & struct('paradigm',thisParadigm));
-                if count(expts)==0
+                if ~exists(expts)
                     fprintf('No experiments with %s paradigm. Cannot validate.\n',thisParadigm);
                     continue;
                 end
