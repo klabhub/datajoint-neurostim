@@ -1,9 +1,9 @@
 classdef (Abstract) cache < handle
     % Abstract superclass used by ns.EpochChannel and ns.TepochChannel
     %
-    % When working with a set of EpochChannel or TepochChannel objects one 
-    % often wants to compute derived measures (e.g. a spectrum from a signal), 
-    % average in different ways (across trials or channels, or subjects), 
+    % When working with a set of EpochChannel or TepochChannel objects one
+    % often wants to compute derived measures (e.g. a spectrum from a signal),
+    % average in different ways (across trials or channels, or subjects),
     % or visualize raw or computed data.
     %
     % This cache class prevents multiple round trips to the server to fetch
@@ -31,7 +31,7 @@ classdef (Abstract) cache < handle
     %       hold on;
     %       end;
     % legend(G.condition)
-    %    
+    %
     % BK - Dec 2025
     % MO - 2026
     properties (Constant)
@@ -58,7 +58,7 @@ classdef (Abstract) cache < handle
                 o.T = removevars(o.T,["dependent" "independent"]);
             end
             if o.T.Properties.VariableTypes(o.T.Properties.VariableNames==o.dependent) =="double"
-                o.T.(o.dependent) = num2cell(o.T.(o.dependent),2); 
+                o.T.(o.dependent) = num2cell(o.T.(o.dependent),2);
             end
             if o.T.Properties.VariableTypes(o.T.Properties.VariableNames==o.independent) =="double"
                 o.T.(o.independent) = num2cell(o.T.(o.independent),2);
@@ -67,13 +67,13 @@ classdef (Abstract) cache < handle
         end
     end
 
-    methods (Access = public)        
+    methods (Access = public)
         function plot(o,pv)
             % Plot y as a function of x for all rows in the table.
             % Set the 'average' input to select which aspects to average
             % over. By default, trials and channels are averaged.
             arguments
-                o (1,1) 
+                o (1,1)
                 pv.delta (1,1) string = ""              % Show the difference using this named condition as the reference
                 pv.channel (:,1) double = []            % Select a subset of channels
                 pv.trial (:,1) double = []            % Select a subset of trials
@@ -119,8 +119,8 @@ classdef (Abstract) cache < handle
                 plotXName = "average_" + xName;
                 plotYName = "average_" + yName;
             end
-            
- 
+
+
             if pv.raster ~=""
                 % Concatenate the trials into a raster matrix in G.
                 rasterGrouping = setdiff(ns.cache.AVERAGEVARS,[pv.raster pv.average]);
@@ -178,8 +178,8 @@ classdef (Abstract) cache < handle
                     x = G.(plotXName){1}';
                     if xName =="time" && numel(x) ==3
                         x = linspace(x(1),x(2),x(3))';
-                    end                    
-                    nrTrials= size(G.(plotYName){i},1);                    
+                    end
+                    nrTrials= size(G.(plotYName){i},1);
                     if pv.line
                         y =G.(plotYName){i};
                         y = y./max(abs(y),[],"all") + repmat((1:size(y,1))',[1 size(y,2)]);
@@ -193,7 +193,7 @@ classdef (Abstract) cache < handle
                         end
                     end
                     n = mean(G.n{i},"all");
-                    hold on 
+                    hold on
                     plot([0 0],ylim,'k')
                     keep = intersect(setdiff(ns.cache.AVERAGEVARS,pv.newTileEach),G.Properties.VariableNames);
                     ttlStr = strjoin(string(G{i,keep}),"/");
@@ -205,10 +205,10 @@ classdef (Abstract) cache < handle
                     y = G{i,plotYName};
                     if iscell(y)
                         y = cat(1,y{:});
-                    end                    
-                   
+                    end
+
                     try
-                    plot(x,y);
+                        plot(x,y);
                     catch
                     end
                     hold on;
@@ -220,7 +220,7 @@ classdef (Abstract) cache < handle
                         legStr = [legStr dimension + "=" + G.condition(i)]; %#ok<AGROW>
                     end
                     n =NaN;
-                else 
+                else
                     % An average has been determined
                     x =G.(plotXName){i}';
                     if xName =="time" && numel(x) ==3
@@ -237,7 +237,7 @@ classdef (Abstract) cache < handle
                     h = [h plot(x,m)];                %#ok<AGROW>
                     out = isnan(m);
                     p = patch([x(~out) ;  flip(x(~out))]',[m(~out)+err(~out) ; flip(m(~out)-err(~out))]',h(end).Color);
-                    p.EdgeColor = h(end).Color;                    
+                    p.EdgeColor = h(end).Color;
                     p.FaceAlpha = 0.5;
                     plot(xlim,[0 0],'k');
                     ylabel (o.dependent,'Interpreter','none');
@@ -282,20 +282,24 @@ classdef (Abstract) cache < handle
         function [G,D,uGroup] =  compute(o,fun,pv)
             % Compute derived measures from the (T)EpochChannel table.
             % fun - struct with fields corresponding to one of the
-            % functions listed below. 
-            % Sampling rate is determined automatically, from the database.
+            % functions listed below. Sampling rate is determined automatically
+            % from the database.
+            %   empty struct; Returns either the epochs themselves, or
+            %                   their average based on the .average pv
+            %                   (below).
+            %
             %   .fft:       Uses `fft()` to compute amplitude, phase as a function
-            %                   of frequency. Supports the named `n` option.            
+            %                   of frequency. Supports the named `n` option.
             %                EXAMPLE: fun.fft = struct()
             %   .pspectrum: Uses `pspectrum()` to compute power spectral
-            %                   density as a function of frequency            
+            %                   density as a function of frequency
             %               EXAMPLE : fun.pspectrum = struct('FrequencyLimits',[0 50])
             %   .pmtm:      Uses the multitaper pmtm function. Options are
             %               supplied as a struct with these fields:
             %               tapertype: 'slepian' (default) or 'sine'
             %               nw:        4 (default) or a positive scalar
             %               m:         7 (default), an integer scalar, or vector
-            %               nfft:      [] (default) or an integer            
+            %               nfft:      [] (default) or an integer
             %               f:         frequencies, a vector
             %               EXAMPLE:
             %               fun.pmtm = struct('nw',4,'nfft',256);
@@ -362,8 +366,8 @@ classdef (Abstract) cache < handle
             %               Options are supplied as a struct with fields
             %               searchFrequencies and searchRangeHalfWidth.
             %
-            % You can extend this functionality by specifying your own function handle as a field of the fun struct. 
-            % The function must accept the signal and sampling rate as its first two arguments, and return a table with row vectors of results. 
+            % You can extend this functionality by specifying your own function handle as a field of the fun struct.
+            % The function must accept the signal and sampling rate as its first two arguments, and return a table with row vectors of results.
             % The function must also return a second output, which is the name of the column in the table that is the independent variable.
             % For instance
             %        fun.myfun = @(signal,srate) myfun(signal,srate,'start',1,'mode','bla');
@@ -373,40 +377,57 @@ classdef (Abstract) cache < handle
             % channel  - Select a subset of channels. Defaults to []: all channels
             % trial    - Select a subset of trials. Defaults to []: all trials
             %
-            % Channel or trial seelection can be donw with a vector of 
-            % channel/ trial numbers , or a function that takes the cached data 
+            % Channel or trial seelection can be donw with a vector of
+            % channel/ trial numbers , or a function that takes the cached data
             % table (o.T) as input and returns a logical vector that
-            % indicates per row whether it should be included or not. 
+            % indicates per row whether it should be included or not.
             % For instance: trial   = @(T) (T.trial<100), will include only
             % trial numbers up to 100 in the computation.
             %
             % timeWindow - Select a time window
-            % average  - Analysis is applied after averaging over these
-            %               fields.
+            % average  - Specify what to average over *before* starting the compute
+            %               functions 
             %               Defaults to ["trial" "channel"], but can be
             %                any of ["subject" "session_date" "starttime" "condition" "trial" "channel"]
-            %               Set to string.empty to avoid averaging.
+            %               Set to string.empty to let the compute fun work on the single trial, 
+            %               single channel data.
+            %
+            % .robust % Set to true to use median/iqr for averaging
+            % .outlier % Set the threshold for outlier removal.
+            %
             % OUTPUT
             % G  - A table with the results
             % D -  A dictionary mapping independent variables to dependent
             % variables (both of which are columns in G)
             % uGroup = the list of unique group names (or "_" if no
             % averaging was performed).
+            %
+            % NOTE 
+            %  The average pv specifies what will be averaged over. With 
+            %  average ="channel" the result will not have per-channel
+            %  data. 
+            %  If average includes "trial" the result will not have
+            %  individual trials, but averaging is done per condition 
+            %  (As defined in the Epoch) . To also average over conditions,
+            %  specify average =["trial" "condition"]
+            % This applies to the averaging that is done before a compute
+            % function, as well as to the compute function that averages
+            % results. 
             arguments
                 o (1,1)
-                fun  (1,1) struct
+                fun  (1,1) struct =struct; % Empty struct by default; returns (averaged) epochs
                 pv.channel (:,1)  {mustBeA(pv.channel,["double" "function_handle"])} = [] % Select a subset of channels
                 pv.trial (:,1)  {mustBeA(pv.trial,["double" "function_handle"])} = [] % Select a subset of trials
                 pv.timeWindow (1,2) double = [-inf inf]  % Select a time window to operate on
                 pv.average (1,:) string {mustBeMemberOrEmpty(pv.average,["subject" "session_date" "starttime" "paradigm" "condition" "trial" "channel"])} = ["trial" "channel"]
-                pv.robust (1,1) logical = false   % Set to true to determine median as average                
-                pv.outlier (1,1) double = inf     % Threshold to remove outliers before averaging 
+                pv.robust (1,1) logical = false   % Set to true to determine median as average
+                pv.outlier (1,1) double = inf     % Threshold to remove outliers before averaging
                 pv.x (1,1) string = o.independent  % Name of the independent variable
                 pv.y (1,1) string = o.dependent    % Name of the dependent variable
             end
             fill(o);% Fill the cache
             idv = pv.x;
-            dv = pv.y;  
+            dv = pv.y;
             srate= o.samplingRate; % Local copy to avoid broadcasting o in the parfor
 
             %% Restrict the T by function input args and time window selection
@@ -421,7 +442,7 @@ classdef (Abstract) cache < handle
                 end
             end
 
-            if ~isempty(pv.trial)                
+            if ~isempty(pv.trial)
                 % Restrict trials for this operation
                 if isa(pv.trial,'function_handle')
                     % Evaluate the function
@@ -434,19 +455,19 @@ classdef (Abstract) cache < handle
             if isempty(restrictedT)
                 error('No data in this table');
             end
-            
+
             if any(isfinite(pv.timeWindow))
-                t = restrictedT.time{1}; % Time in seconds (all should be the same)              
+                t = restrictedT.time{1}; % Time in seconds (all should be the same)
                 if numel(t)==3
                     t = linspace(t(1),t(2),t(3));
                 end
                 assert(ismember("time",o.T.Properties.VariableNames),"timeWindow restriction can only be used on a cache with a time column.")
                 % Crop to the timeWindow for this operation.
-               
+
                 keep = do.ifwithin(t,pv.timeWindow/1000);
                 if restrictedT.Properties.VariableTypes(string(restrictedT.Properties.VariableNames)==dv)=="double"
                     restrictedT.(dv) = restrictedT.(dv)(:,keep);
-                else 
+                else
                     % Cell
                     restrictedT.(dv) = cellfun(@(x) x(:,keep), restrictedT.(dv),UniformOutput=false);
                 end
@@ -458,16 +479,16 @@ classdef (Abstract) cache < handle
             %RestrictedT is a table with each subject/session/experiment/trial/channel as a row
 
             %%  Average/group
-            if isempty(pv.average) 
-                 % No averaging. Just put the signal into M
+            if isempty(pv.average)
+                % No averaging. Just put the signal into M
                 G = restrictedT;
                 G.nrtrials = ones(height(G),1);
                 G.nrchannels = ones(height(G),1);
-                M = restrictedT.(dv);                
+                M = restrictedT.(dv);
                 uGroup = "_";
                 G.name = repmat(uGroup,height(G),1);
             else
-                [G,~,averageValues,~,~] = ns.cache.averageData(...
+                [G,~,averageValues,errorValues,nValues] = ns.cache.averageEpochs(...
                     restrictedT, restrictedT.(dv), pv.average, srate, pv.robust, pv.outlier);
                 grouping = setdiff(ns.cache.AVERAGEVARS,pv.average,'stable');
                 keep = intersect([grouping "align" idv "nrtrials" "nrchannels"], ...
@@ -483,7 +504,7 @@ classdef (Abstract) cache < handle
                 else
                     uGroup = repmat("all",height(G),1); % Averaging reduced this to a single group.
                 end
-                % M already contains the averaged signal for each group.
+                % M contains the averaged signal for each group.
                 M = averageValues;
                 G.name = uGroup;
             end
@@ -493,8 +514,16 @@ classdef (Abstract) cache < handle
             % Map string to function handle and do error checking
             D = containers.Map;
             % Compute one or more functions
-            funs = fieldnames(fun);
+            funs = fieldnames(fun);            
             nrFuns = numel(funs);
+            if nrFuns ==0 
+                % No compute; just return the (average) epochs
+                if ~isempty(pv.average)
+                    G.average = averageValues;
+                    G.n = nValues;
+                    G.error  = errorValues;
+                end
+            else
             fprintf('Applying %d functions (%s) to %d elements\n',nrFuns,strjoin(funs,"/"),size(M,1))
             pool = nsParPool;
             progressQueue = [];
@@ -503,124 +532,126 @@ classdef (Abstract) cache < handle
                 progressQueue = parallel.pool.DataQueue;
                 progressListener = afterEach(progressQueue,@(~) ns.cache.advanceParforProgress());
             end
-                for f = 1:nrFuns
-                    thisFun = string(funs{f});
-                    if isstruct(fun.(thisFun))
-                        thisOptions = namedargs2cell(fun.(thisFun));
-                    elseif isempty(fun.(thisFun)) || isa(fun.(thisFun),'function_handle')
-                        thisOptions = {};
-                    else
-                        error('Function options for %s must be a struct, empty, or a function handle', thisFun);
+            for f = 1:nrFuns
+                thisFun = string(funs{f});
+                if isstruct(fun.(thisFun))
+                    thisOptions = namedargs2cell(fun.(thisFun));
+                elseif isempty(fun.(thisFun)) || isa(fun.(thisFun),'function_handle')
+                    thisOptions = {};
+                else
+                    error('Function options for %s must be a struct, empty, or a function handle', thisFun);
+                end
+                if thisFun == "average"
+                    % Special case, needs access to G to determine
+                    % grouping for averaging
+                    if isKey(D,idv)
+                        D = remove(D,idv); % This will be replaced by average_idv
                     end
-                    if thisFun == "average"
-                        % Special case, needs access to G
-                        if isKey(D,idv)
-                            D = remove(D,idv); % This will be replaced by average_idv
-                        end
-                        [G,M,D,idv,dv] = ns.cache.averageResults(...
-                            G,M,D,idv,dv,srate,fun.(thisFun));
-                        nrGrps = height(G);
-                        continue
-                    end
+                    [G,M,D,idv,dv] = ns.cache.averageResults(...
+                        G,M,D,idv,dv,srate,fun.(thisFun));
+                    nrGrps = height(G);
+                    continue
+                end
 
-                    if ismember(thisFun,["snr" "peak"])
-                        assert(f > 1 && ~isempty(idv), ...
-                            '%s requires a preceding spectral function.',thisFun);
-                    end
+                if ismember(thisFun,["snr" "peak"])
+                    assert(f > 1 && ~isempty(idv), ...
+                        '%s requires a preceding spectral function.',thisFun);
+                end
 
-                    data = {M}; % Inputs indexed by group row                  
-                    switch thisFun
-                        case "fft"
-                            funN = @(signal,srate) ns.cache.do_fft(signal,srate,thisOptions{:});                           
-                        case "pspectrum"
-                            funN = @(signal,srate) ns.cache.do_pspectrum(signal,srate,thisOptions{:});                            
-                        case "pmtm"
-                            funN = @(signal,srate) ns.cache.do_pmtm(signal,'fs',srate,thisOptions{:});                            
-                        case "wavelet"
-                            funN = @(signal,srate) ns.cache.do_wavelet(signal,srate,thisOptions{:});                                                        
-                            %% Cases below take G (the result of previous computation) as their input
-                        case "snr"
-                            assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
-                            funN = @(signal,freqs,srate) ns.cache.do_snr(signal,freqs,srate,thisOptions{:});
-                            data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.                           
-                        case 'peak'
-                            assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
-                            funN = @(signal,freqs,srate) ns.cache.do_search_peaks(signal,freqs,srate, thisOptions{:});
-                            data{end+1} = G.(idv); %#ok<AGROW> % frequency                        
-                        otherwise
-                            if isa(fun.(thisFun),'function_handle')
-                               % Check that the function takes two inputs (data and sampling rate) 
-                               % returns two outputs (the table with results and the name of the idv column)
-                               % The nargout==-1 is there to handle an
-                               % anonymous function that uses deal to
-                               % generate two outputs.
-                               funN = fun.(thisFun);
-                               assert(nargin(funN)==2,"The compute function (%s) must take two inputs (data and sampling rate)",thisFun);      
-                               assert(nargout(funN)==2 || nargout(funN)==-1,"The compute function (%s) must return two outputs (the table with results and the name of the idv column)",thisFun);
-                            else
-                                error('Unknown function %s', thisFun);
-                            end
-                    end
-                  
-                    %% Apply the fun to the mean signal
-                    % Temp cell to store results
-                    xCell = cell(nrGrps,1);
-                    idv  = repmat("",1, nrGrps);
-                    if isempty(pool)
-                        for iGrp = 1:nrGrps
-                            groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate);
-                        end
-                    else
-                        ns.cache.resetParforProgress(thisFun,nrGrps);
-                        parfor iGrp = 1:nrGrps
-                            groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
-                            [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate); %#ok<PFBNS>
-                            send(progressQueue,1);
-                        end
-                        ns.cache.finishParforProgress();
-                    end
-                    R = vertcat(xCell{:}); % Results table
-                    idv = unique(idv);
-                    assert(isscalar(idv), ...
-                        'Function %s returned inconsistent independent-variable columns.',thisFun);
-                    R = renamevars(R,R.Properties.VariableNames,thisFun + "_" + R.Properties.VariableNames );
-                    idv = thisFun + "_" + idv ;
-                    dv = setdiff(R.Properties.VariableNames,idv); % EVerything but the idv
-
-                    %% Check the format of the output 
-                    % The dv is usuallly a row vector (or a scalar), but it has to be placed inside a cell to allow for some functions 
-                    % that return a matrix. The only thing that is not allowed is a column vector.
-                    % This is mainly here to avoid errors in the subsequent plotting function, which expects a row vector or a matrix.
-                    for col = [dv idv]
-                        assert(iscell(R{:,col}), 'The variable (%s) must be a cell array for each group', col);
-                        assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col})), 'The variable (%s) must be numerical values inside a cell) for each group', col);
-                    end
-                    axisSizes = cellfun(@numel,R{1,idv(1)});
-                    for col = dv
-                        valueSize = size(R{1,col}{1});
-                        if numel(axisSizes)==1
-                            matchesAxes = ismember(axisSizes,valueSize);
+                data = {M}; % Inputs indexed by group row
+                switch thisFun
+                    case "fft"
+                        funN = @(signal,srate) ns.cache.do_fft(signal,srate,thisOptions{:});
+                    case "pspectrum"
+                        funN = @(signal,srate) ns.cache.do_pspectrum(signal,srate,thisOptions{:});
+                    case "pmtm"
+                        funN = @(signal,srate) ns.cache.do_pmtm(signal,'fs',srate,thisOptions{:});
+                    case "wavelet"
+                        funN = @(signal,srate) ns.cache.do_wavelet(signal,srate,thisOptions{:});
+                        %% Cases below take G (the result of previous computation) as their input
+                    case "snr"
+                        assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
+                        funN = @(signal,freqs,srate) ns.cache.do_snr(signal,freqs,srate,thisOptions{:});
+                        data{end+1} = G.(idv); %#ok<AGROW> % The IDV of the previous comp is passed to the function; this should be a set of frequencies.
+                    case 'peak'
+                        assert(nrFuns>1,"peak cannot run on its own; fun needs a spectral power or snr estimate.");
+                        funN = @(signal,freqs,srate) ns.cache.do_search_peaks(signal,freqs,srate, thisOptions{:});
+                        data{end+1} = G.(idv); %#ok<AGROW> % frequency
+                    otherwise
+                        if isa(fun.(thisFun),'function_handle')
+                            % Check that the function takes two inputs (data and sampling rate)
+                            % returns two outputs (the table with results and the name of the idv column)
+                            % The nargout==-1 is there to handle an
+                            % anonymous function that uses deal to
+                            % generate two outputs.
+                            funN = fun.(thisFun);
+                            assert(nargin(funN)==2,"The compute function (%s) must take two inputs (data and sampling rate)",thisFun);
+                            assert(nargout(funN)==2 || nargout(funN)==-1,"The compute function (%s) must return two outputs (the table with results and the name of the idv column)",thisFun);
                         else
-                            matchesAxes = isequal(sort(axisSizes),sort(valueSize));
+                            error('Unknown function %s', thisFun);
                         end
-                        assert(matchesAxes,"IDV and DV must match in size")
+                end
+
+                %% Apply the fun to the mean signal
+                % Temp cell to store results
+                xCell = cell(nrGrps,1);
+                idv  = repmat("",1, nrGrps);
+                if isempty(pool)
+                    for iGrp = 1:nrGrps
+                        groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
+                        [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate);
                     end
-                    
-                    % Pass the dependent variables to the next computation
-                    M = table2cell(R(:,dv));        
-                    
-                    % Combine the results with G and store idv->dv mapping                    
-                    D(idv)  = dv;                     
-                    G = [G R]; %#ok<AGROW>                    
+                else
+                    ns.cache.resetParforProgress(thisFun,nrGrps);
+                    parfor iGrp = 1:nrGrps
+                        groupData = cellfun(@(d) selectDataRow(d,iGrp),data,UniformOutput=false);
+                        [xCell{iGrp},idv(iGrp)] = funN(groupData{:},srate); %#ok<PFBNS>
+                        send(progressQueue,1);
+                    end
+                    ns.cache.finishParforProgress();
                 end
-                if ~isempty(pool)
-                    delete(progressListener);
+                R = vertcat(xCell{:}); % Results table
+                idv = unique(idv);
+                assert(isscalar(idv), ...
+                    'Function %s returned inconsistent independent-variable columns.',thisFun);
+                R = renamevars(R,R.Properties.VariableNames,thisFun + "_" + R.Properties.VariableNames );
+                idv = thisFun + "_" + idv ;
+                dv = setdiff(R.Properties.VariableNames,idv); % EVerything but the idv
+
+                %% Check the format of the output
+                % The dv is usuallly a row vector (or a scalar), but it has to be placed inside a cell to allow for some functions
+                % that return a matrix. The only thing that is not allowed is a column vector.
+                % This is mainly here to avoid errors in the subsequent plotting function, which expects a row vector or a matrix.
+                for col = [dv idv]
+                    assert(iscell(R{:,col}), 'The variable (%s) must be a cell array for each group', col);
+                    assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col})), 'The variable (%s) must be numerical values inside a cell) for each group', col);
                 end
+                axisSizes = cellfun(@numel,R{1,idv(1)});
+                for col = dv
+                    valueSize = size(R{1,col}{1});
+                    if isscalar(axisSizes)
+                        matchesAxes = ismember(axisSizes,valueSize);
+                    else
+                        matchesAxes = isequal(sort(axisSizes),sort(valueSize));
+                    end
+                    assert(matchesAxes,"IDV and DV must match in size")
+                end
+
+                % Pass the dependent variables to the next computation
+                M = table2cell(R(:,dv));
+
+                % Combine the results with G and store idv->dv mapping
+                D(idv)  = dv;
+                G = [G R]; %#ok<AGROW>
+            end
+            if ~isempty(pool)
+                delete(progressListener);
+            end
+            end
 
             % Sort in consistent order - not matched to the tbl query
             G= sortrows(G,intersect(["subject" "session_date" "starttime" "paradigm"  "condition" "channel" "trial"],G.Properties.VariableNames,'stable'));
-          
+
         end
     end
 
@@ -638,7 +669,7 @@ classdef (Abstract) cache < handle
             dv = string(dv);
             average = string(options.average);
             idvValues = G.(idv);
-            [G,~,averageValues,errorValues,nValues,groupInfo] = ns.cache.averageData(...
+            [G,~,averageValues,errorValues,nValues,groupInfo] = ns.cache.averageEpochs(...
                 G,M,average,srate,getOption(options,'robust',false),getOption(options,'outlier',inf));
             ns.cache.validateIndependentVariable(idvValues,groupInfo.groupNumber,idv);
             idvValues = idvValues(groupInfo.first);
@@ -677,7 +708,7 @@ classdef (Abstract) cache < handle
             D(idv) = [dv errorOut nOut];
         end
 
-        function [G,M,averageValues,errorValues,nValues,groupInfo] = averageData(G,M,average,srate,robust,outlier)
+        function [G,M,averageValues,errorValues,nValues,groupInfo] = averageEpochs(G,M,average,srate,robust,outlier)
             % Group rows and average one or more cell/numeric data columns.
             average = string(average);
             mustBeMemberOrEmpty(average, ns.cache.AVERAGEVARS);
@@ -766,7 +797,6 @@ classdef (Abstract) cache < handle
                 end
             end
         end
-
         function [v,idv] = do_fft(signal, fs, pv)
             % do_fft - Computes FFT amplitude and phase for each
             %               epoch. Only includes real frequencies.
@@ -912,8 +942,8 @@ classdef (Abstract) cache < handle
         function [v,idv] = do_average(signal,fs,pv)
             arguments
                 signal
-                fs (1,1) double %#ok<INUSA>                                
-                pv.robust (1,1) logical = false                
+                fs (1,1) double %#ok<INUSA>
+                pv.robust (1,1) logical = false
                 pv.outlier (1,1) double = inf
             end
             % Mean, standard error, and N
@@ -925,7 +955,7 @@ classdef (Abstract) cache < handle
             end
             if pv.robust
                 av = median(signal,1,"omitmissing");
-                err = arrayfun(@(j) iqr(signal(~isnan(signal(:,j)), j))/sqrt(sum(~isnan(signal(:,j)))),1:size(signal,2));                
+                err = arrayfun(@(j) iqr(signal(~isnan(signal(:,j)), j))/sqrt(sum(~isnan(signal(:,j)))),1:size(signal,2));
             else
                 av = mean(signal,1,"omitmissing");
                 err= std(signal,0,1,"omitmissing")./sqrt(sum(~isnan(signal),1,"omitmissing"));
@@ -972,7 +1002,7 @@ classdef (Abstract) cache < handle
             % noise is computed as mean instead of geomean that is more
             % appropriate for amplitudes. Log scaled signal mean acts
             % similar to geometric mean
-            signal = log10(signal);            
+            signal = log10(signal);
             noise = do.ndconv(signal, kernel,FillValue=NaN)/sum(kernel); % conv is sum, make it mean
             snr = 10.^(signal - noise); % in log scale division becomes subtraction
 
@@ -983,12 +1013,12 @@ classdef (Abstract) cache < handle
             arguments
                 signal (:,1)
                 freqs (:,1)
-                srate (1,1) double  %#ok<INUSA> %Not used but needed to match with other computes           
+                srate (1,1) double  %#ok<INUSA> %Not used but needed to match with other computes
                 pv.searchFrequencies (1,:) double {mustBeFinite,mustBeReal,mustBeNonnegative}
                 pv.searchRangeHalfWidth (1,1) double {mustBeFinite,mustBeReal,mustBePositive}
-            end            
-            freqs = freqs(:);            
-            nSearchFreq = numel(pv.searchFrequencies);            
+            end
+            freqs = freqs(:);
+            nSearchFreq = numel(pv.searchFrequencies);
             [searchFreq, peakFreq, peakAmp] = deal(zeros(1,nSearchFreq));
             for ii = 1:nSearchFreq
                 sFreq = pv.searchFrequencies(ii);
@@ -1078,14 +1108,14 @@ classdef (Abstract) cache < handle
                     'Rows of the EpochChannel table must have identical start time, stop time, and number of samples.');
                 assert(isscalar(unique({preFetch.align.plugin})),'Rows of the EpochChannel should be aligned to the same plugin.');
                 assert(isscalar(unique({preFetch.align.event})),'Rows of the EpochChannel should be aligned to the same event.');
-                o.T =fetchtable(src,'*','ORDER BY channel');              
+                o.T =fetchtable(src,'*','ORDER BY channel');
                 o.qry = src.sql;
                 if ismember("signal",o.T.Properties.VariableNames) && iscell(o.T.signal) && all(cellfun(@iscolumn,o.T.signal))
                     o.T.signal = cellfun(@(x) (x'),o.T.signal,'UniformOutput',false);
                 end
                 o.time = linspace(epochTime(1,1),epochTime(1,2),epochTime(1,3));
                 % Epoch endpoints are seconds; N samples span N-1 intervals.
-                o.samplingRate = (epochTime(1,3)-1)/(epochTime(1,2)-epochTime(1,1));               
+                o.samplingRate = (epochTime(1,3)-1)/(epochTime(1,2)-epochTime(1,1));
             end
 
             function s = canonicalize(s)
@@ -1096,7 +1126,7 @@ classdef (Abstract) cache < handle
                 s = strtrim(s);
             end
         end
-       
+
 
     end
 
