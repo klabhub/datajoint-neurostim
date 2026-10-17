@@ -98,40 +98,97 @@ classdef TestUtilities < matlab.unittest.TestCase
             testCase.verifySize(result.power{1},size(result.frequency{1}));
         end
 
-        function averageResultsAveragesComputedSpectraByTrial(testCase)
+        function computeAveragesComputedSpectraByTrial(testCase)
             G = table([1; 1; 1], [1; 2; 3], [1; 1; 1], ...
                 {[1 2 3]; [1 2 3]; [1 2 3]}, ...
                 {[10 20 30]; [20 30 40]; [30 40 50]}, ...
                 'VariableNames', {'subject', 'trial', 'channel', ...
                 'pspectrum_frequency', 'pspectrum_power'});
-            M = {[10 20 30]; [20 30 40]; [30 40 50]};
-            D = containers.Map('KeyType', 'char', 'ValueType', 'any');
-            D('pspectrum_frequency') = {'pspectrum_power'};
-
-            [G, M] = ns.cache.averageResults(G, M, D, ...
-                "pspectrum_frequency", "pspectrum_power", ...
-                1000, struct('average', "trial"));
+            G = renamevars(G,["pspectrum_frequency" "pspectrum_power"],["time" "signal"]);
+            cache = testsupport.VariableLengthCache(G);
+            fun.spectrum = @(signal,fs) deal(table({signal'},{[1 2 3]}, ...
+                'VariableNames',{'power','frequency'}),"frequency");
+            fun.average = struct('average',"trial");
+            [G,D] = cache.compute(fun,average=string.empty);
 
             testCase.verifyFalse(ismember('trial', G.Properties.VariableNames));
-            testCase.verifyEqual(M{1}, [20 30 40]);
-            testCase.verifyEqual(G.average_pspectrum_power_error{1}, ...
+            testCase.verifyEqual(G.average_spectrum_power{1}, [20 30 40]);
+            testCase.verifyEqual(D("average_spectrum_frequency"), ...
+                ["average_spectrum_power" "average_spectrum_power_error" "average_spectrum_power_n"]);
+            testCase.verifyEqual(G.average_spectrum_power_error{1}, ...
                 [5.773502691896258 5.773502691896258 5.773502691896258], ...
                 'AbsTol', 1e-12);
-            testCase.verifyEqual(G.average_pspectrum_power_n{1}, [3 3 3]);
+            testCase.verifyEqual(G.average_spectrum_power_n{1}, [3 3 3]);
         end
 
-        function averageResultsRejectsMismatchedIndependentVariables(testCase)
+        function computeInitialAverageReturnsStatisticsAndMapping(testCase)
+            T = table([1;1;1],[1;2;3],[1;1;1], ...
+                {[1 NaN 4];[3 5 6];[8 7 8]},repmat({[0 2 3]},3,1), ...
+                'VariableNames',{'subject','trial','channel','signal','time'});
+            cache = testsupport.VariableLengthCache(T);
+
+            [G,D,names] = cache.compute(struct,average=["trial" "channel"],robust=true);
+
+            testCase.verifyEqual(G.average{1},[3 6 6]);
+            testCase.verifyEqual(G.n{1},[3 2 3]);
+            testCase.verifyEqual(G.error{1}, ...
+                [iqr([1 3 8])/sqrt(3) iqr([5 7])/sqrt(2) iqr([4 6 8])/sqrt(3)]);
+            testCase.verifyEqual(D("time"),["average" "error" "n"]);
+            testCase.verifyEqual(G.nrtrials,3);
+            testCase.verifyEqual(G.nrchannels,1);
+            testCase.verifyEqual(names,G.name);
+        end
+
+        function computeUsesAveragedDataInFollowingFunction(testCase)
+            T = table([1;1],[1;2],[1;1],{[1 2];[3 4]}, ...
+                repmat({[0 1]},2,1), ...
+                'VariableNames',{'subject','trial','channel','signal','time'});
+            cache = testsupport.VariableLengthCache(T);
+            fun.average = struct('average',"trial");
+            fun.scale = @(signal,fs) deal(table({2*signal'},{[0 1]}, ...
+                'VariableNames',{'value','time'}),"time");
+
+            [G,D] = cache.compute(fun,average="channel");
+
+            testCase.verifyEqual(G.average_average{1},[2 3]);
+            testCase.verifyEqual(G.scale_value{1},[4 6]);
+            testCase.verifyEqual(D("average_time"), ...
+                ["average_average" "average_average_error" "average_average_n"]);
+            testCase.verifyEqual(D("scale_time"),"scale_value");
+            testCase.verifyFalse(isKey(D,"time"));
+            testCase.verifyEqual(cache.independent,"time");
+            testCase.verifyEqual(cache.dependent,"signal");
+            raw = cache.compute(struct,average=string.empty);
+            testCase.verifyEqual(raw.signal,T.signal);
+        end
+
+        function computeRestoresSourceNamesAfterError(testCase)
+            T = table([1;1],[1;2],[1;1],{[1 2];[3 4]}, ...
+                repmat({[0 1]},2,1), ...
+                'VariableNames',{'subject','trial','channel','signal','time'});
+            cache = testsupport.VariableLengthCache(T);
+            fun.average = struct('average',"trial");
+            fun.fail = @failingTransform;
+
+            testCase.verifyError(@() cache.compute(fun,average=string.empty), ...
+                'test:ComputeFailure');
+
+            testCase.verifyEqual(cache.independent,"time");
+            testCase.verifyEqual(cache.dependent,"signal");
+            raw = cache.compute(struct,average=string.empty);
+            testCase.verifyEqual(raw.signal,T.signal);
+        end
+
+        function computeAverageRejectsMismatchedIndependentVariables(testCase)
             G = table([1; 1], [1; 2], ...
                 {[1 2 3]; [1 2 4]}, {[10 20 30]; [20 30 40]}, ...
                 'VariableNames', {'subject', 'trial', ...
                 'pspectrum_frequency', 'pspectrum_power'});
-            M = {[10 20 30]; [20 30 40]};
-            D = containers.Map('KeyType', 'char', 'ValueType', 'any');
-            D('pspectrum_frequency') = {'pspectrum_power'};
+            G = renamevars(G,["pspectrum_frequency" "pspectrum_power"],["time" "signal"]);
+            cache = testsupport.VariableLengthCache(G);
 
-            testCase.verifyError(@() ns.cache.averageResults(G,M,D, ...
-                "pspectrum_frequency","pspectrum_power",1000, ...
-                struct('average',"trial")), ...
+            testCase.verifyError(@() cache.compute( ...
+                struct('average',struct('average',"trial")),average=string.empty), ...
                 'ns:cache:IndependentVariableMismatch');
         end
 
@@ -189,4 +246,8 @@ classdef TestUtilities < matlab.unittest.TestCase
             testCase.verifyEqual(result.frequency{1},[2 6]);
             testCase.verifyEqual(result.magnitude{1},[2 6]);
         end    end
+end
+
+function [result,independent] = failingTransform(~,~) %#ok<STOUT>
+error('test:ComputeFailure','Transform failed.');
 end
