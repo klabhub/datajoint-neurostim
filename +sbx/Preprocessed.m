@@ -224,23 +224,21 @@ classdef Preprocessed < dj.Computed
             % working directory), but the gui will open with its working directory
             % set to the relevant folder so that the user can rapdily select the stat.npy
             % from the gui.
-            py = setupPython("suite2p");
+            
                 tpl = fetch(tbl*sbx.PreprocessedParm,'*');
                 switch (tpl.parms.toolbox)
                     case 'suite2p'
-                        suite2p = fullfile(py.bin,"suite2p" + py.extension);
-                        assert(exist(suite2p,"file") == 2, ...
-                            "suite2p executable not found in Python environment %s: %s",py.name,suite2p);
+                        py = setupPython("suite2p");
                         sessionPath=unique(folder(ns.Session & tpl));
                         statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
                         if ~exist(statsFile,"file")
                             error('File not found %s',statsFile);
                         end
                         if ispc
-                            cmd = sprintf('cd /d "%s" & "%s"',fileparts(statsFile),suite2p);
+                            cmd = sprintf('cd /d "%s" & "%s/Scripts/suite2p.exe %s"',fileparts(statsFile),char(py.Home));
                             % The executable is already inside the selected environment.
                         else
-                            cmd = sprintf('cd "%s" && "%s"',fileparts(statsFile),suite2p);
+                            cmd = sprintf('cd "%s" && "%s/bin/suite2p"',fileparts(statsFile),char(py.Home));
                         end
                     otherwise
                         error('Not implemented yet')

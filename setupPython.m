@@ -1,4 +1,4 @@
-function [p,ok] = setupPython(env)
+function [pv,ok] = setupPython(env)
 % Resolve and, when needed, load Python from the configured environment.
 %
 % NS_PY_ROOT specifies the folder that directly contains the Conda/Mamba/
@@ -42,7 +42,6 @@ assert(exist(p.executable,"file") == 2, ...
 p.root = root;
 p.name = env;
 p.prefix = string(prefix);
-p.command = "\"" + p.executable + "\"";
 
 pv = pyenv;
 if ~strcmpi(string(pv.Executable),p.executable)
