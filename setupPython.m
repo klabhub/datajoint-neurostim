@@ -1,8 +1,8 @@
 function [p,ok] = setupPython(env)
 % Resolve and, when needed, load Python from the configured environment.
 %
-% NS_PY_ROOT specifies the Conda/Mamba/micromamba root containing the envs
-% folder. NS_PY_ENV specifies the default environment name. An environment
+% NS_PY_ROOT specifies the folder that directly contains the Conda/Mamba/
+% micromamba environments. NS_PY_ENV specifies the default environment name. An environment
 % name can also be passed explicitly to this function. The first output is a
 % structure describing the environment; the second output reports success.
 %
@@ -13,19 +13,19 @@ arguments
 end
 
 assert(isempty(getenv("NS_CONDA")), ...
-    "NS_CONDA is obsolete. Set NS_PY_ROOT to the environment root and NS_PY_ENV to the environment name.");
+    "NS_CONDA is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.");
 assert(isempty(getenv("NS_PYTHON")), ...
-    "NS_PYTHON is obsolete. Set NS_PY_ROOT to the environment root and NS_PY_ENV to the environment name.");
+    "NS_PYTHON is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.");
 
 root = string(getenv("NS_PY_ROOT"));
 assert(strlength(root) > 0, ...
-    "NS_PY_ROOT is not set. Set it to the Conda/Mamba/micromamba root containing the envs folder.");
+    "NS_PY_ROOT is not set. Set it to the folder directly containing the Conda/Mamba/micromamba environments.");
 assert(exist(root,"dir") == 7, ...
     "NS_PY_ROOT does not exist: %s",root);
 assert(strlength(env) > 0, ...
     "NS_PY_ENV is not set. Set it to the environment name, or pass an environment name to setupPython.");
 
-prefix = fullfile(root,"envs",env);
+prefix = fullfile(root,env);
 assert(exist(prefix,"dir") == 7, ...
     "Python environment %s does not exist under NS_PY_ROOT: %s",env,prefix);
 if ispc

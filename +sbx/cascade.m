@@ -8,7 +8,7 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % https://doi.org/10.1038/s41593-021-00895-5
 %
 % Environment Variables:
-% NS_PY_ROOT - The Conda/Mamba/micromamba root containing the envs folder.
+% NS_PY_ROOT - The folder directly containing the Conda/Mamba/micromamba environments.
 % NS_PY_ENV  - The default Python environment name. Cascade uses the
 %              explicit 'cascade' environment below.
 % NS_CASCADE  - The folder that contains the Cascade git repository.
@@ -31,7 +31,7 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % cd into the CascadeTorch repo folder
 % pip install .
 %
-% 3. Set NS_PY_ROOT to the installation/root containing the environments.
+% 3. Set NS_PY_ROOT to the folder directly containing the environments.
 %    Set NS_PY_ENV to the default environment name. The cascade environment
 %    is selected explicitly by this function.
 %
