@@ -1,4 +1,4 @@
-function [pv,ok] = setupPython(env)
+function [p,ok] = setupPython(env)
 % Resolve and, when needed, load Python from the configured environment.
 %
 % NS_PY_ROOT specifies the folder that directly contains the Conda/Mamba/
@@ -12,10 +12,8 @@ arguments
     env (1,1) string = string(getenv("NS_PY_ENV"))
 end
 
-assert(isempty(getenv("NS_CONDA")), ...
-    "NS_CONDA is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.");
-assert(isempty(getenv("NS_PYTHON")), ...
-    "NS_PYTHON is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.");
+if ~isempty(getenv("NS_CONDA")); fprintf(2,"NS_CONDA is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
+if ~isempty(getenv("NS_PYTHON")); fprintf(2,"NS_PYTHON is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
 
 root = string(getenv("NS_PY_ROOT"));
 assert(strlength(root) > 0, ...

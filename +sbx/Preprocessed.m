@@ -230,16 +230,18 @@ classdef Preprocessed < dj.Computed
                 tpl = fetch(tbl*sbx.PreprocessedParm,'*');
                 switch (tpl.parms.toolbox)
                     case 'suite2p'
-                        py = setupPython("suite2p");
+                        pyInfo = setupPython("suite2p");
                         sessionPath=unique(folder(ns.Session & tpl));
                         statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
                         if ~exist(statsFile,"file")
                             error('File not found %s',statsFile);
                         end
                         if ispc
-                            cmd = sprintf('cd /d "%s" & "%s/Scripts/suite2p.exe %s"',fileparts(statsFile),char(py.Home));                            
+                            suite2p = fullfile(pyInfo.bin,"suite2p.exe");
+                            cmd = sprintf('cd /d "%s" & "%s"',fileparts(statsFile),suite2p);
                         else
-                            cmd = sprintf('cd "%s" && "%s/bin/suite2p"',fileparts(statsFile),char(py.Home));
+                            suite2p = fullfile(pyInfo.bin,"suite2p");
+                            cmd = sprintf('cd "%s" && "%s"',fileparts(statsFile),suite2p);
                         end
                     otherwise
                         error('Not implemented yet')
@@ -482,7 +484,7 @@ classdef Preprocessed < dj.Computed
             switch (parms.toolbox)
                 case 'suite2p'
                     pythonEnvironment = "suite2p";
-                    py = setupPython(pythonEnvironment);
+                    pyInfo = setupPython(pythonEnvironment);
 
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
@@ -598,7 +600,7 @@ classdef Preprocessed < dj.Computed
                             % The python file that will read these
                             pyCmd = sprintf('"%s/nssbx_suite2p.py" "%s" "%s"',toolsPath,optsFile, dbFile);
                             % Run Python directly from the selected environment.
-                            cmd = sprintf('%s %s',py.command,pyCmd);
+                            cmd = sprintf('%s %s',pyInfo.command,pyCmd);
                             system(cmd ,'-echo')
 
                             % Couldn't figure out how to convert stat.npy so

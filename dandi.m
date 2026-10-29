@@ -113,11 +113,11 @@ arguments
     wrkFldr (1,1)  string   % Working folder for command    
     pythonEnvironment (1,1) string = string(getenv("NS_PY_ENV")) % Python environment to use
 end 
-py = setupPython(pythonEnvironment);
+pyInfo = setupPython(pythonEnvironment);
 tokens = regexp(char(dandiCmd),'^(?<name>\S+)(?<args>.*)$','names');
-tool = fullfile(py.bin,string(tokens.name) + py.extension);
+tool = fullfile(pyInfo.bin,string(tokens.name) + pyInfo.extension);
 assert(exist(tool,"file") == 2, ...
-    "Python command %s not found in environment %s: %s",tokens.name,py.name,tool);
+    "Python command %s not found in environment %s: %s",tokens.name,pyInfo.name,tool);
 if ispc
     cmd = sprintf('cd /d "%s" & "%s"%s',wrkFldr,tool,tokens.args);
 else

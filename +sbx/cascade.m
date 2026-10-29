@@ -107,7 +107,7 @@ if isempty(cascadeFolder)
 end
 assert(exist(cascadeFolder,"dir"),"Please install the Cascade github repository or set the NS_CASCADE environment variable (not found at  %s)",cascadeFolder);
 % Check that Python is available in the cascade environment.
-py = setupPython("cascade");
+pyInfo = setupPython("cascade");
 
 %% Determine which Cascade model to use.
 models = getCascadeModels(cascadeFolder);
@@ -183,7 +183,7 @@ if isfield(parms,'options')
     end
     pyCmd =pyCmd + opts;
 end
-cmd = sprintf('%s %s',py.command,pyCmd);
+cmd = sprintf('%s %s',pyInfo.command,pyCmd);
 
 
 
