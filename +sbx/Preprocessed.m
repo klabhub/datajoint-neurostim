@@ -543,12 +543,33 @@ classdef Preprocessed < dj.Computed
                             opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
 
                             % Then replace parameters defined in the prep settings
+                            optionAliases = struct( ...
+                                'roidetect','do_detection', ...
+                                'do_detection','roidetect', ...
+                                'spikedetect','do_deconvolution', ...
+                                'do_deconvolution','spikedetect');
                             fn= fieldnames(parms.ops);
                             for  f= 1:numel(fn)
+                                requestedName = fn{f};
+                                optionName = requestedName;
                                 try
-                                    default= opts{fn{f}};
-                                    pyClass =class(default);
-                                    prepValue =parms.ops.(fn{f});
+                                    default = opts{optionName};
+                                catch
+                                    if isfield(optionAliases,requestedName)
+                                        optionName = optionAliases.(requestedName);
+                                        try
+                                            default = opts{optionName};
+                                        catch
+                                            error('Parameter %s does not exist in the Suite2p defaults. Typo?',requestedName);
+                                        end
+                                    else
+                                        error('Parameter %s does not exist in the Suite2p defaults. Typo?',requestedName);
+                                    end
+                                end
+
+                                try
+                                    pyClass = class(default);
+                                    prepValue = parms.ops.(requestedName);
                                     if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
                                         % Some options have to specified as a
                                         % length 1 list of strings. If the user
@@ -557,10 +578,10 @@ classdef Preprocessed < dj.Computed
                                         prepValue = {prepValue};
                                     end
                                     overruled = feval(pyClass,prepValue);
-                                catch
-                                    error('Parameter %s does not exist in the Suite2p defaults. Typo?',fn{f});
+                                catch me
+                                    error('Could not convert Suite2p parameter %s to %s: %s',requestedName,pyClass,me.message);
                                 end
-                                opts{fn{f}} = overruled;
+                                opts{optionName} = overruled;
                             end
 
                             % The sample rate corresponds to the total;
