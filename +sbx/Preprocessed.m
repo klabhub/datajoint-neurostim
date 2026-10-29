@@ -235,8 +235,7 @@ classdef Preprocessed < dj.Computed
                             error('File not found %s',statsFile);
                         end
                         if ispc
-                            cmd = sprintf('cd /d "%s" & "%s/Scripts/suite2p.exe %s"',fileparts(statsFile),char(py.Home));
-                            % The executable is already inside the selected environment.
+                            cmd = sprintf('cd /d "%s" & "%s/Scripts/suite2p.exe %s"',fileparts(statsFile),char(py.Home));                            
                         else
                             cmd = sprintf('cd "%s" && "%s/bin/suite2p"',fileparts(statsFile),char(py.Home));
                         end
