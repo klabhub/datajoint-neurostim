@@ -4,13 +4,9 @@ function mustHaveRows(tbl,nrRequired)
 %   count, the relation must contain exactly that many rows. Counting is
 %   bounded at the requested count, so validation does not scan a large
 %   relation just to reject it.
-
-if nargin < 2
-    if ~hasAtLeast(tbl,1)
-        throwAsCaller(MException('mustHaveRows:zeroRows', ...
-            'This DataJoint table has no rows'))
-    end
-    return
+arguments
+    tbl 
+    nrRequired double =1
 end
 
 [nrRows,isCapped] = countUpTo(tbl,nrRequired);

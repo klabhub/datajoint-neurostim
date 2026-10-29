@@ -224,7 +224,9 @@ classdef Preprocessed < dj.Computed
             % working directory), but the gui will open with its working directory
             % set to the relevant folder so that the user can rapdily select the stat.npy
             % from the gui.
-            
+            arguments
+                tbl {mustHaveRows}
+            end
                 tpl = fetch(tbl*sbx.PreprocessedParm,'*');
                 switch (tpl.parms.toolbox)
                     case 'suite2p'
