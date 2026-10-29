@@ -13,9 +13,9 @@ yscale : float              # Scale factor of ypixels  (micron/pixels)
 nrplanes : int              # Number of planes
 %}
 %
-% Calls to python require environment variable NS_CONDA to point to a conda
-% installation. Python will run OutOfProcess (i.e. using a
-% system call to start Python outside Matlab).
+% Calls to Python use the environment configured by NS_PY_ROOT and
+% NS_PY_ENV. Python will run OutOfProcess (i.e. using a system call to
+% start Python outside Matlab).
 %
 % With suite2p preprocessing, the fast_disk option can be set in PreprocessedParms,
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
@@ -224,32 +224,27 @@ classdef Preprocessed < dj.Computed
             % working directory), but the gui will open with its working directory
             % set to the relevant folder so that the user can rapdily select the stat.npy
             % from the gui.
-            conda = getenv('NS_CONDA');
-            if isempty(conda)
-                fprintf('Please set the environment variable NS_CONDA to the conda folder\n')
-                return;
-            else
-                % Construct a batch/bash command.
+            py = setupPython("suite2p");
                 tpl = fetch(tbl*sbx.PreprocessedParm,'*');
                 switch (tpl.parms.toolbox)
                     case 'suite2p'
-                        env = 'suite2p';  % the conda environment
+                        suite2p = fullfile(py.bin,"suite2p" + py.extension);
+                        assert(exist(suite2p,"file") == 2, ...
+                            "suite2p executable not found in Python environment %s: %s",py.name,suite2p);
                         sessionPath=unique(folder(ns.Session & tpl));
                         statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
                         if ~exist(statsFile,"file")
                             error('File not found %s',statsFile);
                         end
                         if ispc
-                            drive = extractBefore(statsFile,':');
-                            condaCmd = sprintf('cd "%s" & %s: & suite2p',fileparts(statsFile),drive);
-                            cmd = sprintf('%s/Scripts/activate.bat %s & %s &',strrep(conda,'\','/'),env,condaCmd);
+                            cmd = sprintf('cd /d "%s" & "%s"',fileparts(statsFile),suite2p);
+                            % The executable is already inside the selected environment.
                         else
-                            error('Not implemented yet')
+                            cmd = sprintf('cd "%s" && "%s"',fileparts(statsFile),suite2p);
                         end
                     otherwise
                         error('Not implemented yet')
                 end
-            end
 
             fprintf('Starting the external %s gui\n',tpl.parms.toolbox)
             system(cmd ,'-echo');
@@ -487,9 +482,8 @@ classdef Preprocessed < dj.Computed
 
             switch (parms.toolbox)
                 case 'suite2p'
-                    condaEnvironment = "suite2p";
-                    setupPython(condaEnvironment);
-                    condaFldr = extractBefore(pyenv().Home,'envs');
+                    pythonEnvironment = "suite2p";
+                    py = setupPython(pythonEnvironment);
 
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
@@ -604,17 +598,8 @@ classdef Preprocessed < dj.Computed
                             nssbx.save_dict_to_file(db,dbFile)
                             % The python file that will read these
                             pyCmd = sprintf('"%s/nssbx_suite2p.py" "%s" "%s"',toolsPath,optsFile, dbFile);
-                            % Construct a batch/bash command.
-                            if ispc
-                                cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & python %s',condaFldr,condaEnvironment,pyCmd);
-                            else
-                                cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
-                                    'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...
-                                    'elif [ -f "%s/etc/profile.d/conda.sh" ]; then source "%s/etc/profile.d/conda.sh"; ' ...
-                                    'else export PATH="%s/bin:$PATH"; fi; unset __conda_setup; ' ...
-                                    'conda activate %s; eval python "%s"'], ...
-                                    condaFldr, condaFldr, condaFldr, condaFldr, condaEnvironment, pyCmd);
-                            end
+                            % Run Python directly from the selected environment.
+                            cmd = sprintf('%s %s',py.command,pyCmd);
                             system(cmd ,'-echo')
 
                             % Couldn't figure out how to convert stat.npy so

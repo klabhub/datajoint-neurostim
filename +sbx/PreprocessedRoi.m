@@ -424,7 +424,7 @@ classdef PreprocessedRoi < dj.Part
     end
     methods (Access=?sbx.Preprocessed)
         function makeTuples(tbl,key)
-            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
+            setupPython;  % Make sure the configured Python environment is available
 
             prep = fetch(sbx.Preprocessed& key,'*');
             micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));
