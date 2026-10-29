@@ -37,6 +37,7 @@ else
 end
 assert(exist(p.executable,"file") == 2, ...
     "Python executable not found for environment %s: %s",env,p.executable);
+p.command = '"' + p.executable + '"';
 p.root = root;
 p.name = env;
 p.prefix = string(prefix);

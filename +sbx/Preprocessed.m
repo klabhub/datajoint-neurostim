@@ -484,7 +484,7 @@ classdef Preprocessed < dj.Computed
             switch (parms.toolbox)
                 case 'suite2p'
                     pythonEnvironment = "suite2p";
-                    pyInfo = setupPython(pythonEnvironment);
+                    setupPython(pythonEnvironment);
 
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
@@ -522,8 +522,22 @@ classdef Preprocessed < dj.Computed
                         if prepComplete
                             fprintf('Preprocessing results already exists for %d planes at depth  %.1f. \n Importing %s\n',uNrPlanes,thisDepth,opsFile);
                         else
-                            % Read installation default ops
-                            opts = py.suite2p.default_ops();
+                            % Import the compatibility bridge from the tools
+                            % folder. It supports both Suite2p's legacy
+                            % default_ops API and its newer default_settings /
+                            % default_db API.
+                            cfd = fileparts(mfilename('fullpath'));
+                            toolsPath = fullfile(fileparts(cfd),'tools');
+                            here = pwd;
+                            restoreFolder = onCleanup(@() cd(here));
+                            cd(toolsPath);
+                            nssbx = py.importlib.import_module('nssbx_suite2p');
+                            cd(here);
+                            clear restoreFolder
+
+                            % Read installation defaults as legacy-compatible
+                            % flat options.
+                            opts = nssbx.default_options();
                             opts{'input_format'} = "sbx";
                             opts{'nplanes'} = uint64(uNrPlanes);
                             opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
@@ -543,8 +557,8 @@ classdef Preprocessed < dj.Computed
                                         prepValue = {prepValue};
                                     end
                                     overruled = feval(pyClass,prepValue);
-                                catch me
-                                    error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
+                                catch
+                                    error('Parameter %s does not exist in the Suite2p defaults. Typo?',fn{f});
                                 end
                                 opts{fn{f}} = overruled;
                             end
@@ -578,30 +592,10 @@ classdef Preprocessed < dj.Computed
                                 'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
 
                             fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-
-                            % Calling python in-process can lead to problems
-                            % with library conflicts. Using a system call seems more robust to
-                            % different installs. To pass the ops and db dicst we save them
-                            % to a temporary file.
-                            cfd = fileparts(mfilename('fullpath'));
-                            % The python tools are in the tools folder.
-                            % Temporarily go there to import  (full path
-                            % did not seem to work).
-                            toolsPath = fullfile(fileparts(cfd),'tools');
-                            here =pwd;
-                            cd(toolsPath);
-                            nssbx = py.importlib.import_module('nssbx_suite2p');
-                            cd (here)
-                            % Save the dicts to tempfiles
-                            optsFile= temp;
-                            nssbx.save_dict_to_file(opts,optsFile)
-                            dbFile = temp;
-                            nssbx.save_dict_to_file(db,dbFile)
-                            % The python file that will read these
-                            pyCmd = sprintf('"%s/nssbx_suite2p.py" "%s" "%s"',toolsPath,optsFile, dbFile);
-                            % Run Python directly from the selected environment.
-                            cmd = sprintf('%s %s',pyInfo.command,pyCmd);
-                            system(cmd ,'-echo')
+                            % Run through MATLAB's configured Python host.
+                            % setupPython selects the suite2p environment and
+                            % uses OutOfProcess execution on Unix.
+                            nssbx.run_suite2p(opts,db);
 
                             % Couldn't figure out how to convert stat.npy so
                             % save it as .mat (Not using save_mat to avoid
