@@ -5,7 +5,7 @@ function dandi(dandiSet, root, pv)
 % Dandi documentation https://github.com/dandi/dandi-docs
 % 
 % EXAMPLE
-% dandi (00170,"c:/temp/dandi",condaEnvironment ="dandi",staging=false)
+% dandi (00170,"c:/temp/dandi",pythonEnvironment ="dandi",staging=false)
 %  This will validate, organize and upload the data in c:/temp/dandi/00170
 %  to the Dandi archive.
 % 
@@ -21,8 +21,8 @@ function dandi(dandiSet, root, pv)
 % --existing REFRESH : upload only if local
 %                                  modification time is ahead of the remote.
 %
-% This requires a CONDA installation defined by the NS_CONDA environment
-% variable (e.g. /home/joe/miniconda3) and a CONDA environment with NWB/Dandi 
+% This uses the environment configured by NS_PY_ROOT and NS_PY_ENV (or the
+% explicit pythonEnvironment parameter) and requires NWB/Dandi to be installed.
 % installed. 
 % I used this to install it:
 % conda create -n nwb python=3.10
@@ -41,7 +41,7 @@ function dandi(dandiSet, root, pv)
 arguments
     dandiSet (1,1) string   % The Dandi Set unique identifier as a string
     root (1,1) string       % The folder that contains a folder called export with the nwb data files exported by ns.Experiment/nwbExport
-    pv.condaEnvironment (1,1) string = "nwb"
+    pv.pythonEnvironment (1,1) string = string(getenv("NS_PY_ENV"))
     pv.staging (1,1) logical = false    % Set to true if this is a staging DandiSet
     pv.upload (1,1) logical = true     % Set to false to skip the upload step 
     pv.uploadOptions (1,1) string = ""   % Provide additional verbatim input to the dandi upload commands
@@ -62,7 +62,7 @@ assert(exist(exportFolder,"dir"),"%s does not exist. Run nwbExport(ns.Experiment
 %% Run nwbinspector dandi validation in a conda environment
 if pv.runNwbInspector
 fprintf('**** Running nwbinspector...\n');                
-runInConda("nwbinspector --config dandi .", exportFolder,pv.condaEnvironment);
+    runInPython("nwbinspector --config dandi .", exportFolder,pv.pythonEnvironment);
 end
 %% Delete the existing dandiset folder (otherwise organize generates errors)
 dandiSetFolder = fullfile(root,dandiSet);
@@ -74,7 +74,7 @@ end
 % the dandiset.yaml file in it.
 fprintf('**** Downloading dandiset ...\n');                    
 dandiCmd = sprintf("dandi download " + pv.downloadOptions + " --output-dir .. --download dandiset.yaml https://%s/dandiset/%s/draft/",url,dandiSet);
-runInConda(dandiCmd,exportFolder,pv.condaEnvironment);
+runInPython(dandiCmd,exportFolder,pv.pythonEnvironment);
     
 %% Organize the files and revalidate
 % Force session_id in the name of the file as otherwise
@@ -88,7 +88,7 @@ runInConda(dandiCmd,exportFolder,pv.condaEnvironment);
 fprintf('**** Organizing and validating dandiset %s ...\n',dandiSet);                
 
 dandiCmd = sprintf("dandi organize " + pv.organizeOptions + " --dandiset-path ../%s --required-field session_id %s",dandiSet,exportFolder);
-runInConda(dandiCmd,exportFolder,pv.condaEnvironment);    
+runInPython(dandiCmd,exportFolder,pv.pythonEnvironment);    
 
          
 %% Upload
@@ -101,30 +101,27 @@ else
     dandiCmd = "dandi upload " + pv.uploadOptions  +  " -i dandi .";   
 end
 
-runInConda(dandiCmd,dandiSetFolder,pv.condaEnvironment);
+runInPython(dandiCmd,dandiSetFolder,pv.pythonEnvironment);
 fprintf('*** Upload complete (%s)\n',seconds(toc));
 end
 
 %% Helper function to run a dandi command in a specified folder using a 
 % user defined conda environment.
-function status = runInConda(dandiCmd,wrkFldr,condaEnvironment)
+function status = runInPython(dandiCmd,wrkFldr,pythonEnvironment)
 arguments
     dandiCmd (1,1) string  % Command to run
     wrkFldr (1,1)  string   % Working folder for command    
-    condaEnvironment (1,1) string = "nwb" % Conda environment to use    
+    pythonEnvironment (1,1) string = string(getenv("NS_PY_ENV")) % Python environment to use
 end 
-condaFldr = getenv('NS_CONDA');
-assert(exist(condaFldr,"dir"),'Set the NS_CONDA variable (%s) to point to your Conda installation (e.g. /home/user/miniconda3',condaFldr)
-               
+pyInfo = setupPython(pythonEnvironment);
+tokens = regexp(char(dandiCmd),'^(?<name>\S+)(?<args>.*)$','names');
+tool = fullfile(pyInfo.bin,string(tokens.name) + pyInfo.extension);
+assert(exist(tool,"file") == 2, ...
+    "Python command %s not found in environment %s: %s",tokens.name,pyInfo.name,tool);
 if ispc
-    cmd = sprintf('"%s\\Scripts\\activate.bat" %s & cd "%s" & %s',condaFldr,condaEnvironment,wrkFldr,dandiCmd);                    
+    cmd = sprintf('cd /d "%s" & "%s"%s',wrkFldr,tool,tokens.args);
 else
-    cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
-    'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...
-    'elif [ -f "%s/etc/profile.d/conda.sh" ]; then source "%s/etc/profile.d/conda.sh"; ' ...
-    'else export PATH="%s/bin:$PATH"; fi; unset __conda_setup; ' ...
-    'conda activate %s; cd %s; eval "%s"'], ...
-    condaFldr, condaFldr, condaFldr, condaFldr, condaEnvironment, wrkFldr,dandiCmd);
+    cmd = sprintf('cd "%s" && "%s"%s',wrkFldr,tool,tokens.args);
 end
 
 status =  system(cmd,'-echo');

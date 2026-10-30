@@ -1,76 +1,97 @@
-function ok = setupPython(env)
-% Check that Python is accessible and try to connect if not.
-% Order:
-% 1. The python that is already loaded (pyenv)
-% 2. The python in the conda environment 'matlab'
-% 3. The python in the conda environment specified as the input argument
-% 4. The base conda environemnt (if 2 or 3 do not exist)
+function [p,ok] = setupPython(env,outofprocess)
+% Resolve and, when needed, load Python from the configured environment.
 %
-% The conda install is determined from the NS_CONDA environment variable.
-% Set it to something like "~/miniconda3"
+% NS_PY_ROOT specifies the folder that directly contains the Conda/Mamba/
+% micromamba environments. NS_PY_ENV specifies the default environment name. An environment
+% name can also be passed explicitly to this function. The first output is a
+% structure describing the environment; the second output reports success.
 %
-% On Unix python is set to OutOfProcess (the only way to avoid library
-% conflicts and segfaults in my experience)
+% By default, python is set to OutOfProcess (the only way to avoid library
+% conflicts and segfaults in my experience). Set the second argument to false to use InProcess, 
+% which is faster but more prone to segfaults.
+% 
+% Requesting env=="" will use the currently loaded Python environment, if any. Note that OutOfProcess mode is not compatible with the currently loaded environment, so if you request OutOfProcess mode and a Python environment is already loaded, it will be terminated and reloaded in OutOfProcess mode.
+% is ignored in this case.
+%
+% If an environment is requested that does not exist, the currently loaded Python environment will be used instead, if any.
+% (in this case too, the outofprocess argument is ignored).
 arguments
-    env (1,1) string = "matlab" % Default env, to be created by user
-end
-pv = pyenv;
-if ispc
-    exe = 'python.exe';
-    binFolder = '';
-else
-    exe = 'bin/python';
+    env (1,1) string = string(getenv("NS_PY_ENV"))
+    outofprocess (1,1) logical  = true
 end
 
-envLoaded = extractAfter(pv.Home,'envs/');
-if envLoaded ~=env
-    % Change of environment
-    if pv.Status == "Loaded"  && pv.ExecutionMode =="OutOfProcess"
-        terminate(pyenv);  % Terminate the old
-        pv= pyenv;
+if ~isempty(getenv("NS_CONDA")); fprintf(2,"NS_CONDA is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
+if ~isempty(getenv("NS_PYTHON")); fprintf(2,"NS_PYTHON is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
+pv = pyenv;
+if env == ""
+    assert(pv.Status == "Loaded" || exist(pv.Executable,"file") == 2, ...
+        'setupPython:NoPythonAvailable', ...
+        'No Python interpreter is loaded or configured. Configure pyenv or request a named environment.');
+    
+    prefix = string(py.sys.prefix);
+    pv = pyenv;
+    [root,env,envExtension] = fileparts(prefix);
+    env = env + envExtension;
+    useLoaded = true;
+    fprintf('Using current Python environment: %s\n',pv.Executable);
+else
+    root = string(getenv("NS_PY_ROOT"));
+    assert(strlength(root) > 0, ...
+        "NS_PY_ROOT is not set. Set it to the folder directly containing the Conda/Mamba/micromamba environments.");
+    assert(exist(root,"dir") == 7, ...
+        "NS_PY_ROOT does not exist: %s",root);
+
+    prefix = fullfile(root,env);
+    useLoaded = exist(prefix,"dir") ~= 7 && exist(pv.Executable,"file");
+    if useLoaded
+        fprintf('Python environment %s does not exist at %s. Falling back to already-loaded Python: %s\n', ...
+            env,prefix,pv.Executable);
+        prefix = string(py.sys.prefix);
+        [root,env,envExtension] = fileparts(prefix);
+        env = env + envExtension;
+    end
+end
+assert(exist(prefix,"dir") == 7, ...
+    "Python environment %s does not exist under NS_PY_ROOT: %s",env,prefix);
+if ispc
+    p.executable = string(fullfile(prefix,"python.exe"));
+    p.bin = string(fullfile(prefix,"Scripts"));
+    p.extension = ".exe";
+else
+    p.executable = string(fullfile(prefix,"bin","python"));
+    p.bin = string(fullfile(prefix,"bin"));
+    p.extension = "";
+end
+if useLoaded
+    p.executable = string(pv.Executable);
+end
+assert(exist(p.executable,"file") == 2, ...
+    "Python executable not found for environment %s: %s",env,p.executable);
+p.command = '"' + p.executable + '"';
+p.root = root;
+p.name = env;
+p.prefix = string(prefix);
+
+if ~strcmpi(string(pv.Executable),p.executable)
+    if pv.Status == "Loaded" && pv.ExecutionMode == "OutOfProcess"
+        terminate(pyenv);
+        pv = pyenv;
     end
 
     if pv.Status == "NotLoaded"
-        % Either just terminated (outtofprocess) or never loaded
-        % (inprocess) - set up new
-        conda = getenv("NS_CONDA");
-        if ~isempty(conda) && exist(conda,'dir')
-            % Check for a conda environment called matlab.
-            f = fullfile(conda,'envs',env,exe);
-            if exist(f,'file')
-                pyenv('Version',f);
-            else
-                fprintf('CONDA env %s does not exist.(%s)\n ' ,env,f);
-                % Use the default install of miniconda
-                f= fullfile(conda,exe);
-                pyenv('Version',f);
-            end
-        else
-            fprintf('CONDA dir %s does not exist. Define NS_CONDA.\n',conda);
-            f ='';
+        if outofprocess
+            pyenv('ExecutionMode','OutOfProcess');
         end
+        pyenv('Version',p.executable);
+    else
+        error('Could not select Python environment %s.',env);
     end
 end
 
-% Check the outcome
-pv =pyenv();
-envLoaded = extractAfter(pv.Home,"envs" +filesep);
-if ismissing(envLoaded) 
-    fprintf(2,'No conda environment %s. Hoping for the best.\n',env);
-elseif envLoaded ~= env
-    fprintf(2,'conda environment %s could not be loaded, instead we have %s. Hoping for the best.\n',env,envLoaded);
-end
-
-if isunix 
-    % Crashing without this
-    pyenv('ExecutionMode','OutOfProcess');
-end
-
-if isempty(pv.Version)
-    fprintf(2,'Python setup unsuccessful (conda: %s file: %s, env , %s)\n',conda,f,env)
-else
-    fprintf('Python setup successful (Exe: %s Ver:%s)\n',pv.Executable,pv.Version)
-end
-ok = pv.Version ~="";
+pv = pyenv();
+assert(strcmpi(string(pv.Executable),p.executable), ...
+    "Python setup selected %s instead of the requested environment executable %s.",pv.Executable,p.executable);
+fprintf('Python setup successful (Exe: %s Ver:%s)\n',pv.Executable,pv.Version)
+ok = pv.Version ~= "";
 
 

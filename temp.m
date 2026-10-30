@@ -4,14 +4,14 @@ function v =temp(td)
 % variable (if it is defined).
 %
 arguments
-    td  (1,1) string =""
-end
-if td==""
-    td = string(getenv('NS_TEMPDIR'));
+    td  (1,1) string =string(getenv('NS_TEMPDIR'))
 end
 
 if td==""
     v = tempname;
-else
+elseif exist(td,"dir")
     v = tempname(td);
+else
+    fprintf('This NS_TEMPDIR does not exist: %s. Using %s instead.\n',td,tempdir)
+    v = tempname;
 end
