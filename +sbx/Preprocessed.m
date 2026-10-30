@@ -487,6 +487,7 @@ classdef Preprocessed < dj.Computed
                     setupPython(pythonEnvironment);
 
                     suite2p = py.importlib.import_module('suite2p');
+                    %{
                     installedVersion = py.packaging.version.Version(py.importlib.metadata.version('suite2p'));
                     loadedVersion = py.packaging.version.Version(suite2p.version);
                     if logical(py.operator.lt(installedVersion,py.packaging.version.Version('1.1.0'))) || ...
@@ -495,7 +496,7 @@ classdef Preprocessed < dj.Computed
                             'Suite2p >=1.1.0 is required. Installed: %s; loaded: %s. Restart the Python host after changing the installation.', ...
                             string(py.str(installedVersion)),string(py.str(loadedVersion)));
                     end
-
+                    %}
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
                         thisGrp = grp==depthNr;
@@ -570,16 +571,16 @@ classdef Preprocessed < dj.Computed
                             % Run through MATLAB's configured Python host.
                             % setupPython selects the suite2p environment and
                             % uses OutOfProcess execution on Unix.
-                            runner = py.importlib.import_module('suite2p.run_s2p');
-                            converters = runner.files_to_binary;
-                            try
-                                converterSignature = py.inspect.signature(converters{'sbx'});
-                                converterSignature.bind(py.None,py.None,py.None,py.None);
-                            catch me
-                                error('sbx:Preprocessed:Suite2pSbxApi', ...
-                                    'Suite2p %s has an incompatible SBX converter: %s', ...
-                                    string(py.str(loadedVersion)),me.message);
-                            end
+                            %runner = py.importlib.import_module('suite2p.run_s2p');
+                            % converters = runner.files_to_binary;
+                            % try
+                            %     converterSignature = py.inspect.signature(converters{'sbx'});
+                            %     converterSignature.bind(py.None,py.None,py.None,py.None);
+                            % catch me
+                            %     error('sbx:Preprocessed:Suite2pSbxApi', ...
+                            %         'Suite2p %s has an incompatible SBX converter: %s', ...
+                            %         string(py.str(loadedVersion)),me.message);
+                            % end
                             suite2p.run_s2p(db=db,settings=settings);
 
                             % Couldn't figure out how to convert stat.npy so
