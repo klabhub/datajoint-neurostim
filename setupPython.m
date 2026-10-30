@@ -1,4 +1,4 @@
-function [p,ok] = setupPython(env)
+function [p,ok] = setupPython(env,outofprocess)
 % Resolve and, when needed, load Python from the configured environment.
 %
 % NS_PY_ROOT specifies the folder that directly contains the Conda/Mamba/
@@ -10,6 +10,7 @@ function [p,ok] = setupPython(env)
 % conflicts and segfaults in my experience)
 arguments
     env (1,1) string = string(getenv("NS_PY_ENV"))
+    outofprocess (1,1) logical  = true
 end
 
 if ~isempty(getenv("NS_CONDA")); fprintf(2,"NS_CONDA is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
@@ -25,7 +26,7 @@ assert(strlength(env) > 0, ...
 
 prefix = fullfile(root,env);
 pv = pyenv;
-useLoaded = exist(prefix,"dir") ~= 7 && pv.Status == "Loaded";
+useLoaded = exist(prefix,"dir") ~= 7 && exist(pv.Executable,"file");
 if useLoaded
     fprintf('Python environment %s does not exist at %s. Falling back to already-loaded Python: %s\n', ...
         env,prefix,pv.Executable);
@@ -61,7 +62,7 @@ if ~strcmpi(string(pv.Executable),p.executable)
     end
 
     if pv.Status == "NotLoaded"
-        if isunix
+        if outofprocess
             pyenv('ExecutionMode','OutOfProcess');
         end
         pyenv('Version',p.executable);

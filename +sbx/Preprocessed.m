@@ -576,8 +576,9 @@ classdef Preprocessed < dj.Computed
                                     fastDisk = string(configuredFastDisk);
                                 end
                             end
+                            saveFolder=fullfile(resultsFolder,depthSubFolder);
                             db.update(py.dict(save_path0=sessionPath, ...
-                                save_folder=fullfile(resultsFolder,depthSubFolder), ...
+                                save_folder=saveFolder, ...
                                 data_path=py.list(thisDataFldr), ...
                                 fast_disk=fastDisk));
                             ioSettings{'move_bin'} = ~logical(ioSettings{'delete_bin'}) && ~strcmpi(fastDisk,sessionPath);
@@ -586,16 +587,18 @@ classdef Preprocessed < dj.Computed
                             % Run through MATLAB's configured Python host.
                             % setupPython selects the suite2p environment and
                             % uses OutOfProcess execution on Unix.
-                            %runner = py.importlib.import_module('suite2p.run_s2p');
-                            % converters = runner.files_to_binary;
-                            % try
-                            %     converterSignature = py.inspect.signature(converters{'sbx'});
-                            %     converterSignature.bind(py.None,py.None,py.None,py.None);
-                            % catch me
-                            %     error('sbx:Preprocessed:Suite2pSbxApi', ...
-                            %         'Suite2p %s has an incompatible SBX converter: %s', ...
-                            %         string(py.str(loadedVersion)),me.message);
-                            % end
+                            runner = py.importlib.import_module('suite2p.run_s2p');
+                            % Check that the sbx converter is compatible with the current suite2p version. The sbx converter has to have a signature of (db,ops,settings,db0) and return a tuple of (ops,db0). If it does not, then the user needs to update their suite2p installation.
+                            converters = runner.files_to_binary;
+                             try
+                                 converterSignature = py.inspect.signature(converters{'sbx'});
+                                 converterSignature.bind(py.None,py.None,py.None,py.None);
+                             catch me
+                                 error('sbx:Preprocessed:Suite2pSbxApi', ...
+                                     'Suite2p %s has an incompatible SBX converter: %s. Try a more recent github version of suite2p.', ...
+                                     string(py.str(loadedVersion)),me.message);
+                             end
+                            runner.logger_setup(saveFolder);% Set up logging to console and file
                             suite2p.run_s2p(db=db,settings=settings);
 
                             % Couldn't figure out how to convert stat.npy so
