@@ -13,14 +13,28 @@ yscale : float              # Scale factor of ypixels  (micron/pixels)
 nrplanes : int              # Number of planes
 %}
 %
-% Calls to python require environment variable NS_CONDA to point to a conda
-% installation. Python will run OutOfProcess (i.e. using a
-% system call to start Python outside Matlab).
+% Calls to Python use the environment configured by NS_PY_ROOT and
+% NS_PY_ENV. Python will run OutOfProcess (i.e. using a system call to
+% start Python outside Matlab).
 %
 % With suite2p preprocessing, the fast_disk option can be set in PreprocessedParms,
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
+%  
+% SUITE2P version 1.1.0 or later is required. 
+%
+% 1. install suite2p in a conda environment following the instructions on github
+% 2.  Clone the suite2p repository, switch to the branch that you want to use.
+%     Currently (10/2026) I am using sbx_fix branch of suite2p (this is v1.1.0 plus a fix for converting sbx files to binary). 
+% 3.  Activate suite2p environment. 
+% 4. cd into the repo folder (top level)
+% 5. install this github version with (compat option seemed required to get
+% the initialziation of the suite2p module to work properly.)       
+%   pip install -e . --config-settings editable_mode=compat
+% and add the sbxreader with
+%   pip install sbxreader
+%
 %
 % This table has an associated PreprocessedRoi table that stores
 % information on each of the ROIs extracted with this preprocessing.
@@ -224,32 +238,28 @@ classdef Preprocessed < dj.Computed
             % working directory), but the gui will open with its working directory
             % set to the relevant folder so that the user can rapdily select the stat.npy
             % from the gui.
-            conda = getenv('NS_CONDA');
-            if isempty(conda)
-                fprintf('Please set the environment variable NS_CONDA to the conda folder\n')
-                return;
-            else
-                % Construct a batch/bash command.
+            arguments
+                tbl {mustHaveRows}
+            end
                 tpl = fetch(tbl*sbx.PreprocessedParm,'*');
                 switch (tpl.parms.toolbox)
                     case 'suite2p'
-                        env = 'suite2p';  % the conda environment
+                        pyInfo = setupPython("suite2p");
                         sessionPath=unique(folder(ns.Session & tpl));
                         statsFile = fullfile(sessionPath,tpl.folder,'plane0/stat.npy');
                         if ~exist(statsFile,"file")
                             error('File not found %s',statsFile);
                         end
                         if ispc
-                            drive = extractBefore(statsFile,':');
-                            condaCmd = sprintf('cd "%s" & %s: & suite2p',fileparts(statsFile),drive);
-                            cmd = sprintf('%s/Scripts/activate.bat %s & %s &',strrep(conda,'\','/'),env,condaCmd);
+                            suite2p = fullfile(pyInfo.bin,"suite2p.exe");
+                            cmd = sprintf('cd /d "%s" & "%s"',fileparts(statsFile),suite2p);
                         else
-                            error('Not implemented yet')
+                            suite2p = fullfile(pyInfo.bin,"suite2p");
+                            cmd = sprintf('cd "%s" && "%s"',fileparts(statsFile),suite2p);
                         end
                     otherwise
                         error('Not implemented yet')
                 end
-            end
 
             fprintf('Starting the external %s gui\n',tpl.parms.toolbox)
             system(cmd ,'-echo');
@@ -487,10 +497,21 @@ classdef Preprocessed < dj.Computed
 
             switch (parms.toolbox)
                 case 'suite2p'
-                    condaEnvironment = "suite2p";
-                    setupPython(condaEnvironment);
-                    condaFldr = extractBefore(pyenv().Home,'envs');
+                    % Connect to the suite2p python environment and import the suite2p module. 
+                    pythonEnvironment = "suite2p";
+                    setupPython(pythonEnvironment);
 
+                    suite2p = py.importlib.import_module('suite2p');
+                   
+                    installedVersion = py.packaging.version.Version(py.importlib.metadata.version('suite2p'));
+                    loadedVersion = py.packaging.version.Version(suite2p.version);
+                    if logical(py.operator.lt(installedVersion,py.packaging.version.Version('1.1.0'))) || ...
+                            ~logical(py.operator.eq(loadedVersion,installedVersion))
+                        error('sbx:Preprocessed:Suite2pVersion', ...
+                            'Suite2p >=1.1.0 is required. Installed: %s; loaded: %s. Restart the Python host after changing the installation.', ...
+                            string(py.str(installedVersion)),string(py.str(loadedVersion)));
+                    end
+                   
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
                         thisGrp = grp==depthNr;
@@ -505,6 +526,16 @@ classdef Preprocessed < dj.Computed
                         uNrPlanes= unique(thisNrPlanes);
                         assert(isscalar(uNrPlanes),"Different number of planes across experiments in this session.");
 
+                        db = suite2p.default_db();
+                        settings = suite2p.default_settings();
+                        db{'input_format'} = "sbx";
+                        db{'nplanes'} = uint64(uNrPlanes);
+                        ioSettings = settings{'io'};
+                        ioSettings{'combined'} = false;
+                        sbx.Preprocessed.applySuite2pOptions(parms.ops,{db,settings});
+                        settings{'fs'} = settings{'fs'}/uNrPlanes;
+                        runSettings = settings{'run'};
+
                         %% Check whether preprocessing has already completed for this plane/depth
                         for plane = 0:uNrPlanes-1
                             if nrDepths ==1
@@ -515,7 +546,7 @@ classdef Preprocessed < dj.Computed
                             planeSubFolder = sprintf('plane%d',plane);
                             opsFile =fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,'ops.npy');
                             requiredFiles = {'iscell.npy','F.npy','Fneu.npy'};
-                            if isfield(parms,'spikedetect') && parms.spikedetect ==true    
+                            if logical(runSettings{'do_deconvolution'})
                                 requiredFiles{end+1} = 'spks.npy';
                             end
                             outFiles = fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder,requiredFiles);
@@ -527,95 +558,63 @@ classdef Preprocessed < dj.Computed
                         if prepComplete
                             fprintf('Preprocessing results already exists for %d planes at depth  %.1f. \n Importing %s\n',uNrPlanes,thisDepth,opsFile);
                         else
-                            % Read installation default ops
-                            opts = py.suite2p.default_ops();
-                            opts{'input_format'} = "sbx";
-                            opts{'nplanes'} = uint64(uNrPlanes);
-                            opts{'combined'} = false; % Don't create a folder with all planes combined.(Only separate planeo/plane1 folders)
-
-                            % Then replace parameters defined in the prep settings
-                            fn= fieldnames(parms.ops);
-                            for  f= 1:numel(fn)
-                                try
-                                    default= opts{fn{f}};
-                                    pyClass =class(default);
-                                    prepValue =parms.ops.(fn{f});
-                                    if strcmpi(pyClass,'py.list') && (ischar(prepValue) || isstring(prepValue))
-                                        % Some options have to specified as a
-                                        % length 1 list of strings. If the user
-                                        % put a string/char in the prepParms
-                                        % this codes wraps it in a py.list
-                                        prepValue = {prepValue};
-                                    end
-                                    overruled = feval(pyClass,prepValue);
-                                catch me
-                                    error('Parameter %s does not exist in default_ops(). Typo?',fn{f});
-                                end
-                                opts{fn{f}} = overruled;
-                            end
-
-                            % The sample rate corresponds to the total;
-                            % divide by nrPlanes
-                            opts{'fs'} = opts{'fs'}/uNrPlanes;
-
-                            % Create a dict with the folder information
-                            if isempty(cell(opts{'fast_disk'}))
+                            configuredFastDisk = db{'fast_disk'};
+                            if isa(configuredFastDisk,'py.NoneType') || strlength(string(configuredFastDisk)) == 0
                                 % No fast disk specified, guessing that temp will have better access speed.
                                 % In the db, fast_disk has to be a string, not  a list.
                                 fastDisk = temp;
                             else
-                                if opts{'delete_bin'}
+                                if logical(ioSettings{'delete_bin'})
                                     % Not keeping the bin file. Use a temp
                                     % subfolder in the specified fast_disk to
                                     % allow mutliple concurrent runs of suite2p
-                                    fastDisk = temp(string(opts{'fast_disk'}));
+                                    fastDisk = temp(string(configuredFastDisk));
                                 else
                                     % Keeping the file, so assume that the user
                                     % had a reason to specify a specific
                                     % folder)
-                                    fastDisk = string(opts{'fast_disk'});
+                                    fastDisk = string(configuredFastDisk);
                                 end
-                            end
-                            db= py.dict(pyargs('save_path0',sessionPath, ...
-                                'save_folder',fullfile(resultsFolder,depthSubFolder), ...
-                                'data_path',py.list(thisDataFldr), ...
-                                'fast_disk',fastDisk, ...
-                                'move_bin',~opts{'delete_bin'}&& ~strcmpi(fastDisk,sessionPath)));% Move bin file if its kept and not already in the session path.
+                            end                            
+                            db.update(py.dict(save_path0=sessionPath, ...
+                                save_folder=fullfile(resultsFolder,depthSubFolder), ...
+                                data_path=py.list(thisDataFldr), ...
+                                fast_disk=fastDisk));
+                            ioSettings{'move_bin'} = ~logical(ioSettings{'delete_bin'}) && ~strcmpi(fastDisk,sessionPath); %#ok<NASGU>
 
                             fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
-
-                            % Calling python in-process can lead to problems
-                            % with library conflicts. Using a system call seems more robust to
-                            % different installs. To pass the ops and db dicst we save them
-                            % to a temporary file.
-                            cfd = fileparts(mfilename('fullpath'));
-                            % The python tools are in the tools folder.
-                            % Temporarily go there to import  (full path
-                            % did not seem to work).
-                            toolsPath = fullfile(fileparts(cfd),'tools');
-                            here =pwd;
-                            cd(toolsPath);
-                            nssbx = py.importlib.import_module('nssbx_suite2p');
-                            cd (here)
-                            % Save the dicts to tempfiles
-                            optsFile= temp;
-                            nssbx.save_dict_to_file(opts,optsFile)
-                            dbFile = temp;
-                            nssbx.save_dict_to_file(db,dbFile)
-                            % The python file that will read these
-                            pyCmd = sprintf('"%s/nssbx_suite2p.py" "%s" "%s"',toolsPath,optsFile, dbFile);
-                            % Construct a batch/bash command.
-                            if ispc
-                                cmd = sprintf('"%s\\Scripts\\activate.bat" "%s" & python %s',condaFldr,condaEnvironment,pyCmd);
-                            else
-                                cmd = sprintf(['__conda_setup="$(''%s/bin/conda'' shell.bash hook 2>/dev/null)"; ' ...
-                                    'if [ $? -eq 0 ]; then eval "$__conda_setup"; ' ...
-                                    'elif [ -f "%s/etc/profile.d/conda.sh" ]; then source "%s/etc/profile.d/conda.sh"; ' ...
-                                    'else export PATH="%s/bin:$PATH"; fi; unset __conda_setup; ' ...
-                                    'conda activate %s; eval python "%s"'], ...
-                                    condaFldr, condaFldr, condaFldr, condaFldr, condaEnvironment, pyCmd);
+                            % Run through MATLAB's configured Python host.
+                            % setupPython selects the suite2p environment and
+                            % uses OutOfProcess execution on Unix.
+                            runner = py.importlib.import_module('suite2p.run_s2p');
+                            % Check that the sbx converter is compatible with the current suite2p version. The sbx converter has to have a signature of (db,ops,settings,db0) and return a tuple of (ops,db0). If it does not, then the user needs to update their suite2p installation.
+                            converters = runner.files_to_binary;
+                             try
+                                 converterSignature = py.inspect.signature(converters{'sbx'});
+                                 converterSignature.bind(py.None,py.None,py.None,py.None);
+                             catch me
+                                 error('sbx:Preprocessed:Suite2pSbxApi', ...
+                                     'Suite2p %s has an incompatible SBX converter: %s. Try a more recent github version of suite2p.', ...
+                                     string(py.str(loadedVersion)),me.message);
+                             end
+                            % Replace the previous run.log handler while retaining
+                            % console output and unrelated logging destinations.
+                            logging = py.importlib.import_module('logging');
+                            suite2pLogger = logging.getLogger('suite2p');
+                            fileHandlerType = py.getattr(logging,'FileHandler');
+                            logHandlers = cell(suite2pLogger.handlers);
+                            for handlerNr = 1:numel(logHandlers)
+                                handler = logHandlers{handlerNr};
+                                if logical(py.isinstance(handler,fileHandlerType))
+                                    [~,logName,logExtension] = fileparts(string(handler.baseFilename));
+                                    if logName + logExtension == "run.log"
+                                        suite2pLogger.removeHandler(handler);
+                                        handler.close();
+                                    end
+                                end
                             end
-                            system(cmd ,'-echo')
+                            runner.logger_setup(fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder));% Set up logging to console and file
+                            suite2p.run_s2p(db=db,settings=settings);
 
                             % Couldn't figure out how to convert stat.npy so
                             % save it as .mat (Not using save_mat to avoid
@@ -670,6 +669,40 @@ classdef Preprocessed < dj.Computed
         end
     end
 
+
+    methods (Static, Access=private)
+        function applySuite2pOptions(overrides,targets,path)           
+            % For each of the fields in the overrides struct, 
+            % find the corresponding target in the targets list and apply the override.
+            %  The path is used for error messages to indicate where the override is being applied.
+            if nargin < 3
+                path = 'parms.ops';
+            end
+            for name = string(fieldnames(overrides))'
+                target = [];
+                for t = 1:numel(targets)
+                    if logical(py.operator.contains(targets{t},name))
+                        target = targets{t};
+                        break
+                    end
+                end
+                if isempty(target)
+                    error('sbx:Preprocessed:Suite2pOption', ...
+                        'Unknown Suite2p option %s.%s. Use nested Suite2p >=1.1.0 settings.',path,name);
+                end
+                value = overrides.(name);
+                if isa(target{name},'py.dict')
+                    if ~isstruct(value) || ~isscalar(value)
+                        error('sbx:Preprocessed:Suite2pOption', ...
+                            'Suite2p settings group %s.%s must be a scalar struct.',path,name);
+                    end
+                    sbx.Preprocessed.applySuite2pOptions(value,{target{name}},path + "." + name);
+                else
+                    target{name} = py.json.loads(jsonencode(value,ConvertInfAndNaN=false));
+                end
+            end
+        end
+    end
 
     methods (Static)
         function [G, ID, ranges] = findgroups_slack(x, slack)

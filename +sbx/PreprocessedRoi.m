@@ -145,6 +145,7 @@ classdef PreprocessedRoi < dj.Part
             % circle)  [false]
             % alpha - Transparency [0.5]
             % alphaThreshold - 0
+            % randColor - Assign each ROI a random color from the colormap [false]
             %
             % OUTPUT
             %    hScatter - Handle to the scatter object
@@ -176,6 +177,7 @@ classdef PreprocessedRoi < dj.Part
                 pv.pix (1,1) logical  = false
                 pv.alpha (1,1) double = 0.5;
                 pv.alphaThreshold (1,1) double =0;
+                pv.randColor (1,1) logical = false;
             end
             nrRoi = count(roi);
             if nrRoi ==0
@@ -197,7 +199,15 @@ classdef PreprocessedRoi < dj.Part
 
 
             %% Setup color
-            if isempty(pv.color)
+            if pv.randColor
+                % Use discrete colormap entries so each ROI keeps the same
+                % color in both scatter and pixel-overlay modes.
+                pv.color = randi(size(pv.colormap,1),nrRoi,1);
+                pv.colorLabel = 'Random color';
+                if isempty(pv.clim)
+                    pv.clim = [1 size(pv.colormap,1)];
+                end
+            elseif isempty(pv.color)
                 % Show the compactness as the color of the cells
                 pv.color = fetchn(roi,'compact');
                 pv.colorLabel = 'Compactness';
@@ -212,15 +222,17 @@ classdef PreprocessedRoi < dj.Part
 
 
             %% Show mean image as background
-            if pv.showImg
+            if pv.showImg || pv.pix
                 meanImg = fetch1(sbx.Preprocessed & roi,'img','LIMIT 1');
                 RI = imref2d(size(meanImg),micPerPix(1),micPerPix(2));
                 cl = [min(meanImg,[],"all") max(meanImg,[],"all")];
                 meanImg  = 1+round((size(gray,1)-1)*(meanImg-cl(1))./(cl(2)-cl(1)));
                 % Convert to true color to reuse axes for color map
                 meanImg = ind2rgb(meanImg,gray);
+                if pv.showImg 
                 imshow(meanImg,RI);
                 hold on
+                end
             end
 
             if pv.pix
@@ -233,8 +245,12 @@ classdef PreprocessedRoi < dj.Part
 
                 rCntr  =0;
                 % Scale to the full colormap
-                scaled  = (pv.color-min(pv.color))./(max(pv.color)-min(pv.color));
-                clrIndex  = 1+round((size(pv.colormap,1)-1)*scaled);
+                if pv.randColor
+                    clrIndex = pv.color;
+                else
+                    scaled  = (pv.color-min(pv.color))./(max(pv.color)-min(pv.color));
+                    clrIndex  = 1+round((size(pv.colormap,1)-1)*scaled);
+                end
                 for r=roiNr'
                     rCntr= rCntr+1;
                     x =stat(r).xpix;
@@ -287,10 +303,128 @@ classdef PreprocessedRoi < dj.Part
             warning(warnState);
 
         end
+
+        function [movieData] = plotMovie(roi,timeCourse,pv)
+            % Show a movie of ROI values in the spatial layout.
+            %
+            % INPUT
+            % roi        = (subset of) sbx.PreprocessedRoi
+            % timeCourse = vector of values over time, applied to every ROI,
+            %              or an [nRoi x nTime] matrix with one row per ROI.
+            %              An [nTime x nRoi] matrix is also accepted.
+            %
+            % Parameter/Value pairs:
+            % clim            - Color limits shared by all frames [min max]
+            % colormap        - Colormap to use [hot]
+            % showImg         - Show the mean Ca image as background [true]
+            % alpha           - ROI transparency [0.5]
+            % alphaThreshold  - Values with smaller absolute magnitude are
+            %                   made transparent [0]
+            % frameRate       - Playback rate in frames per second [10]
+            % loopCount       - Number of playback repetitions [1]
+            %
+            % OUTPUT
+            % movieData - MATLAB movie frame structure returned by getframe.
+            arguments
+                roi (1,1) sbx.PreprocessedRoi
+                timeCourse double
+                pv.clim (1,:) double = []
+                pv.colormap (:,3) double = hot
+                pv.showImg (1,1) logical = true
+                pv.alpha (1,1) double = 0.5
+                pv.alphaThreshold (1,1) double = 0
+                pv.frameRate (1,1) double = 30
+                pv.loopCount (1,1) double = 1
+            end
+
+            nrRoi = count(roi);
+            if nrRoi == 0
+                error('Cannot create a movie for an empty ROI relation.');
+            end
+            if isempty(timeCourse)
+                error('timeCourse must contain at least one value.');
+            end
+
+            % Normalize the time-course to [nRoi x nTime]. A vector is
+            % shared by all ROIs; matrices may be supplied in either common
+            % orientation.
+            if isvector(timeCourse)
+                values = repmat(timeCourse(:)',nrRoi,1);
+            elseif size(timeCourse,1) == nrRoi
+                values = timeCourse;
+            elseif size(timeCourse,2) == nrRoi
+                values = timeCourse';
+            else
+                error('timeCourse must be a vector or have one dimension equal to the number of ROIs (%d).',nrRoi);
+            end
+            nrFrames = size(values,2);
+
+            [x,y,radius,roiNr] = fetchn(roi,'x','y','radius','roi'); %#ok<ASGLU>
+            [xScale,yScale] = fetchn(sbx.Preprocessed & roi,'xscale','yscale');
+            micPerPix = [xScale yScale];
+
+            prep = sbx.Preprocessed & roi;
+            stat = prep.stat;
+            assert(~isempty(stat),'Stat file not loaded. (is NS_ROOT set correctly?)');
+            meanImg = fetch1(prep,'img','LIMIT 1');
+            RI = imref2d(size(meanImg),micPerPix(1),micPerPix(2));
+
+            if isempty(pv.clim)
+                pv.clim = [min(values,[],'all') max(values,[],'all')];
+            end
+            if pv.clim(1) == pv.clim(2)
+                pv.clim = pv.clim + [-0.5 0.5];
+            end
+
+            if pv.showImg
+                imageClim = [min(meanImg,[],'all') max(meanImg,[],'all')];
+                imageIndex = 1+round((size(gray,1)-1) * ...
+                    (meanImg-imageClim(1)) ./ (imageClim(2)-imageClim(1)));
+                background = ind2rgb(imageIndex,gray);
+                imshow(background,RI);
+                hold on
+            else
+                imshow(zeros([size(meanImg) 3]),RI);
+                hold on
+            end
+
+            overlay = zeros([size(meanImg) 3]);
+            alphaData = zeros(size(meanImg));
+            hData = imshow(overlay,RI);
+            set(hData,'AlphaData',alphaData);
+
+            movieData(1,nrFrames) = getframe(gca);
+            for frameNr = 1:nrFrames
+                colorIndex = 1+round((size(pv.colormap,1)-1) * ...
+                    (values(:,frameNr)-pv.clim(1)) ./ diff(pv.clim));
+                colorIndex = max(1,min(size(pv.colormap,1),colorIndex));
+
+                overlay = zeros([size(meanImg) 3]);
+                alphaData = zeros(size(meanImg));
+                for roiCntr = 1:nrRoi
+                    thisStat = stat(roiNr(roiCntr));
+                    pixelIndex = sub2ind(size(meanImg),thisStat.ypix,thisStat.xpix);
+                    for colorChannel = 1:3
+                        channel = overlay(:,:,colorChannel);
+                        channel(pixelIndex) = pv.colormap(colorIndex(roiCntr),colorChannel);
+                        overlay(:,:,colorChannel) = channel;
+                    end
+                    alphaData(pixelIndex) = pv.alpha * ...
+                        (abs(values(roiCntr,frameNr)) > pv.alphaThreshold);
+                end
+
+                set(hData,'CData',overlay,'AlphaData',alphaData);
+                title(sprintf('Frame %d/%d',frameNr,nrFrames));
+                drawnow;
+                movieData(frameNr) = getframe(gca);
+            end
+
+            movie(gcf,movieData,pv.loopCount,pv.frameRate);
+        end
     end
     methods (Access=?sbx.Preprocessed)
         function makeTuples(tbl,key)
-            assert(setupPython,"Could not find a Python installation");  % Make sure we have a python environment
+            setupPython;  % Make sure the configured Python environment is available
 
             prep = fetch(sbx.Preprocessed& key,'*');
             micPerPix = sqrt(sum([prep.xscale prep.yscale].^2));

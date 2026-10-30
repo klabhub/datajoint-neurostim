@@ -8,9 +8,9 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % https://doi.org/10.1038/s41593-021-00895-5
 %
 % Environment Variables:
-% NS_PYTHON -  The program that starts python in a Conda/Mamba
-% environment. This program will be called to activate the 'cascade'
-% environment.
+% NS_PY_ROOT - The folder directly containing the Conda/Mamba/micromamba environments.
+% NS_PY_ENV  - The default Python environment name. Cascade uses the
+%              explicit 'cascade' environment below.
 % NS_CASCADE  - The folder that contains the Cascade git repository.
 %
 %
@@ -31,11 +31,9 @@ function [signal,time,channelInfo,recordingInfo] = cascade(key,parms)
 % cd into the CascadeTorch repo folder
 % pip install .
 %
-% 3.  Set your NS_PYTHON environment variable to the executable that can run
-% python in an enviroment.  For instance '~/miniforge3/bin/conda' or
-% '~/.local/bin/micromamba'
-% This will be used to construct a bash command that calls python in the
-% cascade enviroment.
+% 3. Set NS_PY_ROOT to the folder directly containing the environments.
+%    Set NS_PY_ENV to the default environment name. The cascade environment
+%    is selected explicitly by this function.
 %
 % 4. Clone the Cascade repo to your home folder:
 %  git clone  https://github.com/HelmchenLabSoftware/Cascade.git
@@ -108,16 +106,8 @@ if isempty(cascadeFolder)
     end
 end
 assert(exist(cascadeFolder,"dir"),"Please install the Cascade github repository or set the NS_CASCADE environment variable (not found at  %s)",cascadeFolder);
-% Check that we can run PYTHON in a conda/mamba environment
-pythonRunner = getenv("NS_PYTHON");
-if isempty(pythonRunner)
-    if ispc
-        pythonRunner = fullfile(getenv('USERPROFILE') , "miniconda3/condabin/conda.bat");
-    else
-        pythonRunner = fulllfile(getenv('HOME'),"/miniconda3/condabin/conda");
-    end
-end
-assert(exist(pythonRunner,"file"),"Set the NS_PYTHON environment variable to a conda/mamba/micromamba executable (not found at  %s)",pythonRunner);
+% Check that Python is available in the cascade environment.
+pyInfo = setupPython("cascade");
 
 %% Determine which Cascade model to use.
 models = getCascadeModels(cascadeFolder);
@@ -193,8 +183,7 @@ if isfield(parms,'options')
     end
     pyCmd =pyCmd + opts;
 end
-pyEnv = pythonRunner + " run -n cascade python ";
-cmd = sprintf('%s %s',pyEnv,pyCmd);
+cmd = sprintf('%s %s',pyInfo.command,pyCmd);
 
 
 
