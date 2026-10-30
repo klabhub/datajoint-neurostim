@@ -597,6 +597,22 @@ classdef Preprocessed < dj.Computed
                                      'Suite2p %s has an incompatible SBX converter: %s. Try a more recent github version of suite2p.', ...
                                      string(py.str(loadedVersion)),me.message);
                              end
+                            % Replace the previous run.log handler while retaining
+                            % console output and unrelated logging destinations.
+                            logging = py.importlib.import_module('logging');
+                            suite2pLogger = logging.getLogger('suite2p');
+                            fileHandlerType = py.getattr(logging,'FileHandler');
+                            logHandlers = cell(suite2pLogger.handlers);
+                            for handlerNr = 1:numel(logHandlers)
+                                handler = logHandlers{handlerNr};
+                                if logical(py.isinstance(handler,fileHandlerType))
+                                    [~,logName,logExtension] = fileparts(string(handler.baseFilename));
+                                    if logName + logExtension == "run.log"
+                                        suite2pLogger.removeHandler(handler);
+                                        handler.close();
+                                    end
+                                end
+                            end
                             runner.logger_setup(fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder));% Set up logging to console and file
                             suite2p.run_s2p(db=db,settings=settings);
 

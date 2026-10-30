@@ -6,8 +6,15 @@ function [p,ok] = setupPython(env,outofprocess)
 % name can also be passed explicitly to this function. The first output is a
 % structure describing the environment; the second output reports success.
 %
-% On Unix python is set to OutOfProcess (the only way to avoid library
-% conflicts and segfaults in my experience)
+% By default, python is set to OutOfProcess (the only way to avoid library
+% conflicts and segfaults in my experience). Set the second argument to false to use InProcess, 
+% which is faster but more prone to segfaults.
+% 
+% Requesting env=="" will use the currently loaded Python environment, if any. Note that OutOfProcess mode is not compatible with the currently loaded environment, so if you request OutOfProcess mode and a Python environment is already loaded, it will be terminated and reloaded in OutOfProcess mode.
+% is ignored in this case.
+%
+% If an environment is requested that does not exist, the currently loaded Python environment will be used instead, if any.
+% (in this case too, the outofprocess argument is ignored).
 arguments
     env (1,1) string = string(getenv("NS_PY_ENV"))
     outofprocess (1,1) logical  = true
@@ -15,24 +22,34 @@ end
 
 if ~isempty(getenv("NS_CONDA")); fprintf(2,"NS_CONDA is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
 if ~isempty(getenv("NS_PYTHON")); fprintf(2,"NS_PYTHON is obsolete. Set NS_PY_ROOT to the folder containing the environments and NS_PY_ENV to the environment name.\n");end
-
-root = string(getenv("NS_PY_ROOT"));
-assert(strlength(root) > 0, ...
-    "NS_PY_ROOT is not set. Set it to the folder directly containing the Conda/Mamba/micromamba environments.");
-assert(exist(root,"dir") == 7, ...
-    "NS_PY_ROOT does not exist: %s",root);
-assert(strlength(env) > 0, ...
-    "NS_PY_ENV is not set. Set it to the environment name, or pass an environment name to setupPython.");
-
-prefix = fullfile(root,env);
 pv = pyenv;
-useLoaded = exist(prefix,"dir") ~= 7 && exist(pv.Executable,"file");
-if useLoaded
-    fprintf('Python environment %s does not exist at %s. Falling back to already-loaded Python: %s\n', ...
-        env,prefix,pv.Executable);
+if env == ""
+    assert(pv.Status == "Loaded" || exist(pv.Executable,"file") == 2, ...
+        'setupPython:NoPythonAvailable', ...
+        'No Python interpreter is loaded or configured. Configure pyenv or request a named environment.');
+    
     prefix = string(py.sys.prefix);
+    pv = pyenv;
     [root,env,envExtension] = fileparts(prefix);
     env = env + envExtension;
+    useLoaded = true;
+    fprintf('Using current Python environment: %s\n',pv.Executable);
+else
+    root = string(getenv("NS_PY_ROOT"));
+    assert(strlength(root) > 0, ...
+        "NS_PY_ROOT is not set. Set it to the folder directly containing the Conda/Mamba/micromamba environments.");
+    assert(exist(root,"dir") == 7, ...
+        "NS_PY_ROOT does not exist: %s",root);
+
+    prefix = fullfile(root,env);
+    useLoaded = exist(prefix,"dir") ~= 7 && exist(pv.Executable,"file");
+    if useLoaded
+        fprintf('Python environment %s does not exist at %s. Falling back to already-loaded Python: %s\n', ...
+            env,prefix,pv.Executable);
+        prefix = string(py.sys.prefix);
+        [root,env,envExtension] = fileparts(prefix);
+        env = env + envExtension;
+    end
 end
 assert(exist(prefix,"dir") == 7, ...
     "Python environment %s does not exist under NS_PY_ROOT: %s",env,prefix);
