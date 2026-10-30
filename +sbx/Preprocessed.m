@@ -21,6 +21,19 @@ nrplanes : int              # Number of planes
 % but if it is not set (i.e. empty) and delete_bin is true (i.e. the
 % temporary bin file is not kept), then a tempdir (presumably on a fast
 % local disk) will be used.
+%  
+% SUITE2P version 1.1.0 or later is required. 
+% 1. install suite2p in a conda environment following the instructions on github
+% 2.  Clone the suite2p repository, switch to the branch that you want to use.
+%     Currently (10/2026) I am using sbx_fix branch of suite2p (this is v1.1.0 plus a fix for converting sbx files to binary). 
+% 3.  Activate suite2p environment. 
+% 4. cd into the repo folder (top level)
+% 5. tall this github version with:
+%   pip install -e . --config-settings editable_mode=compat
+% and add the sbxreader with
+%   pip install sbxreader
+%
+% The editable_mode=compat option is required to get the initialziation of the suite2p module to work properly.
 %
 % This table has an associated PreprocessedRoi table that stores
 % information on each of the ROIs extracted with this preprocessing.
