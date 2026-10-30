@@ -24,6 +24,15 @@ assert(strlength(env) > 0, ...
     "NS_PY_ENV is not set. Set it to the environment name, or pass an environment name to setupPython.");
 
 prefix = fullfile(root,env);
+pv = pyenv;
+useLoaded = exist(prefix,"dir") ~= 7 && pv.Status == "Loaded";
+if useLoaded
+    fprintf('Python environment %s does not exist at %s. Falling back to already-loaded Python: %s\n', ...
+        env,prefix,pv.Executable);
+    prefix = string(py.sys.prefix);
+    [root,env,envExtension] = fileparts(prefix);
+    env = env + envExtension;
+end
 assert(exist(prefix,"dir") == 7, ...
     "Python environment %s does not exist under NS_PY_ROOT: %s",env,prefix);
 if ispc
@@ -35,6 +44,9 @@ else
     p.bin = string(fullfile(prefix,"bin"));
     p.extension = "";
 end
+if useLoaded
+    p.executable = string(pv.Executable);
+end
 assert(exist(p.executable,"file") == 2, ...
     "Python executable not found for environment %s: %s",env,p.executable);
 p.command = '"' + p.executable + '"';
@@ -42,7 +54,6 @@ p.root = root;
 p.name = env;
 p.prefix = string(prefix);
 
-pv = pyenv;
 if ~strcmpi(string(pv.Executable),p.executable)
     if pv.Status == "Loaded" && pv.ExecutionMode == "OutOfProcess"
         terminate(pyenv);

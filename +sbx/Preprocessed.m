@@ -23,17 +23,18 @@ nrplanes : int              # Number of planes
 % local disk) will be used.
 %  
 % SUITE2P version 1.1.0 or later is required. 
+%
 % 1. install suite2p in a conda environment following the instructions on github
 % 2.  Clone the suite2p repository, switch to the branch that you want to use.
 %     Currently (10/2026) I am using sbx_fix branch of suite2p (this is v1.1.0 plus a fix for converting sbx files to binary). 
 % 3.  Activate suite2p environment. 
 % 4. cd into the repo folder (top level)
-% 5. tall this github version with:
+% 5. install this github version with (compat option seemed required to get
+% the initialziation of the suite2p module to work properly.)       
 %   pip install -e . --config-settings editable_mode=compat
 % and add the sbxreader with
 %   pip install sbxreader
 %
-% The editable_mode=compat option is required to get the initialziation of the suite2p module to work properly.
 %
 % This table has an associated PreprocessedRoi table that stores
 % information on each of the ROIs extracted with this preprocessing.
@@ -496,11 +497,12 @@ classdef Preprocessed < dj.Computed
 
             switch (parms.toolbox)
                 case 'suite2p'
+                    % Connect to the suite2p python environment and import the suite2p module. 
                     pythonEnvironment = "suite2p";
                     setupPython(pythonEnvironment);
 
                     suite2p = py.importlib.import_module('suite2p');
-                    %{
+                   
                     installedVersion = py.packaging.version.Version(py.importlib.metadata.version('suite2p'));
                     loadedVersion = py.packaging.version.Version(suite2p.version);
                     if logical(py.operator.lt(installedVersion,py.packaging.version.Version('1.1.0'))) || ...
@@ -509,7 +511,7 @@ classdef Preprocessed < dj.Computed
                             'Suite2p >=1.1.0 is required. Installed: %s; loaded: %s. Restart the Python host after changing the installation.', ...
                             string(py.str(installedVersion)),string(py.str(loadedVersion)));
                     end
-                    %}
+                   
                     % At each depth there can be multiple planes
                     for depthNr = 1:nrDepths
                         thisGrp = grp==depthNr;
@@ -651,8 +653,10 @@ classdef Preprocessed < dj.Computed
 
 
     methods (Static, Access=private)
-        function applySuite2pOptions(overrides,targets,path)
-            % Function that 
+        function applySuite2pOptions(overrides,targets,path)           
+            % For each of the fields in the overrides struct, 
+            % find the corresponding target in the targets list and apply the override.
+            %  The path is used for error messages to indicate where the override is being applied.
             if nargin < 3
                 path = 'parms.ops';
             end
