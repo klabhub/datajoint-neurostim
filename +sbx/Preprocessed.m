@@ -575,13 +575,12 @@ classdef Preprocessed < dj.Computed
                                     % folder)
                                     fastDisk = string(configuredFastDisk);
                                 end
-                            end
-                            saveFolder=fullfile(resultsFolder,depthSubFolder);
+                            end                            
                             db.update(py.dict(save_path0=sessionPath, ...
-                                save_folder=saveFolder, ...
+                                save_folder=fullfile(resultsFolder,depthSubFolder), ...
                                 data_path=py.list(thisDataFldr), ...
                                 fast_disk=fastDisk));
-                            ioSettings{'move_bin'} = ~logical(ioSettings{'delete_bin'}) && ~strcmpi(fastDisk,sessionPath);
+                            ioSettings{'move_bin'} = ~logical(ioSettings{'delete_bin'}) && ~strcmpi(fastDisk,sessionPath); %#ok<NASGU>
 
                             fprintf('Starting suite2p run_s2p at %s... this will take a while \n',datetime('now'))
                             % Run through MATLAB's configured Python host.
@@ -598,7 +597,7 @@ classdef Preprocessed < dj.Computed
                                      'Suite2p %s has an incompatible SBX converter: %s. Try a more recent github version of suite2p.', ...
                                      string(py.str(loadedVersion)),me.message);
                              end
-                            runner.logger_setup(saveFolder);% Set up logging to console and file
+                            runner.logger_setup(fullfile(sessionPath,resultsFolder,depthSubFolder,planeSubFolder));% Set up logging to console and file
                             suite2p.run_s2p(db=db,settings=settings);
 
                             % Couldn't figure out how to convert stat.npy so
