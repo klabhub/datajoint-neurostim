@@ -316,9 +316,23 @@ classdef (Abstract) cache < handle
             %               specify the number of frequencies ('nfrex'),
             %               frequency limits ('limits'), and the FWHM at
             %               the lowest and highest frequencies ('fwhm').
+            %               Set baselineWindow=[start stop] in epoch-relative
+            %               ms to divide by mean power at each frequency.
             %               EXAMPLE:
             %               fun.wavelet = struct('nfrex',40,'fwhm',[2 0.2], ...
             %                   'limits',[0.5 50]);
+            %
+            %   .spectrogram: Analytic Morlet CWT using Wavelet Toolbox.
+            %               Uses logarithmic frequencies and a reusable filter
+            %               bank. Options: limits, voicesPerOctave (default 6),
+            %               and boundary (default "reflection"). Returned power
+            %               is squared CWT magnitude, not power density, and
+            %               differs in normalization from the FWHM method.
+            %               Set baselineWindow=[start stop] in epoch-relative ms to
+            %               divide by mean baseline power at each frequency.
+            %               EXAMPLE:
+            %               fun.spectrogram = struct('limits',[4 40], ...
+            %                   'voicesPerOctave',6);
             %
             %   .snr:       Calculate SNRs as a ratio between the power
             %                  at a given frequency and the average power
@@ -540,7 +554,11 @@ classdef (Abstract) cache < handle
                         case "pmtm"
                             funN = @(signal,srate) ns.cache.do_pmtm(signal,'fs',srate,thisOptions{:});
                         case "wavelet"
-                            funN = @(signal,srate) ns.cache.do_wavelet(signal,srate,thisOptions{:});
+                            funN = @(signal,time,srate) ns.cache.do_wavelet(signal,srate,time,thisOptions{:});
+                            data{end+1} = G.(idv); %#ok<AGROW>
+                        case "spectrogram"
+                            funN = @(signal,time,srate) ns.cache.do_spectrogram(signal,srate,time,thisOptions{:});
+                            data{end+1} = G.(idv); %#ok<AGROW>
                             %% Cases below take G (the result of previous computation) as their input
                         case "snr"
                             assert(nrFuns>1,"snr cannot run on its own; fun needs a spectral power estimate.");
@@ -597,7 +615,7 @@ classdef (Abstract) cache < handle
                     % This is mainly here to avoid errors in the subsequent plotting function, which expects a row vector or a matrix.
                     for col = [dv idv ]
                         assert(iscell(R{:,col}), 'The variable (%s) must be a cell array for each group', col);
-                        assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col})), 'The variable (%s) must be numerical values inside a cell) for each group', col);
+                        assert(all(cellfun(@(v) isrow(v) || isscalar(v) || (size(v,1)>1 && size(v,2)>1), R{:,col}),'all'), 'The variable (%s) must be numerical values inside a cell) for each group', col);
                     end
                     axisSizes = cellfun(@numel,R{1,idv(1)});
                     for col = dv
@@ -757,20 +775,37 @@ classdef (Abstract) cache < handle
             v = table({power'},{freq'},'VariableNames',{'power','frequency'});
             idv = "frequency";
         end
-        function [v,idv] = do_wavelet(signal,fs, pv)
+        function [v,idv] = do_wavelet(signal,fs,time,pv)
+            %do_wavelet - Compute Morlet power with frequency-dependent FWHM
+            %   V = do_wavelet(SIGNAL,FS) returns time-by-frequency power in
+            %   V.power{1}. V.xt contains frequencies and times in seconds.
+            %
+            %   V = do_wavelet(SIGNAL,FS,TIME) uses sample times in seconds
+            %   or a regular-axis descriptor [start stop count]. Without
+            %   TIME, samples start at zero. COMPUTE supplies the epoch axis.
+            %
+            %   V = do_wavelet(...,baselineWindow=WINDOW) divides each
+            %   frequency's power by its mean over WINDOW, in epoch-relative
+            %   milliseconds. The default [] leaves power unnormalized.
+            %   Endpoints are included; no change corresponds to 1. Empty
+            %   baseline selections raise an error; zero or nonfinite
+            %   baseline power produces NaN at that frequency.
+            %
+            %   See also ns.cache.do_spectrogram
             arguments
                 signal (:,1) {mustBeNumeric}
                 fs (1,1) double
+                time (1,:) {mustBeNumeric,mustBeReal,mustBeFinite} = (0:numel(signal)-1)/fs
                 pv.nfrex (1,1) double = 40
                 pv.fwhm (1,2) double = [2 0.2]
                 pv.limits (1,2) double =[0.5 50]
+                pv.baselineWindow (1,:) {mustBeNumeric,mustBeReal,mustBeNonNan} = []
             end
             % Code adapted from Cohen M. X. (2019). A better way to
             % define and describe Morlet wavelets for time-frequency
             % analysis. NeuroImage, 199, 81-86.
             % https://doi.org/10.1016/j.neuroimage.2019.05.048
             nrSamples= size(signal,1);
-            time = (0:nrSamples-1)/fs;
             % time-frequency parameters
             freq  = linspace(pv.limits(1),pv.limits(2),pv.nfrex)';
             fwhm = linspace(pv.fwhm(1),pv.fwhm(2),pv.nfrex)'; % variable fwhm
@@ -784,19 +819,116 @@ classdef (Abstract) cache < handle
             spectrogram = zeros(pv.nfrex,nrSamples);
             % spectrum of data - for convolution with wavelets
             dataX = fft(signal,nConv);
+            % Reuse normalized kernels across equal-length trials/channels.
+            % Keep a single bank, capped at 64 MB per MATLAB worker.
+            persistent waveletKey waveletKernels
+            kernelKey = [fs nrSamples pv.nfrex pv.fwhm pv.limits];
+            cacheKernels = 16*nConv*pv.nfrex <= 64*1024^2;
+            if cacheKernels && ~isequal(waveletKey,kernelKey)
+                kernels = complex(zeros(nConv,pv.nfrex));
+                for fi = 1:length(freq)
+                    waveX = fft(exp(2*1i*pi*freq(fi)*wavet).*exp(-4*log(2)*wavet.^2/fwhm(fi).^2),nConv);
+                    kernels(:,fi) = waveX./max(waveX);
+                end
+                waveletKernels = kernels;
+                waveletKey = kernelKey;
+            end
             % loop over frequencies
             for fi=1:length(freq)
                 % create wavelet
-                waveX = fft( exp(2*1i*pi*freq(fi)*wavet).*exp(-4*log(2)*wavet.^2/fwhm(fi).^2),nConv );
-                waveX = waveX./max(waveX); % normalize
+                if cacheKernels
+                    waveX = waveletKernels(:,fi);
+                else
+                    waveX = fft(exp(2*1i*pi*freq(fi)*wavet).*exp(-4*log(2)*wavet.^2/fwhm(fi).^2),nConv);
+                    waveX = waveX./max(waveX); % normalize
+                end
                 % convolve
                 as = ifft( waveX.*dataX );
                 % trim to valid part
                 spectrogram(fi,:) = as(halfw+(1:nrSamples))';
             end
-            power = abs(spectrogram).^2;
+            power = abs(spectrogram.').^2;
+            [power,time] = ns.cache.normalizeBaseline(power,time,pv.baselineWindow,'Wavelet');
             % Store power spectrogram and frequency
-            v = table({power'},{freq',time},'VariableNames',{'power','xt'});
+            v = table({power},{freq',time},'VariableNames',{'power','xt'});
+            idv = "xt";
+        end
+
+        function [v,idv] = do_spectrogram(signal,srate,time,pv)
+            %do_spectrogram - Compute analytic Morlet wavelet power
+            %   V = do_spectrogram(SIGNAL,SRATE) returns squared CWT
+            %   coefficients using Wavelet Toolbox. SIGNAL is a finite real
+            %   single- or double-precision vector with at least four samples;
+            %   SRATE is its sampling frequency in Hz. V.power{1} is time by
+            %   frequency. V.xt contains ascending frequencies and sample times
+            %   in seconds, starting at zero unless TIME is supplied.
+            %
+            %   V = do_spectrogram(SIGNAL,SRATE,TIME) uses sample times in
+            %   seconds. TIME is a vector with one value per sample or a
+            %   regular-axis descriptor [start stop count]. COMPUTE supplies
+            %   the group's epoch time axis automatically.
+            %
+            %   [V,IDV] = do_spectrogram(...) also returns IDV as "xt".
+            %
+            %   V = do_spectrogram(...,limits=LIMITS) requests [fmin fmax] in
+            %   Hz, defaulting to [0.5 SRATE/2]. CWT can truncate the
+            %   range for short signals; V.xt reports the actual frequencies.
+            %
+            %   V = do_spectrogram(...,voicesPerOctave=VOICES) sets the number
+            %   of logarithmically spaced scales per octave, from 1 to 48.
+            %   The default is 6. Unlike do_wavelet, CWT uses constant-Q
+            %   wavelets rather than independently specified FWHM values.
+            %
+            %   V = do_spectrogram(...,boundary=BOUNDARY) selects "reflection"
+            %   (default) or "periodic" extension. Periodic extension may be
+            %   faster but assumes matching endpoints. Edge effects remain.
+            %
+            %   V = do_spectrogram(...,baselineWindow=WINDOW) divides power at
+            %   each frequency by its mean over WINDOW, a two-element time
+            %   interval in milliseconds on TIME's axis. The default []
+            %   leaves power unnormalized. No change corresponds to 1.
+            %   Baseline samples are included at both interval endpoints;
+            %   an interval with no samples raises an error. Frequencies
+            %   with zero or nonfinite baseline power become NaN.
+            %
+            %   Unnormalized power is squared L1-normalized CWT magnitude,
+            %   not a PSD, and differs in scale from do_wavelet. A baseline
+            %   ratio cancels a stable spectral background but does not fit
+            %   an aperiodic slope. One filter bank is retained per worker.
+            %
+            %   See also cwtfilterbank, cwtfilterbank.wt
+            arguments
+                signal (:,1) {mustBeFloat,mustBeReal,mustBeFinite}
+                srate (1,1) {mustBeNumeric,mustBeReal,mustBeFinite,mustBePositive}
+                time (1,:) {mustBeNumeric,mustBeReal,mustBeFinite} = (0:numel(signal)-1)/double(srate)
+                pv.limits (1,2) {mustBeNumeric,mustBeReal,mustBeFinite,mustBeNonnegative} = [0.5 srate/2]
+                pv.voicesPerOctave (1,1) {mustBeNumeric,mustBeReal,mustBeFinite,mustBeInteger,mustBeInRange(pv.voicesPerOctave,1,48)} = 6
+                pv.boundary {mustBeTextScalar,mustBeMember(pv.boundary,["reflection","periodic"])} = "reflection"
+                pv.baselineWindow (1,:) {mustBeNumeric,mustBeReal,mustBeNonNan} = []
+            end
+
+            nrSamples = numel(signal);
+            assert(nrSamples >= 4,'ns:cache:SpectrogramSignalLength', ...
+                'CWT requires at least four samples.');
+            assert(pv.limits(1) < pv.limits(2) && pv.limits(2) <= srate/2, ...
+                'ns:cache:SpectrogramFrequencyLimits', ...
+                'Frequency limits must satisfy 0 <= fmin < fmax <= sampling rate/2.');
+            persistent cachedKey filterBank
+            key = {nrSamples,double(srate),double(pv.limits), ...
+                double(pv.voicesPerOctave),string(pv.boundary),class(signal)};
+            if ~isequal(cachedKey,key)
+                filterBank = cwtfilterbank(SignalLength=nrSamples, ...
+                    SamplingFrequency=double(srate),Wavelet='amor', ...
+                    FrequencyLimits=double(pv.limits), ...
+                    VoicesPerOctave=double(pv.voicesPerOctave), ...
+                    Boundary=string(pv.boundary));
+                cachedKey = key;
+            end
+            [coefficients,freq] = wt(filterBank,signal);
+            freq = flipud(freq(:)).';
+            power = abs(coefficients(end:-1:1,:).').^2;
+            [power,time] = ns.cache.normalizeBaseline(power,time,pv.baselineWindow,'Spectrogram');
+            v = table({power},{freq,time},'VariableNames',{'power','xt'});
             idv = "xt";
         end
         function [v,idv] = do_snr(signal, freqs, srate,pv)
@@ -924,6 +1056,32 @@ classdef (Abstract) cache < handle
 
 
     methods (Static, Access=protected)
+        function [power,time] = normalizeBaseline(power,time,baselineWindow,transform)
+            nrSamples = size(power,1);
+            if numel(time) == 3 && nrSamples ~= 3
+                assert(time(3) == nrSamples,['ns:cache:' transform 'Time'], ...
+                    'The time-axis descriptor must match the number of signal samples.');
+                time = linspace(time(1),time(2),nrSamples);
+            end
+            assert(numel(time) == nrSamples && all(diff(time) > 0), ...
+                ['ns:cache:' transform 'Time'], ...
+                'Time must contain one strictly increasing time in seconds per sample.');
+            assert(isempty(baselineWindow) || ...
+                (numel(baselineWindow) == 2 && baselineWindow(1) <= baselineWindow(2)), ...
+                ['ns:cache:' transform 'BaselineWindow'], ...
+                'baselineWindow must be empty or contain increasing [start stop] bounds in milliseconds.');
+            if isempty(baselineWindow)
+                return
+            end
+            baselineSamples = time >= baselineWindow(1)/1000 & ...
+                time <= baselineWindow(2)/1000;
+            assert(any(baselineSamples),['ns:cache:' transform 'BaselineWindow'], ...
+                'baselineWindow contains no samples on the supplied time axis.');
+            baselinePower = mean(power(baselineSamples,:),1);
+            baselinePower(baselinePower <= 0 | ~isfinite(baselinePower)) = NaN;
+            power = power./baselinePower;
+        end
+
         function [G,M,D,idv,dv] = average(G,M,D,idv,dv,dimensions,robust,outlier,epochs)
             % Group and average data, preserving metadata and result mappings.
             arguments
@@ -992,19 +1150,23 @@ classdef (Abstract) cache < handle
                         sqrt(sum(~isnan(x),1,'omitmissing'))},values,groupNumber);
                     nValues(:,j) = splitapply(@(x) {sum(~isnan(x),1,'omitmissing')},values,groupNumber);
                 else
+                    if size(column{1},1)==1
+                        averageDim =1;  % Average along the first dimension if the first column is a row vector
+                    else
+                        averageDim = 3;  % Average along the third dimension if the first column is not a row vector
+                    end
                     for i = 1:nrGroups
-                        signal = cat(1,column{groupRows{i}});
+                        signal = cat(averageDim,column{groupRows{i}});
                         if isfinite(outlier)
-                            signal = rmoutliers(signal,"median","ThresholdFactor",outlier);
+                            signal = rmoutliers(signal,"median","ThresholdFactor",outlier,averageDim);
                         end
-                        n = sum(~isnan(signal),1,"omitmissing");
+                        n = sum(~isnan(signal),averageDim,"omitmissing");
                         if robust
-                            av = median(signal,1,"omitmissing");
-                            err = arrayfun(@(k) iqr(signal(~isnan(signal(:,k)),k)) ...
-                                /sqrt(n(k)),1:size(signal,2));
+                            av = median(signal,averageDim,"omitmissing");
+                            err = iqr(signal,averageDim)./sqrt(n);
                         else
-                            av = mean(signal,1,"omitmissing");
-                            err = std(signal,0,1,"omitmissing")./sqrt(n);
+                            av = mean(signal,averageDim,"omitmissing");
+                            err = std(signal,0,averageDim,"omitmissing")./sqrt(n);
                         end
                         averageValues{i,j} = av;
                         errorValues{i,j} = err;
