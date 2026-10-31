@@ -19,7 +19,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
            % Overload the insert method to do argument validation and setup
            % defaults
             pv = namedargs2cell(tuples);
-            tuples = self.validate(pv{:});
+            tuples = makeMymSafe(self.validate(pv{:}));
             % Call the superclass function after validation
             insert@dj.Lookup(self, tuples, varargin{:})
         end
