@@ -74,6 +74,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
 
 
             T = addvars(T,zeros(nrEpochs,1),zeros(nrEpochs,1),zeros(nrEpochs,1),zeros(nrEpochs,1),'NewVariableNames',{'badByArtifact','badByAlignTime','icaNr','icaVar'});
+            T = addvars(T,zeros(nrEpochs,1),'NewVariableNames','artifactMaskedFraction');
 
             % For each epoch check why the trials were removed by
             % inspecting the badBy fields of the art and plg structs.
@@ -81,6 +82,9 @@ classdef Epoch < dj.Computed & dj.DJInstance
                 art = T.art(cntr);
                 if ~isempty(art)
                     T.badByArtifact(cntr)= numel(art.badBy.all);
+                    if isfield(art,'segments') && isfield(art.segments,'maskedFraction')
+                        T.artifactMaskedFraction(cntr) = mean(art.segments.maskedFraction);
+                    end
                     if ~isempty(art.ica)
                         T.icaNr(cntr)  =art.ica.nrComponents;
                         T.icaVar(cntr)  =art.ica.variance;
@@ -208,9 +212,18 @@ classdef Epoch < dj.Computed & dj.DJInstance
             tic;
             fprintf("Artifact detection ...\n");
             parmTpl.artparms.epoch_no = trials;
-            pv =namedargs2cell(parmTpl.artparms);
             epochSamplingRate = 1/mode(diff(t)); % Preprocessing can change the rate.
-            [badByArt] = prep.artifactDetection(permute(signal,[2 3 1]),epochSamplingRate,pv{:});
+            [signal,badByArt,artifactSegments] = prep.epochArtifacts(signal,epochSamplingRate,parmTpl.artparms);
+            if isfield(artifactSegments,'intervals')
+                intervals = artifactSegments.intervals;
+                intervals.start = t(intervals.firstSample);
+                intervals.stop = t(intervals.lastSample);
+                % Store plain structs in blobs, with seconds relative to alignment.
+                artifactSegments.intervals = table2struct(intervals,'ToScalar',true);
+                artifactSegments.windows = table2struct(artifactSegments.windows,'ToScalar',true);
+                fprintf('Masked %.2f%% of trial time with artifact windows.\n', ...
+                    100*mean(artifactSegments.maskedFraction));
+            end
             % Remove epochs that were identified as having artifacts            
             out = ismember(trials,badByArt.all);
             fracRemoved = mean(out);
@@ -233,6 +246,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             else
                 art = struct('ica',[],'badBy',badByArt);
             end
+            art.segments = artifactSegments;
             epoch_tpl = mergestruct(key, ...
                 struct(time = [t(1) t(end) numel(t)],...
                 prep = prepResults,...

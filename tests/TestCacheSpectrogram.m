@@ -24,6 +24,36 @@ classdef TestCacheSpectrogram < matlab.unittest.TestCase
     end
 
     methods (Test)
+        function gapsRemainLocalAndBaselineOmitsMissingPower(testCase,transform)
+            time = 0:1023;
+            signal = sin(2*pi*0.1*time');
+            signal(400:410) = NaN;
+            transformFunction = str2func("ns.cache.do_"+transform.name);
+            options = namedargs2cell(transform.options);
+
+            raw = transformFunction(signal,1,time,options{:});
+            actual = transformFunction(signal,1,time,options{:},baselineWindow=[100000 500000]);
+
+            testCase.verifyTrue(all(isnan(raw.power{1}(400:410,:)),'all'));
+            testCase.verifyTrue(all(isfinite(raw.power{1}(750,:))));
+            baseline = time >= 100 & time <= 500;
+            testCase.verifyEqual(mean(actual.power{1}(baseline,:),1,'omitmissing'), ...
+                ones(1,size(actual.power{1},2)),'AbsTol',1e-12);
+            testCase.verifySize(actual.power{1},size(raw.power{1}));
+            testCase.verifyEqual(actual.xt,raw.xt);
+        end
+
+        function entirelyMissingSignalRetainsAxes(testCase,transform)
+            transformFunction = str2func("ns.cache.do_"+transform.name);
+            options = namedargs2cell(transform.options);
+            reference = transformFunction(zeros(256,1),1,options{:});
+
+            actual = transformFunction(NaN(256,1),1,options{:});
+
+            testCase.verifyTrue(all(isnan(actual.power{1}),'all'));
+            testCase.verifyEqual(actual.xt,reference.xt);
+        end
+
         function agreesWithNativeCwt(testCase,configuration)
             c = configuration;
             time = (0:c.n-1)'/c.fs;
