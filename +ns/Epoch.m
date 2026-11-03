@@ -192,7 +192,7 @@ classdef Epoch < dj.Computed & dj.DJInstance
             else
                 icaParms = struct.empty;
             end
-            [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels);
+            [T,~,channelsWithData] = align(ns.C & key,ica=icaParms,align=startTime,start=parmTpl.window(1),stop=parmTpl.window(2),trial=trials,channel=parmTpl.channels,crossTrial=false);
 
             parmTpl.channels =channelsWithData(:)';
             % Extract the actual trials that have  been extracted
