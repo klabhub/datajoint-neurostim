@@ -857,7 +857,7 @@ classdef (Abstract) cache < handle
             power = abs(spectrogram.').^2;
             if any(missing)
                 radius = min(5,fwhm'*sqrt(log(1000)/(4*log(2))));
-                power = ns.cache.maskWaveletGaps(power,missing,ceil(radius*fs));
+                power = ns.cache.maskWaveletGaps(power,missing,ceil(radius*fs),false);
             end
             [power,time] = ns.cache.normalizeBaseline(power,time,pv.baselineWindow,'Wavelet');
             % Store power spectrogram and frequency
@@ -948,7 +948,8 @@ classdef (Abstract) cache < handle
             if any(missing)
                 % Analytic Morlet: exp(-t^2/(2*sigma^2)), sigma=6/(2*pi*f).
                 radius = sqrt(2*log(1000))*6./(2*pi*freq);
-                power = ns.cache.maskWaveletGaps(power,missing,ceil(radius*srate));
+                power = ns.cache.maskWaveletGaps(power,missing,ceil(radius*srate), ...
+                    pv.boundary == "periodic");
             end
             [power,time] = ns.cache.normalizeBaseline(power,time,pv.baselineWindow,'Spectrogram');
             v = table({power},{freq,time},'VariableNames',{'power','xt'});
@@ -1079,8 +1080,8 @@ classdef (Abstract) cache < handle
 
 
     methods (Static, Access=protected)
-        function power = maskWaveletGaps(power,missing,radius)
-            % Mask wavelet support at internal gaps and extension boundaries.
+        function power = maskWaveletGaps(power,missing,radius,periodicExtension)
+            % Mask wavelet support at internal gaps and periodic extension boundaries.
             nrSamples = size(power,1);
             cumulative = [0;cumsum(missing)];
             index = (1:nrSamples)';
@@ -1089,8 +1090,15 @@ classdef (Abstract) cache < handle
                 first = max(1,index-width);
                 last = min(nrSamples,index+width);
                 bad = cumulative(last+1)-cumulative(first) > 0;
-                % Prevent reflected/periodic extension from crossing gaps.
-                bad = bad | index <= width | index > nrSamples-width;
+                % Reflected support maps back into this same local window.
+                if periodicExtension
+                    leftCount = max(0,width-index+1);
+                    leftStart = max(1,nrSamples-leftCount+1);
+                    leftBad = leftCount > 0 & cumulative(end)-cumulative(leftStart) > 0;
+                    rightCount = max(0,index+width-nrSamples);
+                    rightBad = rightCount > 0 & cumulative(rightCount+1) > 0;
+                    bad = bad | leftBad | rightBad;
+                end
                 power(bad,k) = NaN;
             end
         end

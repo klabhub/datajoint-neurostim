@@ -43,6 +43,30 @@ classdef TestCacheSpectrogram < matlab.unittest.TestCase
             testCase.verifyEqual(actual.xt,raw.xt);
         end
 
+        function distantGapDoesNotMaskEdgeBaseline(testCase,transform)
+            time = 0:1023;
+            signal = sin(2*pi*0.1*time');
+            signal(end) = NaN;
+            transformFunction = str2func("ns.cache.do_"+transform.name);
+            options = namedargs2cell(transform.options);
+
+            actual = transformFunction(signal,1,time,options{:}, ...
+                baselineWindow=[0 20000]);
+
+            testCase.verifyTrue(all(isfinite(actual.power{1}(1,:))));
+        end
+
+        function periodicExtensionMasksWrappedGap(testCase)
+            signal = sin(2*pi*10*(0:1023)'/250);
+            signal(end) = NaN;
+
+            periodic = ns.cache.do_spectrogram(signal,250,limits=[5 20],boundary="periodic");
+            reflected = ns.cache.do_spectrogram(signal,250,limits=[5 20],boundary="reflection");
+
+            testCase.verifyTrue(all(isnan(periodic.power{1}(1,:))));
+            testCase.verifyTrue(all(isfinite(reflected.power{1}(1,:))));
+        end
+
         function entirelyMissingSignalRetainsAxes(testCase,transform)
             transformFunction = str2func("ns.cache.do_"+transform.name);
             options = namedargs2cell(transform.options);
