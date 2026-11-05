@@ -80,6 +80,9 @@ classdef Epoch < dj.Computed & dj.DJInstance
             % inspecting the badBy fields of the art and plg structs.
             for cntr = 1:nrEpochs
                 art = T.art(cntr);
+                if iscell(art) && isscalar(art)
+                    art = art{1};
+                end
                 if ~isempty(art)
                     T.badByArtifact(cntr)= numel(art.badBy.all);
                     if isfield(art,'segments') && isfield(art.segments,'maskedFraction')

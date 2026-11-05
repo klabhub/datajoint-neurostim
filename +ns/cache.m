@@ -1205,7 +1205,7 @@ classdef (Abstract) cache < handle
                     for i = 1:nrGroups
                         signal = cat(averageDim,column{groupRows{i}});
                         if isfinite(outlier)
-                            signal = rmoutliers(signal,"median","ThresholdFactor",outlier,averageDim);
+                            signal = rmoutliers(signal,"median",averageDim,"ThresholdFactor",outlier);
                         end
                         n = sum(~isnan(signal),averageDim,"omitmissing");
                         if robust
