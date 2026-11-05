@@ -19,7 +19,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
            % Overload the insert method to do argument validation and setup
            % defaults
             pv = namedargs2cell(tuples);
-            tuples = self.validate(pv{:});
+            tuples = makeMymSafe(self.validate(pv{:}));
             % Call the superclass function after validation
             insert@dj.Lookup(self, tuples, varargin{:})
         end
@@ -88,6 +88,10 @@ end
 % See prep.artifactDetection for descriptions.
 defaults = struct;
 defaults.enable = false;
+defaults.action = "reject";
+defaults.window = 1000; % Artifact detection windows, milliseconds
+defaults.step = 500;
+defaults.padding = 100;
 defaults.amplitude_threshold_peak = 150;
 defaults.amplitude_channelfrac = 0.5;
 defaults.variance_z_threshold = 5;
@@ -111,6 +115,12 @@ end
 if isfield(art,'enable')
     validateattributes(art.enable,{'logical'},{'scalar'},mfilename,'enable');
 end
+mustBeTextScalar(art.action);
+mustBeMember(string(art.action),["reject" "nan"]);
+validateattributes(art.window,{'numeric'},{'scalar','real','finite','positive'});
+validateattributes(art.step,{'numeric'},{'scalar','real','finite','positive'});
+validateattributes(art.padding,{'numeric'},{'scalar','real','finite','nonnegative'});
+assert(art.step <= art.window,'Artifact step must not exceed the detection window.');
 numericScalarFields = ["amplitude_threshold_peak" "varianze_z_threshold" ...
     "hf_cutoff_hz" "hf_z_threshold" "correlation_z_threshold"];
 for name = numericScalarFields

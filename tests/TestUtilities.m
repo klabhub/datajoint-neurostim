@@ -222,7 +222,7 @@ classdef TestUtilities < matlab.unittest.TestCase
             testCase.verifySize(result.wavelet_power{1},[32 4]);
             axes = result.wavelet_xt;
             testCase.verifyEqual(axes{1},[5 10 15 20]);
-            testCase.verifyEqual(axes{2},0:31);
+            testCase.verifyEqual(axes{2},linspace(0,0.31,32),'AbsTol',1e-12);
         end
 
         function snrAcceptsStructOptions(testCase)
