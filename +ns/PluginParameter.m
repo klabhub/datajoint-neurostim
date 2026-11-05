@@ -204,7 +204,7 @@ classdef PluginParameter < dj.Part
                 tbl = tbl & restriction;                
             end
 
-            T = fetchtable(tbl ,'*');
+            T = ns.PluginParameter.parameterTable(fetch(tbl,'*'));
             % Hack to handle bad property_name
             isEmptyName = T.property_name==""; 
             if any(isEmptyName)
@@ -284,6 +284,18 @@ classdef PluginParameter < dj.Part
     end
 
     methods (Static)
+        function T = parameterTable(tuples)
+            % Convert fetched rows without combining individual blob payloads.
+            blobColumns = {'property_value','property_time', ...
+                'property_trial','property_nstime'};
+            T = struct2table(rmfield(tuples,blobColumns),'AsArray',true);
+            T = convertvars(T,@iscellstr,"string");
+            for column = blobColumns
+                T.(column{1}) = reshape({tuples.(column{1})},[],1);
+            end
+            T = T(:,fieldnames(tuples));
+        end
+
         function T = nestedExperimentTable(plg,name,value,time,nstime,trial,type,pv)
             % This is called from get with splitapply, ensuring that all of
             % the properties correspond to a single experiment. Here we
@@ -312,30 +324,20 @@ classdef PluginParameter < dj.Part
 
         function S = nestedPluginTable(name,value,time,nstime,trial,type)
             % Called from splitapply in nestedExperimentTable to create a
-            % struct per plugin.
-
-            if ~iscell(value)
-                value= {value};
-            end
-            if ~iscell(trial)
-                trial = {trial};
-            end
-            if ~iscell(time)
-                time = {time};
-            end
-            if ~iscell(nstime )
-                nstime= {nstime};
-            end
+            % struct per plugin. Each blob input is one cell per property,
+            % as established by parameterTable at the fetch boundary.
+            nrProperties = numel(name);
+            assert(iscell(value) && numel(value) == nrProperties && ...
+                iscell(time) && numel(time) == nrProperties && ...
+                iscell(nstime) && numel(nstime) == nrProperties && ...
+                iscell(trial) && numel(trial) == nrProperties, ...
+                'ns:PluginParameter:BlobShape', ...
+                'Blob inputs must contain one cell per property.');
             for prm = 1:numel(name)
                 nm = lower(name(prm)); % Force lower case
                 if strcmpi(type(prm),'ByteStream')
                     % Convert from bytestrem to matlab values for this parameter only
-                    bs = getArrayFromByteStream(value{prm});
-                    if iscell(bs)
-                        value{prm}= {bs};
-                    else
-                        value{prm} = bs;
-                    end
+                    value{prm} = getArrayFromByteStream(value{prm});
                 end
                 if iscell(value{prm}) && numel(value{prm})>1 && isempty(value{prm}{1}) && iscellstr(value{prm}(2:end))
                     % A cell string that starts empty ([]) and then has
@@ -347,7 +349,8 @@ classdef PluginParameter < dj.Part
                 else
                     thisValue = value{prm};
                 end
-                S.(nm) = struct('data',thisValue,'trialtime', time{prm},'trial',trial{prm},'clocktime',nstime{prm});
+                S.(nm) = struct('data',{thisValue},'trialtime',{time{prm}}, ...
+                    'trial',{trial{prm}},'clocktime',{nstime{prm}});
             end
         end
 

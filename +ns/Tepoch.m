@@ -70,8 +70,9 @@ classdef Tepoch < dj.Computed & dj.DJInstance
                 for iDv = 1:numel(dv)
                     x = table2cell(T(1,idv)); % Each row should have the same idv
                     x = cat(2,x{:});
+                    % Keep multiple axes inside one tuple rather than expanding cells.
                     tpl = dj.struct.join(struct(independent = idv, ...
-                        x = x, dependent = char(dv(iDv))),key);
+                        x = {x}, dependent = char(dv(iDv))),key);
                     insert(self,makeMymSafe(tpl));
                 end
             end

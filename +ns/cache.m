@@ -790,6 +790,9 @@ classdef (Abstract) cache < handle
             %   Endpoints are included; no change corresponds to 1. Empty
             %   baseline selections raise an error; zero or nonfinite
             %   baseline power produces NaN at that frequency.
+            %   Missing samples and nearby power estimates remain NaN. The
+            %   exclusion margin follows the wavelet envelope down to 0.1%
+            %   of its peak amplitude; baseline means omit missing power.
             %
             %   See also ns.cache.do_spectrogram
             arguments
@@ -806,6 +809,10 @@ classdef (Abstract) cache < handle
             % analysis. NeuroImage, 199, 81-86.
             % https://doi.org/10.1016/j.neuroimage.2019.05.048
             nrSamples= size(signal,1);
+            assert(~any(isinf(signal)),'ns:cache:WaveletInfiniteSignal', ...
+                'Signal may contain NaN gaps but not infinite values.');
+            missing = isnan(signal);
+            signal(missing) = 0;
             % time-frequency parameters
             freq  = linspace(pv.limits(1),pv.limits(2),pv.nfrex)';
             fwhm = linspace(pv.fwhm(1),pv.fwhm(2),pv.nfrex)'; % variable fwhm
@@ -848,6 +855,10 @@ classdef (Abstract) cache < handle
                 spectrogram(fi,:) = as(halfw+(1:nrSamples))';
             end
             power = abs(spectrogram.').^2;
+            if any(missing)
+                radius = min(5,fwhm'*sqrt(log(1000)/(4*log(2))));
+                power = ns.cache.maskWaveletGaps(power,missing,ceil(radius*fs),false);
+            end
             [power,time] = ns.cache.normalizeBaseline(power,time,pv.baselineWindow,'Wavelet');
             % Store power spectrogram and frequency
             v = table({power},{freq',time},'VariableNames',{'power','xt'});
@@ -857,7 +868,7 @@ classdef (Abstract) cache < handle
         function [v,idv] = do_spectrogram(signal,srate,time,pv)
             %do_spectrogram - Compute analytic Morlet wavelet power
             %   V = do_spectrogram(SIGNAL,SRATE) returns squared CWT
-            %   coefficients using Wavelet Toolbox. SIGNAL is a finite real
+            %   coefficients using Wavelet Toolbox. SIGNAL is a real
             %   single- or double-precision vector with at least four samples;
             %   SRATE is its sampling frequency in Hz. V.power{1} is time by
             %   frequency. V.xt contains ascending frequencies and sample times
@@ -895,10 +906,13 @@ classdef (Abstract) cache < handle
             %   not a PSD, and differs in scale from do_wavelet. A baseline
             %   ratio cancels a stable spectral background but does not fit
             %   an aperiodic slope. One filter bank is retained per worker.
+            %   NaN gaps and nearby power estimates remain NaN, with a
+            %   frequency-dependent margin at 0.1% wavelet amplitude.
+            %   Baseline means omit missing power.
             %
             %   See also cwtfilterbank, cwtfilterbank.wt
             arguments
-                signal (:,1) {mustBeFloat,mustBeReal,mustBeFinite}
+                signal (:,1) {mustBeFloat,mustBeReal}
                 srate (1,1) {mustBeNumeric,mustBeReal,mustBeFinite,mustBePositive}
                 time (1,:) {mustBeNumeric,mustBeReal,mustBeFinite} = (0:numel(signal)-1)/double(srate)
                 pv.limits (1,2) {mustBeNumeric,mustBeReal,mustBeFinite,mustBeNonnegative} = [0.5 srate/2]
@@ -908,6 +922,10 @@ classdef (Abstract) cache < handle
             end
 
             nrSamples = numel(signal);
+            assert(~any(isinf(signal)),'ns:cache:SpectrogramInfiniteSignal', ...
+                'Signal may contain NaN gaps but not infinite values.');
+            missing = isnan(signal);
+            signal(missing) = 0;
             assert(nrSamples >= 4,'ns:cache:SpectrogramSignalLength', ...
                 'CWT requires at least four samples.');
             assert(pv.limits(1) < pv.limits(2) && pv.limits(2) <= srate/2, ...
@@ -927,6 +945,12 @@ classdef (Abstract) cache < handle
             [coefficients,freq] = wt(filterBank,signal);
             freq = flipud(freq(:)).';
             power = abs(coefficients(end:-1:1,:).').^2;
+            if any(missing)
+                % Analytic Morlet: exp(-t^2/(2*sigma^2)), sigma=6/(2*pi*f).
+                radius = sqrt(2*log(1000))*6./(2*pi*freq);
+                power = ns.cache.maskWaveletGaps(power,missing,ceil(radius*srate), ...
+                    pv.boundary == "periodic");
+            end
             [power,time] = ns.cache.normalizeBaseline(power,time,pv.baselineWindow,'Spectrogram');
             v = table({power},{freq,time},'VariableNames',{'power','xt'});
             idv = "xt";
@@ -1056,6 +1080,29 @@ classdef (Abstract) cache < handle
 
 
     methods (Static, Access=protected)
+        function power = maskWaveletGaps(power,missing,radius,periodicExtension)
+            % Mask wavelet support at internal gaps and periodic extension boundaries.
+            nrSamples = size(power,1);
+            cumulative = [0;cumsum(missing)];
+            index = (1:nrSamples)';
+            for k = 1:size(power,2)
+                width = min(nrSamples,radius(k));
+                first = max(1,index-width);
+                last = min(nrSamples,index+width);
+                bad = cumulative(last+1)-cumulative(first) > 0;
+                % Reflected support maps back into this same local window.
+                if periodicExtension
+                    leftCount = max(0,width-index+1);
+                    leftStart = max(1,nrSamples-leftCount+1);
+                    leftBad = leftCount > 0 & cumulative(end)-cumulative(leftStart) > 0;
+                    rightCount = max(0,index+width-nrSamples);
+                    rightBad = rightCount > 0 & cumulative(rightCount+1) > 0;
+                    bad = bad | leftBad | rightBad;
+                end
+                power(bad,k) = NaN;
+            end
+        end
+
         function [power,time] = normalizeBaseline(power,time,baselineWindow,transform)
             nrSamples = size(power,1);
             if numel(time) == 3 && nrSamples ~= 3
@@ -1077,7 +1124,7 @@ classdef (Abstract) cache < handle
                 time <= baselineWindow(2)/1000;
             assert(any(baselineSamples),['ns:cache:' transform 'BaselineWindow'], ...
                 'baselineWindow contains no samples on the supplied time axis.');
-            baselinePower = mean(power(baselineSamples,:),1);
+            baselinePower = mean(power(baselineSamples,:),1,'omitmissing');
             baselinePower(baselinePower <= 0 | ~isfinite(baselinePower)) = NaN;
             power = power./baselinePower;
         end
@@ -1158,7 +1205,7 @@ classdef (Abstract) cache < handle
                     for i = 1:nrGroups
                         signal = cat(averageDim,column{groupRows{i}});
                         if isfinite(outlier)
-                            signal = rmoutliers(signal,"median","ThresholdFactor",outlier,averageDim);
+                            signal = rmoutliers(signal,"median",averageDim,"ThresholdFactor",outlier);
                         end
                         n = sum(~isnan(signal),averageDim,"omitmissing");
                         if robust
