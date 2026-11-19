@@ -1168,6 +1168,11 @@ classdef (Abstract) cache < handle
             end
             varies = varfun(@(x) numel(unique(x)) > 1,G(:,grouping),OutputFormat='uniform');
             varies(grouping=="trial") = false;
+            if contains(dimensions,"trial") && ~contains(dimensions,"condition") && ~varies(grouping=="condition")
+                % Averaged over trial, but there is a single condition in
+                % this experiment; include that condition in the name of the row.
+                varies(grouping=="condition") = true;
+            end
             if any(varies)
                 G.name = join(string(G{:,grouping(varies)}),"/",2);
             else
