@@ -31,7 +31,7 @@ classdef EpochParm < dj.Lookup & dj.DJInstance
                 pv.etag (1,1) string
                 pv.ctag  (1,1) string
                 pv.dimension (1,1) string
-                pv.window (1,2) 
+                pv.window (1,2)   {mustBeNumeric,mustBeFinite} % Windows should be finite to ensure fixed length
                 pv.channels (1,:) {mustBeNumeric} = []
                 pv.prepparms (1,1) struct  = struct('enable',false);
                 pv.artparms  (1,1) struct  = struct('enable',false);
