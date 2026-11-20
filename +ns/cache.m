@@ -725,7 +725,7 @@ classdef (Abstract) cache < handle
                 pv.Reassign logical {mustBeScalarOrEmpty} = []
                 pv.TwoSided logical {mustBeScalarOrEmpty} = []
             end
-
+            
             % Table with power and frequency
             signal = signal - mean(signal,1,"omitmissing");
             options = namedargs2cell(pv);
@@ -736,7 +736,7 @@ classdef (Abstract) cache < handle
             end
             out = isnan(signal);
             if any(out)
-                fprintf(2,"Setting %.1f%% of the signal that to zero (removing NaN)\n",100*mean(out));
+                %fprintf(2,"Setting %.1f%% of the signal to zero (removing NaN)\n",100*mean(out));
                 signal(out)=0;
             end
             [power, freq] = pspectrum(signal, fs, 'power', options{:});
@@ -1168,7 +1168,7 @@ classdef (Abstract) cache < handle
             end
             varies = varfun(@(x) numel(unique(x)) > 1,G(:,grouping),OutputFormat='uniform');
             varies(grouping=="trial") = false;
-            if contains(dimensions,"trial") && ~contains(dimensions,"condition") && ~varies(grouping=="condition")
+            if any(contains(dimensions,"trial")) && ~any(contains(dimensions,"condition")) && ~varies(grouping=="condition")
                 % Averaged over trial, but there is a single condition in
                 % this experiment; include that condition in the name of the row.
                 varies(grouping=="condition") = true;
